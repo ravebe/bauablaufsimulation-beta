@@ -55,35 +55,37 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     }
   }, [aktivTaskId, modellId]);
 
-  // Attribute einmal vorladen (wie alte funktionierende Version)
+  // Attribute einmal vorladen — modellId dynamisch holen wenn nötig
   async function ladeAttr() {
-    if (!api || !modellId) return;
+    if (!api) return;
     setAttrLaedt(true);
     try {
-      const rohe = await api.viewer.getObjects(modellId);
+      // ModellId dynamisch holen wenn nicht gesetzt
+      let mid = modellId;
+      if (!mid) {
+        const modelle = await api.viewer.getModels();
+        mid = (modelle as any[])?.[0]?.modelId ?? null;
+      }
+      if (!mid) { setAttrLaedt(false); return; }
+
+      const rohe = await api.viewer.getObjects(mid);
       const ids = parseObjectIds(rohe).slice(0, 60);
-      if (ids.length === 0) return;
-      const props = await batchGetProperties(api, modellId, ids);
+      if (ids.length === 0) { setAttrLaedt(false); return; }
+      const props = await batchGetProperties(api, mid, ids);
 
-      const map: Record<string, Set<string>> = {};
       const attrsMap = new Map<string, AttrItem>();
-
       for (const obj of props) {
         for (const g of (obj?.properties ?? [])) {
           const pset = g?.name || (g as any)?.displayName || "Eigenschaften";
           for (const p of (g?.properties ?? [])) {
             if (!p?.name) continue;
             const key = `${pset}||${p.name}`;
-            if (!map[key]) {
-              map[key] = new Set();
+            if (!attrsMap.has(key)) {
               attrsMap.set(key, { pset, name: p.name, key });
             }
-            if (p.value != null) map[key].add(String(p.value));
           }
         }
       }
-
-  
       setAllAttrs([...attrsMap.values()]);
     } catch (e) {
       console.error("ladeAttr Fehler:", e);
@@ -101,29 +103,39 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
 
   // IFC Suche
   async function ifcSuchen() {
-    if (!api || !modellId || !ifcQuery || !ifcWert || !aktivTask) return;
+    if (!api || !ifcQuery || !ifcWert || !aktivTask) return;
     setSuchStatus(null);
     setGefundeneIds([]);
     setLaedt(true);
 
     try {
-      // Attributname und PSet aus Query
+      // ModellId dynamisch holen wenn nötig
+      let mid = modellId;
+      if (!mid) {
+        const modelle = await api.viewer.getModels();
+        mid = (modelle as any[])?.[0]?.modelId ?? null;
+      }
+      if (!mid) {
+        setSuchStatus("Kein Modell geladen");
+        setLaedt(false);
+        return;
+      }
+
       const teile = ifcQuery.split(" › ");
       const suchAttr = teile[0]?.trim().toLowerCase();
       const suchPset = teile[1]?.trim().toLowerCase() ?? "";
 
-      const rohe = await api.viewer.getObjects(modellId);
+      const rohe = await api.viewer.getObjects(mid);
       const ids = parseObjectIds(rohe);
       const gefunden: number[] = [];
 
       for (let i = 0; i < ids.length; i += 10) {
         const batch = ids.slice(i, i + 10);
-        const props = await batchGetProperties(api, modellId, batch);
+        const props = await batchGetProperties(api, mid, batch);
         for (const obj of props) {
           for (const g of (obj?.properties ?? [])) {
             const pset = (g?.name || (g as any)?.displayName || "").toLowerCase();
 
-            // Robustes PSet-Matching (case-insensitive)
             const psetMatch = !suchPset ||
               pset === suchPset ||
               pset.includes(suchPset) ||
@@ -132,7 +144,6 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
             if (!psetMatch) continue;
 
             for (const p of (g?.properties ?? [])) {
-              // Case-insensitive Attributname matching
               if (!p?.name || p.name.toLowerCase() !== suchAttr) continue;
               if (p.value != null &&
                   String(p.value).toLowerCase().includes(ifcWert.toLowerCase())) {

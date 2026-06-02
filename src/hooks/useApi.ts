@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import type { TcModel, TcObjectWithProps, TcSelectionEvent } from "../types";
-
 // TC Workspace API Typen (minimale Deklaration)
 declare const TrimbleConnect: {
   Workspace: {
@@ -59,11 +58,9 @@ export function useApi(): UseApiReturn {
     async function init() {
       try {
         // trimble-connect-workspace-api über window
-const wapi = (window as any).TrimbleConnectWorkspace;
-if (!wapi) {
-  setFehler("TC Workspace API nicht gefunden");
-  return;
-}
+        const wapi = (window as any).TrimbleConnect?.Workspace ?? 
+                     (await import("trimble-connect-workspace-api" as string)).default?.Workspace;
+
         if (!wapi) {
           setFehler("TC Workspace API nicht gefunden");
           return;
@@ -72,23 +69,45 @@ if (!wapi) {
         apiInst = (await wapi.connect(window.parent, () => {})) as ApiInstance;
         setApi(apiInst);
 
-        // Erstes Modell ermitteln
-        try {
-          const modelle = await apiInst.viewer.getModels();
-          if (modelle?.length > 0) {
-            setAktivesModellId(modelle[0].modelId);
+        // Erstes Modell ermitteln — mit Retry (getModels() kann beim Start leer sein)
+        const ladeModelle = async () => {
+          for (let i = 0; i < 5; i++) {
+            try {
+              const modelle = await apiInst!.viewer.getModels();
+              if (modelle?.length > 0) {
+                setAktivesModellId(modelle[0].modelId);
+                return;
+              }
+            } catch { /* ignore */ }
+            await new Promise(r => setTimeout(r, 1500));
           }
-        } catch {
-          // getModels() kann fehlschlagen wenn noch kein Modell geladen
-        }
+        };
+        ladeModelle();
 
-        // Selection Listener
+        // onModelStateChanged → aktivesModellId aktualisieren wenn Modell geladen wird
+        try {
+          (apiInst.viewer as any).onModelStateChanged?.addListener(async () => {
+            const modelle = await apiInst!.viewer.getModels();
+            if (modelle?.length > 0) setAktivesModellId(modelle[0].modelId);
+          });
+        } catch { /* ignore */ }
+
+        // Selection Listener — robust für objectRuntimeIds UND objects Format
         const cb = (event: TcSelectionEvent) => {
           const ids: number[] = [];
-          if (Array.isArray(event?.data)) {
-            for (const item of event.data) {
-              if (Array.isArray(item.objectRuntimeIds)) {
+          const data = (event as any)?.data;
+          if (Array.isArray(data)) {
+            for (const item of data) {
+              // Format 1: objectRuntimeIds (Workspace API)
+              if (Array.isArray(item?.objectRuntimeIds)) {
                 ids.push(...item.objectRuntimeIds);
+              }
+              // Format 2: objects[{id}] (3D Viewer API)
+              else if (Array.isArray(item?.objects)) {
+                for (const o of item.objects) {
+                  const n = Number(o?.id ?? o);
+                  if (!isNaN(n)) ids.push(n);
+                }
               }
             }
           }
