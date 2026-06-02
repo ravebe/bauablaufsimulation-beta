@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { SimProjekt, TcModel } from "../types";
+import type { SimProjekt } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import GanttImport from "./GanttImport";
 
@@ -12,7 +12,7 @@ interface Props {
   setAktivId: (id: string) => void;
 }
 
-export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId }: Props) {
+export default function TabProjekte({ api, ready, sims, setSims, aktivId, setAktivId }: Props) {
   const [aufgeklappt, setAufgeklappt] = useState<string | null>(aktivId);
   const [neuName, setNeuName] = useState("");
   const [zeigeNeu, setZeigeNeu] = useState(false);
@@ -52,17 +52,33 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId }:
     }
 
     try {
-      const modelle: TcModel[] = await api.viewer.getModels();
-      if (!modelle || modelle.length === 0) {
-        setModellMsg({ simId, typ: "err", text: "Keine Modelle aktiv — erst ein Modell im Viewer laden" });
+      const alleModelle = await api.viewer.getModels() as any[];
+      if (!alleModelle || alleModelle.length === 0) {
+        setModellMsg({ simId, typ: "err", text: "Keine Modelle im Viewer — erst ein IFC-Modell laden" });
         return;
       }
+
+      // State-Filter: nur "loaded" / "assimilating" Modelle
+      const hatState = alleModelle.some(m => m.state !== undefined);
+      const aktiv = hatState
+        ? alleModelle.filter(m => m.state === "loaded" || m.state === "assimilating")
+        : alleModelle; // Fallback: alle übernehmen wenn kein state Feld
+
+      if (aktiv.length === 0) {
+        setModellMsg({ simId, typ: "err", text: `Kein aktives Modell — ${alleModelle.length} total, alle ausgeblendet?` });
+        return;
+      }
+
       setSims(prev => prev.map(s =>
         s.id === simId
-          ? { ...s, modelle: modelle.map(m => ({ id: m.modelId, name: m.name || m.fileName || m.modelId })) }
+          ? { ...s, modelle: aktiv.map((m: any) => ({ id: m.modelId, name: m.name || m.fileName || m.modelId })) }
           : s
       ));
-      setModellMsg({ simId, typ: "ok", text: `${modelle.length} Modell(e) übernommen` });
+
+      const info = hatState
+        ? `${aktiv.length} aktive von ${alleModelle.length} Modell(e) übernommen`
+        : `${aktiv.length} Modell(e) übernommen (kein State-Filter verfügbar)`;
+      setModellMsg({ simId, typ: "ok", text: info });
     } catch (e) {
       setModellMsg({ simId, typ: "err", text: `Fehler: ${e instanceof Error ? e.message : String(e)}` });
     } finally {
