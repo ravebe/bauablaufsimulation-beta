@@ -59,9 +59,11 @@ export function useApi(): UseApiReturn {
     async function init() {
       try {
         // trimble-connect-workspace-api über window
-        const wapi = (window as any).TrimbleConnect?.Workspace ?? 
-                     (await import("trimble-connect-workspace-api" as string)).default?.Workspace;
-
+       let wapi = (window as any).TrimbleConnect?.Workspace;
+if (!wapi) {
+  await new Promise(r => setTimeout(r, 1000));
+  wapi = (window as any).TrimbleConnect?.Workspace;
+}
         if (!wapi) {
           setFehler("TC Workspace API nicht gefunden");
           return;
