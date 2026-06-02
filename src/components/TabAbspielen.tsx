@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
-import { SimProjekt, Task, parseObjectIds } from "../types";
-import { ApiInstance } from "../hooks/useApi";
+import type { SimProjekt, Task } from "../types";
+import type { ApiInstance } from "../hooks/useApi";
 
 interface Props {
   api: ApiInstance | null;
@@ -176,7 +176,7 @@ export default function TabAbspielen({ api, ready, aktiveSim }: Props) {
             Noch keine Tasks — Gantt importieren
           </div>
         ) : (
-          aktiveSim.tasks.map((task, i) => {
+          aktiveSim.tasks.map((task) => {
             const istAktiv = laeuft && mitBauteilen[aktivIndex]?.id === task.id;
             const hatBauteile = task.objektGuids.length > 0;
             return (

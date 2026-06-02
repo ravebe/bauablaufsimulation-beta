@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
-import { SimProjekt, TcModel } from "../types";
-import { ApiInstance } from "../hooks/useApi";
+import type { SimProjekt, TcModel } from "../types";
+import type { ApiInstance } from "../hooks/useApi";
 import GanttImport from "./GanttImport";
 
 interface Props {

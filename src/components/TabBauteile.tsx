@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-import { SimProjekt, Task, TaskTyp, parseObjectIds } from "../types";
-import { ApiInstance, batchGetProperties } from "../hooks/useApi";
+import type { SimProjekt, TaskTyp } from "../types";
+import { parseObjectIds } from "../types";
+import type { ApiInstance } from "../hooks/useApi";
+import { batchGetProperties } from "../hooks/useApi";
 
 interface Props {
   api: ApiInstance | null;

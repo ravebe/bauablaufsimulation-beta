@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useApi } from "./hooks/useApi";
-import { SimProjekt, SIMS_KEY, AKTIV_KEY } from "./types";
+import type { SimProjekt } from "./types";
+import { SIMS_KEY, AKTIV_KEY } from "./types";
 import TabProjekte from "./components/TabProjekte";
 import TabBauteile from "./components/TabBauteile";
 import TabAbspielen from "./components/TabAbspielen";

@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import * as XLSX from "xlsx";
-import { Task, TaskTyp, isValidDatum } from "../types";
+import type { Task, TaskTyp } from "../types";
+import { isValidDatum } from "../types";
 
 interface Props {
   onImport: (tasks: Task[]) => void;
@@ -44,7 +45,7 @@ export default function GanttImport({ onImport, taskCount }: Props) {
     const wb = XLSX.read(buf, { type: "array" });
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
-    return rows.map((row, i) => ({
+    return rows.map((row: Record<string, unknown>, i: number) => ({
       id: crypto.randomUUID(),
       name: String(row["Name"] ?? row["name"] ?? row["Vorgangsname"] ?? `Task ${i + 1}`),
       start: excelDatum(row["Start"] ?? row["start"] ?? row["Anfang"] ?? ""),
