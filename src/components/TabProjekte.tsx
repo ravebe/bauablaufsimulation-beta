@@ -18,9 +18,11 @@ export default function TabProjekte({ api, ready, sims, setSims, aktivId, setAkt
   const [zeigeNeu, setZeigeNeu] = useState(false);
   const [modellLaden, setModellLaden] = useState(false);
   const [modellMsg, setModellMsg] = useState<{ typ: "ok" | "err"; text: string } | null>(null);
+  const [menuOffen, setMenuOffen] = useState<string | null>(null);
 
   function toggleAufgeklappt(id: string) {
     setAufgeklappt(prev => prev === id ? null : id);
+    setMenuOffen(null);
   }
 
   function neuErstellen() {
@@ -40,13 +42,19 @@ export default function TabProjekte({ api, ready, sims, setSims, aktivId, setAkt
   }
 
   async function modelleUebernehmen(simId: string) {
-    if (!api) return;
     setModellLaden(true);
     setModellMsg(null);
+
+    if (!api) {
+      setModellMsg({ typ: "err", text: "TC API nicht verbunden — im 3D Viewer öffnen" });
+      setModellLaden(false);
+      return;
+    }
+
     try {
       const modelle: TcModel[] = await api.viewer.getModels();
       if (!modelle || modelle.length === 0) {
-        setModellMsg({ typ: "err", text: "Keine Modelle im Viewer geladen" });
+        setModellMsg({ typ: "err", text: "Keine Modelle im Viewer geladen — erst ein IFC-Modell öffnen" });
         return;
       }
       const neueModelle = modelle.map(m => ({
@@ -58,7 +66,7 @@ export default function TabProjekte({ api, ready, sims, setSims, aktivId, setAkt
       ));
       setModellMsg({ typ: "ok", text: `${modelle.length} Modell(e) übernommen` });
     } catch (e) {
-      setModellMsg({ typ: "err", text: `Fehler: ${e instanceof Error ? e.message : String(e)}` });
+      setModellMsg({ typ: "err", text: `getModels Fehler: ${e instanceof Error ? e.message : String(e)}` });
     } finally {
       setModellLaden(false);
     }
@@ -73,6 +81,7 @@ export default function TabProjekte({ api, ready, sims, setSims, aktivId, setAkt
   }
 
   function loeschen(simId: string) {
+    setMenuOffen(null);
     if (!confirm("Simulation wirklich löschen?")) return;
     setSims(prev => prev.filter(s => s.id !== simId));
     if (aktivId === simId) {
@@ -86,7 +95,7 @@ export default function TabProjekte({ api, ready, sims, setSims, aktivId, setAkt
   };
 
   return (
-    <div className="tc-setup-content">
+    <div className="tc-setup-content" onClick={() => setMenuOffen(null)}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         <span className="tc-section-label">Simulationen</span>
         <button className="tc-btn-primary" style={{ padding: "4px 12px", fontSize: 10 }}
@@ -126,6 +135,7 @@ export default function TabProjekte({ api, ready, sims, setSims, aktivId, setAkt
 
         return (
           <div key={sim.id} className={`sim-card ${istAktiv ? "aktiv" : ""}`}>
+            {/* Card Header */}
             <div className="sim-card-header" onClick={() => toggleAufgeklappt(sim.id)}>
               <div className="sim-card-left">
                 <span style={{ fontSize: 18 }}>📊</span>
@@ -139,10 +149,33 @@ export default function TabProjekte({ api, ready, sims, setSims, aktivId, setAkt
               </div>
               <div className="sim-card-right">
                 {istAktiv && <span className="sim-aktiv-badge">Aktiv</span>}
+
+                {/* ⋮ Kebab Menu */}
+                <div style={{ position: "relative" }} onClick={e => e.stopPropagation()}>
+                  <button
+                    style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "var(--tc-text-3)", padding: "0 4px", lineHeight: 1 }}
+                    onClick={() => setMenuOffen(prev => prev === sim.id ? null : sim.id)}
+                    title="Optionen"
+                  >⋮</button>
+                  {menuOffen === sim.id && (
+                    <div style={{
+                      position: "absolute", right: 0, top: "100%", background: "white",
+                      border: "0.5px solid var(--tc-border)", borderRadius: 5,
+                      boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, minWidth: 140,
+                    }}>
+                      <button
+                        style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", fontSize: 11, color: "var(--tc-red)", cursor: "pointer" }}
+                        onClick={() => loeschen(sim.id)}
+                      >🗑 Simulation löschen</button>
+                    </div>
+                  )}
+                </div>
+
                 <span className="sim-chevron">{offen ? "▲" : "▼"}</span>
               </div>
             </div>
 
+            {/* Card Body */}
             {offen && (
               <div className="sim-card-body">
                 {!istAktiv && (
@@ -152,6 +185,7 @@ export default function TabProjekte({ api, ready, sims, setSims, aktivId, setAkt
                   </button>
                 )}
 
+                {/* Gantt */}
                 <div className="tc-section-label" style={{ marginBottom: 4 }}>Gantt</div>
                 <GanttImport
                   onImport={tasks => setSims(prev =>
@@ -168,9 +202,9 @@ export default function TabProjekte({ api, ready, sims, setSims, aktivId, setAkt
                     Modelle{sim.modelle.length > 0 ? ` (${sim.modelle.length})` : ""}
                   </span>
                   <button
-                    style={{ background: "none", border: "none", fontSize: 9, color: "var(--tc-blue)", cursor: "pointer", padding: 0 }}
-                    disabled={!ready || modellLaden}
-                    onClick={() => { setModellMsg(null); modelleUebernehmen(sim.id); }}
+                    style={{ background: "none", border: "none", fontSize: 9, color: ready ? "var(--tc-blue)" : "var(--tc-text-3)", cursor: ready ? "pointer" : "not-allowed", padding: 0 }}
+                    disabled={modellLaden}
+                    onClick={e => { e.stopPropagation(); setModellMsg(null); modelleUebernehmen(sim.id); }}
                   >
                     {modellLaden ? "⟳ Lade…" : "+ alle übernehmen"}
                   </button>
@@ -201,8 +235,8 @@ export default function TabProjekte({ api, ready, sims, setSims, aktivId, setAkt
                 <button
                   className="tc-btn-secondary"
                   style={{ width: "100%" }}
-                  disabled={!ready || modellLaden}
-                  onClick={() => { setModellMsg(null); modelleUebernehmen(sim.id); }}
+                  disabled={modellLaden}
+                  onClick={e => { e.stopPropagation(); setModellMsg(null); modelleUebernehmen(sim.id); }}
                 >
                   {modellLaden ? "⟳ Lade…" : "⟳ Modelle neu laden"}
                 </button>
@@ -212,12 +246,6 @@ export default function TabProjekte({ api, ready, sims, setSims, aktivId, setAkt
                     {modellMsg.typ === "ok" ? "✓" : "!"} {modellMsg.text}
                   </div>
                 )}
-
-                <div className="tc-divider" />
-                <button className="tc-btn-danger" style={{ width: "100%" }}
-                  onClick={() => loeschen(sim.id)}>
-                  🗑 Simulation löschen
-                </button>
               </div>
             )}
           </div>
