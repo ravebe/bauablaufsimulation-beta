@@ -12,25 +12,26 @@ interface Props {
   aktivesModellId: string | null;
 }
 
-interface AcItem { pset: string; attr: string; label: string; }
+interface AttrItem { pset: string; name: string; key: string; }
 
 export default function TabBauteile({ api, aktiveSim, updateSim, selektion, aktivesModellId }: Props) {
   const [aktivTaskId, setAktivTaskId] = useState<string | null>(null);
+  const [allAttrs, setAllAttrs] = useState<AttrItem[]>([]);
+
   const [ifcQuery, setIfcQuery] = useState("");
   const [ifcWert, setIfcWert] = useState("");
-  const [acItems, setAcItems] = useState<AcItem[]>([]);
   const [acOffen, setAcOffen] = useState(false);
   const [suchStatus, setSuchStatus] = useState<string | null>(null);
   const [gefundeneIds, setGefundeneIds] = useState<number[]>([]);
   const [laedt, setLaedt] = useState(false);
+  const [attrLaedt, setAttrLaedt] = useState(false);
   const acRef = useRef<HTMLDivElement>(null);
 
   const aktivTask = aktiveSim?.tasks.find(t => t.id === aktivTaskId) ?? null;
 
-  // Alle Modell-IDs der aktiven Simulation
+  // Modell-ID: Simulation zuerst, dann Viewer-Fallback
   const simModellIds = aktiveSim?.modelle.map(m => m.id) ?? [];
-  // Erstes verfügbares Modell (Simulation zuerst, dann Viewer-Fallback)
-
+  const modellId = simModellIds[0] ?? aktivesModellId ?? null;
 
   // Autocomplete schließen bei Klick außerhalb
   useEffect(() => {
@@ -41,77 +42,101 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Task wechsel → Filter zurücksetzen
+  // Attribute laden wenn Task gewechselt
   useEffect(() => {
     setSuchStatus(null);
     setGefundeneIds([]);
-  }, [aktivTaskId]);
+    setIfcQuery("");
+    setIfcWert("");
+    setAllAttrs([]);
 
-  // Alle Modell-IDs: Simulation zuerst, dann Viewer-Fallback
-  const modellIds = simModellIds.length > 0
-    ? simModellIds
-    : aktivesModellId ? [aktivesModellId] : [];
+    if (aktivTaskId && api && modellId) {
+      ladeAttr();
+    }
+  }, [aktivTaskId, modellId]);
 
-  // IFC Autocomplete — durchsucht verfügbare Modelle
-  async function ladeAutocomplete(q: string) {
-    if (!api || modellIds.length === 0 || q.length < 2) { setAcItems([]); return; }
+  // Attribute einmal vorladen (wie alte funktionierende Version)
+  async function ladeAttr() {
+    if (!api || !modellId) return;
+    setAttrLaedt(true);
     try {
-      const items: AcItem[] = [];
-      const seen = new Set<string>();
+      const rohe = await api.viewer.getObjects(modellId);
+      const ids = parseObjectIds(rohe).slice(0, 60);
+      if (ids.length === 0) return;
+      const props = await batchGetProperties(api, modellId, ids);
 
-      for (const mid of modellIds) {
-        const allIds = await api.viewer.getObjects(mid);
-        const ids = parseObjectIds(allIds).slice(0, 30);
-        if (ids.length === 0) continue;
-        const props = await batchGetProperties(api, mid, ids);
-        for (const obj of props) {
-          for (const pset of obj.properties ?? []) {
-            for (const attr of pset.properties ?? []) {
-              const label = `${attr.name} › ${pset.name}`;
-              if (!seen.has(label) && label.toLowerCase().includes(q.toLowerCase())) {
-                seen.add(label);
-                items.push({ pset: pset.name, attr: attr.name, label });
-              }
+      const map: Record<string, Set<string>> = {};
+      const attrsMap = new Map<string, AttrItem>();
+
+      for (const obj of props) {
+        for (const g of (obj?.properties ?? [])) {
+          const pset = g?.name || (g as any)?.displayName || "Eigenschaften";
+          for (const p of (g?.properties ?? [])) {
+            if (!p?.name) continue;
+            const key = `${pset}||${p.name}`;
+            if (!map[key]) {
+              map[key] = new Set();
+              attrsMap.set(key, { pset, name: p.name, key });
             }
+            if (p.value != null) map[key].add(String(p.value));
           }
         }
-        if (items.length >= 20) break;
       }
 
-      setAcItems(items.slice(0, 20));
-      setAcOffen(items.length > 0);
-    } catch { setAcItems([]); }
+  
+      setAllAttrs([...attrsMap.values()]);
+    } catch (e) {
+      console.error("ladeAttr Fehler:", e);
+    } finally {
+      setAttrLaedt(false);
+    }
   }
 
-  // IFC Filter Suche
+  // Autocomplete filtern (in Memory — kein API-Call)
+  const acItems = ifcQuery.length >= 2
+    ? allAttrs.filter(a =>
+        `${a.name} ${a.pset}`.toLowerCase().includes(ifcQuery.toLowerCase())
+      ).slice(0, 20)
+    : [];
+
+  // IFC Suche
   async function ifcSuchen() {
-    if (!api || modellIds.length === 0 || !ifcQuery || !ifcWert || !aktivTask) return;
+    if (!api || !modellId || !ifcQuery || !ifcWert || !aktivTask) return;
     setSuchStatus(null);
     setGefundeneIds([]);
     setLaedt(true);
 
     try {
-      // Format: "Attributname › Pset_Name"
+      // Attributname und PSet aus Query
       const teile = ifcQuery.split(" › ");
-      const attrName = teile[0]?.trim();
-      const psetName = teile[1]?.trim();
+      const suchAttr = teile[0]?.trim().toLowerCase();
+      const suchPset = teile[1]?.trim().toLowerCase() ?? "";
 
-      const alleGefunden: number[] = [];
+      const rohe = await api.viewer.getObjects(modellId);
+      const ids = parseObjectIds(rohe);
+      const gefunden: number[] = [];
 
-      for (const mid of modellIds) {
-        const allIds = await api.viewer.getObjects(mid);
-        const ids = parseObjectIds(allIds);
-        if (ids.length === 0) continue;
+      for (let i = 0; i < ids.length; i += 10) {
+        const batch = ids.slice(i, i + 10);
+        const props = await batchGetProperties(api, modellId, batch);
+        for (const obj of props) {
+          for (const g of (obj?.properties ?? [])) {
+            const pset = (g?.name || (g as any)?.displayName || "").toLowerCase();
 
-        for (let i = 0; i < ids.length; i += 10) {
-          const batch = ids.slice(i, i + 10);
-          const props = await batchGetProperties(api, mid, batch);
-          for (const obj of props) {
-            for (const pset of obj.properties ?? []) {
-              if (psetName && pset.name !== psetName) continue;
-              const attr = pset.properties?.find(a => a.name === attrName);
-              if (attr && attr.value?.toLowerCase().includes(ifcWert.toLowerCase())) {
-                alleGefunden.push(obj.id);
+            // Robustes PSet-Matching (case-insensitive)
+            const psetMatch = !suchPset ||
+              pset === suchPset ||
+              pset.includes(suchPset) ||
+              suchPset.includes(pset);
+
+            if (!psetMatch) continue;
+
+            for (const p of (g?.properties ?? [])) {
+              // Case-insensitive Attributname matching
+              if (!p?.name || p.name.toLowerCase() !== suchAttr) continue;
+              if (p.value != null &&
+                  String(p.value).toLowerCase().includes(ifcWert.toLowerCase())) {
+                gefunden.push(obj.id);
                 break;
               }
             }
@@ -119,15 +144,15 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
         }
       }
 
-      if (alleGefunden.length === 0) {
+      if (gefunden.length === 0) {
         setSuchStatus("Keine Bauteile gefunden");
         return;
       }
 
       // Im Viewer markieren
-      await api.viewer.setSelection(alleGefunden);
-      setGefundeneIds(alleGefunden);
-      setSuchStatus(`✓ ${alleGefunden.length} Bauteile gefunden & markiert`);
+      await api.viewer.setSelection(gefunden);
+      setGefundeneIds(gefunden);
+      setSuchStatus(`✓ ${gefunden.length} Bauteile gefunden & markiert`);
     } catch (e) {
       setSuchStatus(`Fehler: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -135,7 +160,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     }
   }
 
-  // Gefundene Bauteile zum Task hinzufügen (nach Bestätigung)
+  // Gefundene Bauteile hinzufügen (nach Bestätigung)
   function gefundeneHinzufuegen() {
     if (!aktivTask || gefundeneIds.length === 0) return;
     const neu = [...new Set([...aktivTask.objektGuids, ...gefundeneIds.map(String)])];
@@ -186,7 +211,6 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     await api.viewer.setSelection(guids.map(Number));
   }
 
-  // Zähler: total zugewiesene Bauteile über alle Tasks
   const totalZugewiesen = aktiveSim?.tasks.reduce((s, t) => s + t.objektGuids.length, 0) ?? 0;
 
   if (!aktiveSim) {
@@ -202,14 +226,12 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   return (
     <div className="tasklist-wrap">
 
-      {/* Gantt Liste oben */}
+      {/* Gantt Liste */}
       <div className="gantt-section">
         <div className="gantt-section-header">
           <span>Gantt · {aktiveSim.tasks.length} Tasks</span>
           {totalZugewiesen > 0 && (
-            <span style={{ color: "var(--tc-blue)", fontSize: 9 }}>
-              ⬡ {totalZugewiesen} gesamt
-            </span>
+            <span style={{ color: "var(--tc-blue)", fontSize: 9 }}>⬡ {totalZugewiesen} gesamt</span>
           )}
         </div>
 
@@ -241,7 +263,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
       {aktivTask ? (
         <div className="detail-section">
 
-          {/* Task Header mit Zähler */}
+          {/* Task Header */}
           <div className="detail-header">
             <span className={`task-row-dot ${aktivTask.typ}`} style={{ width: 8, height: 8 }} />
             <span className="detail-task-name">{aktivTask.name}</span>
@@ -251,9 +273,9 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
           </div>
 
           {/* Kein Modell Warnung */}
-          {modellIds.length === 0 && (
+          {!modellId && (
             <div className="alert err" style={{ marginBottom: 6 }}>
-              ! Kein Modell in der Simulation — Tab „Projekte" → Modelle übernehmen
+              ! Kein Modell — Tab „Projekte" → Modelle übernehmen
             </div>
           )}
 
@@ -275,38 +297,50 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
 
           {/* IFC Filter */}
           <div className="detail-block">
-            <div className="detail-block-title">IFC-Attribut Filter</div>
+            <div className="detail-block-title">
+              IFC-Attribut Filter
+              {attrLaedt && <span style={{ color: "var(--tc-text-3)", fontWeight: 400, marginLeft: 6 }}>⟳ lädt…</span>}
+              {!attrLaedt && allAttrs.length > 0 && <span style={{ color: "var(--tc-text-3)", fontWeight: 400, marginLeft: 6 }}>{allAttrs.length} Attribute</span>}
+            </div>
+
             <div className="ac-wrap" ref={acRef}>
               <input
                 className="ac-input"
-                placeholder="Attribut › PSet suchen…"
+                placeholder="Attribut suchen… (z.B. Material)"
                 value={ifcQuery}
-                onChange={e => { setIfcQuery(e.target.value); ladeAutocomplete(e.target.value); setGefundeneIds([]); setSuchStatus(null); }}
-                onFocus={() => ifcQuery.length >= 2 && setAcOffen(acItems.length > 0)}
+                onChange={e => { setIfcQuery(e.target.value); setAcOffen(true); setGefundeneIds([]); setSuchStatus(null); }}
+                onFocus={() => setAcOffen(true)}
+                disabled={!modellId}
               />
               {acOffen && acItems.length > 0 && (
                 <div className="ac-dropdown">
                   {acItems.map((item, i) => (
                     <div key={i} className="ac-item"
-                      onMouseDown={() => { setIfcQuery(item.label); setAcOffen(false); }}>
-                      <span style={{ fontWeight: 500 }}>{item.attr}</span>
+                      onMouseDown={() => {
+                        setIfcQuery(`${item.name} › ${item.pset}`);
+                        setAcOffen(false);
+                      }}>
+                      <span style={{ fontWeight: 500 }}>{item.name}</span>
                       <span style={{ color: "var(--tc-text-3)" }}> › {item.pset}</span>
                     </div>
                   ))}
                 </div>
               )}
             </div>
+
             <input
               className="ac-input"
               placeholder="Wert (z.B. Beton NPK C)…"
               value={ifcWert}
               onChange={e => { setIfcWert(e.target.value); setGefundeneIds([]); setSuchStatus(null); }}
               style={{ marginTop: 4 }}
+              disabled={!modellId}
             />
+
             <button
               className="tc-btn-primary"
               style={{ width: "100%", marginTop: 6 }}
-              disabled={laedt || !ifcQuery || !ifcWert || simModellIds.length === 0}
+              disabled={laedt || !ifcQuery || !ifcWert || !modellId}
               onClick={ifcSuchen}
             >
               {laedt ? "⟳ Suche…" : "🔍 Suchen & Markieren"}
@@ -318,13 +352,9 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
               </div>
             )}
 
-            {/* Bestätigungs-Button nach Suche */}
             {gefundeneIds.length > 0 && (
-              <button
-                className="tc-btn-green"
-                style={{ width: "100%", marginTop: 6 }}
-                onClick={gefundeneHinzufuegen}
-              >
+              <button className="tc-btn-green" style={{ width: "100%", marginTop: 6 }}
+                onClick={gefundeneHinzufuegen}>
                 + Gefundene hinzufügen ({gefundeneIds.length})
               </button>
             )}
@@ -357,8 +387,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
               <div style={{ display: "flex", gap: 4 }}>
                 {aktivTask.objektGuids.length > 0 && (
                   <>
-                    <button className="tc-btn-ghost"
-                      onClick={() => markieren(aktivTask.objektGuids)}>
+                    <button className="tc-btn-ghost" onClick={() => markieren(aktivTask.objektGuids)}>
                       👁 Markieren
                     </button>
                     <button className="tc-btn-ghost" style={{ color: "var(--tc-red)" }}
