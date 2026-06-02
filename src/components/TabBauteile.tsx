@@ -30,8 +30,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   const aktivTask = aktiveSim?.tasks.find(t => t.id === aktivTaskId) ?? null;
 
   // Modell-ID: Simulation zuerst, dann Viewer-Fallback
-  const simModellIds = aktiveSim?.modelle.map(m => m.id) ?? [];
-  const modellId = simModellIds[0] ?? aktivesModellId ?? null;
+const modellId = aktivesModellId;
 
   // Autocomplete schließen bei Klick außerhalb
   useEffect(() => {
