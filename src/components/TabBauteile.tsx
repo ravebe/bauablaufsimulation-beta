@@ -9,11 +9,12 @@ interface Props {
   aktiveSim: SimProjekt | null;
   updateSim: (sim: SimProjekt) => void;
   selektion: number[];
+  aktivesModellId: string | null;
 }
 
 interface AcItem { pset: string; attr: string; label: string; }
 
-export default function TabBauteile({ api, aktiveSim, updateSim, selektion }: Props) {
+export default function TabBauteile({ api, aktiveSim, updateSim, selektion, aktivesModellId }: Props) {
   const [aktivTaskId, setAktivTaskId] = useState<string | null>(null);
   const [ifcQuery, setIfcQuery] = useState("");
   const [ifcWert, setIfcWert] = useState("");
@@ -29,7 +30,8 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion }: Pr
   // Alle Modell-IDs der aktiven Simulation
   const simModellIds = aktiveSim?.modelle.map(m => m.id) ?? [];
   // Erstes verfügbares Modell (Simulation zuerst, dann Viewer-Fallback)
-  
+
+
   // Autocomplete schließen bei Klick außerhalb
   useEffect(() => {
     function handler(e: MouseEvent) {
@@ -45,14 +47,19 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion }: Pr
     setGefundeneIds([]);
   }, [aktivTaskId]);
 
-  // IFC Autocomplete — durchsucht alle Modelle der Simulation
+  // Alle Modell-IDs: Simulation zuerst, dann Viewer-Fallback
+  const modellIds = simModellIds.length > 0
+    ? simModellIds
+    : aktivesModellId ? [aktivesModellId] : [];
+
+  // IFC Autocomplete — durchsucht verfügbare Modelle
   async function ladeAutocomplete(q: string) {
-    if (!api || simModellIds.length === 0 || q.length < 2) { setAcItems([]); return; }
+    if (!api || modellIds.length === 0 || q.length < 2) { setAcItems([]); return; }
     try {
       const items: AcItem[] = [];
       const seen = new Set<string>();
 
-      for (const mid of simModellIds) {
+      for (const mid of modellIds) {
         const allIds = await api.viewer.getObjects(mid);
         const ids = parseObjectIds(allIds).slice(0, 30);
         if (ids.length === 0) continue;
@@ -60,7 +67,6 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion }: Pr
         for (const obj of props) {
           for (const pset of obj.properties ?? []) {
             for (const attr of pset.properties ?? []) {
-              // Format: Attributname › Pset_Name
               const label = `${attr.name} › ${pset.name}`;
               if (!seen.has(label) && label.toLowerCase().includes(q.toLowerCase())) {
                 seen.add(label);
@@ -77,9 +83,9 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion }: Pr
     } catch { setAcItems([]); }
   }
 
-  // IFC Filter Suche — alle Modelle der Simulation
+  // IFC Filter Suche
   async function ifcSuchen() {
-    if (!api || simModellIds.length === 0 || !ifcQuery || !ifcWert || !aktivTask) return;
+    if (!api || modellIds.length === 0 || !ifcQuery || !ifcWert || !aktivTask) return;
     setSuchStatus(null);
     setGefundeneIds([]);
     setLaedt(true);
@@ -92,7 +98,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion }: Pr
 
       const alleGefunden: number[] = [];
 
-      for (const mid of simModellIds) {
+      for (const mid of modellIds) {
         const allIds = await api.viewer.getObjects(mid);
         const ids = parseObjectIds(allIds);
         if (ids.length === 0) continue;
@@ -245,7 +251,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion }: Pr
           </div>
 
           {/* Kein Modell Warnung */}
-          {simModellIds.length === 0 && (
+          {modellIds.length === 0 && (
             <div className="alert err" style={{ marginBottom: 6 }}>
               ! Kein Modell in der Simulation — Tab „Projekte" → Modelle übernehmen
             </div>

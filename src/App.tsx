@@ -10,7 +10,7 @@ import "./App.css";
 type Tab = "projekte" | "bauteile" | "abspielen";
 
 export default function App() {
-  const { api, ready, fehler, selektion } = useApi();
+  const { api, ready, fehler, selektion, aktivesModellId } = useApi();
 
   const [aktTab, setAktTab] = useState<Tab>("projekte");
   const [sims, setSims] = useState<SimProjekt[]>([]);
@@ -104,7 +104,7 @@ export default function App() {
             aktiveSim={aktiveSim}
             updateSim={updateSim}
             selektion={selektion}
-
+            aktivesModellId={aktivesModellId}
           />
         )}
         {aktTab === "abspielen" && (
