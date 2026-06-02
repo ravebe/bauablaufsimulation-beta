@@ -12,7 +12,7 @@ interface Props {
   setAktivId: (id: string) => void;
 }
 
-export default function TabProjekte({ api, ready, sims, setSims, aktivId, setAktivId }: Props) {
+export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId }: Props) {
   const [aufgeklappt, setAufgeklappt] = useState<string | null>(aktivId);
   const [neuName, setNeuName] = useState("");
   const [zeigeNeu, setZeigeNeu] = useState(false);
