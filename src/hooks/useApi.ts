@@ -59,17 +59,17 @@ export function useApi(): UseApiReturn {
     async function init() {
       try {
         // trimble-connect-workspace-api über window
-       let wapi = (window as any).TrimbleConnect?.Workspace;
+const wapi = (window as any).TrimbleConnectWorkspace;
 if (!wapi) {
-  await new Promise(r => setTimeout(r, 1000));
-  wapi = (window as any).TrimbleConnect?.Workspace;
+  setFehler("TC Workspace API nicht gefunden");
+  return;
 }
         if (!wapi) {
           setFehler("TC Workspace API nicht gefunden");
           return;
         }
 
-        apiInst = (await wapi.connect(window.parent)) as ApiInstance;
+        apiInst = (await wapi.connect(window.parent, () => {})) as ApiInstance;
         setApi(apiInst);
 
         // Erstes Modell ermitteln

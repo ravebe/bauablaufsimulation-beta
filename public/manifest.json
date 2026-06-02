@@ -3,12 +3,12 @@
   "name": "4D Bauablauf",
   "description": "4D Bauablaufsimulation",
   "version": "1.0.0",
-  "vendor": { "name": "RB", "url": "https://project-fb9pr-red.vercel.app" },
+  "vendor": { "name": "RB", "url": "https://bauablaufsimulation-beta.vercel.app" },
   "icon": { "48": "icons.svg" },
   "extensions": [
     {
       "type": "viewer",
-      "url": "https://project-fb9pr-red.vercel.app",
+      "url": "https://bauablaufsimulation-beta.vercel.app",
       "icon": "icons.svg",
       "title": "4D Bauablauf"
     }
