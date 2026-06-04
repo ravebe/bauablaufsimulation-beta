@@ -20,6 +20,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, g
   const [menuOffen, setMenuOffen] = useState<string | null>(null);
   const [modellLaden, setModellLaden] = useState(false);
   const [modellMsg, setModellMsg] = useState<{ simId: string; typ: "ok" | "err"; text: string } | null>(null);
+  const [modelleLadenStatus, setModelleLadenStatus] = useState<{ simId: string; text: string } | null>(null);
   const [modellPicker, setModellPicker] = useState<{
     simId: string;
     alle: { id: string; name: string }[];
@@ -58,10 +59,10 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, g
     }
     try {
       const alle = await api.viewer.getModels() as any[];
-const alleFormatiert = alle.map((m: any, i: number) => ({
-  id: m.modelId || m.id || m.fileId || m.modelVersionId || `model-${i}`,
-  name: m.name || m.fileName || m.label || m.modelId || `Modell ${i + 1}`
-}));
+      const alleFormatiert = alle.map((m: any) => ({
+        id: m.modelId,
+        name: m.name || m.fileName || m.modelId
+      }));
       // geladeneModelle als Vorauswahl (beim Start gefundene Modelle)
       const vorauswahl = new Set<string>(geladeneModelle.map(m => m.id));
       setModellPicker({ simId, alle: alleFormatiert, ausgewaehlt: vorauswahl });
@@ -95,6 +96,24 @@ const alleFormatiert = alle.map((m: any, i: number) => ({
   }
 
 
+
+  // Gespeicherte Modelle im Viewer aktivieren/laden
+  async function modelleAktivieren(simId: string, modelle: { id: string; name: string }[]) {
+    if (!api || modelle.length === 0) {
+      setModelleLadenStatus({ simId, text: "! Keine Modelle gespeichert" });
+      return;
+    }
+    setModelleLadenStatus({ simId, text: "⟳ Modelle werden geladen…" });
+    try {
+      // Alle Modelle parallel aktivieren (load=true, fitToView=false)
+      await Promise.allSettled(
+        modelle.map(m => api.viewer.toggleModelVersion(m.id, true, false))
+      );
+      setModelleLadenStatus({ simId, text: `✓ ${modelle.length} Modelle aktiviert` });
+    } catch (e) {
+      setModelleLadenStatus({ simId, text: `! Fehler: ${e instanceof Error ? e.message : String(e)}` });
+    }
+  }
 
   function loeschen(simId: string) {
     setMenuOffen(null);
@@ -233,6 +252,20 @@ const alleFormatiert = alle.map((m: any, i: number) => ({
                         </div>
                       </div>
                     ))}
+                    <button
+                      className="tc-btn-primary"
+                      style={{ width: "100%", marginTop: 5 }}
+                      disabled={!api}
+                      onClick={e => { e.stopPropagation(); modelleAktivieren(sim.id, sim.modelle); }}
+                    >
+                      ↺ Modelle im Viewer laden
+                    </button>
+                    {modelleLadenStatus?.simId === sim.id && (
+                      <div className={`alert ${modelleLadenStatus.text.startsWith("✓") ? "ok" : modelleLadenStatus.text.startsWith("!") ? "err" : "info"}`}
+                        style={{ marginTop: 4 }}>
+                        {modelleLadenStatus.text}
+                      </div>
+                    )}
                   </div>
                 )}
 
