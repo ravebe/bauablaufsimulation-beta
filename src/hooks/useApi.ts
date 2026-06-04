@@ -18,6 +18,7 @@ export interface ApiInstance {
       entities: { modelId: string; objectRuntimeIds?: number[] }[]
     ) => Promise<boolean>;
     reset: () => Promise<void>;
+    toggleModelVersion: (modelId: string, load: boolean, fitToView?: boolean) => Promise<void>;
     onSelectionChanged: {
       addListener: (cb: (event: TcSelectionEvent) => void) => void;
       removeListener: (cb: (event: TcSelectionEvent) => void) => void;

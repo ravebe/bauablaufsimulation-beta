@@ -96,6 +96,39 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, g
 
 
 
+  // Sim-Modelle im TC 3D-Viewer laden (andere entladen)
+  async function modelleImViewerLaden(simId: string, simModelle: { id: string; name: string }[]) {
+    if (!api || simModelle.length === 0) {
+      setModellMsg({ simId, typ: "err", text: "Keine Modelle gespeichert" });
+      return;
+    }
+    setModellMsg({ simId, typ: "ok", text: "⟳ Modelle werden geladen…" });
+    try {
+      const simIds = new Set(simModelle.map(m => m.id));
+
+      // Aktuell geladene Modelle holen (state === 'loaded')
+      const alle = await api.viewer.getModels() as any[];
+      const geladen = alle.filter((m: any) => m.state === 'loaded');
+
+      // Nicht-Sim-Modelle entladen
+      for (const m of geladen) {
+        const mid = m.id || m.modelId;
+        if (mid && !simIds.has(mid)) {
+          try { await api.viewer.toggleModelVersion(mid, false); } catch { /* ignore */ }
+        }
+      }
+
+      // Sim-Modelle laden
+      for (const m of simModelle) {
+        try { await api.viewer.toggleModelVersion(m.id, true, false); } catch { /* ignore */ }
+      }
+
+      setModellMsg({ simId, typ: "ok", text: `✓ ${simModelle.length} Modelle geladen` });
+    } catch (e) {
+      setModellMsg({ simId, typ: "err", text: `Fehler: ${e instanceof Error ? e.message : String(e)}` });
+    }
+  }
+
   function loeschen(simId: string) {
     setMenuOffen(null);
     if (!confirm("Simulation wirklich löschen?")) return;
@@ -233,6 +266,14 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, g
                         </div>
                       </div>
                     ))}
+                    <button
+                      className="tc-btn-primary"
+                      style={{ width: "100%", marginTop: 5 }}
+                      disabled={!api}
+                      onClick={e => { e.stopPropagation(); modelleImViewerLaden(sim.id, sim.modelle); }}
+                    >
+                      ↺ Modelle im Viewer laden
+                    </button>
                   </div>
                 )}
 
