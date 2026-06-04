@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { TcModel, TcObjectWithProps, TcSelectionEvent } from "../types";
+import { parseObjectIds } from "../types";
 
 export interface ApiInstance {
   viewer: {
@@ -63,28 +64,53 @@ export function useApi(): UseApiReturn {
         apiInst = (await wapi.connect(window.parent, () => {})) as ApiInstance;
         setApi(apiInst);
 
-        // Modell ermitteln mit Retry
+        // Modell ermitteln mit Retry — versucht nur sichtbare/geladene Modelle
         const ladeModelle = async () => {
-          for (let i = 0; i < 5; i++) {
+          for (let i = 0; i < 6; i++) {
             try {
-              const modelle = await apiInst!.viewer.getModels();
-              if (modelle?.length > 0) {
-                setAktivesModellId((modelle as any[])[0].modelId);
+              // Versuch 1: getLoadedModel() — nur geladene Modelle
+              const geladen = await (apiInst!.viewer as any).getLoadedModel?.();
+              if (geladen?.modelId) {
+                setAktivesModellId(geladen.modelId);
                 return;
               }
             } catch { /* ignore */ }
+
+            try {
+              // Versuch 2: getModels() + objectState visible filter
+              const alleModelle = await apiInst!.viewer.getModels() as any[];
+              for (const m of alleModelle) {
+                try {
+                  const objs = await (apiInst!.viewer as any).getObjects(
+                    m.modelId, undefined, { visible: true }
+                  );
+                  if (parseObjectIds(objs).length > 0) {
+                    setAktivesModellId(m.modelId);
+                    return;
+                  }
+                } catch { /* ignore */ }
+              }
+            } catch { /* ignore */ }
+
             await new Promise(r => setTimeout(r, 1500));
           }
         };
         ladeModelle();
 
-        // onModelStateChanged → aktivesModellId aktualisieren
+        // onModelStateChanged → aktivesModellId aktualisieren mit visible filter
         try {
           (apiInst.viewer as any).onModelStateChanged?.addListener(async () => {
-            const modelle = await apiInst!.viewer.getModels();
-            if ((modelle as any[])?.length > 0) {
-              setAktivesModellId((modelle as any[])[0].modelId);
-            }
+            try {
+              const geladen = await (apiInst!.viewer as any).getLoadedModel?.();
+              if (geladen?.modelId) { setAktivesModellId(geladen.modelId); return; }
+            } catch { /* ignore */ }
+            try {
+              const alle = await apiInst!.viewer.getModels() as any[];
+              for (const m of alle) {
+                const objs = await (apiInst!.viewer as any).getObjects(m.modelId, undefined, { visible: true });
+                if (parseObjectIds(objs).length > 0) { setAktivesModellId(m.modelId); return; }
+              }
+            } catch { /* ignore */ }
           });
         } catch { /* ignore */ }
 

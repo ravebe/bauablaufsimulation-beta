@@ -103,11 +103,14 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId }:
         return;
       }
 
-      // Parallel prüfen: nur Modelle mit Objekten sind sichtbar
+      // Parallel prüfen mit objectState visible filter
       const results = await Promise.allSettled(
         alleModelle.map(async (m: any) => {
           try {
-            const objs = await api.viewer.getObjects(m.modelId);
+            // objectState: {visible: true} gibt nur sichtbare Objekte zurück
+            const objs = await (api.viewer as any).getObjects(
+              m.modelId, undefined, { visible: true }
+            );
             const count = parseObjectIds(objs).length;
             return { m, sichtbar: count > 0 };
           } catch {

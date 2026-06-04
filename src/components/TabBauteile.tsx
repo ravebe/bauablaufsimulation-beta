@@ -17,7 +17,6 @@ interface AttrItem { pset: string; name: string; key: string; }
 export default function TabBauteile({ api, aktiveSim, updateSim, selektion, aktivesModellId }: Props) {
   const [aktivTaskId, setAktivTaskId] = useState<string | null>(null);
   const [allAttrs, setAllAttrs] = useState<AttrItem[]>([]);
-
   const [ifcQuery, setIfcQuery] = useState("");
   const [ifcWert, setIfcWert] = useState("");
   const [acOffen, setAcOffen] = useState(false);
@@ -29,8 +28,8 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
 
   const aktivTask = aktiveSim?.tasks.find(t => t.id === aktivTaskId) ?? null;
 
-  // Modell-ID: Simulation zuerst, dann Viewer-Fallback
-const modellId = aktivesModellId;
+  // Immer aktivesModellId vom Viewer nutzen
+  const modellId = aktivesModellId;
 
   // Autocomplete schließen bei Klick außerhalb
   useEffect(() => {
@@ -41,51 +40,58 @@ const modellId = aktivesModellId;
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Attribute laden wenn Task gewechselt
+  // Attribute laden wenn Task gewechselt oder modellId verfügbar
   useEffect(() => {
     setSuchStatus(null);
     setGefundeneIds([]);
     setIfcQuery("");
     setIfcWert("");
     setAllAttrs([]);
-
-    if (aktivTaskId && api && modellId) {
+    if (aktivTaskId && api) {
       ladeAttr();
     }
-  }, [aktivTaskId, modellId]);
+  }, [aktivTaskId, aktivesModellId]);
 
-  // Attribute einmal vorladen — modellId dynamisch holen wenn nötig
+  // Attribute vorladen — findet automatisch das richtige Modell
   async function ladeAttr() {
     if (!api) return;
     setAttrLaedt(true);
     try {
-      // ModellId dynamisch holen wenn nicht gesetzt
-      let mid = modellId;
-      if (!mid) {
-        const modelle = await api.viewer.getModels();
-        mid = (modelle as any[])?.[0]?.modelId ?? null;
-      }
-      if (!mid) { setAttrLaedt(false); return; }
+      // Alle Modelle holen und erstes mit sichtbaren Objekten und Properties nutzen
+      const alleModelle = await api.viewer.getModels() as any[];
+      // Modelle priorisieren: aktivesModellId zuerst
+      const sortiert = aktivesModellId
+        ? [{ modelId: aktivesModellId }, ...alleModelle.filter(m => m.modelId !== aktivesModellId)]
+        : alleModelle;
 
-      const rohe = await api.viewer.getObjects(mid);
-      const ids = parseObjectIds(rohe).slice(0, 60);
-      if (ids.length === 0) { setAttrLaedt(false); return; }
-      const props = await batchGetProperties(api, mid, ids);
+      for (const m of sortiert) {
+        const mid = m.modelId;
+        if (!mid) continue;
+        try {
+          // Nur sichtbare Objekte
+          const rohe = await (api.viewer as any).getObjects(mid, undefined, { visible: true });
+          const ids = parseObjectIds(rohe).slice(0, 60);
+          if (ids.length === 0) continue;
 
-      const attrsMap = new Map<string, AttrItem>();
-      for (const obj of props) {
-        for (const g of (obj?.properties ?? [])) {
-          const pset = g?.name || (g as any)?.displayName || "Eigenschaften";
-          for (const p of (g?.properties ?? [])) {
-            if (!p?.name) continue;
-            const key = `${pset}||${p.name}`;
-            if (!attrsMap.has(key)) {
-              attrsMap.set(key, { pset, name: p.name, key });
+          const props = await batchGetProperties(api, mid, ids);
+          if (!props.some(p => p.properties?.length > 0)) continue;
+
+          // Dieses Modell hat Properties!
+          const attrsMap = new Map<string, AttrItem>();
+          for (const obj of props) {
+            for (const g of (obj?.properties ?? [])) {
+              const pset = g?.name || (g as any)?.displayName || "Eigenschaften";
+              for (const p of (g?.properties ?? [])) {
+                if (!p?.name) continue;
+                const key = `${pset}||${p.name}`;
+                if (!attrsMap.has(key)) attrsMap.set(key, { pset, name: p.name, key });
+              }
             }
           }
-        }
+          setAllAttrs([...attrsMap.values()]);
+          return; // Gefunden — fertig
+        } catch { continue; }
       }
-      setAllAttrs([...attrsMap.values()]);
     } catch (e) {
       console.error("ladeAttr Fehler:", e);
     } finally {
@@ -108,50 +114,45 @@ const modellId = aktivesModellId;
     setLaedt(true);
 
     try {
-      // ModellId dynamisch holen wenn nötig
-      let mid = modellId;
-      if (!mid) {
-        const modelle = await api.viewer.getModels();
-        mid = (modelle as any[])?.[0]?.modelId ?? null;
-      }
-      if (!mid) {
-        setSuchStatus("Kein Modell geladen");
-        setLaedt(false);
-        return;
-      }
-
       const teile = ifcQuery.split(" › ");
       const suchAttr = teile[0]?.trim().toLowerCase();
       const suchPset = teile[1]?.trim().toLowerCase() ?? "";
 
-      const rohe = await api.viewer.getObjects(mid);
-      const ids = parseObjectIds(rohe);
+      const alleModelle = await api.viewer.getModels() as any[];
+      const sortiert = aktivesModellId
+        ? [{ modelId: aktivesModellId }, ...alleModelle.filter(m => m.modelId !== aktivesModellId)]
+        : alleModelle;
+
       const gefunden: number[] = [];
 
-      for (let i = 0; i < ids.length; i += 10) {
-        const batch = ids.slice(i, i + 10);
-        const props = await batchGetProperties(api, mid, batch);
-        for (const obj of props) {
-          for (const g of (obj?.properties ?? [])) {
-            const pset = (g?.name || (g as any)?.displayName || "").toLowerCase();
+      for (const m of sortiert) {
+        const mid = m.modelId;
+        if (!mid) continue;
+        try {
+          const rohe = await (api.viewer as any).getObjects(mid, undefined, { visible: true });
+          const ids = parseObjectIds(rohe);
+          if (ids.length === 0) continue;
 
-            const psetMatch = !suchPset ||
-              pset === suchPset ||
-              pset.includes(suchPset) ||
-              suchPset.includes(pset);
-
-            if (!psetMatch) continue;
-
-            for (const p of (g?.properties ?? [])) {
-              if (!p?.name || p.name.toLowerCase() !== suchAttr) continue;
-              if (p.value != null &&
-                  String(p.value).toLowerCase().includes(ifcWert.toLowerCase())) {
-                gefunden.push(obj.id);
-                break;
+          for (let i = 0; i < ids.length; i += 10) {
+            const batch = ids.slice(i, i + 10);
+            const props = await batchGetProperties(api, mid, batch);
+            for (const obj of props) {
+              for (const g of (obj?.properties ?? [])) {
+                const pset = (g?.name || (g as any)?.displayName || "").toLowerCase();
+                const psetMatch = !suchPset || pset === suchPset || pset.includes(suchPset) || suchPset.includes(pset);
+                if (!psetMatch) continue;
+                for (const p of (g?.properties ?? [])) {
+                  if (!p?.name || p.name.toLowerCase() !== suchAttr) continue;
+                  if (p.value != null && String(p.value).toLowerCase().includes(ifcWert.toLowerCase())) {
+                    gefunden.push(obj.id);
+                    break;
+                  }
+                }
               }
             }
           }
-        }
+          if (gefunden.length > 0) break;
+        } catch { continue; }
       }
 
       if (gefunden.length === 0) {
@@ -281,13 +282,6 @@ const modellId = aktivesModellId;
               ⬡ {aktivTask.objektGuids.length}
             </span>
           </div>
-
-          {/* Kein Modell Warnung */}
-          {!modellId && (
-            <div className="alert err" style={{ marginBottom: 6 }}>
-              ! Kein Modell — Tab „Projekte" → Modelle übernehmen
-            </div>
-          )}
 
           {/* Task-Typ */}
           <div className="detail-block">
