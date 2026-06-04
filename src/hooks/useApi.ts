@@ -18,11 +18,6 @@ export interface ApiInstance {
       entities: { modelId: string; objectRuntimeIds?: number[] }[]
     ) => Promise<boolean>;
     reset: () => Promise<void>;
-    toggleModelVersion: (
-      modelId: string | string[],
-      load?: boolean,
-      fitToView?: boolean
-    ) => Promise<void>;
     onSelectionChanged: {
       addListener: (cb: (event: TcSelectionEvent) => void) => void;
       removeListener: (cb: (event: TcSelectionEvent) => void) => void;
@@ -69,30 +64,33 @@ export function useApi(): UseApiReturn {
         apiInst = (await wapi.connect(window.parent, () => {})) as ApiInstance;
         setApi(apiInst);
 
-        // Modelle laden: getLoadedModel() zuerst (nur sichtbare!), dann getModels() Fallback
+        // Modelle laden — m.id || m.modelId (Console zeigt 'id' property!)
         const ladeModelle = async () => {
           for (let i = 0; i < 8; i++) {
             try {
-              // getLoadedModel() → gibt nur aktuell geladene/sichtbare Modelle zurück
               const geladen = await apiInst!.viewer.getLoadedModel() as any;
               const arr = Array.isArray(geladen) ? geladen : geladen ? [geladen] : [];
               if (arr.length > 0) {
-                setAktivesModellId(arr[0].modelId);
+                const mid = arr[0].id || arr[0].modelId;
+                setAktivesModellId(mid);
                 setGeladeneModelle(arr.map((m: any) => ({
-                  id: m.modelId,
-                  name: m.name || m.fileName || m.modelId
+                  id: m.id || m.modelId,
+                  name: m.name || m.fileName || m.id
                 })));
                 return;
               }
-            } catch { /* getLoadedModel nicht verfügbar */ }
+            } catch { /* ignore */ }
             try {
-              // Fallback: getModels() früh abfragen (vor TC lazy-load)
               const modelle = await apiInst!.viewer.getModels() as any[];
-              if (modelle?.length > 0) {
-                setAktivesModellId(modelle[0].modelId);
-                setGeladeneModelle(modelle.map((m: any) => ({
-                  id: m.modelId,
-                  name: m.name || m.fileName || m.modelId
+              // Nur state==='loaded' Modelle verwenden (aus Console-Log bekannt!)
+              const geladen = modelle.filter((m: any) => m.state === 'loaded');
+              const aktiv = geladen.length > 0 ? geladen : modelle;
+              if (aktiv.length > 0) {
+                const mid = aktiv[0].id || aktiv[0].modelId;
+                setAktivesModellId(mid);
+                setGeladeneModelle(aktiv.map((m: any) => ({
+                  id: m.id || m.modelId,
+                  name: m.name || m.fileName || m.id
                 })));
                 return;
               }
@@ -101,6 +99,21 @@ export function useApi(): UseApiReturn {
           }
         };
         ladeModelle();
+
+        // onModelStateChanged → aktivesModellId wenn state==='loaded'
+        try {
+          (apiInst.viewer as any).onModelStateChanged?.addListener((event: any) => {
+            const data = event?.data;
+            if (data?.state === 'loaded' && (data?.id || data?.modelId)) {
+              const mid = data.id || data.modelId;
+              setAktivesModellId(mid);
+              setGeladeneModelle(prev => {
+                if (prev.some(m => m.id === mid)) return prev;
+                return [...prev, { id: mid, name: data.name || mid }];
+              });
+            }
+          });
+        } catch { /* ignore */ }
 
         // Selection Listener — modelId aus Klick extrahieren + robuste ID-Erkennung
         const cb = (event: TcSelectionEvent) => {

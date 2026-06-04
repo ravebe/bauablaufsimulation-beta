@@ -20,7 +20,6 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, g
   const [menuOffen, setMenuOffen] = useState<string | null>(null);
   const [modellLaden, setModellLaden] = useState(false);
   const [modellMsg, setModellMsg] = useState<{ simId: string; typ: "ok" | "err"; text: string } | null>(null);
-  const [modelleLadenStatus, setModelleLadenStatus] = useState<{ simId: string; text: string } | null>(null);
   const [modellPicker, setModellPicker] = useState<{
     simId: string;
     alle: { id: string; name: string }[];
@@ -97,21 +96,36 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, g
 
 
 
-  // Gespeicherte Modelle im Viewer aktivieren/laden
-  async function modelleAktivieren(simId: string, modelle: { id: string; name: string }[]) {
-    if (!api || modelle.length === 0) {
-      setModelleLadenStatus({ simId, text: "! Keine Modelle gespeichert" });
+  // Nur Simulation-Modelle im 3D-Viewer sichtbar schalten
+  async function modelleAnzeigen(simId: string, simModelle: { id: string; name: string }[]) {
+    if (!api || simModelle.length === 0) {
+      setModellMsg({ simId, typ: "err", text: "Keine Modelle gespeichert" });
       return;
     }
-    setModelleLadenStatus({ simId, text: "⟳ Modelle werden geladen…" });
+    setModellMsg({ simId, typ: "ok", text: "⟳ Sichtbarkeit wird gesetzt…" });
     try {
-      // Alle Modelle parallel aktivieren (load=true, fitToView=false)
-      await Promise.allSettled(
-        modelle.map(m => api.viewer.toggleModelVersion(m.id, true, false))
-      );
-      setModelleLadenStatus({ simId, text: `✓ ${modelle.length} Modelle aktiviert` });
+      const simIds = new Set(simModelle.map(m => m.id));
+      const alle = await api.viewer.getModels() as any[];
+
+      // Alle anderen Modelle ausblenden
+      for (const m of alle) {
+        const mid = m.id || m.modelId;
+        if (!mid || simIds.has(mid)) continue;
+        try {
+          await api.viewer.setObjectState([{ modelId: mid }], { visible: false });
+        } catch { /* ignore */ }
+      }
+
+      // Simulation-Modelle einblenden
+      for (const m of simModelle) {
+        try {
+          await api.viewer.setObjectState([{ modelId: m.id }], { visible: true });
+        } catch { /* ignore */ }
+      }
+
+      setModellMsg({ simId, typ: "ok", text: `✓ ${simModelle.length} Modelle sichtbar geschaltet` });
     } catch (e) {
-      setModelleLadenStatus({ simId, text: `! Fehler: ${e instanceof Error ? e.message : String(e)}` });
+      setModellMsg({ simId, typ: "err", text: `Fehler: ${e instanceof Error ? e.message : String(e)}` });
     }
   }
 
@@ -256,16 +270,10 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, g
                       className="tc-btn-primary"
                       style={{ width: "100%", marginTop: 5 }}
                       disabled={!api}
-                      onClick={e => { e.stopPropagation(); modelleAktivieren(sim.id, sim.modelle); }}
+                      onClick={e => { e.stopPropagation(); modelleAnzeigen(sim.id, sim.modelle); }}
                     >
-                      ↺ Modelle im Viewer laden
+                      👁 Nur diese Modelle anzeigen
                     </button>
-                    {modelleLadenStatus?.simId === sim.id && (
-                      <div className={`alert ${modelleLadenStatus.text.startsWith("✓") ? "ok" : modelleLadenStatus.text.startsWith("!") ? "err" : "info"}`}
-                        style={{ marginTop: 4 }}>
-                        {modelleLadenStatus.text}
-                      </div>
-                    )}
                   </div>
                 )}
 
