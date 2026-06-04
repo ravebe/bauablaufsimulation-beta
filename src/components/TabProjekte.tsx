@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { SimProjekt } from "../types";
+import { parseObjectIds } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import GanttImport from "./GanttImport";
 
@@ -79,6 +80,57 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId }:
         ? `${aktiv.length} aktive von ${alleModelle.length} Modell(e) übernommen`
         : `${aktiv.length} Modell(e) übernommen (kein State-Filter verfügbar)`;
       setModellMsg({ simId, typ: "ok", text: info });
+    } catch (e) {
+      setModellMsg({ simId, typ: "err", text: `Fehler: ${e instanceof Error ? e.message : String(e)}` });
+    } finally {
+      setModellLaden(false);
+    }
+  }
+
+  // Sichtbare Modelle via getObjects()-Check ermitteln (Alternative zu getModels state-filter)
+  async function sichtbareModelleUebernehmen(simId: string) {
+    setModellLaden(true);
+    setModellMsg(null);
+    if (!api) {
+      setModellMsg({ simId, typ: "err", text: "TC API nicht verbunden" });
+      setModellLaden(false);
+      return;
+    }
+    try {
+      const alleModelle = await api.viewer.getModels() as any[];
+      if (!alleModelle || alleModelle.length === 0) {
+        setModellMsg({ simId, typ: "err", text: "Keine Modelle verfügbar" });
+        return;
+      }
+
+      // Parallel prüfen: nur Modelle mit Objekten sind sichtbar
+      const results = await Promise.allSettled(
+        alleModelle.map(async (m: any) => {
+          try {
+            const objs = await api.viewer.getObjects(m.modelId);
+            const count = parseObjectIds(objs).length;
+            return { m, sichtbar: count > 0 };
+          } catch {
+            return { m, sichtbar: false };
+          }
+        })
+      );
+
+      const sichtbar = results
+        .filter(r => r.status === "fulfilled" && (r as PromiseFulfilledResult<any>).value.sichtbar)
+        .map(r => (r as PromiseFulfilledResult<any>).value.m);
+
+      if (sichtbar.length === 0) {
+        setModellMsg({ simId, typ: "err", text: `Keine sichtbaren Modelle — alle ${alleModelle.length} ausgeblendet?` });
+        return;
+      }
+
+      setSims(prev => prev.map(s =>
+        s.id === simId
+          ? { ...s, modelle: sichtbar.map((m: any) => ({ id: m.modelId, name: m.name || m.fileName || m.modelId })) }
+          : s
+      ));
+      setModellMsg({ simId, typ: "ok", text: `${sichtbar.length} sichtbare von ${alleModelle.length} Modelle gespeichert` });
     } catch (e) {
       setModellMsg({ simId, typ: "err", text: `Fehler: ${e instanceof Error ? e.message : String(e)}` });
     } finally {
@@ -233,6 +285,16 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId }:
                   onClick={e => { e.stopPropagation(); modelleUebernehmen(sim.id); }}
                 >
                   {modellLaden ? "⟳ Lade…" : "⟳ Geladene Modelle übernehmen"}
+                </button>
+
+                <button
+                  className="tc-btn-primary"
+                  style={{ width: "100%", marginTop: 5 }}
+                  disabled={modellLaden}
+                  onClick={e => { e.stopPropagation(); sichtbareModelleUebernehmen(sim.id); }}
+                  title="Prüft via getObjects() welche Modelle tatsächlich sichtbar sind"
+                >
+                  {modellLaden ? "⟳ Prüfe…" : "⊕ Sichtbare Modelle speichern"}
                 </button>
 
                 {modellMsg?.simId === sim.id && (
