@@ -89,14 +89,15 @@ export function useApi(): UseApiReturn {
         };
         ladeModelle();
 
-        // Selection Listener — robust für alle bekannten Formate
+        // Selection Listener — modelId aus Klick extrahieren + robuste ID-Erkennung
         const cb = (event: TcSelectionEvent) => {
           const ids: number[] = [];
           const data = (event as any)?.data;
           if (Array.isArray(data)) {
             for (const item of data) {
               if (!item) continue;
-              // Alle bekannten Property-Namen versuchen
+              // modelId aus Klick → aktivesModellId aktualisieren (100% sichtbares Modell!)
+              if (item.modelId) setAktivesModellId(item.modelId);
               const rIds = item.objectRuntimeIds ?? item.runtimeIds ?? item.ids ?? item.objectIds;
               if (Array.isArray(rIds)) {
                 ids.push(...rIds.map(Number).filter((n: number) => !isNaN(n)));

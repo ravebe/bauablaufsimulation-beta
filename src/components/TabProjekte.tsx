@@ -20,6 +20,11 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, g
   const [menuOffen, setMenuOffen] = useState<string | null>(null);
   const [modellLaden, setModellLaden] = useState(false);
   const [modellMsg, setModellMsg] = useState<{ simId: string; typ: "ok" | "err"; text: string } | null>(null);
+  const [modellPicker, setModellPicker] = useState<{
+    simId: string;
+    alle: { id: string; name: string }[];
+    ausgewaehlt: Set<string>;
+  } | null>(null);
 
   function toggleAufgeklappt(id: string) {
     setAufgeklappt(prev => prev === id ? null : id);
@@ -42,38 +47,24 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, g
     setZeigeNeu(false);
   }
 
+  // Modelle laden → Checkbox-Picker öffnen
   async function modelleUebernehmen(simId: string) {
     setModellLaden(true);
     setModellMsg(null);
     if (!api) {
-      setModellMsg({ simId, typ: "err", text: "TC API nicht verbunden — im 3D Viewer öffnen" });
+      setModellMsg({ simId, typ: "err", text: "TC API nicht verbunden" });
       setModellLaden(false);
       return;
     }
     try {
-      let aktiv: { id: string; name: string }[] = [];
-
-      // getLoadedModel() zuerst — gibt nur sichtbare/aktive Modelle zurück
-      try {
-        const geladen = await api.viewer.getLoadedModel() as any;
-        const arr = Array.isArray(geladen) ? geladen : geladen ? [geladen] : [];
-        if (arr.length > 0) {
-          aktiv = arr.map((m: any) => ({ id: m.modelId, name: m.name || m.fileName || m.modelId }));
-        }
-      } catch { /* getLoadedModel nicht verfügbar, Fallback */ }
-
-      // Fallback: geladeneModelle (beim Start gespeichert)
-      if (aktiv.length === 0 && geladeneModelle.length > 0) {
-        aktiv = geladeneModelle;
-      }
-
-      if (aktiv.length === 0) {
-        setModellMsg({ simId, typ: "err", text: "Keine aktiven Modelle gefunden — Modelle im Viewer aktivieren" });
-        return;
-      }
-
-      setSims(prev => prev.map(s => s.id === simId ? { ...s, modelle: aktiv } : s));
-      setModellMsg({ simId, typ: "ok", text: `✓ ${aktiv.length} Modelle gespeichert` });
+      const alle = await api.viewer.getModels() as any[];
+      const alleFormatiert = alle.map((m: any) => ({
+        id: m.modelId,
+        name: m.name || m.fileName || m.modelId
+      }));
+      // geladeneModelle als Vorauswahl (beim Start gefundene Modelle)
+      const vorauswahl = new Set<string>(geladeneModelle.map(m => m.id));
+      setModellPicker({ simId, alle: alleFormatiert, ausgewaehlt: vorauswahl });
     } catch (e) {
       setModellMsg({ simId, typ: "err", text: `Fehler: ${e instanceof Error ? e.message : String(e)}` });
     } finally {
@@ -81,23 +72,29 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, g
     }
   }
 
-  // Sichtbare Modelle speichern — nutzt die beim Start gespeicherten Modelle
-  async function sichtbareModelleUebernehmen(simId: string) {
-    setModellLaden(true);
-    setModellMsg(null);
-
-    if (geladeneModelle.length === 0) {
-      setModellMsg({ simId, typ: "err", text: "Noch keine Modelle erkannt — bitte kurz warten und nochmals versuchen" });
-      setModellLaden(false);
+  // Ausgewählte Modelle aus Picker speichern
+  function modellPickerSpeichern() {
+    if (!modellPicker) return;
+    const ausgewaehlt = modellPicker.alle.filter(m => modellPicker.ausgewaehlt.has(m.id));
+    if (ausgewaehlt.length === 0) {
+      setModellMsg({ simId: modellPicker.simId, typ: "err", text: "Mindestens 1 Modell auswählen" });
       return;
     }
-
     setSims(prev => prev.map(s =>
-      s.id === simId ? { ...s, modelle: geladeneModelle } : s
+      s.id === modellPicker.simId ? { ...s, modelle: ausgewaehlt } : s
     ));
-    setModellMsg({ simId, typ: "ok", text: `${geladeneModelle.length} sichtbare Modelle gespeichert` });
-    setModellLaden(false);
+    setModellMsg({ simId: modellPicker.simId, typ: "ok", text: `✓ ${ausgewaehlt.length} Modelle gespeichert` });
+    setModellPicker(null);
   }
+
+  function modellToggle(id: string) {
+    if (!modellPicker) return;
+    const neu = new Set(modellPicker.ausgewaehlt);
+    neu.has(id) ? neu.delete(id) : neu.add(id);
+    setModellPicker({ ...modellPicker, ausgewaehlt: neu });
+  }
+
+
 
   function loeschen(simId: string) {
     setMenuOffen(null);
@@ -245,18 +242,35 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, g
                   disabled={modellLaden}
                   onClick={e => { e.stopPropagation(); modelleUebernehmen(sim.id); }}
                 >
-                  {modellLaden ? "⟳ Lade…" : "⟳ Geladene Modelle übernehmen"}
+                  {modellLaden ? "⟳ Lade…" : "⟳ Modelle auswählen…"}
                 </button>
 
-                <button
-                  className="tc-btn-primary"
-                  style={{ width: "100%", marginTop: 5 }}
-                  disabled={modellLaden}
-                  onClick={e => { e.stopPropagation(); sichtbareModelleUebernehmen(sim.id); }}
-                  title="Prüft via getObjects() welche Modelle tatsächlich sichtbar sind"
-                >
-                  {modellLaden ? "⟳ Prüfe…" : "⊕ Sichtbare Modelle speichern"}
-                </button>
+                {/* Checkbox Picker */}
+                {modellPicker?.simId === sim.id && (
+                  <div style={{ marginTop: 8, border: "1px solid var(--tc-border)", borderRadius: 6, overflow: "hidden" }} onClick={e => e.stopPropagation()}>
+                    <div style={{ padding: "6px 8px", background: "var(--tc-bg-2)", borderBottom: "1px solid var(--tc-border)", fontSize: 10, fontWeight: 600, display: "flex", justifyContent: "space-between" }}>
+                      <span>Modelle auswählen ({modellPicker.ausgewaehlt.size} ✓)</span>
+                      <button style={{ background: "none", border: "none", cursor: "pointer", fontSize: 10, color: "var(--tc-text-3)" }} onClick={() => setModellPicker(null)}>✕</button>
+                    </div>
+                    <div style={{ maxHeight: 160, overflowY: "auto" }}>
+                      {modellPicker.alle.map(m => (
+                        <label key={m.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 8px", cursor: "pointer", fontSize: 10, borderBottom: "0.5px solid var(--tc-border)" }}>
+                          <input type="checkbox"
+                            checked={modellPicker.ausgewaehlt.has(m.id)}
+                            onChange={() => modellToggle(m.id)}
+                          />
+                          <span style={{ color: "var(--tc-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <div style={{ padding: 6, display: "flex", gap: 4 }}>
+                      <button className="tc-btn-primary" style={{ flex: 1, fontSize: 10 }} onClick={modellPickerSpeichern}>
+                        ✓ Speichern ({modellPicker.ausgewaehlt.size})
+                      </button>
+                      <button className="tc-btn-secondary" style={{ fontSize: 10 }} onClick={() => setModellPicker(null)}>Abbrechen</button>
+                    </div>
+                  </div>
+                )}
 
                 {modellMsg?.simId === sim.id && (
                   <div className={`alert ${modellMsg.typ}`} style={{ marginTop: 6 }}>
