@@ -233,12 +233,8 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
               <span className="task-row-date">{task.start}</span>
               <span className="task-row-count">
                 {task.objektGuids.length > 0
-                  ? <span style={{ color: "var(--tc-blue)" }}>
-                      ⬡ {task.objektGuids.length}{totalObjekte != null ? ` / ${totalObjekte}` : ""}
-                    </span>
-                  : totalObjekte != null
-                    ? <span style={{ color: "var(--tc-border)" }}>⬡ 0 / {totalObjekte}</span>
-                    : <span style={{ color: "var(--tc-border)" }}>∅</span>}
+                  ? <span style={{ color: "var(--tc-blue)" }}>⬡ {task.objektGuids.length}</span>
+                  : <span style={{ color: "var(--tc-border)" }}>∅</span>}
               </span>
             </div>
           ))
