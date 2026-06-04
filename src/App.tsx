@@ -111,8 +111,8 @@ export default function App() {
         {aktTab === "abspielen" && (
           <TabAbspielen
             api={api}
-            ready={ready}
             aktiveSim={aktiveSim}
+            aktivesModellId={aktivesModellId}
           />
         )}
       </div>

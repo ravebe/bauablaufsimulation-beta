@@ -4,18 +4,19 @@ import type { ApiInstance } from "../hooks/useApi";
 
 interface Props {
   api: ApiInstance | null;
-  ready: boolean;
   aktiveSim: SimProjekt | null;
+  aktivesModellId: string | null;
 }
 
-export default function TabAbspielen({ api, ready, aktiveSim }: Props) {
+export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props) {
   const [sekProTask, setSekProTask] = useState(3);
   const [laeuft, setLaeuft] = useState(false);
   const [aktivIndex, setAktivIndex] = useState(-1);
   const [status, setStatus] = useState<string | null>(null);
   const stopRef = useRef(false);
 
-  const modelId = aktiveSim?.modelle[0]?.id ?? null;
+  // Modell-ID: gespeicherte Sim-Modelle zuerst, dann Viewer-Fallback
+  const modelId = aktiveSim?.modelle[0]?.id ?? aktivesModellId ?? null;
 
   // Alle Runtime IDs aller Tasks sammeln
   function alleIds(): number[] {
@@ -204,7 +205,7 @@ export default function TabAbspielen({ api, ready, aktiveSim }: Props) {
           <button
             className="tc-btn-green"
             style={{ flex: 1 }}
-            disabled={!ready || !modelId || mitBauteilen.length === 0}
+            disabled={!api || !modelId || mitBauteilen.length === 0}
             onClick={starten}
           >
             ▶ Starten
