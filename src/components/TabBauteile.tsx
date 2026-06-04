@@ -120,7 +120,6 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     setLaedt(true);
 
     try {
-      // ALLE Objekte holen (nicht nur Sample)
       const rohe = await api.viewer.getObjects(modellId);
       const allIds = parseObjectIds(rohe);
       const props = await batchGetProperties(api, modellId, allIds);
@@ -129,12 +128,9 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
       for (const obj of props) {
         for (const gruppe of (obj?.properties ?? [])) {
           const pset = gruppe?.name || (gruppe as any)?.displayName || "";
-
-          // PSet-Match robust, case-insensitive
           const psetMatch = pset === selectedAttr.pset ||
             pset.toLowerCase().includes(selectedAttr.pset.toLowerCase());
           if (!psetMatch) continue;
-
           for (const attr of (gruppe?.properties ?? [])) {
             if (attr.name !== selectedAttr.name) continue;
             const val = String(attr.value ?? "").toLowerCase();
@@ -146,8 +142,6 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
       }
 
       if (treffer.length === 0) { setSuchStatus("Keine Bauteile gefunden"); return; }
-
-      // plain Array — kein wrapped Object!
       await api.viewer.setSelection(treffer);
       setGefundeneIds(treffer);
       setSuchStatus(`✓ ${treffer.length} Bauteile gefunden & markiert`);
@@ -244,12 +238,8 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
               <span className="task-row-date">{task.start}</span>
               <span className="task-row-count">
                 {task.objektGuids.length > 0
-                  ? <span style={{ color: "var(--tc-blue)" }}>
-                      ⬡ {task.objektGuids.length}{totalObjekte != null ? ` / ${totalObjekte}` : ""}
-                    </span>
-                  : totalObjekte != null
-                    ? <span style={{ color: "var(--tc-border)" }}>⬡ 0 / {totalObjekte}</span>
-                    : <span style={{ color: "var(--tc-border)" }}>∅</span>}
+                  ? <span style={{ color: "var(--tc-blue)" }}>⬡ {task.objektGuids.length}</span>
+                  : <span style={{ color: "var(--tc-border)" }}>∅</span>}
               </span>
             </div>
           ))
@@ -302,24 +292,14 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
                 className="ac-input"
                 placeholder="Attribut suchen… (z.B. Material)"
                 value={ifcQuery}
-                onChange={e => {
-                  setIfcQuery(e.target.value);
-                  setSelectedAttr(null);
-                  setAcOffen(true);
-                  setGefundeneIds([]);
-                  setSuchStatus(null);
-                }}
+                onChange={e => { setIfcQuery(e.target.value); setSelectedAttr(null); setAcOffen(true); setGefundeneIds([]); setSuchStatus(null); }}
                 onFocus={() => { setAcOffen(true); if (!allAttrs.length && modellId) ladeAttr(); }}
               />
               {acOffen && acItems.length > 0 && (
                 <div className="ac-dropdown">
                   {acItems.map((item, i) => (
                     <div key={i} className="ac-item"
-                      onMouseDown={() => {
-                        setIfcQuery(`${item.name} › ${item.pset}`);
-                        setSelectedAttr(item);
-                        setAcOffen(false);
-                      }}>
+                      onMouseDown={() => { setIfcQuery(`${item.name} › ${item.pset}`); setSelectedAttr(item); setAcOffen(false); }}>
                       <div style={{ fontWeight: 500, color: "var(--tc-text)" }}>{item.name}</div>
                       <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 1 }}>{item.pset}</div>
                     </div>
@@ -328,7 +308,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
               )}
             </div>
 
-            {/* Wert-Eingabe mit Vorschlägen aus attrMap */}
+            {/* Wert-Input mit Vorschlägen aus attrMap */}
             {(() => {
               const vorschlaege = selectedAttr && attrMap[selectedAttr.key]
                 ? [...attrMap[selectedAttr.key]].filter(v =>
