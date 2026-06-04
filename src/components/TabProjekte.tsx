@@ -95,6 +95,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, g
   }
 
 
+
   function loeschen(simId: string) {
     setMenuOffen(null);
     if (!confirm("Simulation wirklich löschen?")) return;
