@@ -35,6 +35,7 @@ interface UseApiReturn {
   fehler: string | null;
   selektion: number[];
   aktivesModellId: string | null;
+  geladeneModelle: { id: string; name: string }[];
 }
 
 export function useApi(): UseApiReturn {
@@ -43,6 +44,7 @@ export function useApi(): UseApiReturn {
   const [fehler, setFehler] = useState<string | null>(null);
   const [selektion, setSelektion] = useState<number[]>([]);
   const [aktivesModellId, setAktivesModellId] = useState<string | null>(null);
+  const [geladeneModelle, setGeladeneModelle] = useState<{ id: string; name: string }[]>([]);
   const selCbRef = useRef<((e: TcSelectionEvent) => void) | null>(null);
 
   useEffect(() => {
@@ -64,55 +66,26 @@ export function useApi(): UseApiReturn {
         apiInst = (await wapi.connect(window.parent, () => {})) as ApiInstance;
         setApi(apiInst);
 
-        // Modell ermitteln mit Retry — versucht nur sichtbare/geladene Modelle
+        // Modelle beim Start laden — NUR EINMAL, kurze Intervalle
+        // Wichtig: vor TC lazy-load aller Projektmodelle erwischen!
         const ladeModelle = async () => {
-          for (let i = 0; i < 6; i++) {
+          for (let i = 0; i < 20; i++) {
             try {
-              // Versuch 1: getLoadedModel() — nur geladene Modelle
-              const geladen = await (apiInst!.viewer as any).getLoadedModel?.();
-              if (geladen?.modelId) {
-                setAktivesModellId(geladen.modelId);
-                return;
+              const modelle = await apiInst!.viewer.getModels() as any[];
+              if (modelle?.length > 0) {
+                // Erste gefundene Modelle speichern (das sind die sichtbaren!)
+                setAktivesModellId(modelle[0].modelId);
+                setGeladeneModelle(modelle.map((m: any) => ({
+                  id: m.modelId,
+                  name: m.name || m.fileName || m.modelId
+                })));
+                return; // Fertig — nicht mehr aufrufen!
               }
             } catch { /* ignore */ }
-
-            try {
-              // Versuch 2: getModels() + objectState visible filter
-              const alleModelle = await apiInst!.viewer.getModels() as any[];
-              for (const m of alleModelle) {
-                try {
-                  const objs = await (apiInst!.viewer as any).getObjects(
-                    m.modelId, undefined, { visible: true }
-                  );
-                  if (parseObjectIds(objs).length > 0) {
-                    setAktivesModellId(m.modelId);
-                    return;
-                  }
-                } catch { /* ignore */ }
-              }
-            } catch { /* ignore */ }
-
-            await new Promise(r => setTimeout(r, 1500));
+            await new Promise(r => setTimeout(r, 200)); // 200ms Intervall
           }
         };
         ladeModelle();
-
-        // onModelStateChanged → aktivesModellId aktualisieren mit visible filter
-        try {
-          (apiInst.viewer as any).onModelStateChanged?.addListener(async () => {
-            try {
-              const geladen = await (apiInst!.viewer as any).getLoadedModel?.();
-              if (geladen?.modelId) { setAktivesModellId(geladen.modelId); return; }
-            } catch { /* ignore */ }
-            try {
-              const alle = await apiInst!.viewer.getModels() as any[];
-              for (const m of alle) {
-                const objs = await (apiInst!.viewer as any).getObjects(m.modelId, undefined, { visible: true });
-                if (parseObjectIds(objs).length > 0) { setAktivesModellId(m.modelId); return; }
-              }
-            } catch { /* ignore */ }
-          });
-        } catch { /* ignore */ }
 
         // Selection Listener — robust für beide Formate
         const cb = (event: TcSelectionEvent) => {
@@ -120,6 +93,7 @@ export function useApi(): UseApiReturn {
           const data = (event as any)?.data;
           if (Array.isArray(data)) {
             for (const item of data) {
+              if (!item) continue;
               if (Array.isArray(item?.objectRuntimeIds)) {
                 ids.push(...item.objectRuntimeIds);
               } else if (Array.isArray(item?.objects)) {
@@ -154,7 +128,7 @@ export function useApi(): UseApiReturn {
     };
   }, []);
 
-  return { api, ready, fehler, selektion, aktivesModellId };
+  return { api, ready, fehler, selektion, aktivesModellId, geladeneModelle };
 }
 
 export async function batchGetProperties(
@@ -173,3 +147,6 @@ export async function batchGetProperties(
   }
   return results;
 }
+
+// parseObjectIds re-export für useApi interne Nutzung
+export { parseObjectIds };

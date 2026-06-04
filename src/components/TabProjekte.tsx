@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { SimProjekt } from "../types";
-import { parseObjectIds } from "../types";
+
 import type { ApiInstance } from "../hooks/useApi";
 import GanttImport from "./GanttImport";
 
@@ -11,9 +11,10 @@ interface Props {
   setSims: React.Dispatch<React.SetStateAction<SimProjekt[]>>;
   aktivId: string | null;
   setAktivId: (id: string) => void;
+  geladeneModelle: { id: string; name: string }[];
 }
 
-export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId }: Props) {
+export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, geladeneModelle }: Props) {
   const [aufgeklappt, setAufgeklappt] = useState<string | null>(aktivId);
   const [neuName, setNeuName] = useState("");
   const [zeigeNeu, setZeigeNeu] = useState(false);
@@ -87,58 +88,22 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId }:
     }
   }
 
-  // Sichtbare Modelle via getObjects()-Check ermitteln (Alternative zu getModels state-filter)
+  // Sichtbare Modelle speichern — nutzt die beim Start gespeicherten Modelle
   async function sichtbareModelleUebernehmen(simId: string) {
     setModellLaden(true);
     setModellMsg(null);
-    if (!api) {
-      setModellMsg({ simId, typ: "err", text: "TC API nicht verbunden" });
+
+    if (geladeneModelle.length === 0) {
+      setModellMsg({ simId, typ: "err", text: "Noch keine Modelle erkannt — bitte kurz warten und nochmals versuchen" });
       setModellLaden(false);
       return;
     }
-    try {
-      const alleModelle = await api.viewer.getModels() as any[];
-      if (!alleModelle || alleModelle.length === 0) {
-        setModellMsg({ simId, typ: "err", text: "Keine Modelle verfügbar" });
-        return;
-      }
 
-      // Parallel prüfen mit objectState visible filter
-      const results = await Promise.allSettled(
-        alleModelle.map(async (m: any) => {
-          try {
-            // objectState: {visible: true} gibt nur sichtbare Objekte zurück
-            const objs = await (api.viewer as any).getObjects(
-              m.modelId, undefined, { visible: true }
-            );
-            const count = parseObjectIds(objs).length;
-            return { m, sichtbar: count > 0 };
-          } catch {
-            return { m, sichtbar: false };
-          }
-        })
-      );
-
-      const sichtbar = results
-        .filter(r => r.status === "fulfilled" && (r as PromiseFulfilledResult<any>).value.sichtbar)
-        .map(r => (r as PromiseFulfilledResult<any>).value.m);
-
-      if (sichtbar.length === 0) {
-        setModellMsg({ simId, typ: "err", text: `Keine sichtbaren Modelle — alle ${alleModelle.length} ausgeblendet?` });
-        return;
-      }
-
-      setSims(prev => prev.map(s =>
-        s.id === simId
-          ? { ...s, modelle: sichtbar.map((m: any) => ({ id: m.modelId, name: m.name || m.fileName || m.modelId })) }
-          : s
-      ));
-      setModellMsg({ simId, typ: "ok", text: `${sichtbar.length} sichtbare von ${alleModelle.length} Modelle gespeichert` });
-    } catch (e) {
-      setModellMsg({ simId, typ: "err", text: `Fehler: ${e instanceof Error ? e.message : String(e)}` });
-    } finally {
-      setModellLaden(false);
-    }
+    setSims(prev => prev.map(s =>
+      s.id === simId ? { ...s, modelle: geladeneModelle } : s
+    ));
+    setModellMsg({ simId, typ: "ok", text: `${geladeneModelle.length} sichtbare Modelle gespeichert` });
+    setModellLaden(false);
   }
 
   function loeschen(simId: string) {

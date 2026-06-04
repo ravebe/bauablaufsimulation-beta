@@ -52,46 +52,28 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     }
   }, [aktivTaskId, aktivesModellId]);
 
-  // Attribute vorladen — findet automatisch das richtige Modell
+  // Attribute vorladen — nutzt aktivesModellId (beim Start gesetzt)
   async function ladeAttr() {
-    if (!api) return;
+    if (!api || !aktivesModellId) return;
     setAttrLaedt(true);
     try {
-      // Alle Modelle holen und erstes mit sichtbaren Objekten und Properties nutzen
-      const alleModelle = await api.viewer.getModels() as any[];
-      // Modelle priorisieren: aktivesModellId zuerst
-      const sortiert = aktivesModellId
-        ? [{ modelId: aktivesModellId }, ...alleModelle.filter(m => m.modelId !== aktivesModellId)]
-        : alleModelle;
+      const rohe = await api.viewer.getObjects(aktivesModellId);
+      const ids = parseObjectIds(rohe).slice(0, 60);
+      if (ids.length === 0) { setAttrLaedt(false); return; }
 
-      for (const m of sortiert) {
-        const mid = m.modelId;
-        if (!mid) continue;
-        try {
-          // Nur sichtbare Objekte
-          const rohe = await (api.viewer as any).getObjects(mid, undefined, { visible: true });
-          const ids = parseObjectIds(rohe).slice(0, 60);
-          if (ids.length === 0) continue;
-
-          const props = await batchGetProperties(api, mid, ids);
-          if (!props.some(p => p.properties?.length > 0)) continue;
-
-          // Dieses Modell hat Properties!
-          const attrsMap = new Map<string, AttrItem>();
-          for (const obj of props) {
-            for (const g of (obj?.properties ?? [])) {
-              const pset = g?.name || (g as any)?.displayName || "Eigenschaften";
-              for (const p of (g?.properties ?? [])) {
-                if (!p?.name) continue;
-                const key = `${pset}||${p.name}`;
-                if (!attrsMap.has(key)) attrsMap.set(key, { pset, name: p.name, key });
-              }
-            }
+      const props = await batchGetProperties(api, aktivesModellId, ids);
+      const attrsMap = new Map<string, AttrItem>();
+      for (const obj of props) {
+        for (const g of (obj?.properties ?? [])) {
+          const pset = g?.name || (g as any)?.displayName || "Eigenschaften";
+          for (const p of (g?.properties ?? [])) {
+            if (!p?.name) continue;
+            const key = `${pset}||${p.name}`;
+            if (!attrsMap.has(key)) attrsMap.set(key, { pset, name: p.name, key });
           }
-          setAllAttrs([...attrsMap.values()]);
-          return; // Gefunden — fertig
-        } catch { continue; }
+        }
       }
+      setAllAttrs([...attrsMap.values()]);
     } catch (e) {
       console.error("ladeAttr Fehler:", e);
     } finally {
@@ -114,45 +96,33 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     setLaedt(true);
 
     try {
+      if (!aktivesModellId) { setSuchStatus("Kein Modell geladen"); setLaedt(false); return; }
+
       const teile = ifcQuery.split(" › ");
       const suchAttr = teile[0]?.trim().toLowerCase();
       const suchPset = teile[1]?.trim().toLowerCase() ?? "";
 
-      const alleModelle = await api.viewer.getModels() as any[];
-      const sortiert = aktivesModellId
-        ? [{ modelId: aktivesModellId }, ...alleModelle.filter(m => m.modelId !== aktivesModellId)]
-        : alleModelle;
-
+      const rohe = await api.viewer.getObjects(aktivesModellId);
+      const ids = parseObjectIds(rohe);
       const gefunden: number[] = [];
 
-      for (const m of sortiert) {
-        const mid = m.modelId;
-        if (!mid) continue;
-        try {
-          const rohe = await (api.viewer as any).getObjects(mid, undefined, { visible: true });
-          const ids = parseObjectIds(rohe);
-          if (ids.length === 0) continue;
-
-          for (let i = 0; i < ids.length; i += 10) {
-            const batch = ids.slice(i, i + 10);
-            const props = await batchGetProperties(api, mid, batch);
-            for (const obj of props) {
-              for (const g of (obj?.properties ?? [])) {
-                const pset = (g?.name || (g as any)?.displayName || "").toLowerCase();
-                const psetMatch = !suchPset || pset === suchPset || pset.includes(suchPset) || suchPset.includes(pset);
-                if (!psetMatch) continue;
-                for (const p of (g?.properties ?? [])) {
-                  if (!p?.name || p.name.toLowerCase() !== suchAttr) continue;
-                  if (p.value != null && String(p.value).toLowerCase().includes(ifcWert.toLowerCase())) {
-                    gefunden.push(obj.id);
-                    break;
-                  }
-                }
+      for (let i = 0; i < ids.length; i += 10) {
+        const batch = ids.slice(i, i + 10);
+        const props = await batchGetProperties(api, aktivesModellId, batch);
+        for (const obj of props) {
+          for (const g of (obj?.properties ?? [])) {
+            const pset = (g?.name || (g as any)?.displayName || "").toLowerCase();
+            const psetMatch = !suchPset || pset === suchPset || pset.includes(suchPset) || suchPset.includes(pset);
+            if (!psetMatch) continue;
+            for (const p of (g?.properties ?? [])) {
+              if (!p?.name || p.name.toLowerCase() !== suchAttr) continue;
+              if (p.value != null && String(p.value).toLowerCase().includes(ifcWert.toLowerCase())) {
+                gefunden.push(obj.id);
+                break;
               }
             }
           }
-          if (gefunden.length > 0) break;
-        } catch { continue; }
+        }
       }
 
       if (gefunden.length === 0) {
