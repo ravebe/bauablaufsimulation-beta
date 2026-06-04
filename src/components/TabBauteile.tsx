@@ -10,11 +10,12 @@ interface Props {
   updateSim: (sim: SimProjekt) => void;
   selektion: number[];
   aktivesModellId: string | null;
+  geladeneModelle: { id: string; name: string }[];
 }
 
 interface AttrItem { pset: string; name: string; key: string; }
 
-export default function TabBauteile({ api, aktiveSim, updateSim, selektion, aktivesModellId }: Props) {
+export default function TabBauteile({ api, aktiveSim, updateSim, selektion, aktivesModellId, geladeneModelle }: Props) {
   const [aktivTaskId, setAktivTaskId] = useState<string | null>(null);
   const [allAttrs, setAllAttrs] = useState<AttrItem[]>([]);
   const [ifcQuery, setIfcQuery] = useState("");
@@ -29,8 +30,8 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
 
   const aktivTask = aktiveSim?.tasks.find(t => t.id === aktivTaskId) ?? null;
 
-  // Modell-ID: gespeicherte Sim-Modelle zuerst, dann Viewer-Fallback
-  const modellId = aktiveSim?.modelle[0]?.id ?? aktivesModellId ?? null;
+  // Modell-ID: geladeneModelle (beim Start gesetzt) zuerst, dann Fallback
+  const modellId = geladeneModelle[0]?.id ?? aktivesModellId ?? null;
 
   // Autocomplete schließen bei Klick außerhalb
   useEffect(() => {

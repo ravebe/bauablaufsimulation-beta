@@ -66,23 +66,22 @@ export function useApi(): UseApiReturn {
         apiInst = (await wapi.connect(window.parent, () => {})) as ApiInstance;
         setApi(apiInst);
 
-        // Modelle beim Start laden — NUR EINMAL, kurze Intervalle
-        // Wichtig: vor TC lazy-load aller Projektmodelle erwischen!
+        // Modelle SOFORT holen (0ms) — vor TC lazy-load aller Projektmodelle
         const ladeModelle = async () => {
-          for (let i = 0; i < 20; i++) {
+          for (let i = 0; i < 6; i++) {
             try {
               const modelle = await apiInst!.viewer.getModels() as any[];
               if (modelle?.length > 0) {
-                // Erste gefundene Modelle speichern (das sind die sichtbaren!)
                 setAktivesModellId(modelle[0].modelId);
                 setGeladeneModelle(modelle.map((m: any) => ({
                   id: m.modelId,
                   name: m.name || m.fileName || m.modelId
                 })));
-                return; // Fertig — nicht mehr aufrufen!
+                return;
               }
             } catch { /* ignore */ }
-            await new Promise(r => setTimeout(r, 200)); // 200ms Intervall
+            if (i === 0) continue; // Erstes Retry sofort
+            await new Promise(r => setTimeout(r, 50)); // Danach 50ms
           }
         };
         ladeModelle();
