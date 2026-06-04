@@ -58,10 +58,10 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, g
     }
     try {
       const alle = await api.viewer.getModels() as any[];
-      const alleFormatiert = alle.map((m: any) => ({
-        id: m.modelId,
-        name: m.name || m.fileName || m.modelId
-      }));
+const alleFormatiert = alle.map((m: any, i: number) => ({
+  id: m.modelId || m.id || m.fileId || m.modelVersionId || `model-${i}`,
+  name: m.name || m.fileName || m.label || m.modelId || `Modell ${i + 1}`
+}));
       // geladeneModelle als Vorauswahl (beim Start gefundene Modelle)
       const vorauswahl = new Set<string>(geladeneModelle.map(m => m.id));
       setModellPicker({ simId, alle: alleFormatiert, ausgewaehlt: vorauswahl });
