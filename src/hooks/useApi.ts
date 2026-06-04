@@ -5,28 +5,18 @@ import { parseObjectIds } from "../types";
 export interface ApiInstance {
   viewer: {
     getModels: () => Promise<TcModel[]>;
+    getLoadedModel: () => Promise<TcModel[]>;
     getObjects: (modelId: string) => Promise<unknown>;
-    getObjectProperties: (
-      modelId: string,
-      ids: number[]
-    ) => Promise<TcObjectWithProps[]>;
+    getObjectProperties: (modelId: string, ids: number[]) => Promise<TcObjectWithProps[]>;
     setSelection: (ids: number[]) => Promise<void>;
-    setObjectsState: (
-      modelId: string,
-      ids: number[],
-      state: { visible?: boolean; color?: { r: number; g: number; b: number; a: number } | null }
-    ) => Promise<void>;
+    setObjectsState: (modelId: string, ids: number[], state: { visible?: boolean; color?: { r: number; g: number; b: number; a: number } | null }) => Promise<void>;
     onSelectionChanged: {
       addListener: (cb: (event: TcSelectionEvent) => void) => void;
       removeListener: (cb: (event: TcSelectionEvent) => void) => void;
     };
   };
-  extension: {
-    requestPermission: (type: string) => Promise<string>;
-  };
-  project: {
-    getProject: () => Promise<{ id: string; name: string }>;
-  };
+  extension: { requestPermission: (type: string) => Promise<string>; };
+  project: { getProject: () => Promise<{ id: string; name: string }>; };
 }
 
 interface UseApiReturn {
@@ -66,10 +56,24 @@ export function useApi(): UseApiReturn {
         apiInst = (await wapi.connect(window.parent, () => {})) as ApiInstance;
         setApi(apiInst);
 
-        // Modelle SOFORT holen (0ms) — vor TC lazy-load aller Projektmodelle
+        // Modelle laden: getLoadedModel() zuerst (nur sichtbare!), dann getModels() Fallback
         const ladeModelle = async () => {
-          for (let i = 0; i < 6; i++) {
+          for (let i = 0; i < 8; i++) {
             try {
+              // getLoadedModel() → gibt nur aktuell geladene/sichtbare Modelle zurück
+              const geladen = await apiInst!.viewer.getLoadedModel() as any;
+              const arr = Array.isArray(geladen) ? geladen : geladen ? [geladen] : [];
+              if (arr.length > 0) {
+                setAktivesModellId(arr[0].modelId);
+                setGeladeneModelle(arr.map((m: any) => ({
+                  id: m.modelId,
+                  name: m.name || m.fileName || m.modelId
+                })));
+                return;
+              }
+            } catch { /* getLoadedModel nicht verfügbar */ }
+            try {
+              // Fallback: getModels() früh abfragen (vor TC lazy-load)
               const modelle = await apiInst!.viewer.getModels() as any[];
               if (modelle?.length > 0) {
                 setAktivesModellId(modelle[0].modelId);
@@ -80,22 +84,23 @@ export function useApi(): UseApiReturn {
                 return;
               }
             } catch { /* ignore */ }
-            if (i === 0) continue; // Erstes Retry sofort
-            await new Promise(r => setTimeout(r, 50)); // Danach 50ms
+            await new Promise(r => setTimeout(r, i === 0 ? 0 : 100));
           }
         };
         ladeModelle();
 
-        // Selection Listener — robust für beide Formate
+        // Selection Listener — robust für alle bekannten Formate
         const cb = (event: TcSelectionEvent) => {
           const ids: number[] = [];
           const data = (event as any)?.data;
           if (Array.isArray(data)) {
             for (const item of data) {
               if (!item) continue;
-              if (Array.isArray(item?.objectRuntimeIds)) {
-                ids.push(...item.objectRuntimeIds);
-              } else if (Array.isArray(item?.objects)) {
+              // Alle bekannten Property-Namen versuchen
+              const rIds = item.objectRuntimeIds ?? item.runtimeIds ?? item.ids ?? item.objectIds;
+              if (Array.isArray(rIds)) {
+                ids.push(...rIds.map(Number).filter((n: number) => !isNaN(n)));
+              } else if (Array.isArray(item.objects)) {
                 for (const o of item.objects) {
                   const n = Number(o?.id ?? o);
                   if (!isNaN(n)) ids.push(n);

@@ -106,7 +106,6 @@ export default function App() {
             updateSim={updateSim}
             selektion={selektion}
             aktivesModellId={aktivesModellId}
-            geladeneModelle={geladeneModelle}
           />
         )}
         {aktTab === "abspielen" && (

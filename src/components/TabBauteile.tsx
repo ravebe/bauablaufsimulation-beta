@@ -10,12 +10,11 @@ interface Props {
   updateSim: (sim: SimProjekt) => void;
   selektion: number[];
   aktivesModellId: string | null;
-  geladeneModelle: { id: string; name: string }[];
 }
 
 interface AttrItem { pset: string; name: string; key: string; }
 
-export default function TabBauteile({ api, aktiveSim, updateSim, selektion, aktivesModellId, geladeneModelle }: Props) {
+export default function TabBauteile({ api, aktiveSim, updateSim, selektion, aktivesModellId }: Props) {
   const [aktivTaskId, setAktivTaskId] = useState<string | null>(null);
   const [allAttrs, setAllAttrs] = useState<AttrItem[]>([]);
   const [attrMap, setAttrMap] = useState<Record<string, Set<string>>>({});
@@ -32,8 +31,8 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
 
   const aktivTask = aktiveSim?.tasks.find(t => t.id === aktivTaskId) ?? null;
 
-  // Modell-ID: geladeneModelle (beim Start gesetzt) zuerst, dann Fallback
-  const modellId = geladeneModelle[0]?.id ?? aktivesModellId ?? null;
+  // Modell-ID: gespeicherte Sim-Modelle zuerst (korrekte Modelle!), dann Fallback
+  const modellId = aktiveSim?.modelle[0]?.id ?? aktivesModellId ?? null;
 
   // Autocomplete schließen bei Klick außerhalb
   useEffect(() => {
@@ -152,18 +151,44 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     }
   }
 
+  // Task anklicken → Objekte im Viewer markieren wenn vorhanden
+  async function taskAnklicken(taskId: string) {
+    const istGleich = taskId === aktivTaskId;
+    setAktivTaskId(istGleich ? null : taskId);
+    if (!istGleich && api) {
+      const task = aktiveSim?.tasks.find(t => t.id === taskId);
+      if (task && task.objektGuids.length > 0) {
+        try {
+          await api.viewer.setSelection(task.objektGuids.map(Number));
+        } catch { /* ignore */ }
+      }
+    }
+  }
+
   function gefundeneHinzufuegen() {
-    if (!aktivTask || gefundeneIds.length === 0) return;
-    const neu = [...new Set([...aktivTask.objektGuids, ...gefundeneIds.map(String)])];
-    speichereGuids(aktivTask.id, neu);
+    if (!aktivTask || gefundeneIds.length === 0 || !aktiveSim) return;
+    const neueGuids = gefundeneIds.map(String);
+    // GUID-Eindeutigkeit: aus anderen Tasks entfernen
+    const bereinigteTasks = aktiveSim.tasks.map(t =>
+      t.id === aktivTask.id
+        ? { ...t, objektGuids: [...new Set([...t.objektGuids, ...neueGuids])] }
+        : { ...t, objektGuids: t.objektGuids.filter(g => !neueGuids.includes(g)) }
+    );
+    updateSim({ ...aktiveSim, tasks: bereinigteTasks });
     setGefundeneIds([]);
-    setSuchStatus(`✓ ${gefundeneIds.length} Bauteile hinzugefügt`);
+    setSuchStatus(`✓ ${neueGuids.length} Bauteile hinzugefügt`);
   }
 
   function selektionHinzufuegen() {
-    if (!aktivTask || selektion.length === 0) return;
-    const neu = [...new Set([...aktivTask.objektGuids, ...selektion.map(String)])];
-    speichereGuids(aktivTask.id, neu);
+    if (!aktivTask || selektion.length === 0 || !aktiveSim) return;
+    const neueGuids = selektion.map(String);
+    // GUID-Eindeutigkeit: aus anderen Tasks entfernen
+    const bereinigteTasks = aktiveSim.tasks.map(t =>
+      t.id === aktivTask.id
+        ? { ...t, objektGuids: [...new Set([...t.objektGuids, ...neueGuids])] }
+        : { ...t, objektGuids: t.objektGuids.filter(g => !neueGuids.includes(g)) }
+    );
+    updateSim({ ...aktiveSim, tasks: bereinigteTasks });
   }
 
   function speichereGuids(taskId: string, guids: string[]) {
@@ -231,7 +256,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
             <div
               key={task.id}
               className={`task-row ${task.id === aktivTaskId ? "active" : ""}`}
-              onClick={() => setAktivTaskId(task.id === aktivTaskId ? null : task.id)}
+              onClick={() => taskAnklicken(task.id)}
             >
               <span className={`task-row-dot ${task.typ}`} />
               <span className="task-row-name">{task.name}</span>

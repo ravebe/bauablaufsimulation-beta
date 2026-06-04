@@ -1,6 +1,5 @@
 import { useState } from "react";
 import type { SimProjekt } from "../types";
-
 import type { ApiInstance } from "../hooks/useApi";
 import GanttImport from "./GanttImport";
 
@@ -46,41 +45,35 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, g
   async function modelleUebernehmen(simId: string) {
     setModellLaden(true);
     setModellMsg(null);
-
     if (!api) {
       setModellMsg({ simId, typ: "err", text: "TC API nicht verbunden — im 3D Viewer öffnen" });
       setModellLaden(false);
       return;
     }
-
     try {
-      const alleModelle = await api.viewer.getModels() as any[];
-      if (!alleModelle || alleModelle.length === 0) {
-        setModellMsg({ simId, typ: "err", text: "Keine Modelle im Viewer — erst ein IFC-Modell laden" });
-        return;
-      }
+      let aktiv: { id: string; name: string }[] = [];
 
-      // State-Filter: nur "loaded" / "assimilating" Modelle
-      const hatState = alleModelle.some(m => m.state !== undefined);
-      const aktiv = hatState
-        ? alleModelle.filter(m => m.state === "loaded" || m.state === "assimilating")
-        : alleModelle; // Fallback: alle übernehmen wenn kein state Feld
+      // getLoadedModel() zuerst — gibt nur sichtbare/aktive Modelle zurück
+      try {
+        const geladen = await api.viewer.getLoadedModel() as any;
+        const arr = Array.isArray(geladen) ? geladen : geladen ? [geladen] : [];
+        if (arr.length > 0) {
+          aktiv = arr.map((m: any) => ({ id: m.modelId, name: m.name || m.fileName || m.modelId }));
+        }
+      } catch { /* getLoadedModel nicht verfügbar, Fallback */ }
+
+      // Fallback: geladeneModelle (beim Start gespeichert)
+      if (aktiv.length === 0 && geladeneModelle.length > 0) {
+        aktiv = geladeneModelle;
+      }
 
       if (aktiv.length === 0) {
-        setModellMsg({ simId, typ: "err", text: `Kein aktives Modell — ${alleModelle.length} total, alle ausgeblendet?` });
+        setModellMsg({ simId, typ: "err", text: "Keine aktiven Modelle gefunden — Modelle im Viewer aktivieren" });
         return;
       }
 
-      setSims(prev => prev.map(s =>
-        s.id === simId
-          ? { ...s, modelle: aktiv.map((m: any) => ({ id: m.modelId, name: m.name || m.fileName || m.modelId })) }
-          : s
-      ));
-
-      const info = hatState
-        ? `${aktiv.length} aktive von ${alleModelle.length} Modell(e) übernommen`
-        : `${aktiv.length} Modell(e) übernommen (kein State-Filter verfügbar)`;
-      setModellMsg({ simId, typ: "ok", text: info });
+      setSims(prev => prev.map(s => s.id === simId ? { ...s, modelle: aktiv } : s));
+      setModellMsg({ simId, typ: "ok", text: `✓ ${aktiv.length} Modelle gespeichert` });
     } catch (e) {
       setModellMsg({ simId, typ: "err", text: `Fehler: ${e instanceof Error ? e.message : String(e)}` });
     } finally {
