@@ -30,6 +30,23 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     return new Promise<void>(resolve => setTimeout(resolve, ms));
   }
 
+  // Sichtbarkeit setzen — versucht beide bekannte TC API Formate
+  async function setSichtbarkeit(mid: string, ids: number[], sichtbar: boolean) {
+    if (!api || ids.length === 0) return;
+    try {
+      // Format 1: setObjectsState(modelId, ids, state)
+      await api.viewer.setObjectsState(mid, ids, { visible: sichtbar, color: null });
+    } catch {
+      try {
+        // Format 2: setObjectsState({modelObjectIds, objectState})
+        await (api.viewer as any).setObjectsState({
+          modelObjectIds: [{ modelId: mid, objectRuntimeIds: ids }],
+          objectState: { visible: sichtbar }
+        });
+      } catch { /* ignore */ }
+    }
+  }
+
   // Alle Objekte aller Modelle wieder einblenden
   async function reset() {
     if (!api) return;
@@ -39,13 +56,11 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
       try {
         const rohe = await api.viewer.getObjects(mid);
         const ids = parseObjectIds(rohe);
-        if (ids.length > 0) {
-          await api.viewer.setObjectsState(mid, ids, { visible: true, color: null });
-        }
+        await setSichtbarkeit(mid, ids, true);
       } catch { /* ignore */ }
     }
-    await api.viewer.setSelection([]);
-    setStatus("↺ Reset: alle Bauteile eingeblendet");
+    try { await api.viewer.setSelection([]); } catch { /* ignore */ }
+    setStatus("↺ Alle Bauteile eingeblendet");
   }
 
   const starten = useCallback(async () => {
@@ -56,21 +71,24 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
 
     const tasks = aktiveSim.tasks.filter(t => t.objektGuids.length > 0);
 
-    // 1.3 — Alle Objekte ALLER Modelle ausblenden
-    setStatus("⟳ Modelle ausblenden…");
+    // 1. Alle Objekte aller Modelle selektieren + ausblenden
+    setStatus("⟳ Alle Objekte ausblenden…");
     for (const mid of modellIds) {
       try {
         const rohe = await api.viewer.getObjects(mid);
         const ids = parseObjectIds(rohe);
-        if (ids.length > 0) {
-          await api.viewer.setObjectsState(mid, ids, { visible: false, color: null });
-        }
+        if (ids.length === 0) continue;
+        // Im Hintergrund alle selektieren → dann ausblenden
+        await api.viewer.setSelection(ids);
+        await setSichtbarkeit(mid, ids, false);
       } catch { /* ignore */ }
     }
+    // Selektion leeren nach dem Ausblenden
+    try { await api.viewer.setSelection([]); } catch { /* ignore */ }
 
     if (stopRef.current) { setLaeuft(false); setStatus("■ Gestoppt"); return; }
 
-    // 1.4 — Tasks nacheinander abspielen
+    // 2. Tasks nacheinander: Bauteile einblenden + markieren
     for (let i = 0; i < tasks.length; i++) {
       if (stopRef.current) break;
       const task = tasks[i];
@@ -79,13 +97,11 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
       setStatus(`▶ ${task.name} · ${ids.length} Bauteile`);
 
       if (ids.length > 0) {
-        // 1.5 — "nur ausgewählte Objekte anzeigen": Bauteile einblenden
+        // Bauteile einblenden (alle Modelle versuchen)
         for (const mid of modellIds) {
-          try {
-            await api.viewer.setObjectsState(mid, ids, { visible: true, color: null });
-          } catch { /* ignore */ }
+          await setSichtbarkeit(mid, ids, true);
         }
-        // Bauteile markieren (Auswahl anzeigen)
+        // Bauteile markieren
         try { await api.viewer.setSelection(ids); } catch { /* ignore */ }
       }
 
