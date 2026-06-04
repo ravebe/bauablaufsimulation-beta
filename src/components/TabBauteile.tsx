@@ -18,6 +18,8 @@ interface AttrItem { pset: string; name: string; key: string; }
 export default function TabBauteile({ api, aktiveSim, updateSim, selektion, aktivesModellId, geladeneModelle }: Props) {
   const [aktivTaskId, setAktivTaskId] = useState<string | null>(null);
   const [allAttrs, setAllAttrs] = useState<AttrItem[]>([]);
+  const [attrMap, setAttrMap] = useState<Record<string, Set<string>>>({});
+  const [selectedAttr, setSelectedAttr] = useState<AttrItem | null>(null);
   const [ifcQuery, setIfcQuery] = useState("");
   const [ifcWert, setIfcWert] = useState("");
   const [acOffen, setAcOffen] = useState(false);
@@ -49,6 +51,8 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     setIfcQuery("");
     setIfcWert("");
     setAllAttrs([]);
+    setAttrMap({});
+    setSelectedAttr(null);
     if (aktivTaskId && api && modellId) {
       ladeAttr();
     }
@@ -75,7 +79,9 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
       if (ids.length === 0) { setAttrLaedt(false); return; }
 
       const props = await batchGetProperties(api, modellId, ids);
+      const map: Record<string, Set<string>> = {};
       const attrsMap = new Map<string, AttrItem>();
+
       for (const obj of props) {
         for (const g of (obj?.properties ?? [])) {
           const pset = g?.name || (g as any)?.displayName || "Eigenschaften";
@@ -83,9 +89,14 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
             if (!p?.name) continue;
             const key = `${pset}||${p.name}`;
             if (!attrsMap.has(key)) attrsMap.set(key, { pset, name: p.name, key });
+            if (p.value != null) {
+              if (!map[key]) map[key] = new Set();
+              map[key].add(String(p.value));
+            }
           }
         }
       }
+      setAttrMap(map);
       setAllAttrs([...attrsMap.values()]);
     } catch (e) {
       console.error("ladeAttr:", e);
@@ -103,43 +114,43 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
 
   // IFC Suche
   async function ifcSuchen() {
-    if (!api || !ifcQuery || !ifcWert || !aktivTask || !modellId) return;
+    if (!api || !selectedAttr || !ifcWert || !aktivTask || !modellId) return;
     setSuchStatus(null);
     setGefundeneIds([]);
     setLaedt(true);
 
     try {
-      const teile = ifcQuery.split(" › ");
-      const suchAttr = teile[0]?.trim().toLowerCase();
-      const suchPset = teile[1]?.trim().toLowerCase() ?? "";
-
+      // ALLE Objekte holen (nicht nur Sample)
       const rohe = await api.viewer.getObjects(modellId);
-      const ids = parseObjectIds(rohe);
-      const gefunden: number[] = [];
+      const allIds = parseObjectIds(rohe);
+      const props = await batchGetProperties(api, modellId, allIds);
+      const treffer: number[] = [];
 
-      for (let i = 0; i < ids.length; i += 10) {
-        const batch = ids.slice(i, i + 10);
-        const props = await batchGetProperties(api, modellId, batch);
-        for (const obj of props) {
-          for (const g of (obj?.properties ?? [])) {
-            const pset = (g?.name || (g as any)?.displayName || "").toLowerCase();
-            const psetMatch = !suchPset || pset === suchPset || pset.includes(suchPset) || suchPset.includes(pset);
-            if (!psetMatch) continue;
-            for (const p of (g?.properties ?? [])) {
-              if (!p?.name || p.name.toLowerCase() !== suchAttr) continue;
-              if (p.value != null && String(p.value).toLowerCase().includes(ifcWert.toLowerCase())) {
-                gefunden.push(obj.id);
-                break;
-              }
+      for (const obj of props) {
+        for (const gruppe of (obj?.properties ?? [])) {
+          const pset = gruppe?.name || (gruppe as any)?.displayName || "";
+
+          // PSet-Match robust, case-insensitive
+          const psetMatch = pset === selectedAttr.pset ||
+            pset.toLowerCase().includes(selectedAttr.pset.toLowerCase());
+          if (!psetMatch) continue;
+
+          for (const attr of (gruppe?.properties ?? [])) {
+            if (attr.name !== selectedAttr.name) continue;
+            const val = String(attr.value ?? "").toLowerCase();
+            if (val === ifcWert.toLowerCase() || val.includes(ifcWert.toLowerCase())) {
+              treffer.push(Number(obj.id));
             }
           }
         }
       }
 
-      if (gefunden.length === 0) { setSuchStatus("Keine Bauteile gefunden"); return; }
-      await api.viewer.setSelection(gefunden);
-      setGefundeneIds(gefunden);
-      setSuchStatus(`✓ ${gefunden.length} Bauteile gefunden & markiert`);
+      if (treffer.length === 0) { setSuchStatus("Keine Bauteile gefunden"); return; }
+
+      // plain Array — kein wrapped Object!
+      await api.viewer.setSelection(treffer);
+      setGefundeneIds(treffer);
+      setSuchStatus(`✓ ${treffer.length} Bauteile gefunden & markiert`);
     } catch (e) {
       setSuchStatus(`Fehler: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -233,8 +244,12 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
               <span className="task-row-date">{task.start}</span>
               <span className="task-row-count">
                 {task.objektGuids.length > 0
-                  ? <span style={{ color: "var(--tc-blue)" }}>⬡ {task.objektGuids.length}</span>
-                  : <span style={{ color: "var(--tc-border)" }}>∅</span>}
+                  ? <span style={{ color: "var(--tc-blue)" }}>
+                      ⬡ {task.objektGuids.length}{totalObjekte != null ? ` / ${totalObjekte}` : ""}
+                    </span>
+                  : totalObjekte != null
+                    ? <span style={{ color: "var(--tc-border)" }}>⬡ 0 / {totalObjekte}</span>
+                    : <span style={{ color: "var(--tc-border)" }}>∅</span>}
               </span>
             </div>
           ))
@@ -287,14 +302,24 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
                 className="ac-input"
                 placeholder="Attribut suchen… (z.B. Material)"
                 value={ifcQuery}
-                onChange={e => { setIfcQuery(e.target.value); setAcOffen(true); setGefundeneIds([]); setSuchStatus(null); }}
+                onChange={e => {
+                  setIfcQuery(e.target.value);
+                  setSelectedAttr(null);
+                  setAcOffen(true);
+                  setGefundeneIds([]);
+                  setSuchStatus(null);
+                }}
                 onFocus={() => { setAcOffen(true); if (!allAttrs.length && modellId) ladeAttr(); }}
               />
               {acOffen && acItems.length > 0 && (
                 <div className="ac-dropdown">
                   {acItems.map((item, i) => (
                     <div key={i} className="ac-item"
-                      onMouseDown={() => { setIfcQuery(`${item.name} › ${item.pset}`); setAcOffen(false); }}>
+                      onMouseDown={() => {
+                        setIfcQuery(`${item.name} › ${item.pset}`);
+                        setSelectedAttr(item);
+                        setAcOffen(false);
+                      }}>
                       <div style={{ fontWeight: 500, color: "var(--tc-text)" }}>{item.name}</div>
                       <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 1 }}>{item.pset}</div>
                     </div>
@@ -303,18 +328,38 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
               )}
             </div>
 
-            <input
-              className="ac-input"
-              placeholder="Wert (z.B. Beton NPK C)…"
-              value={ifcWert}
-              onChange={e => { setIfcWert(e.target.value); setGefundeneIds([]); setSuchStatus(null); }}
-              style={{ marginTop: 4 }}
-            />
+            {/* Wert-Eingabe mit Vorschlägen aus attrMap */}
+            {(() => {
+              const vorschlaege = selectedAttr && attrMap[selectedAttr.key]
+                ? [...attrMap[selectedAttr.key]].filter(v =>
+                    !ifcWert || v.toLowerCase().includes(ifcWert.toLowerCase())
+                  ).slice(0, 8)
+                : [];
+              return (
+                <div className="ac-wrap" style={{ marginTop: 4 }}>
+                  <input
+                    className="ac-input"
+                    placeholder="Wert (z.B. Beton NPK C)…"
+                    value={ifcWert}
+                    onChange={e => { setIfcWert(e.target.value); setGefundeneIds([]); setSuchStatus(null); }}
+                  />
+                  {selectedAttr && vorschlaege.length > 0 && ifcWert.length === 0 && (
+                    <div className="ac-dropdown">
+                      {vorschlaege.map((v, i) => (
+                        <div key={i} className="ac-item" onMouseDown={() => setIfcWert(v)}>
+                          <div style={{ color: "var(--tc-text)" }}>{v}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             <button
               className="tc-btn-primary"
               style={{ width: "100%", marginTop: 6 }}
-              disabled={laedt || !ifcQuery || !ifcWert || !modellId}
+              disabled={laedt || !selectedAttr || !ifcWert || !modellId}
               onClick={ifcSuchen}
             >
               {laedt ? "⟳ Suche…" : "🔍 Suchen & Markieren"}
