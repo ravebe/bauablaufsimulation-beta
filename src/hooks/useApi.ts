@@ -64,15 +64,14 @@ export function useApi(): UseApiReturn {
         apiInst = (await wapi.connect(window.parent, () => {})) as ApiInstance;
         setApi(apiInst);
 
-        // Modelle laden — m.id || m.modelId (Console zeigt 'id' property!)
+        // Modelle beim Start laden
         const ladeModelle = async () => {
           for (let i = 0; i < 8; i++) {
             try {
               const geladen = await apiInst!.viewer.getLoadedModel() as any;
               const arr = Array.isArray(geladen) ? geladen : geladen ? [geladen] : [];
               if (arr.length > 0) {
-                const mid = arr[0].id || arr[0].modelId;
-                setAktivesModellId(mid);
+                setAktivesModellId(arr[0].id || arr[0].modelId);
                 setGeladeneModelle(arr.map((m: any) => ({
                   id: m.id || m.modelId,
                   name: m.name || m.fileName || m.id
@@ -82,12 +81,10 @@ export function useApi(): UseApiReturn {
             } catch { /* ignore */ }
             try {
               const modelle = await apiInst!.viewer.getModels() as any[];
-              // Nur state==='loaded' Modelle verwenden (aus Console-Log bekannt!)
               const geladen = modelle.filter((m: any) => m.state === 'loaded');
-              const aktiv = geladen.length > 0 ? geladen : modelle;
+              const aktiv = geladen.length > 0 ? geladen : [];
               if (aktiv.length > 0) {
-                const mid = aktiv[0].id || aktiv[0].modelId;
-                setAktivesModellId(mid);
+                setAktivesModellId(aktiv[0].id || aktiv[0].modelId);
                 setGeladeneModelle(aktiv.map((m: any) => ({
                   id: m.id || m.modelId,
                   name: m.name || m.fileName || m.id
@@ -99,21 +96,6 @@ export function useApi(): UseApiReturn {
           }
         };
         ladeModelle();
-
-        // onModelStateChanged → aktivesModellId wenn state==='loaded'
-        try {
-          (apiInst.viewer as any).onModelStateChanged?.addListener((event: any) => {
-            const data = event?.data;
-            if (data?.state === 'loaded' && (data?.id || data?.modelId)) {
-              const mid = data.id || data.modelId;
-              setAktivesModellId(mid);
-              setGeladeneModelle(prev => {
-                if (prev.some(m => m.id === mid)) return prev;
-                return [...prev, { id: mid, name: data.name || mid }];
-              });
-            }
-          });
-        } catch { /* ignore */ }
 
         // Selection Listener — modelId aus Klick extrahieren + robuste ID-Erkennung
         const cb = (event: TcSelectionEvent) => {

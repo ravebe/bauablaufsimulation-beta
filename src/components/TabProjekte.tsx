@@ -96,39 +96,6 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, g
 
 
 
-  // Nur Simulation-Modelle im 3D-Viewer sichtbar schalten
-  async function modelleAnzeigen(simId: string, simModelle: { id: string; name: string }[]) {
-    if (!api || simModelle.length === 0) {
-      setModellMsg({ simId, typ: "err", text: "Keine Modelle gespeichert" });
-      return;
-    }
-    setModellMsg({ simId, typ: "ok", text: "⟳ Sichtbarkeit wird gesetzt…" });
-    try {
-      const simIds = new Set(simModelle.map(m => m.id));
-      const alle = await api.viewer.getModels() as any[];
-
-      // Alle anderen Modelle ausblenden
-      for (const m of alle) {
-        const mid = m.id || m.modelId;
-        if (!mid || simIds.has(mid)) continue;
-        try {
-          await api.viewer.setObjectState([{ modelId: mid }], { visible: false });
-        } catch { /* ignore */ }
-      }
-
-      // Simulation-Modelle einblenden
-      for (const m of simModelle) {
-        try {
-          await api.viewer.setObjectState([{ modelId: m.id }], { visible: true });
-        } catch { /* ignore */ }
-      }
-
-      setModellMsg({ simId, typ: "ok", text: `✓ ${simModelle.length} Modelle sichtbar geschaltet` });
-    } catch (e) {
-      setModellMsg({ simId, typ: "err", text: `Fehler: ${e instanceof Error ? e.message : String(e)}` });
-    }
-  }
-
   function loeschen(simId: string) {
     setMenuOffen(null);
     if (!confirm("Simulation wirklich löschen?")) return;
@@ -266,14 +233,6 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, g
                         </div>
                       </div>
                     ))}
-                    <button
-                      className="tc-btn-primary"
-                      style={{ width: "100%", marginTop: 5 }}
-                      disabled={!api}
-                      onClick={e => { e.stopPropagation(); modelleAnzeigen(sim.id, sim.modelle); }}
-                    >
-                      👁 Nur diese Modelle anzeigen
-                    </button>
                   </div>
                 )}
 
