@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback } from "react";
 import type { SimProjekt, Task } from "../types";
-import { parseObjectIds } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 
 interface Props {
@@ -16,7 +15,6 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
   const [status, setStatus] = useState<string | null>(null);
   const stopRef = useRef(false);
 
-  // Alle Modell-IDs: aus Simulation + Viewer-Fallback
   const modellIds = [...new Set([
     ...(aktiveSim?.modelle.map(m => m.id) ?? []),
     ...(aktivesModellId ? [aktivesModellId] : [])
@@ -30,34 +28,19 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     return new Promise<void>(resolve => setTimeout(resolve, ms));
   }
 
-  // Sichtbarkeit setzen — versucht beide bekannte TC API Formate
-  async function setSichtbarkeit(mid: string, ids: number[], sichtbar: boolean) {
-    if (!api || ids.length === 0) return;
-    try {
-      // Format 1: setObjectsState(modelId, ids, state)
-      await api.viewer.setObjectsState(mid, ids, { visible: sichtbar, color: null });
-    } catch {
-      try {
-        // Format 2: setObjectsState({modelObjectIds, objectState})
-        await (api.viewer as any).setObjectsState({
-          modelObjectIds: [{ modelId: mid, objectRuntimeIds: ids }],
-          objectState: { visible: sichtbar }
-        });
-      } catch { /* ignore */ }
-    }
-  }
-
-  // Alle Objekte aller Modelle wieder einblenden
+  // Reset — alle Objekte wieder einblenden
   async function reset() {
     if (!api) return;
     setAktivIndex(-1);
     setStatus("⟳ Reset…");
-    for (const mid of modellIds) {
-      try {
-        const rohe = await api.viewer.getObjects(mid);
-        const ids = parseObjectIds(rohe);
-        await setSichtbarkeit(mid, ids, true);
-      } catch { /* ignore */ }
+    try {
+      await api.viewer.reset();
+    } catch {
+      for (const mid of modellIds) {
+        try {
+          await api.viewer.setObjectState([{ modelId: mid }], { visible: true, color: null });
+        } catch { /* ignore */ }
+      }
     }
     try { await api.viewer.setSelection([]); } catch { /* ignore */ }
     setStatus("↺ Alle Bauteile eingeblendet");
@@ -71,19 +54,13 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
 
     const tasks = aktiveSim.tasks.filter(t => t.objektGuids.length > 0);
 
-    // 1. Alle Objekte aller Modelle selektieren + ausblenden
+    // 1. Alle Objekte ausblenden: setObjectState ohne objectRuntimeIds = ALLE
     setStatus("⟳ Alle Objekte ausblenden…");
     for (const mid of modellIds) {
       try {
-        const rohe = await api.viewer.getObjects(mid);
-        const ids = parseObjectIds(rohe);
-        if (ids.length === 0) continue;
-        // Im Hintergrund alle selektieren → dann ausblenden
-        await api.viewer.setSelection(ids);
-        await setSichtbarkeit(mid, ids, false);
+        await api.viewer.setObjectState([{ modelId: mid }], { visible: false });
       } catch { /* ignore */ }
     }
-    // Selektion leeren nach dem Ausblenden
     try { await api.viewer.setSelection([]); } catch { /* ignore */ }
 
     if (stopRef.current) { setLaeuft(false); setStatus("■ Gestoppt"); return; }
@@ -97,11 +74,15 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
       setStatus(`▶ ${task.name} · ${ids.length} Bauteile`);
 
       if (ids.length > 0) {
-        // Bauteile einblenden (alle Modelle versuchen)
+        // setObjectState MIT objectRuntimeIds = nur diese Objekte einblenden
         for (const mid of modellIds) {
-          await setSichtbarkeit(mid, ids, true);
+          try {
+            await api.viewer.setObjectState(
+              [{ modelId: mid, objectRuntimeIds: ids }],
+              { visible: true }
+            );
+          } catch { /* ignore */ }
         }
-        // Bauteile markieren
         try { await api.viewer.setSelection(ids); } catch { /* ignore */ }
       }
 
@@ -128,7 +109,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
       <div className="tc-empty">
         <div className="tc-empty-icon">▶</div>
         <div className="tc-empty-title">Keine aktive Simulation</div>
-        <div className="tc-empty-sub">Bitte zuerst im Tab „Projekte" eine Simulation aktivieren</div>
+        <div className="tc-empty-sub">Tab „Projekte" → Simulation aktivieren</div>
       </div>
     );
   }
@@ -141,13 +122,11 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
   return (
     <div className="tc-setup-content">
 
-      {/* Einstellungen */}
       <div className="player-card">
         <div className="detail-block-title">Einstellungen</div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
           <span style={{ flex: 1, color: "var(--tc-text-2)" }}>Sekunden pro Task</span>
-          <input
-            type="number" min={1} max={30}
+          <input type="number" min={1} max={30}
             value={sekProTask}
             onChange={e => setSekProTask(Number(e.target.value))}
             disabled={laeuft}
@@ -159,7 +138,6 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
         </div>
       </div>
 
-      {/* Fortschritt */}
       {laeuft && (
         <div className="player-card">
           <div className="detail-block-title">Fortschritt</div>
@@ -173,7 +151,6 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
         </div>
       )}
 
-      {/* Task Liste */}
       <div className="detail-block-title" style={{ marginBottom: 4 }}>
         Tasks ({mitBauteilen.length} mit Bauteilen)
       </div>
@@ -187,8 +164,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
             const istAktiv = laeuft && mitBauteilen[aktivIndex]?.id === task.id;
             const hatBauteile = task.objektGuids.length > 0;
             return (
-              <div key={task.id}
-                className={`player-task-row ${istAktiv ? "aktiv" : ""} ${!hatBauteile ? "leer" : ""}`}>
+              <div key={task.id} className={`player-task-row ${istAktiv ? "aktiv" : ""} ${!hatBauteile ? "leer" : ""}`}>
                 <span style={{ width: 14, fontSize: 10 }}>{istAktiv ? "▶" : ""}</span>
                 <span className={`task-row-dot ${task.typ}`} />
                 <span className="player-task-name">{task.name}</span>
@@ -203,15 +179,11 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
         )}
       </div>
 
-      {/* Steuerung */}
       <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
         {!laeuft ? (
-          <button
-            className="tc-btn-green"
-            style={{ flex: 1 }}
+          <button className="tc-btn-green" style={{ flex: 1 }}
             disabled={!api || modellIds.length === 0 || mitBauteilen.length === 0}
-            onClick={starten}
-          >
+            onClick={starten}>
             ▶ Starten
           </button>
         ) : (
@@ -219,17 +191,15 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
             ■ Stoppen
           </button>
         )}
-        <button
-          className="tc-btn-secondary"
+        <button className="tc-btn-secondary"
           disabled={laeuft || !api}
           onClick={reset}
-          title="Alle Bauteile wieder einblenden"
-        >↺</button>
+          title="Alle Bauteile wieder einblenden">↺</button>
       </div>
 
       {modellIds.length === 0 && (
         <div className="alert err" style={{ marginTop: 8 }}>
-          ! Kein Modell — in Tab „Projekte" zuerst Objekt anklicken oder Modelle speichern
+          ! Kein Modell — Objekt im Viewer anklicken oder in Tab „Projekte" Modelle speichern
         </div>
       )}
 
@@ -240,21 +210,11 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
         </div>
       )}
 
-      {/* Legende */}
       <div className="player-legende">
         <div className="detail-block-title" style={{ marginBottom: 6 }}>Ablauf</div>
-        <div className="legende-row">
-          <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>1.</span>
-          <span>Alle Objekte werden <strong>ausgeblendet</strong></span>
-        </div>
-        <div className="legende-row">
-          <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>2.</span>
-          <span>Task für Task: Bauteile <strong>einblenden & markieren</strong></span>
-        </div>
-        <div className="legende-row">
-          <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>3.</span>
-          <span>Nach {sekProTask} Sek. → nächster Task</span>
-        </div>
+        <div className="legende-row"><span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>1.</span><span>Alle Objekte werden <strong>ausgeblendet</strong></span></div>
+        <div className="legende-row"><span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>2.</span><span>Task für Task: Bauteile <strong>einblenden & markieren</strong></span></div>
+        <div className="legende-row"><span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>3.</span><span>Nach {sekProTask} Sek. → nächster Task</span></div>
       </div>
     </div>
   );

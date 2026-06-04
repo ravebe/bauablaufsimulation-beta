@@ -9,7 +9,15 @@ export interface ApiInstance {
     getObjects: (modelId: string) => Promise<unknown>;
     getObjectProperties: (modelId: string, ids: number[]) => Promise<TcObjectWithProps[]>;
     setSelection: (ids: number[]) => Promise<void>;
-    setObjectsState: (modelId: string, ids: number[], state: { visible?: boolean; color?: { r: number; g: number; b: number; a: number } | null }) => Promise<void>;
+    // Korrekte TC API Methoden laut Dokumentation:
+    setObjectState: (
+      entities: { modelId: string; objectRuntimeIds?: number[] }[],
+      state: { visible?: boolean; color?: { r: number; g: number; b: number; a: number } | null }
+    ) => Promise<void>;
+    isolateEntities: (
+      entities: { modelId: string; objectRuntimeIds?: number[] }[]
+    ) => Promise<boolean>;
+    reset: () => Promise<void>;
     onSelectionChanged: {
       addListener: (cb: (event: TcSelectionEvent) => void) => void;
       removeListener: (cb: (event: TcSelectionEvent) => void) => void;
