@@ -94,8 +94,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, g
     setModellPicker({ ...modellPicker, ausgewaehlt: neu });
   }
 
-
-  // Sim-Modelle im TC 3D-Viewer laden via Name-Abgleich
+  // Sim-Modelle im TC 3D-Viewer laden (andere entladen)
   async function modelleImViewerLaden(simId: string, simModelle: { id: string; name: string }[]) {
     if (!api || simModelle.length === 0) {
       setModellMsg({ simId, typ: "err", text: "Keine Modelle gespeichert" });
@@ -103,43 +102,26 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, g
     }
     setModellMsg({ simId, typ: "ok", text: "⟳ Modelle werden geladen…" });
     try {
-      // Alle Projektmodelle mit korrekten IDs holen
+      const simIds = new Set(simModelle.map(m => m.id));
+
+      // Aktuell geladene Modelle holen (state === 'loaded')
       const alle = await api.viewer.getModels() as any[];
-      const simNamen = new Set(simModelle.map(m => m.name));
-
-      // Korrekte IDs via Name-Abgleich finden
-      const zuLaden = alle.filter((m: any) => {
-        const name = m.name || m.fileName || "";
-        const id = m.id || m.modelId || "";
-        return simNamen.has(name) || simModelle.some(sm => sm.id === id);
-      });
-
-      if (zuLaden.length === 0) {
-        setModellMsg({ simId, typ: "err", text: "Keine passenden Modelle gefunden — Namen prüfen" });
-        return;
-      }
-
-      // Aktuell geladene Modelle holen
       const geladen = alle.filter((m: any) => m.state === 'loaded');
-      const zuLadenIds = new Set(zuLaden.map((m: any) => m.id || m.modelId));
 
       // Nicht-Sim-Modelle entladen
       for (const m of geladen) {
         const mid = m.id || m.modelId;
-        if (mid && !zuLadenIds.has(mid)) {
+        if (mid && !simIds.has(mid)) {
           try { await api.viewer.toggleModelVersion(mid, false); } catch { /* ignore */ }
         }
       }
 
-      // Sim-Modelle laden mit korrekten IDs
-      for (const m of zuLaden) {
-        const mid = m.id || m.modelId;
-        if (mid) {
-          try { await api.viewer.toggleModelVersion(mid, true, false); } catch { /* ignore */ }
-        }
+      // Sim-Modelle laden
+      for (const m of simModelle) {
+        try { await api.viewer.toggleModelVersion(m.id, true, false); } catch { /* ignore */ }
       }
 
-      setModellMsg({ simId, typ: "ok", text: `✓ ${zuLaden.length} Modelle geladen` });
+      setModellMsg({ simId, typ: "ok", text: `✓ ${simModelle.length} Modelle geladen` });
     } catch (e) {
       setModellMsg({ simId, typ: "err", text: `Fehler: ${e instanceof Error ? e.message : String(e)}` });
     }
