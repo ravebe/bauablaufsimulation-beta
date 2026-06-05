@@ -220,7 +220,23 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, g
               <div className="sim-card-body">
                 {!istAktiv && (
                   <button className="tc-btn-primary" style={{ width: "100%", marginBottom: 8 }}
-                    onClick={() => setAktivId(sim.id)}>
+                    onClick={async () => {
+                      setAktivId(sim.id);
+                      if (api && sim.modelle.length > 0) {
+                        const valid = sim.modelle.filter(m =>
+                          m.id && !m.id.startsWith('model-') && m.id !== 'undefined'
+                        );
+                        setModellMsg({ simId: sim.id, typ: "ok", text: `⟳ ${valid.length} Modelle werden geladen…` });
+                        let loaded = 0;
+                        for (const m of valid) {
+                          try {
+                            await (api.viewer as any).toggleModelVersion(m.id, true, false);
+                            loaded++;
+                          } catch { /* ignore */ }
+                        }
+                        setModellMsg({ simId: sim.id, typ: "ok", text: `✓ ${loaded} Modelle geladen` });
+                      }
+                    }}>
                     ✓ Als aktive Simulation setzen
                   </button>
                 )}
