@@ -58,11 +58,10 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, g
     }
     try {
       const alle = await api.viewer.getModels() as any[];
-const alleFormatiert = alle.map((m: any, i: number) => ({
-  id: m.modelId || m.id || m.fileId || m.modelVersionId || `model-${i}`,
-  name: m.name || m.fileName || m.label || m.modelId || `Modell ${i + 1}`
-}));
-      // geladeneModelle als Vorauswahl (beim Start gefundene Modelle)
+      const alleFormatiert = alle.map((m: any, i: number) => ({
+        id: m.modelId || m.id || m.fileId || m.modelVersionId || `model-${i}`,
+        name: m.name || m.fileName || m.label || m.modelId || `Modell ${i + 1}`
+      }));
       const vorauswahl = new Set<string>(geladeneModelle.map(m => m.id));
       setModellPicker({ simId, alle: alleFormatiert, ausgewaehlt: vorauswahl });
     } catch (e) {
@@ -93,8 +92,6 @@ const alleFormatiert = alle.map((m: any, i: number) => ({
     neu.has(id) ? neu.delete(id) : neu.add(id);
     setModellPicker({ ...modellPicker, ausgewaehlt: neu });
   }
-
-
 
   function loeschen(simId: string) {
     setMenuOffen(null);
@@ -171,8 +168,6 @@ const alleFormatiert = alle.map((m: any, i: number) => ({
               </div>
               <div className="sim-card-right">
                 {istAktiv && <span className="sim-aktiv-badge">Aktiv</span>}
-
-                {/* ⋮ Kebab Menu */}
                 <div style={{ position: "relative" }} onClick={e => e.stopPropagation()}>
                   <button
                     style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "var(--tc-text-3)", padding: "0 4px" }}
@@ -191,7 +186,6 @@ const alleFormatiert = alle.map((m: any, i: number) => ({
                     </div>
                   )}
                 </div>
-
                 <span className="sim-chevron">{offen ? "▲" : "▼"}</span>
               </div>
             </div>
