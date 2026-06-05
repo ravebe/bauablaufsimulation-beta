@@ -44,7 +44,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, g
         let loaded = 0;
         for (const m of valid) {
           try {
-            await (api.viewer as any).toggleModelVersion(m.id, true, false);
+            await (api.viewer as any).toggleModelVersion({id: m.id, versionId: m.id}, true, false);
             loaded++;
           } catch (e) {
             setModellMsg({ simId: id, typ: "err", text: `Fehler: ${e instanceof Error ? e.message : String(e)}` });
@@ -230,7 +230,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, g
                         let loaded = 0;
                         for (const m of valid) {
                           try {
-                            await (api.viewer as any).toggleModelVersion(m.id, true, false);
+                            await (api.viewer as any).toggleModelVersion({id: m.id, versionId: m.id}, true, false);
                             loaded++;
                           } catch { /* ignore */ }
                         }
