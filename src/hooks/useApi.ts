@@ -98,6 +98,16 @@ export function useApi(): UseApiReturn {
         };
         ladeModelle();
 
+        // onModelStateChanged → aktivesModellId aktualisieren wenn Modell geladen wird
+        try {
+          (apiInst.viewer as any).onModelStateChanged?.addListener((event: any) => {
+            const data = event?.data;
+            if (data?.state === 'loaded' && (data?.id || data?.modelId)) {
+              setAktivesModellId(data.id || data.modelId);
+            }
+          });
+        } catch { /* ignore */ }
+
         // Selection Listener — modelId aus Klick extrahieren + robuste ID-Erkennung
         const cb = (event: TcSelectionEvent) => {
           const ids: number[] = [];
