@@ -55,7 +55,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     if (aktivTaskId && api && modellId) {
       ladeAttr();
     }
-  }, [aktivTaskId, modellId]);
+  }, [aktivTaskId, modellId, aktivesModellId]);
 
   // Total Objekte laden (für Zähler)
   useEffect(() => {

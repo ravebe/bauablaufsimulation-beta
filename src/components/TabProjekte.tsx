@@ -27,11 +27,13 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, g
   } | null>(null);
 
   async function toggleAufgeklappt(id: string) {
-    const neuerStatus = aufgeklappt === id ? null : id;
+    const warOffen = aufgeklappt === id;
+    const neuerStatus = warOffen ? null : id;
     setAufgeklappt(neuerStatus);
     setMenuOffen(null);
 
-    if (neuerStatus && api) {
+    // Nur laden wenn Sim NEU geöffnet wird (nicht beim Schließen)
+    if (!warOffen && neuerStatus && api) {
       const sim = sims.find(s => s.id === id);
       if (sim && sim.modelle.length > 0) {
         const valid = sim.modelle.filter(m =>
