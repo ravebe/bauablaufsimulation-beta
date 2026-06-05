@@ -13,7 +13,7 @@ interface Props {
   geladeneModelle: { id: string; name: string }[];
 }
 
-export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId }: Props) {
+export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, geladeneModelle }: Props) {
   const [aufgeklappt, setAufgeklappt] = useState<string | null>(aktivId);
   const [neuName, setNeuName] = useState("");
   const [zeigeNeu, setZeigeNeu] = useState(false);
@@ -26,9 +26,20 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId }:
     ausgewaehlt: Set<string>;
   } | null>(null);
 
-  function toggleAufgeklappt(id: string) {
-    setAufgeklappt(prev => prev === id ? null : id);
+  async function toggleAufgeklappt(id: string) {
+    const neuerStatus = aufgeklappt === id ? null : id;
+    setAufgeklappt(neuerStatus);
     setMenuOffen(null);
+
+    // Sim wird geöffnet + hat Modelle → automatisch im Viewer laden
+    if (neuerStatus && api) {
+      const sim = sims.find(s => s.id === id);
+      if (sim && sim.modelle.length > 0) {
+        for (const m of sim.modelle) {
+          try { await api.viewer.toggleModelVersion(m.id, true, false); } catch { /* ignore */ }
+        }
+      }
+    }
   }
 
   function neuErstellen() {
@@ -62,8 +73,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId }:
         id: m.modelId || m.id || m.fileId || m.modelVersionId || `model-${i}`,
         name: m.name || m.fileName || m.label || m.modelId || `Modell ${i + 1}`
       }));
-  const simModelle = sims.find(s => s.id === simId)?.modelle ?? [];
-const vorauswahl = new Set<string>(simModelle.map(m => m.id));
+      const vorauswahl = new Set<string>(geladeneModelle.map(m => m.id));
       setModellPicker({ simId, alle: alleFormatiert, ausgewaehlt: vorauswahl });
     } catch (e) {
       setModellMsg({ simId, typ: "err", text: `Fehler: ${e instanceof Error ? e.message : String(e)}` });
