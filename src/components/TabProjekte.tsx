@@ -31,13 +31,25 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, g
     setAufgeklappt(neuerStatus);
     setMenuOffen(null);
 
-    // Sim wird geöffnet + hat Modelle → automatisch im Viewer laden
     if (neuerStatus && api) {
       const sim = sims.find(s => s.id === id);
       if (sim && sim.modelle.length > 0) {
-        for (const m of sim.modelle) {
-          try { await api.viewer.toggleModelVersion(m.id, true, false); } catch { /* ignore */ }
+        const valid = sim.modelle.filter(m =>
+          m.id && !m.id.startsWith('model-') && m.id !== 'undefined'
+        );
+        if (valid.length === 0) return;
+        setModellMsg({ simId: id, typ: "ok", text: `⟳ ${valid.length} Modelle werden geladen…` });
+        let loaded = 0;
+        for (const m of valid) {
+          try {
+            await (api.viewer as any).toggleModelVersion(m.id, true, false);
+            loaded++;
+          } catch (e) {
+            setModellMsg({ simId: id, typ: "err", text: `Fehler: ${e instanceof Error ? e.message : String(e)}` });
+            return;
+          }
         }
+        setModellMsg({ simId: id, typ: "ok", text: `✓ ${loaded} Modelle geladen` });
       }
     }
   }
