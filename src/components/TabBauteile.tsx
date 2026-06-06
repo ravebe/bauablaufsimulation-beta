@@ -147,7 +147,9 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     }
 
     try {
-      const treffer: number[] = [];
+      // Treffer nach Modell gruppieren → für setSelection(ModelObjectIds[])
+      const treffenByModel = new Map<string, number[]>();
+      const alleTreffer: number[] = [];
 
       for (const mid of modelIds) {
         try {
@@ -166,7 +168,10 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
                 if (attr.name !== selectedAttr.name) continue;
                 const val = String(attr.value ?? "").toLowerCase();
                 if (val === ifcWert.toLowerCase() || val.includes(ifcWert.toLowerCase())) {
-                  treffer.push(Number(obj.id));
+                  const id = Number(obj.id);
+                  if (!treffenByModel.has(mid)) treffenByModel.set(mid, []);
+                  treffenByModel.get(mid)!.push(id);
+                  alleTreffer.push(id);
                 }
               }
             }
@@ -174,10 +179,16 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
         } catch { /* Modell überspringen */ }
       }
 
-      if (treffer.length === 0) { setSuchStatus("Keine Bauteile gefunden"); return; }
-      await api.viewer.setSelection(treffer);
-      setGefundeneIds(treffer);
-      setSuchStatus(`✓ ${treffer.length} Bauteile gefunden & markiert`);
+      if (alleTreffer.length === 0) { setSuchStatus("Keine Bauteile gefunden"); return; }
+
+      // Korrekte ModelObjectIds[] Übergabe → nur die gefundenen markieren
+      const selection = [...treffenByModel.entries()].map(([modelId, objectRuntimeIds]) => ({
+        modelId,
+        objectRuntimeIds
+      }));
+      await (api.viewer as any).setSelection(selection);
+      setGefundeneIds(alleTreffer);
+      setSuchStatus(`✓ ${alleTreffer.length} Bauteile gefunden & markiert`);
     } catch (e) {
       setSuchStatus(`Fehler: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
