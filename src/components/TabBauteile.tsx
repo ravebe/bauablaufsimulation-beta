@@ -124,33 +124,50 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
       ).slice(0, 20)
     : [];
 
-  // IFC Suche
+  // IFC Suche — alle Sim-Modelle durchsuchen
   async function ifcSuchen() {
-    if (!api || !selectedAttr || !ifcWert || !aktivTask || !modellId) return;
+    if (!api || !selectedAttr || !ifcWert || !aktivTask) return;
     setSuchStatus(null);
     setGefundeneIds([]);
     setLaedt(true);
 
+    const modelIds = [...new Set([
+      ...(aktiveSim?.modelle.map(m => m.id).filter(Boolean) ?? []),
+      ...(aktivesModellId ? [aktivesModellId] : [])
+    ])].filter(Boolean) as string[];
+
+    if (modelIds.length === 0) {
+      setSuchStatus("Kein Modell gefunden");
+      setLaedt(false);
+      return;
+    }
+
     try {
-      const rohe = await api.viewer.getObjects(modellId);
-      const allIds = parseObjectIds(rohe);
-      const props = await batchGetProperties(api, modellId, allIds);
       const treffer: number[] = [];
 
-      for (const obj of props) {
-        for (const gruppe of (obj?.properties ?? [])) {
-          const pset = gruppe?.name || (gruppe as any)?.displayName || "";
-          const psetMatch = pset === selectedAttr.pset ||
-            pset.toLowerCase().includes(selectedAttr.pset.toLowerCase());
-          if (!psetMatch) continue;
-          for (const attr of (gruppe?.properties ?? [])) {
-            if (attr.name !== selectedAttr.name) continue;
-            const val = String(attr.value ?? "").toLowerCase();
-            if (val === ifcWert.toLowerCase() || val.includes(ifcWert.toLowerCase())) {
-              treffer.push(Number(obj.id));
+      for (const mid of modelIds) {
+        try {
+          const rohe = await api.viewer.getObjects(mid);
+          const allIds = parseObjectIds(rohe);
+          if (allIds.length === 0) continue;
+          const props = await batchGetProperties(api, mid, allIds);
+
+          for (const obj of props) {
+            for (const gruppe of (obj?.properties ?? [])) {
+              const pset = gruppe?.name || (gruppe as any)?.displayName || "";
+              const psetMatch = pset === selectedAttr.pset ||
+                pset.toLowerCase().includes(selectedAttr.pset.toLowerCase());
+              if (!psetMatch) continue;
+              for (const attr of (gruppe?.properties ?? [])) {
+                if (attr.name !== selectedAttr.name) continue;
+                const val = String(attr.value ?? "").toLowerCase();
+                if (val === ifcWert.toLowerCase() || val.includes(ifcWert.toLowerCase())) {
+                  treffer.push(Number(obj.id));
+                }
+              }
             }
           }
-        }
+        } catch { /* Modell überspringen */ }
       }
 
       if (treffer.length === 0) { setSuchStatus("Keine Bauteile gefunden"); return; }
