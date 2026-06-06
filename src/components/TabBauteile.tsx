@@ -43,19 +43,23 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Task wechsel → Attribute laden, Filter zurücksetzen
+  // Sim oder Modell wechselt → Attribute sofort neu laden
+  useEffect(() => {
+    setAllAttrs([]);
+    setAttrMap({});
+    setSelectedAttr(null);
+    if (api) ladeAttr();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aktiveSim?.id, aktivesModellId]);
+
+  // Task wechselt → Suche zurücksetzen
   useEffect(() => {
     setSuchStatus(null);
     setGefundeneIds([]);
     setIfcQuery("");
     setIfcWert("");
-    setAllAttrs([]);
-    setAttrMap({});
     setSelectedAttr(null);
-    if (aktivTaskId && api && modellId) {
-      ladeAttr();
-    }
-  }, [aktivTaskId, modellId, aktivesModellId]);
+  }, [aktivTaskId]);
 
   // Total Objekte laden (für Zähler)
   useEffect(() => {
