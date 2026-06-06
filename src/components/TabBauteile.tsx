@@ -68,40 +68,53 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     })();
   }, [modellId]);
 
-  // Attribute vorladen
+  // Attribute vorladen — alle Sim-Modelle, stride-Sampling für volle Abdeckung
   async function ladeAttr() {
-    if (!api || !modellId) return;
+    if (!api) return;
+
+    // Alle Modell-IDs aus Simulation + Fallback
+    const modelIds = [...new Set([
+      ...(aktiveSim?.modelle.map(m => m.id).filter(Boolean) ?? []),
+      ...(aktivesModellId ? [aktivesModellId] : [])
+    ])].filter(Boolean) as string[];
+
+    if (modelIds.length === 0) return;
     setAttrLaedt(true);
-    try {
-      const rohe = await api.viewer.getObjects(modellId);
-      const ids = parseObjectIds(rohe).slice(0, 60);
-      if (ids.length === 0) { setAttrLaedt(false); return; }
 
-      const props = await batchGetProperties(api, modellId, ids);
-      const map: Record<string, Set<string>> = {};
-      const attrsMap = new Map<string, AttrItem>();
+    const map: Record<string, Set<string>> = {};
+    const attrsMap = new Map<string, AttrItem>();
 
-      for (const obj of props) {
-        for (const g of (obj?.properties ?? [])) {
-          const pset = g?.name || (g as any)?.displayName || "Eigenschaften";
-          for (const p of (g?.properties ?? [])) {
-            if (!p?.name) continue;
-            const key = `${pset}||${p.name}`;
-            if (!attrsMap.has(key)) attrsMap.set(key, { pset, name: p.name, key });
-            if (p.value != null) {
-              if (!map[key]) map[key] = new Set();
-              map[key].add(String(p.value));
+    for (const mid of modelIds) {
+      try {
+        const rohe = await api.viewer.getObjects(mid);
+        const allIds = parseObjectIds(rohe);
+        if (allIds.length === 0) continue;
+
+        // Alle Objekte laden (kein Limit)
+        const sample = allIds;
+
+        const props = await batchGetProperties(api, mid, sample);
+
+        for (const obj of props) {
+          for (const g of (obj?.properties ?? [])) {
+            const pset = g?.name || (g as any)?.displayName || "Eigenschaften";
+            for (const p of (g?.properties ?? [])) {
+              if (!p?.name) continue;
+              const key = `${pset}||${p.name}`;
+              if (!attrsMap.has(key)) attrsMap.set(key, { pset, name: p.name, key });
+              if (p.value != null) {
+                if (!map[key]) map[key] = new Set();
+                map[key].add(String(p.value));
+              }
             }
           }
         }
-      }
-      setAttrMap(map);
-      setAllAttrs([...attrsMap.values()]);
-    } catch (e) {
-      console.error("ladeAttr:", e);
-    } finally {
-      setAttrLaedt(false);
+      } catch { /* Modell überspringen */ }
     }
+
+    setAttrMap(map);
+    setAllAttrs([...attrsMap.values()]);
+    setAttrLaedt(false);
   }
 
   // Autocomplete filtern (in Memory)
