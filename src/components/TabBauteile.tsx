@@ -128,7 +128,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
       ).slice(0, 20)
     : [];
 
-  // IFC Suche — alle Sim-Modelle durchsuchen
+  // IFC Suche — alle Sim-Modelle, Runtime-IDs aus Input tracken (nicht obj.id!)
   async function ifcSuchen() {
     if (!api || !selectedAttr || !ifcWert || !aktivTask) return;
     setSuchStatus(null);
@@ -140,48 +140,51 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
       ...(aktivesModellId ? [aktivesModellId] : [])
     ])].filter(Boolean) as string[];
 
-    if (modelIds.length === 0) {
-      setSuchStatus("Kein Modell gefunden");
-      setLaedt(false);
-      return;
-    }
+    if (modelIds.length === 0) { setSuchStatus("Kein Modell gefunden"); setLaedt(false); return; }
 
     try {
-      // Treffer nach Modell gruppieren → für setSelection(ModelObjectIds[])
       const treffenByModel = new Map<string, number[]>();
       const alleTreffer: number[] = [];
+      const BATCH = 10;
 
       for (const mid of modelIds) {
         try {
           const rohe = await api.viewer.getObjects(mid);
           const allIds = parseObjectIds(rohe);
           if (allIds.length === 0) continue;
-          const props = await batchGetProperties(api, mid, allIds);
 
-          for (const obj of props) {
-            for (const gruppe of (obj?.properties ?? [])) {
-              const pset = gruppe?.name || (gruppe as any)?.displayName || "";
-              const psetMatch = pset === selectedAttr.pset ||
-                pset.toLowerCase().includes(selectedAttr.pset.toLowerCase());
-              if (!psetMatch) continue;
-              for (const attr of (gruppe?.properties ?? [])) {
-                if (attr.name !== selectedAttr.name) continue;
-                const val = String(attr.value ?? "").toLowerCase();
-                if (val === ifcWert.toLowerCase() || val.includes(ifcWert.toLowerCase())) {
-                  const id = Number(obj.id);
-                  if (!treffenByModel.has(mid)) treffenByModel.set(mid, []);
-                  treffenByModel.get(mid)!.push(id);
-                  alleTreffer.push(id);
+          // Batch-Suche: batchIds[j] → Input-Runtime-ID (NICHT obj.id verwenden!)
+          for (let i = 0; i < allIds.length; i += BATCH) {
+            const batchIds = allIds.slice(i, i + BATCH);
+            try {
+              const props = await api.viewer.getObjectProperties(mid, batchIds);
+              if (!Array.isArray(props)) continue;
+
+              props.forEach((obj, idx) => {
+                const runtimeId = batchIds[idx]; // Input-Runtime-ID verwenden!
+                for (const gruppe of (obj?.properties ?? [])) {
+                  const pset = gruppe?.name || (gruppe as any)?.displayName || "";
+                  // Exakter Pset-Vergleich (kein includes → verhindert falsch-positive)
+                  if (pset !== selectedAttr.pset) continue;
+                  for (const attr of (gruppe?.properties ?? [])) {
+                    if (attr.name !== selectedAttr.name) continue;
+                    const val = String(attr.value ?? "").toLowerCase();
+                    if (val === ifcWert.toLowerCase() || val.includes(ifcWert.toLowerCase())) {
+                      if (!treffenByModel.has(mid)) treffenByModel.set(mid, []);
+                      treffenByModel.get(mid)!.push(runtimeId);
+                      alleTreffer.push(runtimeId);
+                    }
+                  }
                 }
-              }
-            }
+              });
+            } catch { /* Batch überspringen */ }
           }
         } catch { /* Modell überspringen */ }
       }
 
       if (alleTreffer.length === 0) { setSuchStatus("Keine Bauteile gefunden"); return; }
 
-      // Korrekte ModelObjectIds[] Übergabe → nur die gefundenen markieren
+      // ModelObjectIds[] Format → nur die gefundenen Runtime-IDs markieren
       const selection = [...treffenByModel.entries()].map(([modelId, objectRuntimeIds]) => ({
         modelId,
         objectRuntimeIds
