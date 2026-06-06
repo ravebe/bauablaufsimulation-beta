@@ -44,7 +44,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, g
         let loaded = 0;
         for (const m of valid) {
           try {
-            await (api.viewer as any).toggleModelVersion({id: m.id, versionId: m.id}, true, false);
+            await (api.viewer as any).toggleModelVersion({ id: m.id, versionId: m.id }, true, false);
             loaded++;
           } catch (e) {
             setModellMsg({ simId: id, typ: "err", text: `Fehler: ${e instanceof Error ? e.message : String(e)}` });
@@ -226,11 +226,30 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, g
                         const valid = sim.modelle.filter(m =>
                           m.id && !m.id.startsWith('model-') && m.id !== 'undefined'
                         );
-                        setModellMsg({ simId: sim.id, typ: "ok", text: `⟳ ${valid.length} Modelle werden geladen…` });
+                        if (valid.length === 0) return;
+                        setModellMsg({ simId: sim.id, typ: "ok", text: "⟳ Modelle werden umgeschaltet…" });
+
+                        // Aktuell geladene Modelle holen
+                        const simIds = new Set(valid.map(m => m.id));
+                        try {
+                          const alle = await api.viewer.getModels() as any[];
+                          const geladen = alle.filter((m: any) => m.state === 'loaded');
+                          // Nicht-Sim-Modelle entladen
+                          for (const m of geladen) {
+                            const mid = m.id || m.modelId;
+                            if (mid && !simIds.has(mid)) {
+                              try {
+                                await (api.viewer as any).toggleModelVersion({ id: mid, versionId: mid }, false, false);
+                              } catch { /* ignore */ }
+                            }
+                          }
+                        } catch { /* ignore */ }
+
+                        // Sim-Modelle laden
                         let loaded = 0;
                         for (const m of valid) {
                           try {
-                            await (api.viewer as any).toggleModelVersion({id: m.id, versionId: m.id}, true, false);
+                            await (api.viewer as any).toggleModelVersion({ id: m.id, versionId: m.id }, true, false);
                             loaded++;
                           } catch { /* ignore */ }
                         }
