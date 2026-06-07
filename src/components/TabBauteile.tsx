@@ -27,6 +27,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   const [attrLaedt, setAttrLaedt] = useState(false);
   const [totalObjekte, setTotalObjekte] = useState<number | null>(null);
   const acRef = useRef<HTMLDivElement>(null);
+  const ladeAttrGen = useRef(0); // Cancellation-Token gegen Race Conditions
 
   const aktivTask = aktiveSim?.tasks.find(t => t.id === aktivTaskId) ?? null;
 
@@ -71,7 +72,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     })();
   }, [modellId]);
 
-  // Attribute vorladen — parallele Einzelabfragen (10 gleichzeitig), keine Batch-Kontamination
+  // Attribute vorladen — parallele Einzelabfragen + Cancellation-Token gegen Race Condition
   async function ladeAttr() {
     if (!api) return;
 
@@ -81,6 +82,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     ])].filter(Boolean) as string[];
 
     if (modelIds.length === 0) return;
+    const myGen = ++ladeAttrGen.current; // Diese Generation merken
     setAttrLaedt(true);
 
     const map: Record<string, Set<string>> = {};
@@ -133,6 +135,8 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
       } catch { /* Modell überspringen */ }
     }
 
+    // Nur schreiben wenn kein neuerer Aufruf gestartet wurde (Race Condition Fix)
+    if (myGen !== ladeAttrGen.current) return;
     setAttrMap(map);
     setAllAttrs([...attrsMap.values()]);
     setAttrLaedt(false);
