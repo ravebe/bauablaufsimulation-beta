@@ -162,6 +162,19 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
             }
           }
         }
+        // getLayers: alle Layer-Namen direkt laden (unabhängig von Objekt-Fehlern)
+        try {
+          const layers = await api!.viewer.getLayers(mid);
+          if (Array.isArray(layers)) {
+            const key = "Presentation Layers||Layer";
+            if (!attrsMap.has(key)) attrsMap.set(key, { pset: "Presentation Layers", name: "Layer", key });
+            if (!map[key]) map[key] = new Set();
+            for (const l of layers) {
+              if (l?.name) map[key].add(String(l.name));
+            }
+          }
+        } catch { /* getLayers nicht verfügbar */ }
+
       } catch { /* Modell überspringen */ }
     }
 
