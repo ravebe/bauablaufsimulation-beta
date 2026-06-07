@@ -167,7 +167,15 @@ export async function batchGetProperties(
     try {
       const res = await api.viewer.getObjectProperties(modelId, slice);
       if (Array.isArray(res)) results.push(...res);
-    } catch { /* ignore */ }
+    } catch {
+      // Batch fehlgeschlagen → einzeln nachladen (verhindert Datenverlust bei TypeError)
+      for (const id of slice) {
+        try {
+          const r = await api.viewer.getObjectProperties(modelId, [id]);
+          if (Array.isArray(r) && r.length > 0) results.push(...r);
+        } catch { /* einzelnes Objekt überspringen */ }
+      }
+    }
   }
   return results;
 }
