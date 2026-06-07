@@ -107,9 +107,39 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
       }
     };
     const verarbeiteObj = (obj: any) => {
+      // Formale PSets aus properties-Array
       for (const g of (obj?.properties ?? (obj as any)?.groups ?? [])) {
         const pset = g?.name || (g as any)?.displayName || "Eigenschaften";
         verarbeiteGruppe(g, pset);
+      }
+      // TC-berechnete Felder: product → Reference Object & Product PSets
+      if (obj?.product) {
+        const p = obj.product;
+        if (p.objectType) {
+          const key = "Reference Object||Common Type";
+          if (!attrsMap.has(key)) attrsMap.set(key, { pset: "Reference Object", name: "Common Type", key });
+          if (!map[key]) map[key] = new Set();
+          map[key].add(String(p.objectType));
+        }
+        if (p.name) {
+          const key = "Product||Product Name";
+          if (!attrsMap.has(key)) attrsMap.set(key, { pset: "Product", name: "Product Name", key });
+          if (!map[key]) map[key] = new Set();
+          map[key].add(String(p.name));
+        }
+        if (p.description) {
+          const key = "Product||Product Description";
+          if (!attrsMap.has(key)) attrsMap.set(key, { pset: "Product", name: "Product Description", key });
+          if (!map[key]) map[key] = new Set();
+          map[key].add(String(p.description));
+        }
+      }
+      // TC-berechnetes Feld: class → Presentation Layers > Layer
+      if (obj?.class) {
+        const key = "Presentation Layers||Layer";
+        if (!attrsMap.has(key)) attrsMap.set(key, { pset: "Presentation Layers", name: "Layer", key });
+        if (!map[key]) map[key] = new Set();
+        map[key].add(String(obj.class));
       }
     };
 
@@ -181,7 +211,14 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
               if (!Array.isArray(res) || res.length === 0) continue;
               const obj = res[0];
 
-              // Rekursive Suche: flach und verschachtelt (z.B. Presentation Layers)
+              // Hilfsfunktion: prüft ob Wert passt
+              const wertPasst = (val: any): boolean => {
+                const s = String(val ?? "").toLowerCase();
+                return s === ifcWert.toLowerCase() || s.includes(ifcWert.toLowerCase());
+              };
+              let gefunden = false;
+
+              // 1. Formale PSets (rekursiv)
               const sucheInGruppe = (g: any, psetName: string): boolean => {
                 for (const p of (g?.properties ?? (g as any)?.items ?? [])) {
                   if (!p?.name) continue;
@@ -189,20 +226,33 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
                   if (Array.isArray(subProps) && subProps.length > 0) {
                     if (sucheInGruppe(p, p.name)) return true;
                   } else if (psetName === selectedAttr.pset && p.name === selectedAttr.name) {
-                    const val = String(p.value ?? "").toLowerCase();
-                    if (val === ifcWert.toLowerCase() || val.includes(ifcWert.toLowerCase())) return true;
+                    if (wertPasst(p.value)) return true;
                   }
                 }
                 return false;
               };
               for (const gruppe of (obj?.properties ?? (obj as any)?.groups ?? [])) {
                 const pset = gruppe?.name || (gruppe as any)?.displayName || "";
-                if (sucheInGruppe(gruppe, pset)) {
-                  if (!treffenByModel.has(mid)) treffenByModel.set(mid, []);
-                  treffenByModel.get(mid)!.push(rId);
-                  alleTreffer.push(rId);
-                  break;
-                }
+                if (sucheInGruppe(gruppe, pset)) { gefunden = true; break; }
+              }
+
+              // 2. TC product-Felder: Reference Object > Common Type / Product > Product Name etc.
+              if (!gefunden && obj?.product) {
+                const p = obj.product;
+                if (selectedAttr.pset === "Reference Object" && selectedAttr.name === "Common Type" && wertPasst(p.objectType)) gefunden = true;
+                if (selectedAttr.pset === "Product" && selectedAttr.name === "Product Name" && wertPasst(p.name)) gefunden = true;
+                if (selectedAttr.pset === "Product" && selectedAttr.name === "Product Description" && wertPasst(p.description)) gefunden = true;
+              }
+
+              // 3. TC class-Feld: Presentation Layers > Layer
+              if (!gefunden && selectedAttr.pset === "Presentation Layers" && selectedAttr.name === "Layer") {
+                if (wertPasst(obj?.class)) gefunden = true;
+              }
+
+              if (gefunden) {
+                if (!treffenByModel.has(mid)) treffenByModel.set(mid, []);
+                treffenByModel.get(mid)!.push(rId);
+                alleTreffer.push(rId);
               }
             } catch { /* einzelnes Objekt überspringen */ }
           }

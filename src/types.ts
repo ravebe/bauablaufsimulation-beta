@@ -41,7 +41,13 @@ export interface TcPropertySet {
 
 export interface TcObjectWithProps {
   id: number;
-  properties: TcPropertySet[];
+  class?: string;                          // → Presentation Layers > Layer
+  product?: {                              // → Reference Object / Product PSets
+    name?: string;                         // → Product Name
+    description?: string;                  // → Product Description
+    objectType?: string;                   // → Common Type (z.B. REINFORCINGBAR)
+  };
+  properties?: TcPropertySet[];
 }
 
 export interface TcSelectionEvent {
