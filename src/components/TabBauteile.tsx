@@ -86,18 +86,28 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     const map: Record<string, Set<string>> = {};
     const attrsMap = new Map<string, AttrItem>();
 
-    const verarbeiteObj = (obj: any) => {
-      for (const g of (obj?.properties ?? [])) {
-        const pset = g?.name || (g as any)?.displayName || "Eigenschaften";
-        for (const p of (g?.properties ?? [])) {
-          if (!p?.name) continue;
-          const key = `${pset}||${p.name}`;
-          if (!attrsMap.has(key)) attrsMap.set(key, { pset, name: p.name, key });
+    // Rekursives Parsing: PSet > Property oder PSet > SubGroup > Property
+    const verarbeiteGruppe = (g: any, psetName: string) => {
+      for (const p of (g?.properties ?? (g as any)?.items ?? [])) {
+        if (!p?.name) continue;
+        const subProps = (p as any).properties ?? (p as any).items ?? (p as any).groups;
+        if (Array.isArray(subProps) && subProps.length > 0) {
+          // Verschachtelte Gruppe (z.B. Presentation Layers als Sub-Gruppe)
+          verarbeiteGruppe(p, p.name);
+        } else {
+          const key = `${psetName}||${p.name}`;
+          if (!attrsMap.has(key)) attrsMap.set(key, { pset: psetName, name: p.name, key });
           if (p.value != null) {
             if (!map[key]) map[key] = new Set();
             map[key].add(String(p.value));
           }
         }
+      }
+    };
+    const verarbeiteObj = (obj: any) => {
+      for (const g of (obj?.properties ?? (obj as any)?.groups ?? [])) {
+        const pset = g?.name || (g as any)?.displayName || "Eigenschaften";
+        verarbeiteGruppe(g, pset);
       }
     };
 
@@ -167,17 +177,27 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
               if (!Array.isArray(res) || res.length === 0) continue;
               const obj = res[0];
 
-              for (const gruppe of (obj?.properties ?? [])) {
-                const pset = gruppe?.name || (gruppe as any)?.displayName || "";
-                if (pset !== selectedAttr.pset) continue;
-                for (const attr of (gruppe?.properties ?? [])) {
-                  if (attr.name !== selectedAttr.name) continue;
-                  const val = String(attr.value ?? "").toLowerCase();
-                  if (val === ifcWert.toLowerCase() || val.includes(ifcWert.toLowerCase())) {
-                    if (!treffenByModel.has(mid)) treffenByModel.set(mid, []);
-                    treffenByModel.get(mid)!.push(rId); // Input-Runtime-ID, nicht obj.id!
-                    alleTreffer.push(rId);
+              // Rekursive Suche: flach und verschachtelt (z.B. Presentation Layers)
+              const sucheInGruppe = (g: any, psetName: string): boolean => {
+                for (const p of (g?.properties ?? (g as any)?.items ?? [])) {
+                  if (!p?.name) continue;
+                  const subProps = (p as any).properties ?? (p as any).items ?? (p as any).groups;
+                  if (Array.isArray(subProps) && subProps.length > 0) {
+                    if (sucheInGruppe(p, p.name)) return true;
+                  } else if (psetName === selectedAttr.pset && p.name === selectedAttr.name) {
+                    const val = String(p.value ?? "").toLowerCase();
+                    if (val === ifcWert.toLowerCase() || val.includes(ifcWert.toLowerCase())) return true;
                   }
+                }
+                return false;
+              };
+              for (const gruppe of (obj?.properties ?? (obj as any)?.groups ?? [])) {
+                const pset = gruppe?.name || (gruppe as any)?.displayName || "";
+                if (sucheInGruppe(gruppe, pset)) {
+                  if (!treffenByModel.has(mid)) treffenByModel.set(mid, []);
+                  treffenByModel.get(mid)!.push(rId);
+                  alleTreffer.push(rId);
+                  break;
                 }
               }
             } catch { /* einzelnes Objekt überspringen */ }
