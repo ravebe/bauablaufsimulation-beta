@@ -11,6 +11,7 @@ export interface ApiInstance {
     getLayers: (modelId: string) => Promise<{ name: string; visible: boolean }[]>;
     getHierarchyParents: (modelId: string, entityId: number) => Promise<number[]>;
     convertToObjectIds: (modelId: string, ids: number[]) => Promise<string[]>;
+    convertToObjectRuntimeIds: (modelId: string, externalIds: string[]) => Promise<number[]>;
     setSelection: (ids: number[]) => Promise<void>;
     // Korrekte TC API Methoden laut Dokumentation:
     setObjectState: (

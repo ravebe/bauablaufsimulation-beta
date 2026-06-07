@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import type { SimProjekt, TaskTyp } from "../types";
-import { parseObjectIds, parseObjectsRaw } from "../types";
+import type { SimProjekt, SimModell, TaskTyp } from "../types";
+import { parseObjectIds, parseObjectsRaw, parseIfcLayerMap } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 
 interface Props {
@@ -62,16 +62,29 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     setSelectedAttr(null);
   }, [aktivTaskId]);
 
-  // Total Objekte laden (für Zähler)
+  // Total Objekte laden — wenn IFC-Map vorhanden: exakte Bauteile, sonst getObjects
   useEffect(() => {
-    if (!api || !modellId) return;
+    if (!api) return;
     (async () => {
       try {
+        // Wenn Simulation mit IFC-Maps: Summe aller Bauelement-GUIDs
+        if (aktiveSim?.modelle?.some(m => m.ifcGuidLayerMap && Object.keys(m.ifcGuidLayerMap).length > 0)) {
+          let total = 0;
+          for (const modell of (aktiveSim.modelle ?? [])) {
+            if (modell.ifcGuidLayerMap) {
+              total += Object.keys(modell.ifcGuidLayerMap).length;
+            }
+          }
+          setTotalObjekte(total);
+          return;
+        }
+        // Fallback: getObjects
+        if (!modellId) return;
         const rohe = await api.viewer.getObjects(modellId);
         setTotalObjekte(parseObjectIds(rohe).length);
       } catch { setTotalObjekte(null); }
     })();
-  }, [modellId]);
+  }, [modellId, aktiveSim]);
 
   // Attribute vorladen — parallele Einzelabfragen + Cancellation-Token gegen Race Condition
   async function ladeAttr() {
@@ -277,7 +290,26 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
 
           // Fast Path 2: Presentation Layers > Layer
           if (selectedAttr.pset === "Presentation Layers" && selectedAttr.name === "Layer") {
-            // 2a: getObjects Metadaten (falls TC layer-Info mitliefert)
+            // 2a: IFC-GUID-Map (beste Methode — kein getObjectProperties nötig)
+            const modellMitMap = aktiveSim?.modelle?.find(m => m.id === mid && m.ifcGuidLayerMap);
+            if (modellMitMap?.ifcGuidLayerMap) {
+              const layerGuids = Object.entries(modellMitMap.ifcGuidLayerMap)
+                .filter(([, l]) => wertPasst(l))
+                .map(([g]) => g);
+              if (layerGuids.length > 0) {
+                try {
+                  const rIds = await api!.viewer.convertToObjectRuntimeIds(mid, layerGuids);
+                  if (Array.isArray(rIds) && rIds.length > 0) {
+                    if (!treffenByModel.has(mid)) treffenByModel.set(mid, []);
+                    treffenByModel.get(mid)!.push(...rIds);
+                    alleTreffer.push(...rIds);
+                  }
+                } catch {}
+              }
+              continue; // Modell fertig (map vorhanden, ob Treffer oder nicht)
+            }
+
+            // 2b: getObjects Metadaten (falls TC layer-Info mitliefert)
             const metaHasLayer = allObjsMeta.some(o => o.layer != null);
             if (metaHasLayer) {
               for (const objMeta of allObjsMeta) {
@@ -290,7 +322,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
               continue;
             }
 
-            // 2b: Alle IDs auf einmal → TC liefert partielle Ergebnisse statt zu werfen
+            // 2c: Alle IDs auf einmal — TC liefert oft partielle Ergebnisse statt zu werfen
             try {
               const allProps = await (api!.viewer as any).getObjectProperties(mid, allIds);
               if (Array.isArray(allProps) && allProps.length > 0) {
@@ -298,7 +330,6 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
                   const rId = typeof obj?.id === "number" ? obj.id : null;
                   if (rId == null) continue;
                   let layerGefunden = false;
-                  // Formale PSets
                   for (const g of (obj?.properties ?? [])) {
                     if ((g?.name || "") === "Presentation Layers") {
                       for (const p of (g?.properties ?? [])) {
@@ -307,7 +338,6 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
                     }
                     if (layerGefunden) break;
                   }
-                  // class-Feld als Fallback
                   if (!layerGefunden && wertPasst(obj?.class)) layerGefunden = true;
                   if (layerGefunden) {
                     if (!treffenByModel.has(mid)) treffenByModel.set(mid, []);
@@ -315,9 +345,9 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
                     alleTreffer.push(rId);
                   }
                 }
-                continue; // Modell fertig verarbeitet
+                continue;
               }
-            } catch { /* Fallback auf per-Objekt-Loop */ }
+            } catch {}
           }
 
           // Standard: getObjectProperties pro Objekt
@@ -535,6 +565,42 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
               ))}
             </div>
           </div>
+
+          {/* IFC-Dateien Upload (für Layer-Suche & korrekte Bauteilanzahl) */}
+          {aktiveSim && (
+            <div className="detail-block" style={{ paddingBottom: 6 }}>
+              <div className="detail-block-title" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                IFC-Dateien
+                {aktiveSim.modelle.every((m: SimModell) => m.ifcGuidLayerMap && Object.keys(m.ifcGuidLayerMap).length > 0)
+                  ? <span style={{ color: "#22c55e", fontSize: 9 }}>✓ {aktiveSim.modelle.reduce((s: number, m: SimModell) => s + Object.keys(m.ifcGuidLayerMap||{}).length, 0)} Bauteile geladen</span>
+                  : <span style={{ color: "var(--tc-text-3)", fontSize: 9 }}>für Layer-Suche hochladen</span>}
+              </div>
+              {aktiveSim.modelle.map(modell => (
+                <div key={modell.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                  <span style={{ fontSize: 9, color: "var(--tc-text-2)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                    title={modell.name}>{modell.name || modell.id.slice(0,8)}</span>
+                  {modell.ifcGuidLayerMap
+                    ? <span style={{ fontSize: 9, color: "#22c55e" }}>✓ {Object.keys(modell.ifcGuidLayerMap).length}</span>
+                    : <label style={{ fontSize: 9, cursor: "pointer", color: "var(--tc-blue)", whiteSpace: "nowrap" }}>
+                        📎 IFC laden
+                        <input type="file" accept=".ifc" style={{ display: "none" }}
+                          onChange={async e => {
+                            const file = e.target.files?.[0]; if (!file) return;
+                            const text = await file.text();
+                            const map = parseIfcLayerMap(text);
+                            if (!aktiveSim) return;
+                            updateSim({
+                              ...aktiveSim,
+                              modelle: aktiveSim.modelle.map((m: SimModell) =>
+                                m.id === modell.id ? { ...m, ifcGuidLayerMap: map } : m
+                              )
+                            });
+                          }} />
+                      </label>}
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* IFC Filter */}
           <div className="detail-block">

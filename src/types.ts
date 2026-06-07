@@ -12,6 +12,7 @@ export interface Task {
 export interface SimModell {
   id: string;   // modelId aus TC
   name: string; // Dateiname z.B. "23.ifc"
+  ifcGuidLayerMap?: Record<string, string>; // GUID → Layer-Name (aus IFC-Parsing)
 }
 
 export interface SimProjekt {
@@ -105,11 +106,40 @@ export function parseObjectsRaw(rohe: unknown): TcObjectMeta[] {
   return objs;
 }
 
-// Datum validieren: YYYY-MM-DD
-export function isValidDatum(s: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}$/.test(s);
+// Hilfsfunktion: IFC-Datei parsen → GUID→Layer-Mapping
+export function parseIfcLayerMap(ifcContent: string): Record<string, string> {
+  const guidToLayer: Record<string, string> = {};
+  // Entity-Lookup: id → Zeile
+  const entities: Record<string, string> = {};
+  for (const m of ifcContent.matchAll(/^#(\d+)=\s*(.+)$/gm)) {
+    entities[m[1]] = m[2];
+  }
+  // IFCPRESENTATIONLAYERASSIGNMENT → ShapeRep → ProductShape → Objekt → GUID
+  for (const m of ifcContent.matchAll(/IFCPRESENTATIONLAYERASSIGNMENT\('([^']+)'[^(]*\(([^)]+)\)/g)) {
+    const layerName = m[1].replace(/\\S\\\|/g, 'ü').replace(/\\S\\\{/g, 'ö').replace(/\\S\\]/g, 'ä');
+    const shapeIds = [...m[2].matchAll(/#(\d+)/g)].map(r => r[1]);
+    for (const shapeId of shapeIds) {
+      // ProductDefinitionShape die diesen ShapeRep enthält
+      for (const [prodId, prodLine] of Object.entries(entities)) {
+        if (!prodLine.startsWith('IFCPRODUCTDEFINITIONSHAPE')) continue;
+        if (!prodLine.includes(`#${shapeId}`)) continue;
+        // Bauelement das diesen ProductShape nutzt
+        for (const objLine of Object.values(entities)) {
+          if (!/^IFC(WALL|SLAB|FOOTING|COLUMN|BEAM|BUILDINGELEMENTPROXY|MEMBER|PLATE)/.test(objLine)) continue;
+          if (!objLine.includes(`#${prodId}`)) continue;
+          const guidMatch = objLine.match(/\('([^']{22})'/);
+          if (guidMatch) guidToLayer[guidMatch[1]] = layerName;
+        }
+      }
+    }
+  }
+  return guidToLayer;
 }
 
 // localStorage Keys
 export const SIMS_KEY = "4d-sims-v3";
 export const AKTIV_KEY = "4d-aktiv-v3";
+// Datum validieren: YYYY-MM-DD
+export function isValidDatum(s: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
