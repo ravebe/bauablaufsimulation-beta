@@ -275,8 +275,9 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
             continue;
           }
 
-          // Fast Path 2: Presentation Layers > Layer via getObjects-Metadaten
+          // Fast Path 2: Presentation Layers > Layer
           if (selectedAttr.pset === "Presentation Layers" && selectedAttr.name === "Layer") {
+            // 2a: getObjects Metadaten (falls TC layer-Info mitliefert)
             const metaHasLayer = allObjsMeta.some(o => o.layer != null);
             if (metaHasLayer) {
               for (const objMeta of allObjsMeta) {
@@ -288,7 +289,35 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
               }
               continue;
             }
-            // Kein layer in Metadaten → Fallback auf getObjectProperties unten
+
+            // 2b: Alle IDs auf einmal → TC liefert partielle Ergebnisse statt zu werfen
+            try {
+              const allProps = await (api!.viewer as any).getObjectProperties(mid, allIds);
+              if (Array.isArray(allProps) && allProps.length > 0) {
+                for (const obj of allProps) {
+                  const rId = typeof obj?.id === "number" ? obj.id : null;
+                  if (rId == null) continue;
+                  let layerGefunden = false;
+                  // Formale PSets
+                  for (const g of (obj?.properties ?? [])) {
+                    if ((g?.name || "") === "Presentation Layers") {
+                      for (const p of (g?.properties ?? [])) {
+                        if (p?.name === "Layer" && wertPasst(p?.value)) { layerGefunden = true; break; }
+                      }
+                    }
+                    if (layerGefunden) break;
+                  }
+                  // class-Feld als Fallback
+                  if (!layerGefunden && wertPasst(obj?.class)) layerGefunden = true;
+                  if (layerGefunden) {
+                    if (!treffenByModel.has(mid)) treffenByModel.set(mid, []);
+                    treffenByModel.get(mid)!.push(rId);
+                    alleTreffer.push(rId);
+                  }
+                }
+                continue; // Modell fertig verarbeitet
+              }
+            } catch { /* Fallback auf per-Objekt-Loop */ }
           }
 
           // Standard: getObjectProperties pro Objekt
