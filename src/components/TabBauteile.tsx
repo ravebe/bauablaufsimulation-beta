@@ -21,6 +21,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   const [ifcQuery, setIfcQuery] = useState("");
   const [ifcWert, setIfcWert] = useState("");
   const [acOffen, setAcOffen] = useState(false);
+  const [wertDropdownOffen, setWertDropdownOffen] = useState(false);
   const [suchStatus, setSuchStatus] = useState<string | null>(null);
   const [gefundeneIds, setGefundeneIds] = useState<number[]>([]);
   const [laedt, setLaedt] = useState(false);
@@ -484,12 +485,14 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
                     className="ac-input"
                     placeholder="Wert (z.B. Beton NPK C)…"
                     value={ifcWert}
-                    onChange={e => { setIfcWert(e.target.value); setGefundeneIds([]); setSuchStatus(null); }}
+                    onChange={e => { setIfcWert(e.target.value); setGefundeneIds([]); setSuchStatus(null); setWertDropdownOffen(true); }}
+                    onFocus={() => setWertDropdownOffen(true)}
+                    onBlur={() => setTimeout(() => setWertDropdownOffen(false), 150)}
                   />
-                  {selectedAttr && vorschlaege.length > 0 && ifcWert.length === 0 && (
+                  {wertDropdownOffen && vorschlaege.length > 0 && (
                     <div className="ac-dropdown">
                       {vorschlaege.map((v, i) => (
-                        <div key={i} className="ac-item" onMouseDown={() => setIfcWert(v)}>
+                        <div key={i} className="ac-item" onMouseDown={() => { setIfcWert(v); setWertDropdownOffen(false); }}>
                           <div style={{ color: "var(--tc-text)" }}>{v}</div>
                         </div>
                       ))}
