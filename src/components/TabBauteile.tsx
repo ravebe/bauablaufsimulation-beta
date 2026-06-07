@@ -122,10 +122,11 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   }
 
   // Autocomplete filtern (in Memory)
-  const acItems = ifcQuery.length >= 2
+  const acItems = ifcQuery.length >= 1
     ? allAttrs.filter(a =>
-        `${a.name} ${a.pset}`.toLowerCase().includes(ifcQuery.toLowerCase())
-      ).slice(0, 3000)
+        a.name.toLowerCase().startsWith(ifcQuery.toLowerCase()) ||
+        a.pset.toLowerCase().startsWith(ifcQuery.toLowerCase())
+      ).slice(0, 40)
     : [];
 
   // IFC Suche — batch=1 garantiert korrekte Runtime-ID (obj.id ist IFC-GUID, nicht Runtime-ID!)
