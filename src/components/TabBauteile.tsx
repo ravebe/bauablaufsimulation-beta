@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import type { SimProjekt, TaskTyp } from "../types";
-import { parseObjectIds } from "../types";
+import { parseObjectIds, parseObjectsRaw } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 
 interface Props {
@@ -163,7 +163,29 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
             }
           }
         }
-        // getLayers: alle Layer-Namen direkt laden (unabhängig von Objekt-Fehlern)
+        // 1. Metadaten direkt aus getObjects Response (layer, name, class falls vorhanden)
+        for (const objMeta of parseObjectsRaw(rohe)) {
+          if (objMeta.layer) {
+            const key = "Presentation Layers||Layer";
+            if (!attrsMap.has(key)) attrsMap.set(key, { pset: "Presentation Layers", name: "Layer", key });
+            if (!map[key]) map[key] = new Set();
+            map[key].add(String(objMeta.layer));
+          }
+          if (objMeta.name) {
+            const key = "Product||Product Name";
+            if (!attrsMap.has(key)) attrsMap.set(key, { pset: "Product", name: "Product Name", key });
+            if (!map[key]) map[key] = new Set();
+            map[key].add(String(objMeta.name));
+          }
+          if (objMeta.class) {
+            const key = "Reference Object||Common Type";
+            if (!attrsMap.has(key)) attrsMap.set(key, { pset: "Reference Object", name: "Common Type", key });
+            if (!map[key]) map[key] = new Set();
+            map[key].add(String(objMeta.class));
+          }
+        }
+
+        // 2. getLayers: alle Layer-Namen (Fallback falls getObjects keine Layer hat)
         try {
           const layers = await api!.viewer.getLayers(mid);
           if (Array.isArray(layers)) {
@@ -174,7 +196,18 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
               if (l?.name) map[key].add(String(l.name));
             }
           }
-        } catch { /* getLayers nicht verfügbar */ }
+        } catch {}
+
+        // 3. GUID (IFC) via convertToObjectIds
+        try {
+          const guids = await api!.viewer.convertToObjectIds(mid, allIds);
+          if (Array.isArray(guids)) {
+            const key = "Reference Object||GUID (IFC)";
+            if (!attrsMap.has(key)) attrsMap.set(key, { pset: "Reference Object", name: "GUID (IFC)", key });
+            if (!map[key]) map[key] = new Set();
+            for (const g of guids) { if (g) map[key].add(String(g)); }
+          }
+        } catch {}
 
       } catch { /* Modell überspringen */ }
     }
@@ -208,6 +241,12 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
 
     if (modelIds.length === 0) { setSuchStatus("Kein Modell gefunden"); setLaedt(false); return; }
 
+    // Hilfsfunktion: prüft ob Wert passt (hier definiert, für alle Pfade nutzbar)
+    const wertPasst = (val: any): boolean => {
+      const s = String(val ?? "").toLowerCase();
+      return s === ifcWert.toLowerCase() || s.includes(ifcWert.toLowerCase());
+    };
+
     try {
       const treffenByModel = new Map<string, number[]>();
       const alleTreffer: number[] = [];
@@ -215,21 +254,50 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
       for (const mid of modelIds) {
         try {
           const rohe = await api.viewer.getObjects(mid);
-          const allIds = parseObjectIds(rohe);
+          const allObjsMeta = parseObjectsRaw(rohe);
+          const allIds = allObjsMeta.map(o => o.id).filter(n => !isNaN(n));
           if (allIds.length === 0) continue;
 
-          // batch=1: jede Runtime-ID einzeln → Input-ID ist immer die korrekte Runtime-ID
+          // Fast Path 1: GUID (IFC) via convertToObjectIds
+          if (selectedAttr.pset === "Reference Object" && selectedAttr.name === "GUID (IFC)") {
+            try {
+              const guids = await api!.viewer.convertToObjectIds(mid, allIds);
+              if (Array.isArray(guids)) {
+                for (let i = 0; i < guids.length; i++) {
+                  if (guids[i] && wertPasst(guids[i])) {
+                    if (!treffenByModel.has(mid)) treffenByModel.set(mid, []);
+                    treffenByModel.get(mid)!.push(allIds[i]);
+                    alleTreffer.push(allIds[i]);
+                  }
+                }
+              }
+            } catch {}
+            continue;
+          }
+
+          // Fast Path 2: Presentation Layers > Layer via getObjects-Metadaten
+          if (selectedAttr.pset === "Presentation Layers" && selectedAttr.name === "Layer") {
+            const metaHasLayer = allObjsMeta.some(o => o.layer != null);
+            if (metaHasLayer) {
+              for (const objMeta of allObjsMeta) {
+                if (objMeta.layer && wertPasst(String(objMeta.layer))) {
+                  if (!treffenByModel.has(mid)) treffenByModel.set(mid, []);
+                  treffenByModel.get(mid)!.push(objMeta.id);
+                  alleTreffer.push(objMeta.id);
+                }
+              }
+              continue;
+            }
+            // Kein layer in Metadaten → Fallback auf getObjectProperties unten
+          }
+
+          // Standard: getObjectProperties pro Objekt
           for (const rId of allIds) {
             try {
               const res = await api.viewer.getObjectProperties(mid, [rId]);
               if (!Array.isArray(res) || res.length === 0) continue;
               const obj = res[0];
 
-              // Hilfsfunktion: prüft ob Wert passt
-              const wertPasst = (val: any): boolean => {
-                const s = String(val ?? "").toLowerCase();
-                return s === ifcWert.toLowerCase() || s.includes(ifcWert.toLowerCase());
-              };
               let gefunden = false;
 
               // 1. Formale PSets (rekursiv)

@@ -77,6 +77,34 @@ export function parseObjectIds(rohe: unknown): number[] {
   return ids;
 }
 
+// Vollständige Objekt-Metadaten aus getObjects() Response — layer, name, class etc.
+export interface TcObjectMeta {
+  id: number;
+  layer?: string;
+  name?: string;
+  class?: string;
+  [key: string]: unknown;
+}
+
+export function parseObjectsRaw(rohe: unknown): TcObjectMeta[] {
+  if (!Array.isArray(rohe)) return [];
+  const objs: TcObjectMeta[] = [];
+  for (const item of rohe) {
+    if (Array.isArray((item as any)?.objects)) {
+      for (const o of (item as any).objects) {
+        const n = Number(o?.id ?? o);
+        if (!isNaN(n)) objs.push({ ...o, id: n });
+      }
+    } else if (typeof item === "number") {
+      objs.push({ id: item });
+    } else if ((item as any)?.id != null) {
+      const n = Number((item as any).id);
+      if (!isNaN(n)) objs.push({ ...item, id: n });
+    }
+  }
+  return objs;
+}
+
 // Datum validieren: YYYY-MM-DD
 export function isValidDatum(s: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(s);
