@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from "react";
 import type { SimProjekt, TaskTyp } from "../types";
 import { parseObjectIds } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
-import { batchGetProperties } from "../hooks/useApi";
 
 interface Props {
   api: ApiInstance | null;
@@ -72,11 +71,10 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     })();
   }, [modellId]);
 
-  // Attribute vorladen — alle Sim-Modelle, stride-Sampling für volle Abdeckung
+  // Attribute vorladen — parallele Einzelabfragen (10 gleichzeitig), keine Batch-Kontamination
   async function ladeAttr() {
     if (!api) return;
 
-    // Alle Modell-IDs aus Simulation + Fallback
     const modelIds = [...new Set([
       ...(aktiveSim?.modelle.map(m => m.id).filter(Boolean) ?? []),
       ...(aktivesModellId ? [aktivesModellId] : [])
@@ -88,28 +86,37 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     const map: Record<string, Set<string>> = {};
     const attrsMap = new Map<string, AttrItem>();
 
+    const verarbeiteObj = (obj: any) => {
+      for (const g of (obj?.properties ?? [])) {
+        const pset = g?.name || (g as any)?.displayName || "Eigenschaften";
+        for (const p of (g?.properties ?? [])) {
+          if (!p?.name) continue;
+          const key = `${pset}||${p.name}`;
+          if (!attrsMap.has(key)) attrsMap.set(key, { pset, name: p.name, key });
+          if (p.value != null) {
+            if (!map[key]) map[key] = new Set();
+            map[key].add(String(p.value));
+          }
+        }
+      }
+    };
+
     for (const mid of modelIds) {
       try {
         const rohe = await api.viewer.getObjects(mid);
         const allIds = parseObjectIds(rohe);
         if (allIds.length === 0) continue;
 
-        // Alle Objekte laden (kein Limit)
-        const sample = allIds;
-
-        const props = await batchGetProperties(api, mid, sample);
-
-        for (const obj of props) {
-          for (const g of (obj?.properties ?? [])) {
-            const pset = g?.name || (g as any)?.displayName || "Eigenschaften";
-            for (const p of (g?.properties ?? [])) {
-              if (!p?.name) continue;
-              const key = `${pset}||${p.name}`;
-              if (!attrsMap.has(key)) attrsMap.set(key, { pset, name: p.name, key });
-              if (p.value != null) {
-                if (!map[key]) map[key] = new Set();
-                map[key].add(String(p.value));
-              }
+        // 10 parallele Einzelabfragen → keine Batch-Kontamination, volle Abdeckung
+        const CONCURRENCY = 10;
+        for (let i = 0; i < allIds.length; i += CONCURRENCY) {
+          const chunk = allIds.slice(i, i + CONCURRENCY);
+          const resultate = await Promise.allSettled(
+            chunk.map(rId => api!.viewer.getObjectProperties(mid, [rId]))
+          );
+          for (const r of resultate) {
+            if (r.status === 'fulfilled' && Array.isArray(r.value)) {
+              for (const obj of r.value) verarbeiteObj(obj);
             }
           }
         }
