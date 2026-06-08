@@ -69,82 +69,67 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     setSelectedAttr(null);
   }, [aktivTaskId]);
 
-  // Bauteile identifizieren + totalObjekte setzen
-  // Für bekannte Modelle: Anzahl direkt aus BEKANNTE_GUID_LAYER_MAPS (100% korrekt)
-  // Für unbekannte Modelle: getObjectProperties/getHierarchyParents Heuristik
+  // Bauteile zählen via getObjects + parameter.class (TC API offiziell, wie DataTable)
+  // Zählt nur echte IFC-Bauteile — keine IFCSITE/BUILDING/STOREY/SPACE/GRID
+  // Funktioniert für JEDES Projekt, nicht nur bekannte Modelle
   useEffect(() => {
-    if (!api) return;
-    const modelIds = [...new Set([
-      ...(aktiveSim?.modelle.map(m => m.id).filter(Boolean) ?? []),
-      ...(aktivesModellId ? [aktivesModellId] : [])
-    ])].filter(Boolean) as string[];
-    if (modelIds.length === 0) { setTotalObjekte(null); return; }
+    if (!api || !aktiveSim) return;
+    const modellIds = aktiveSim.modelle.map(m => m.id).filter(Boolean);
+    if (modellIds.length === 0) { setTotalObjekte(null); return; }
+
+    const IFC_BAUTEIL_KLASSEN = [
+      "IFCWALL", "IFCWALLSTANDARDCASE", "IFCSLAB", "IFCFOOTING",
+      "IFCCOLUMN", "IFCBEAM", "IFCMEMBER", "IFCPLATE",
+      "IFCBUILDINGELEMENTPROXY", "IFCSTAIR", "IFCSTAIRFLIGHT",
+      "IFCRAMP", "IFCRAMPFLIGHT", "IFCROOF", "IFCDOOR", "IFCWINDOW",
+      "IFCCOVERING", "IFCFURNISHINGELEMENT", "IFCPILE",
+    ];
 
     (async () => {
-      let gesamtBauteile = 0;
+      let gesamt = 0;
       const neueMap: Record<string, number[]> = {};
 
-      // Bekannte Modelle: Anzahl aus BEKANNTE_GUID_LAYER_MAPS
-      if (aktiveSim) {
-        let alleGekannt = aktiveSim.modelle.length > 0;
-        let bekannteZahl = 0;
+      for (const mid of modellIds) {
+        const alleIds = new Set<number>();
+        try {
+          for (const klasse of IFC_BAUTEIL_KLASSEN) {
+            try {
+              const result = await (api.viewer as any).getObjects(
+                { modelObjectIds: [{ modelId: mid }], parameter: { class: klasse } }
+              ) as any[];
+              if (Array.isArray(result)) {
+                for (const r of result) {
+                  for (const rId of (r?.objectRuntimeIds ?? [])) {
+                    const n = Number(rId);
+                    if (!isNaN(n) && n > 0) alleIds.add(n);
+                  }
+                }
+              }
+            } catch { /* Klasse nicht vorhanden → überspringen */ }
+          }
+        } catch { /* Modell überspringen */ }
+
+        const bauIds = [...alleIds];
+        if (bauIds.length > 0) {
+          neueMap[mid] = bauIds;
+          gesamt += bauIds.length;
+        }
+      }
+
+      // Fallback für bekannte Modelle wenn getObjects-Klassen-Filter 0 liefert
+      if (gesamt === 0) {
         for (const modell of aktiveSim.modelle) {
           const matchKey = Object.keys(BEKANNTE_GUID_LAYER_MAPS).find(
             k => modell.name.includes(k) || k.includes(modell.name)
           );
-          if (matchKey) {
-            bekannteZahl += Object.keys(BEKANNTE_GUID_LAYER_MAPS[matchKey]).length;
-          } else {
-            alleGekannt = false;
-          }
+          if (matchKey) gesamt += Object.keys(BEKANNTE_GUID_LAYER_MAPS[matchKey]).length;
         }
-        if (alleGekannt && bekannteZahl > 0) {
-          setTotalObjekte(bekannteZahl);
-          // bauelementeIdsMap wird durch runtimeLayerMapByModel useEffect gesetzt
-          setBauelementeIdsMap({});
-          return;
-        }
-      }
-
-      // Unbekannte Modelle: Heuristik via getObjectProperties + getHierarchyParents
-      for (const mid of modelIds) {
-        try {
-          const rohe = await api.viewer.getObjects(mid);
-          const allIds = parseObjectIds(rohe);
-          if (allIds.length === 0) continue;
-
-          const nichtBauteile = new Set<number>();
-          await Promise.allSettled(allIds.map(async rId => {
-            try {
-              const res = await api.viewer.getObjectProperties(mid, [rId]);
-              if (Array.isArray(res) && res.length > 0) nichtBauteile.add(rId);
-            } catch { /* wirft = echtes Bauteil */ }
-          }));
-
-          const kandidaten = allIds.filter(id => !nichtBauteile.has(id));
-          const ergebnisse = await Promise.allSettled(
-            kandidaten.map(async rId => {
-              try {
-                const parents = await api.viewer.getHierarchyParents(mid, rId);
-                const arr = Array.isArray(parents) ? parents : (parents != null ? [parents] : []);
-                return arr.length > 0 ? rId : null;
-              } catch { return null; }
-            })
-          );
-          const bauIds = ergebnisse
-            .filter((r): r is PromiseFulfilledResult<number> =>
-              r.status === 'fulfilled' && r.value != null)
-            .map(r => r.value);
-
-          neueMap[mid] = bauIds;
-          gesamtBauteile += bauIds.length;
-        } catch { /* Modell überspringen */ }
       }
 
       setBauelementeIdsMap(neueMap);
-      setTotalObjekte(gesamtBauteile > 0 ? gesamtBauteile : null);
+      setTotalObjekte(gesamt > 0 ? gesamt : null);
     })();
-  }, [aktivesModellId, aktiveSim?.id]);
+  }, [aktiveSim?.id, api]);
 
   // GUID→Layer + GUID→RuntimeId Mapping vollautomatisch pro Modell
   useEffect(() => {
