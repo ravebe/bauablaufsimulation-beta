@@ -27,6 +27,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   const [laedt, setLaedt] = useState(false);
   const [attrLaedt, setAttrLaedt] = useState(false);
   const [totalObjekte, setTotalObjekte] = useState<number | null>(null);
+  const [bauelementeIdsMap, setBauelementeIdsMap] = useState<Record<string, number[]>>({});
   const acRef = useRef<HTMLDivElement>(null);
   const ladeAttrGen = useRef(0); // Cancellation-Token gegen Race Conditions
 
@@ -75,13 +76,15 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
 
     (async () => {
       let gesamtBauteile = 0;
+      const neueMap: Record<string, number[]> = {};
+
       for (const mid of modelIds) {
         try {
           const rohe = await api.viewer.getObjects(mid);
           const allIds = parseObjectIds(rohe);
           if (allIds.length === 0) continue;
 
-          // Schritt 1: Welche IDs liefern getObjectProperties ohne Fehler?
+          // Schritt 1: Welche IDs liefern getObjectProperties ohne Fehler? → Hierarchie/Grid
           const nichtBauteile = new Set<number>();
           await Promise.allSettled(allIds.map(async rId => {
             try {
@@ -90,19 +93,25 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
             } catch { /* wirft = Bauteil oder Sub-Geometrie */ }
           }));
 
-          // Schritt 2: Reste (werfen) → Sub-Geometrie via getHierarchyParents ausfiltern
+          // Schritt 2: Reste → Sub-Geometrie (keine Parents) ausfiltern
           const kandidaten = allIds.filter(id => !nichtBauteile.has(id));
-          const bauelemente = await Promise.allSettled(
+          const ergebnisse = await Promise.allSettled(
             kandidaten.map(async rId => {
               const parents = await api.viewer.getHierarchyParents(mid, rId);
               return Array.isArray(parents) && parents.length > 0 ? rId : null;
             })
           );
-          gesamtBauteile += bauelemente.filter(
-            r => r.status === 'fulfilled' && r.value != null
-          ).length;
+          const bauIds = ergebnisse
+            .filter((r): r is PromiseFulfilledResult<number> =>
+              r.status === 'fulfilled' && r.value != null)
+            .map(r => r.value);
+
+          neueMap[mid] = bauIds;
+          gesamtBauteile += bauIds.length;
         } catch { /* Modell überspringen */ }
       }
+
+      setBauelementeIdsMap(neueMap);
       setTotalObjekte(gesamtBauteile > 0 ? gesamtBauteile : null);
     })();
   }, [aktivesModellId, aktiveSim?.id]);
@@ -289,7 +298,11 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
         try {
           const rohe = await api.viewer.getObjects(mid);
           const allObjsMeta = parseObjectsRaw(rohe);
-          const allIds = allObjsMeta.map(o => o.id).filter(n => !isNaN(n));
+          // Nur echte Bauteile durchsuchen (IFCSITE/GRID etc. ausgeschlossen)
+          const bekannteIds = bauelementeIdsMap[mid];
+          const allIds = bekannteIds?.length > 0
+            ? bekannteIds
+            : allObjsMeta.map(o => o.id).filter(n => !isNaN(n));
           if (allIds.length === 0) continue;
 
           // Fast Path 1: GUID (IFC) via convertToObjectIds
@@ -480,7 +493,6 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   }
 
   // Statistiken
-  const totalZugewiesen = aktiveSim?.tasks.reduce((s, t) => s + t.objektGuids.length, 0) ?? 0;
   const alleGuids = new Set(aktiveSim?.tasks.flatMap(t => t.objektGuids) ?? []);
   const nichtZugewiesen = totalObjekte != null ? Math.max(0, totalObjekte - alleGuids.size) : null;
 
@@ -502,14 +514,14 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
         <div className="gantt-section-header">
           <span>Gantt · {aktiveSim.tasks.length} Tasks</span>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            {totalZugewiesen > 0 && totalObjekte != null && (
+            {totalObjekte != null && (
               <span style={{ color: "var(--tc-blue)", fontSize: 9 }}>
-                ⬡ {totalZugewiesen} / {totalObjekte}
+                ⬡ {alleGuids.size} / {totalObjekte}
               </span>
             )}
-            {nichtZugewiesen != null && nichtZugewiesen > 0 && (
+            {totalObjekte != null && nichtZugewiesen != null && nichtZugewiesen > 0 && (
               <span style={{ color: "var(--tc-orange)", fontSize: 9 }}>
-                ∅ {nichtZugewiesen} nicht zugewiesen
+                ∅ {nichtZugewiesen} offen
               </span>
             )}
           </div>
