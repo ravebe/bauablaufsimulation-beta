@@ -28,7 +28,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     return /^[A-Za-z0-9_$]{22}$/.test(s);
   }
 
-  // IFC-GUIDs oder Legacy Runtime-IDs → korrektes setSelection-Format pro Modell
+  // Markiert Objekte via getObjects (wie DataTable) — Runtime-IDs intern von TC aufgelöst
   async function guidZuSelection(guids: string[]): Promise<{ modelId: string; objectRuntimeIds: number[] }[]> {
     if (!api || guids.length === 0) return [];
     const echteGuids = guids.filter(istIfcGuid);
@@ -38,9 +38,16 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     if (echteGuids.length > 0) {
       for (const mid of modellIds) {
         try {
-          const rIds = await api.viewer.convertToObjectRuntimeIds(mid, echteGuids);
-          const valid = (Array.isArray(rIds) ? rIds : []).map(Number).filter(n => !isNaN(n) && n > 0);
-          if (valid.length > 0) selection.push({ modelId: mid, objectRuntimeIds: valid });
+          const result = await (api.viewer as any).getObjects({
+            modelObjectIds: [{ modelId: mid }],
+            parameter: { properties: { 'GlobalId': echteGuids.length === 1 ? echteGuids[0] : echteGuids } }
+          }) as any[];
+          if (Array.isArray(result)) {
+            for (const r of result) {
+              const rIds = (r?.objectRuntimeIds ?? []).map(Number).filter((n: number) => !isNaN(n) && n > 0);
+              if (rIds.length > 0) selection.push({ modelId: mid, objectRuntimeIds: rIds });
+            }
+          }
         } catch { /* Modell überspringen */ }
       }
     }
