@@ -95,18 +95,52 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     return [];
   }
 
-  // Bauteile zählen — ObjectSelector zuerst, dann string-Fallback minus Hierarchie
+  // Bauteile zählen — Klassen-Filter pro IFC-Typ (DataTable zählt IFCELEMENTASSEMBLY nicht)
   useEffect(() => {
     if (!api || !aktiveSim) return;
     if (aktiveSim.modelle.length === 0) { setTotalObjekte(null); return; }
+
+    const REAL_CLASSES = [
+      "IFCWALL", "IFCWALLSTANDARDCASE", "IFCSLAB", "IFCFOOTING",
+      "IFCCOLUMN", "IFCBEAM", "IFCMEMBER", "IFCPLATE",
+      "IFCBUILDINGELEMENTPROXY", "IFCSTAIR", "IFCSTAIRFLIGHT",
+      "IFCRAMP", "IFCRAMPFLIGHT", "IFCROOF", "IFCDOOR", "IFCWINDOW",
+      "IFCCOVERING", "IFCFURNISHINGELEMENT", "IFCPILE",
+      "IFCFASTENER", "IFCDISCRETEACCESSORY", "IFCREINFORCINGBAR",
+      "IFCREINFORCINGMESH", "IFCMECHANICALFASTENER",
+    ];
 
     (async () => {
       let gesamt = 0;
       for (const modell of aktiveSim.modelle) {
         if (!modell.id) continue;
-        const ids = await getModellObjekte(modell.id);
-        // Wenn string-Fallback genutzt wurde, zieht er Hierarchie-Objekte ab (~3 pro Modell)
-        gesamt += ids.length > 10 ? Math.max(0, ids.length - 3) : ids.length;
+        let modellGesamt = 0;
+        let klassenFilter = false;
+
+        // Versuch: Klassen-basierter Filter
+        for (const klasse of REAL_CLASSES) {
+          try {
+            const result = await (api.viewer as any).getObjects({
+              modelObjectIds: [{ modelId: modell.id }],
+              parameter: { class: klasse }
+            }) as any[];
+            for (const r of result ?? []) {
+              modellGesamt += (r?.objectRuntimeIds ?? []).length;
+              for (const o of r?.objects ?? []) {
+                if (o?.id != null) modellGesamt++;
+              }
+            }
+            klassenFilter = true;
+          } catch { /* Klasse nicht vorhanden */ }
+        }
+
+        // Fallback: getModellObjekte minus Hierarchie
+        if (!klassenFilter || modellGesamt === 0) {
+          const ids = await getModellObjekte(modell.id);
+          modellGesamt = Math.max(0, ids.length - 3);
+        }
+
+        gesamt += modellGesamt;
       }
       setTotalObjekte(gesamt > 0 ? gesamt : null);
     })();
@@ -412,21 +446,13 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     }
   }
 
-  // Gültiger Runtime-ID Pool eines Modells (= DataTable-Objekte)
-  async function getValidPool(mid: string): Promise<Set<number>> {
-    const ids = await getModellObjekte(mid);
-    return new Set(ids);
-  }
-
   // Objekte im Viewer markieren — Format "modelId:::rId" oder Legacy "rId"
-  // Validiert IDs gegen gültigen Pool → keine Assembly-Container, keine 411-Selektion
   async function markiereObjekte(objektGuids: string[]) {
     if (!api || objektGuids.length === 0) return;
     const modellIds = aktiveSim?.modelle.map(m => m.id).filter(Boolean) ?? [];
     if (aktivesModellId && !modellIds.includes(aktivesModellId)) modellIds.push(aktivesModellId);
     if (modellIds.length === 0) return;
 
-    // Gruppieren: "modelId:::rId" → Map<modelId, rId[]>
     const byModel = new Map<string, number[]>();
     const legacyIds: number[] = [];
 
@@ -450,15 +476,11 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
       byModel.get(modellIds[0])!.push(...legacyIds);
     }
 
-    // Pro Modell: gegen gültigen Pool validieren → nur echte Bauteile selektieren
-    const selection: { modelId: string; objectRuntimeIds: number[] }[] = [];
-    for (const [mid, rIds] of byModel.entries()) {
-      const pool = await getValidPool(mid);
-      const valid = pool.size > 0
-        ? [...new Set(rIds)].filter(id => pool.has(id))
-        : [...new Set(rIds)];
-      if (valid.length > 0) selection.push({ modelId: mid, objectRuntimeIds: valid });
-    }
+    // Direkt setSelection — keine Pool-Validierung (würde gültige IDs rausfiltern)
+    const selection = [...byModel.entries()].map(([modelId, rIds]) => ({
+      modelId,
+      objectRuntimeIds: [...new Set(rIds)],
+    }));
 
     if (selection.length > 0) {
       try { await (api.viewer as any).setSelection(selection); } catch { /* ignore */ }
