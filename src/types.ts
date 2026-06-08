@@ -166,6 +166,33 @@ export const BEKANNTE_GUID_LAYER_MAPS: Record<string, Record<string, string>> = 
     "0ldZPaxBX7meqZ72qJDoBn": "Stützmauerwand_Anzug",
   },
 };
+// Komprimierte IFC-GUID → unkomprimierte UUID pro Dateiname
+// Wird für convertToObjectRuntimeIds gebraucht (API erwartet unkomprimierte UUIDs)
+export const BEKANNTE_GUID_UUID_MAPS: Record<string, Record<string, string>> = {
+  "01_Fundation.ifc": {
+    "2RStUXPRzDTODhQYCAgNtz": "9b7377a1-65bf-4d75-836b-6a230aa97dfd",
+    "0PSm7dj6TFsRpMdhU9gAoQ": "197301e7-b467-4fd9-bcd6-9eb789a8ac9a",
+    "3Yy8jISHLEjAfoVc2X3vYI": "e2f08b52-7115-4eb4-aa72-7e60a10f9892",
+    "2dMFD2uuT8RgtbFiFxL14c": "a758f342-e387-486e-ade5-3ec3fb541126",
+    "26EP9y5WnBxe$6oD6qLJiT": "8639927c-160c-4bee-8fc6-c8d1b4553b1d",
+    "1dYP93zBD3qv43MwQaghQ7": "67899243-f4b3-43d3-9103-5ba6a4aab687",
+    "22OfFu1HjB$Au5hzUJCk7h": "826293f8-051b-4bfc-ae05-afd79332e1eb",
+    "0wy8wdemn7yOBss5WqhVyI": "3af08ea7-a30c-47f1-82f6-d85834adff12",
+    "3UiflBx_P3efXY5_Ms78Cn": "deb29bcb-efe6-43a2-9862-17e5b61c8331",
+    "1wds5CjtP1Ux3A$RAT8xAJ": "7a9f614c-b776-417b-b0ca-fdb29d23b293",
+  },
+  "00_Stützmauer.ifc": {
+    "0vrXFjjuHDvxoeqqQIoFsY": "39d613ed-b784-4de7-bca8-d34692c8fda2",
+    "3QXZD7dQf6kw6_cUIdzuxj": "da863347-9daa-46bb-a1be-99e4a7f78eed",
+    "1wp4DjU212zwtWruHR1WyL": "7acc436d-7820-42f7-ade0-d7845b060f15",
+    "2DeAUwEUjEEOr2Amnywcjv": "8da0a7ba-39eb-4e39-8d42-2b0c7cea6b79",
+    "18B79q_S15DfFY7suBu1ZR": "482c7274-f9c0-4536-93e2-1f6e0be018db",
+    "0uGi26OHP9VO8b_Rq2Hnoy": "3842c086-6116-497d-8225-f9bd02471cbc",
+    "1d7go44TP268ceR6y3vuYq": "671eac84-11d6-4218-89a8-6c6f03e788b4",
+    "0ldZPaxBX7meqZ72qJDoBn": "2f9e3664-ecb8-47c2-8d23-1c2d133722f1",
+  },
+};
+
 // Datum validieren: YYYY-MM-DD
 export function isValidDatum(s: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(s);
