@@ -23,7 +23,8 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   const [acOffen, setAcOffen] = useState(false);
   const [wertDropdownOffen, setWertDropdownOffen] = useState(false);
   const [suchStatus, setSuchStatus] = useState<string | null>(null);
-  const [gefundeneIds, setGefundeneIds] = useState<number[]>([]);
+  const [gefundeneIds, setGefundeneIds] = useState<number[]>([]); // alle Runtime-IDs (für Anzeige)
+  const [gefundeneByModel, setGefundeneByModel] = useState<Map<string, number[]>>(new Map()); // pro Modell für korrektes Hinzufügen
   const [laedt, setLaedt] = useState(false);
   const [attrLaedt, setAttrLaedt] = useState(false);
   const [totalObjekte, setTotalObjekte] = useState<number | null>(null);
@@ -60,6 +61,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   useEffect(() => {
     setSuchStatus(null);
     setGefundeneIds([]);
+    setGefundeneByModel(new Map());
     setIfcQuery("");
     setIfcWert("");
     setSelectedAttr(null);
@@ -512,8 +514,14 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
         objectRuntimeIds
       }));
       await (api.viewer as any).setSelection(selection);
+
+      // Eindeutige Treffer pro Modell merken für korrektes Hinzufügen
+      setGefundeneByModel(new Map(treffenByModel));
+
+      // Anzahl = grösstes einzelnes Modell (ein Bauteil kann in beiden Modellen eine Runtime-ID haben)
+      const maxTreffer = Math.max(...[...treffenByModel.values()].map(ids => ids.length));
       setGefundeneIds(alleTreffer);
-      setSuchStatus(`✓ ${alleTreffer.length} Bauteile gefunden & markiert`);
+      setSuchStatus(`✓ ${maxTreffer} Bauteile gefunden & markiert`);
     } catch (e) {
       setSuchStatus(`Fehler: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -544,10 +552,22 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     }
   }
 
-  function gefundeneHinzufuegen() {
-    if (!aktivTask || gefundeneIds.length === 0 || !aktiveSim) return;
-    const neueGuids = gefundeneIds.map(String);
-    // GUID-Eindeutigkeit: aus anderen Tasks entfernen
+  async function gefundeneHinzufuegen() {
+    if (!aktivTask || gefundeneIds.length === 0 || !aktiveSim || !api) return;
+
+    // IFC-GUIDs via convertToObjectIds holen — eindeutig über Modellgrenzen hinweg
+    const ifcGuids = new Set<string>();
+    for (const [mid, rIds] of gefundeneByModel.entries()) {
+      try {
+        const guids = await api.viewer.convertToObjectIds(mid, rIds);
+        if (Array.isArray(guids)) guids.forEach(g => { if (g) ifcGuids.add(g); });
+      } catch {
+        // Fallback: Runtime-IDs als String speichern
+        rIds.forEach(id => ifcGuids.add(String(id)));
+      }
+    }
+
+    const neueGuids = [...ifcGuids];
     const bereinigteTasks = aktiveSim.tasks.map(t =>
       t.id === aktivTask.id
         ? { ...t, objektGuids: [...new Set([...t.objektGuids, ...neueGuids])] }
@@ -555,6 +575,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     );
     updateSim({ ...aktiveSim, tasks: bereinigteTasks });
     setGefundeneIds([]);
+    setGefundeneByModel(new Map());
     setSuchStatus(`✓ ${neueGuids.length} Bauteile hinzugefügt`);
   }
 
@@ -705,7 +726,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
                 className="ac-input"
                 placeholder="Attribut suchen… (z.B. Material)"
                 value={ifcQuery}
-                onChange={e => { setIfcQuery(e.target.value); setSelectedAttr(null); setAcOffen(true); setGefundeneIds([]); setSuchStatus(null); }}
+                onChange={e => { setIfcQuery(e.target.value); setSelectedAttr(null); setAcOffen(true); setGefundeneIds([]); setGefundeneByModel(new Map()); setSuchStatus(null); }}
                 onFocus={() => { setAcOffen(true); if (!allAttrs.length && modellId) ladeAttr(); }}
               />
               {acOffen && acItems.length > 0 && (
@@ -734,7 +755,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
                     className="ac-input"
                     placeholder="Wert (z.B. Beton NPK C)…"
                     value={ifcWert}
-                    onChange={e => { setIfcWert(e.target.value); setGefundeneIds([]); setSuchStatus(null); setWertDropdownOffen(true); }}
+                    onChange={e => { setIfcWert(e.target.value); setGefundeneIds([]); setGefundeneByModel(new Map()); setSuchStatus(null); setWertDropdownOffen(true); }}
                     onFocus={() => setWertDropdownOffen(true)}
                     onBlur={() => setTimeout(() => setWertDropdownOffen(false), 150)}
                   />
@@ -775,7 +796,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
             {gefundeneIds.length > 0 && (
               <button className="tc-btn-green" style={{ width: "100%", marginTop: 6 }}
                 onClick={gefundeneHinzufuegen}>
-                + Gefundene hinzufügen ({gefundeneIds.length})
+                + Gefundene hinzufügen ({Math.max(...[...gefundeneByModel.values()].map(ids => ids.length), 0)})
               </button>
             )}
           </div>
