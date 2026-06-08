@@ -28,8 +28,8 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   const [attrLaedt, setAttrLaedt] = useState(false);
   const [totalObjekte, setTotalObjekte] = useState<number | null>(null);
   const [bauelementeIdsMap, setBauelementeIdsMap] = useState<Record<string, number[]>>({});
-  // runtimeId → Layer-Name — wird via BEKANNTE_GUID_LAYER_MAPS + convertToObjectRuntimeIds aufgebaut
-  const [runtimeLayerMap, setRuntimeLayerMap] = useState<Record<number, string>>({});
+  // modelId → (runtimeId → Layer-Name) — pro Modell getrennt für korrekte Suche
+  const [runtimeLayerMapByModel, setRuntimeLayerMapByModel] = useState<Record<string, Record<number, string>>>({});
   const acRef = useRef<HTMLDivElement>(null);
   const ladeAttrGen = useRef(0); // Cancellation-Token gegen Race Conditions
 
@@ -133,18 +133,16 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     })();
   }, [aktivesModellId, aktiveSim?.id]);
 
-  // GUID→Layer-Mapping vollautomatisch:
+  // GUID→Layer-Mapping vollautomatisch, pro Modell getrennt:
   // Dateiname der geladenen Modelle → BEKANNTE_GUID_LAYER_MAPS → convertToObjectRuntimeIds
-  // Kein manueller Upload, kein Picker-Umweg nötig
   useEffect(() => {
     if (!api || !aktiveSim) return;
 
     (async () => {
-      const neueMap: Record<number, string> = {};
+      const neueMapByModel: Record<string, Record<number, string>> = {};
       const layerWerte = new Set<string>();
 
       for (const modell of aktiveSim.modelle) {
-        // Dateiname mit bekannten Keys abgleichen
         const matchKey = Object.keys(BEKANNTE_GUID_LAYER_MAPS).find(
           k => modell.name.includes(k) || k.includes(modell.name)
         );
@@ -153,6 +151,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
         const guids = Object.keys(guidLayerMap);
         if (guids.length === 0) continue;
 
+        const modellMap: Record<number, string> = {};
         try {
           const BATCH = 50;
           for (let i = 0; i < guids.length; i += BATCH) {
@@ -163,17 +162,20 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
               const rid = runtimeIds[j];
               if (rid != null && !isNaN(Number(rid))) {
                 const layer = guidLayerMap[slice[j]];
-                neueMap[Number(rid)] = layer;
+                modellMap[Number(rid)] = layer;
                 layerWerte.add(layer);
               }
             }
           }
         } catch { /* Modell überspringen */ }
+
+        if (Object.keys(modellMap).length > 0) {
+          neueMapByModel[modell.id] = modellMap;
+        }
       }
 
-      if (Object.keys(neueMap).length > 0) {
-        setRuntimeLayerMap(neueMap);
-        // Layer-Werte sofort in Dropdown eintragen
+      if (Object.keys(neueMapByModel).length > 0) {
+        setRuntimeLayerMapByModel(neueMapByModel);
         setAttrMap(prev => {
           const key = "Presentation Layers||Layer";
           const vorh = new Set([...(prev[key] ?? []), ...layerWerte]);
@@ -397,18 +399,17 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
 
           // Fast Path 2: Presentation Layers > Layer
           if (selectedAttr.pset === "Presentation Layers" && selectedAttr.name === "Layer") {
-            // 2a: runtimeLayerMap (aus ifcGuidLayerMap via convertToObjectRuntimeIds) — schnellster Weg
-            const mapHasEntries = Object.keys(runtimeLayerMap).length > 0;
-            if (mapHasEntries) {
+            // 2a: runtimeLayerMapByModel — pro Modell getrennt → exakte Treffer
+            const modellMap = runtimeLayerMapByModel[mid];
+            if (modellMap && Object.keys(modellMap).length > 0) {
               for (const rId of allIds) {
-                const layer = runtimeLayerMap[rId];
+                const layer = modellMap[rId];
                 if (layer && wertPasst(layer)) {
                   if (!treffenByModel.has(mid)) treffenByModel.set(mid, []);
                   treffenByModel.get(mid)!.push(rId);
                   alleTreffer.push(rId);
                 }
               }
-              // Wenn Map vorhanden aber 0 Treffer → trotzdem continue (Map ist die authoritative Quelle)
               continue;
             }
 
@@ -528,7 +529,16 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
       const task = aktiveSim?.tasks.find(t => t.id === taskId);
       if (task && task.objektGuids.length > 0) {
         try {
-          await api.viewer.setSelection(task.objektGuids.map(Number));
+          const ids = task.objektGuids.map(Number).filter(n => !isNaN(n));
+          if (ids.length === 0) return;
+          // Pro Modell aufteilen — TC API braucht [{modelId, objectRuntimeIds}]
+          const modellIds = aktiveSim?.modelle.map(m => m.id).filter(Boolean) ?? [];
+          if (modellIds.length > 0) {
+            const selection = modellIds.map(mid => ({ modelId: mid, objectRuntimeIds: ids }));
+            await (api.viewer as any).setSelection(selection);
+          } else {
+            await (api.viewer as any).setSelection([{ modelId: aktivesModellId ?? "", objectRuntimeIds: ids }]);
+          }
         } catch { /* ignore */ }
       }
     }
@@ -577,7 +587,17 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
 
   async function markieren(guids: string[]) {
     if (!api) return;
-    await api.viewer.setSelection(guids.map(Number));
+    const ids = guids.map(Number).filter(n => !isNaN(n));
+    if (ids.length === 0) return;
+    const modellIds = aktiveSim?.modelle.map(m => m.id).filter(Boolean) ?? [];
+    try {
+      if (modellIds.length > 0) {
+        const selection = modellIds.map(mid => ({ modelId: mid, objectRuntimeIds: ids }));
+        await (api.viewer as any).setSelection(selection);
+      } else {
+        await (api.viewer as any).setSelection([{ modelId: aktivesModellId ?? "", objectRuntimeIds: ids }]);
+      }
+    } catch { /* ignore */ }
   }
 
   // Statistiken
