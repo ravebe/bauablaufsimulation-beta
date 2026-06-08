@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import type { SimProjekt, Task } from "../types";
+import type { SimProjekt } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 
 interface Props {
@@ -20,12 +20,22 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     ...(aktivesModellId ? [aktivesModellId] : [])
   ])].filter(Boolean);
 
-  function taskIds(task: Task): number[] {
-    return task.objektGuids.map(Number).filter(n => !isNaN(n));
-  }
-
   function sleep(ms: number) {
     return new Promise<void>(resolve => setTimeout(resolve, ms));
+  }
+
+  // IFC-GUIDs → Runtime-IDs pro Modell umwandeln
+  async function guidZuSelection(guids: string[]): Promise<{ modelId: string; objectRuntimeIds: number[] }[]> {
+    if (!api || guids.length === 0) return [];
+    const selection: { modelId: string; objectRuntimeIds: number[] }[] = [];
+    for (const mid of modellIds) {
+      try {
+        const rIds = await api.viewer.convertToObjectRuntimeIds(mid, guids);
+        const valid = (Array.isArray(rIds) ? rIds : []).map(Number).filter(n => !isNaN(n) && n > 0);
+        if (valid.length > 0) selection.push({ modelId: mid, objectRuntimeIds: valid });
+      } catch { /* Modell überspringen */ }
+    }
+    return selection;
   }
 
   // Reset — alle Objekte wieder einblenden
@@ -69,21 +79,21 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     for (let i = 0; i < tasks.length; i++) {
       if (stopRef.current) break;
       const task = tasks[i];
-      const ids = taskIds(task);
+      const guids = task.objektGuids.filter(Boolean);
       setAktivIndex(i);
-      setStatus(`▶ ${task.name} · ${ids.length} Bauteile`);
+      setStatus(`▶ ${task.name} · ${guids.length} Bauteile`);
 
-      if (ids.length > 0) {
-        // setObjectState MIT objectRuntimeIds = nur diese Objekte einblenden
-        for (const mid of modellIds) {
+      if (guids.length > 0) {
+        const selection = await guidZuSelection(guids);
+        for (const { modelId, objectRuntimeIds } of selection) {
           try {
             await api.viewer.setObjectState(
-              [{ modelId: mid, objectRuntimeIds: ids }],
+              [{ modelId, objectRuntimeIds }],
               { visible: true }
             );
           } catch { /* ignore */ }
         }
-        try { await api.viewer.setSelection(ids); } catch { /* ignore */ }
+        try { await (api.viewer as any).setSelection(selection); } catch { /* ignore */ }
       }
 
       await sleep(sekProTask * 1000);

@@ -529,7 +529,23 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     }
   }
 
-  // Task anklicken → Objekte im Viewer markieren wenn vorhanden
+  // IFC-GUIDs → Runtime-IDs pro Modell umwandeln für setSelection
+  async function guidZuSelection(guids: string[]): Promise<{ modelId: string; objectRuntimeIds: number[] }[]> {
+    if (!api || guids.length === 0) return [];
+    const modellIds = aktiveSim?.modelle.map(m => m.id).filter(Boolean) ?? [];
+    if (modellIds.length === 0 && aktivesModellId) modellIds.push(aktivesModellId);
+    const selection: { modelId: string; objectRuntimeIds: number[] }[] = [];
+    for (const mid of modellIds) {
+      try {
+        const rIds = await api.viewer.convertToObjectRuntimeIds(mid, guids);
+        const valid = (Array.isArray(rIds) ? rIds : []).map(Number).filter(n => !isNaN(n) && n > 0);
+        if (valid.length > 0) selection.push({ modelId: mid, objectRuntimeIds: valid });
+      } catch { /* Modell überspringen */ }
+    }
+    return selection;
+  }
+
+  // Task anklicken → IFC-GUIDs in Runtime-IDs umwandeln und markieren
   async function taskAnklicken(taskId: string) {
     const istGleich = taskId === aktivTaskId;
     setAktivTaskId(istGleich ? null : taskId);
@@ -537,16 +553,8 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
       const task = aktiveSim?.tasks.find(t => t.id === taskId);
       if (task && task.objektGuids.length > 0) {
         try {
-          const ids = task.objektGuids.map(Number).filter(n => !isNaN(n));
-          if (ids.length === 0) return;
-          // Pro Modell aufteilen — TC API braucht [{modelId, objectRuntimeIds}]
-          const modellIds = aktiveSim?.modelle.map(m => m.id).filter(Boolean) ?? [];
-          if (modellIds.length > 0) {
-            const selection = modellIds.map(mid => ({ modelId: mid, objectRuntimeIds: ids }));
-            await (api.viewer as any).setSelection(selection);
-          } else {
-            await (api.viewer as any).setSelection([{ modelId: aktivesModellId ?? "", objectRuntimeIds: ids }]);
-          }
+          const selection = await guidZuSelection(task.objektGuids);
+          if (selection.length > 0) await (api.viewer as any).setSelection(selection);
         } catch { /* ignore */ }
       }
     }
@@ -579,10 +587,18 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     setSuchStatus(`✓ ${neueGuids.length} Bauteile hinzugefügt`);
   }
 
-  function selektionHinzufuegen() {
-    if (!aktivTask || selektion.length === 0 || !aktiveSim) return;
-    const neueGuids = selektion.map(String);
-    // GUID-Eindeutigkeit: aus anderen Tasks entfernen
+  async function selektionHinzufuegen() {
+    if (!aktivTask || selektion.length === 0 || !aktiveSim || !api) return;
+    // Runtime-IDs → IFC-GUIDs via convertToObjectIds (modellId kommt aus aktivesModellId)
+    const mid = aktivesModellId ?? aktiveSim.modelle[0]?.id;
+    let neueGuids: string[] = [];
+    if (mid) {
+      try {
+        const guids = await api.viewer.convertToObjectIds(mid, selektion);
+        neueGuids = (Array.isArray(guids) ? guids : []).filter(Boolean) as string[];
+      } catch { /* Fallback: Runtime-IDs als String */ }
+    }
+    if (neueGuids.length === 0) neueGuids = selektion.map(String);
     const bereinigteTasks = aktiveSim.tasks.map(t =>
       t.id === aktivTask.id
         ? { ...t, objektGuids: [...new Set([...t.objektGuids, ...neueGuids])] }
@@ -607,17 +623,10 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   }
 
   async function markieren(guids: string[]) {
-    if (!api) return;
-    const ids = guids.map(Number).filter(n => !isNaN(n));
-    if (ids.length === 0) return;
-    const modellIds = aktiveSim?.modelle.map(m => m.id).filter(Boolean) ?? [];
+    if (!api || guids.length === 0) return;
     try {
-      if (modellIds.length > 0) {
-        const selection = modellIds.map(mid => ({ modelId: mid, objectRuntimeIds: ids }));
-        await (api.viewer as any).setSelection(selection);
-      } else {
-        await (api.viewer as any).setSelection([{ modelId: aktivesModellId ?? "", objectRuntimeIds: ids }]);
-      }
+      const selection = await guidZuSelection(guids);
+      if (selection.length > 0) await (api.viewer as any).setSelection(selection);
     } catch { /* ignore */ }
   }
 
