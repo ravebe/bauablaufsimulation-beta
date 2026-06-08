@@ -24,16 +24,28 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     return new Promise<void>(resolve => setTimeout(resolve, ms));
   }
 
-  // IFC-GUIDs → Runtime-IDs pro Modell umwandeln
+  function istIfcGuid(s: string): boolean {
+    return /^[A-Za-z0-9_$]{22}$/.test(s);
+  }
+
+  // IFC-GUIDs oder Legacy Runtime-IDs → korrektes setSelection-Format pro Modell
   async function guidZuSelection(guids: string[]): Promise<{ modelId: string; objectRuntimeIds: number[] }[]> {
     if (!api || guids.length === 0) return [];
+    const echteGuids = guids.filter(istIfcGuid);
+    const legacyIds = guids.filter(g => !istIfcGuid(g)).map(Number).filter(n => !isNaN(n) && n > 0);
     const selection: { modelId: string; objectRuntimeIds: number[] }[] = [];
-    for (const mid of modellIds) {
-      try {
-        const rIds = await api.viewer.convertToObjectRuntimeIds(mid, guids);
-        const valid = (Array.isArray(rIds) ? rIds : []).map(Number).filter(n => !isNaN(n) && n > 0);
-        if (valid.length > 0) selection.push({ modelId: mid, objectRuntimeIds: valid });
-      } catch { /* Modell überspringen */ }
+
+    if (echteGuids.length > 0) {
+      for (const mid of modellIds) {
+        try {
+          const rIds = await api.viewer.convertToObjectRuntimeIds(mid, echteGuids);
+          const valid = (Array.isArray(rIds) ? rIds : []).map(Number).filter(n => !isNaN(n) && n > 0);
+          if (valid.length > 0) selection.push({ modelId: mid, objectRuntimeIds: valid });
+        } catch { /* Modell überspringen */ }
+      }
+    }
+    if (legacyIds.length > 0 && modellIds.length > 0) {
+      selection.push({ modelId: modellIds[0], objectRuntimeIds: legacyIds });
     }
     return selection;
   }

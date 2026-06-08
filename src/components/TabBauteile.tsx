@@ -120,14 +120,23 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
         } catch { /* Modell überspringen */ }
       }
 
-      // Fallback: wenn TC-API-Bugs zu 0 führen → Anzahl aus BEKANNTE_GUID_LAYER_MAPS
+      // Fallback: nur wenn ALLE Modelle der Sim in BEKANNTE_GUID_LAYER_MAPS matchen
+      // → verhindert falsche 18 bei anderen Simulationen mit unbekannten Modellen
       if (gesamtBauteile === 0 && aktiveSim) {
+        let alleGekannt = aktiveSim.modelle.length > 0;
+        let fallbackZahl = 0;
         for (const modell of aktiveSim.modelle) {
           const matchKey = Object.keys(BEKANNTE_GUID_LAYER_MAPS).find(
             k => modell.name.includes(k) || k.includes(modell.name)
           );
-          if (matchKey) gesamtBauteile += Object.keys(BEKANNTE_GUID_LAYER_MAPS[matchKey]).length;
+          if (matchKey) {
+            fallbackZahl += Object.keys(BEKANNTE_GUID_LAYER_MAPS[matchKey]).length;
+          } else {
+            alleGekannt = false;
+            break;
+          }
         }
+        if (alleGekannt && fallbackZahl > 0) gesamtBauteile = fallbackZahl;
       }
 
       setBauelementeIdsMap(neueMap);
@@ -529,19 +538,44 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     }
   }
 
-  // IFC-GUIDs → Runtime-IDs pro Modell umwandeln für setSelection
+  // Prüft ob ein String eine echte IFC-GUID ist (22 Zeichen, Base64-ähnlich)
+  function istIfcGuid(s: string): boolean {
+    return /^[A-Za-z0-9_$]{22}$/.test(s);
+  }
+
+  // IFC-GUIDs oder Runtime-IDs → korrektes setSelection-Format pro Modell
   async function guidZuSelection(guids: string[]): Promise<{ modelId: string; objectRuntimeIds: number[] }[]> {
     if (!api || guids.length === 0) return [];
-    const modellIds = aktiveSim?.modelle.map(m => m.id).filter(Boolean) ?? [];
-    if (modellIds.length === 0 && aktivesModellId) modellIds.push(aktivesModellId);
+    const modellIds = [...new Set([
+      ...(aktiveSim?.modelle.map(m => m.id).filter(Boolean) ?? []),
+      ...(aktivesModellId ? [aktivesModellId] : [])
+    ])].filter(Boolean) as string[];
+
+    // Legacy: Runtime-IDs (Zahlen) → direkt an alle Modelle (altes Verhalten)
+    const echteGuids = guids.filter(istIfcGuid);
+    const legacyIds = guids.filter(g => !istIfcGuid(g)).map(Number).filter(n => !isNaN(n) && n > 0);
+
     const selection: { modelId: string; objectRuntimeIds: number[] }[] = [];
-    for (const mid of modellIds) {
-      try {
-        const rIds = await api.viewer.convertToObjectRuntimeIds(mid, guids);
-        const valid = (Array.isArray(rIds) ? rIds : []).map(Number).filter(n => !isNaN(n) && n > 0);
-        if (valid.length > 0) selection.push({ modelId: mid, objectRuntimeIds: valid });
-      } catch { /* Modell überspringen */ }
+
+    // IFC-GUIDs → convertToObjectRuntimeIds pro Modell
+    if (echteGuids.length > 0) {
+      for (const mid of modellIds) {
+        try {
+          const rIds = await api.viewer.convertToObjectRuntimeIds(mid, echteGuids);
+          // TC gibt 0 zurück für GUIDs die nicht in diesem Modell existieren → filtern
+          const valid = (Array.isArray(rIds) ? rIds : [])
+            .map(Number)
+            .filter((n, i) => !isNaN(n) && n > 0 && rIds[i] != null);
+          if (valid.length > 0) selection.push({ modelId: mid, objectRuntimeIds: valid });
+        } catch { /* Modell überspringen */ }
+      }
     }
+
+    // Legacy Runtime-IDs → erste Modell-ID (Fallback für alte Tasks)
+    if (legacyIds.length > 0 && modellIds.length > 0) {
+      selection.push({ modelId: modellIds[0], objectRuntimeIds: legacyIds });
+    }
+
     return selection;
   }
 
