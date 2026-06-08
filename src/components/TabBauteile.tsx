@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 import type { SimProjekt, TaskTyp } from "../types";
-import { parseObjectIds, parseObjectsRaw, BEKANNTE_GUID_LAYER_MAPS } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 
 interface Props {
@@ -28,8 +27,6 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   const [laedt, setLaedt] = useState(false);
   const [attrLaedt, setAttrLaedt] = useState(false);
   const [totalObjekte, setTotalObjekte] = useState<number | null>(null);
-  // modelId → (runtimeId → Layer-Name) für Layer-Suche
-  const [runtimeLayerMapByModel, setRuntimeLayerMapByModel] = useState<Record<string, Record<number, string>>>({});
   const acRef = useRef<HTMLDivElement>(null);
   const ladeAttrGen = useRef(0); // Cancellation-Token gegen Race Conditions
 
@@ -66,8 +63,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     setSelectedAttr(null);
   }, [aktivTaskId]);
 
-  // Bauteile zählen via getObjects + parameter.class (TC API offiziell, wie DataTable)
-  // Bauteile zählen: bekannte Modelle → BEKANNTE_GUID_LAYER_MAPS, sonst getObjects()
+  // Bauteile zählen — gleiche Methode wie TC DataTable: getObjects mit ObjectSelector
   useEffect(() => {
     if (!api || !aktiveSim) return;
     if (aktiveSim.modelle.length === 0) { setTotalObjekte(null); return; }
@@ -76,76 +72,16 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
       let gesamt = 0;
       for (const modell of aktiveSim.modelle) {
         if (!modell.id) continue;
-        // Bekannte Modelle: exakte Zahl aus BEKANNTE_GUID_LAYER_MAPS
-        const matchKey = Object.keys(BEKANNTE_GUID_LAYER_MAPS).find(
-          k => modell.name.includes(k) || k.includes(modell.name)
-        );
-        if (matchKey) {
-          gesamt += Object.keys(BEKANNTE_GUID_LAYER_MAPS[matchKey]).length;
-          continue;
-        }
-        // Unbekannte Modelle: getObjects() Gesamt minus Hierarchie-Objekte (~3 pro Modell)
         try {
-          const rohe = await api.viewer.getObjects(modell.id);
-          const ids = parseObjectIds(rohe);
-          gesamt += Math.max(0, ids.length - 3);
-        } catch { /* ignore */ }
+          const result = await (api.viewer as any).getObjects({
+            modelObjectIds: [{ modelId: modell.id }]
+          }) as any[];
+          for (const r of result ?? []) {
+            gesamt += (r?.objectRuntimeIds ?? []).length;
+          }
+        } catch { /* Modell überspringen */ }
       }
       setTotalObjekte(gesamt > 0 ? gesamt : null);
-    })();
-  }, [aktiveSim?.id, api]);
-
-  // Layer-Map aufbauen: runtimeId → Layer-Name pro Modell (für Layer-Suche)
-  useEffect(() => {
-    if (!api || !aktiveSim) return;
-
-    (async () => {
-      const neueLayerMap: Record<string, Record<number, string>> = {};
-      const layerWerte = new Set<string>();
-
-      for (const modell of aktiveSim.modelle) {
-        if (!modell.id) continue;
-        const matchKey = Object.keys(BEKANNTE_GUID_LAYER_MAPS).find(
-          k => modell.name.includes(k) || k.includes(modell.name)
-        );
-        if (!matchKey) continue;
-        const guidLayerMap = BEKANNTE_GUID_LAYER_MAPS[matchKey];
-        const guids = Object.keys(guidLayerMap);
-        if (guids.length === 0) continue;
-
-        const layerMap: Record<number, string> = {};
-        try {
-          // Komprimierte GUIDs direkt übergeben
-          const runtimeIds = await api.viewer.convertToObjectRuntimeIds(modell.id, guids);
-          if (!Array.isArray(runtimeIds)) continue;
-          for (let j = 0; j < guids.length; j++) {
-            const rid = Number(runtimeIds[j]);
-            if (!isNaN(rid) && rid > 0) {
-              layerMap[rid] = guidLayerMap[guids[j]];
-              layerWerte.add(guidLayerMap[guids[j]]);
-            }
-          }
-        } catch { /* convertToObjectRuntimeIds nicht verfügbar */ }
-
-        if (Object.keys(layerMap).length > 0) {
-          neueLayerMap[modell.id] = layerMap;
-        }
-      }
-
-      if (Object.keys(neueLayerMap).length > 0) {
-        setRuntimeLayerMapByModel(neueLayerMap);
-        setAttrMap(prev => {
-          const key = "Presentation Layers||Layer";
-          const vorh = new Set([...(prev[key] ?? []), ...layerWerte]);
-          return { ...prev, [key]: vorh };
-        });
-        setAllAttrs(prev => {
-          const key = "Presentation Layers||Layer";
-          return prev.some(a => a.key === key)
-            ? prev
-            : [...prev, { pset: "Presentation Layers", name: "Layer", key }];
-        });
-      }
     })();
   }, [aktiveSim?.id, api]);
 
@@ -211,22 +147,25 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
           map[key].add(String(p.description));
         }
       }
-      // TC-berechnetes Feld: class → Presentation Layers > Layer
-      if (obj?.class) {
-        const key = "Presentation Layers||Layer";
-        if (!attrsMap.has(key)) attrsMap.set(key, { pset: "Presentation Layers", name: "Layer", key });
-        if (!map[key]) map[key] = new Set();
-        map[key].add(String(obj.class));
-      }
+      // KEIN obj.class → Layer! class ist der IFC-Typ (IFCSITE etc.), nicht der Layer-Name.
     };
 
     for (const mid of modelIds) {
       try {
-        const rohe = await api.viewer.getObjects(mid);
-        const allIds = parseObjectIds(rohe);
+        // ObjectSelector-Format: gleiche Objekte wie DataTable (keine Hierarchie/Sub-Geometrie)
+        const resultRaw = await (api.viewer as any).getObjects({
+          modelObjectIds: [{ modelId: mid }]
+        }) as any[];
+        const allIds: number[] = [];
+        for (const r of resultRaw ?? []) {
+          for (const rId of (r?.objectRuntimeIds ?? [])) {
+            const n = Number(rId);
+            if (!isNaN(n)) allIds.push(n);
+          }
+        }
         if (allIds.length === 0) continue;
 
-        // 10 parallele Einzelabfragen → keine Batch-Kontamination, volle Abdeckung
+        // getObjectProperties pro Objekt (wirft für echte Bauteile → nur Hierarchie liefert Ergebnis)
         const CONCURRENCY = 10;
         for (let i = 0; i < allIds.length; i += CONCURRENCY) {
           const chunk = allIds.slice(i, i + CONCURRENCY);
@@ -239,29 +178,8 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
             }
           }
         }
-        // 1. Metadaten direkt aus getObjects Response (layer, name, class falls vorhanden)
-        for (const objMeta of parseObjectsRaw(rohe)) {
-          if (objMeta.layer) {
-            const key = "Presentation Layers||Layer";
-            if (!attrsMap.has(key)) attrsMap.set(key, { pset: "Presentation Layers", name: "Layer", key });
-            if (!map[key]) map[key] = new Set();
-            map[key].add(String(objMeta.layer));
-          }
-          if (objMeta.name) {
-            const key = "Product||Product Name";
-            if (!attrsMap.has(key)) attrsMap.set(key, { pset: "Product", name: "Product Name", key });
-            if (!map[key]) map[key] = new Set();
-            map[key].add(String(objMeta.name));
-          }
-          if (objMeta.class) {
-            const key = "Reference Object||Common Type";
-            if (!attrsMap.has(key)) attrsMap.set(key, { pset: "Reference Object", name: "Common Type", key });
-            if (!map[key]) map[key] = new Set();
-            map[key].add(String(objMeta.class));
-          }
-        }
 
-        // 2. getLayers: alle Layer-Namen (Fallback falls getObjects keine Layer hat)
+        // getLayers: einzige zuverlässige Quelle für Layer-Namen
         try {
           const layers = await api!.viewer.getLayers(mid);
           if (Array.isArray(layers)) {
@@ -274,7 +192,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
           }
         } catch {}
 
-        // 3. GUID (IFC) via convertToObjectIds
+        // GUID (IFC) via convertToObjectIds
         try {
           const guids = await api!.viewer.convertToObjectIds(mid, allIds);
           if (Array.isArray(guids)) {
@@ -329,15 +247,17 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
 
       for (const mid of modelIds) {
         try {
-          const rohe = await api.viewer.getObjects(mid);
-          const allObjsMeta = parseObjectsRaw(rohe);
-          // Nur echte Bauteile durchsuchen (wenn Layer-Map vorhanden, sonst alle)
-          const layerMapIds = runtimeLayerMapByModel[mid]
-            ? Object.keys(runtimeLayerMapByModel[mid]).map(Number)
-            : [];
-          const allIds = layerMapIds.length > 0
-            ? layerMapIds
-            : allObjsMeta.map(o => o.id).filter(n => !isNaN(n));
+          // ObjectSelector-Format = gleiche Objekte wie DataTable
+          const resultRaw = await (api.viewer as any).getObjects({
+            modelObjectIds: [{ modelId: mid }]
+          }) as any[];
+          const allIds: number[] = [];
+          for (const r of resultRaw ?? []) {
+            for (const rId of (r?.objectRuntimeIds ?? [])) {
+              const n = Number(rId);
+              if (!isNaN(n)) allIds.push(n);
+            }
+          }
           if (allIds.length === 0) continue;
 
           // Fast Path 1: GUID (IFC) via convertToObjectIds
@@ -358,60 +278,26 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
           }
 
           // Fast Path 2: Presentation Layers > Layer
+          // Direkt via getObjects + parameter.properties.Layer — wie DataTable-Filter
           if (selectedAttr.pset === "Presentation Layers" && selectedAttr.name === "Layer") {
-            // 2a: runtimeLayerMapByModel — pro Modell getrennt → exakte Treffer
-            const modellMap = runtimeLayerMapByModel[mid];
-            if (modellMap && Object.keys(modellMap).length > 0) {
-              for (const rId of allIds) {
-                const layer = modellMap[rId];
-                if (layer && wertPasst(layer)) {
-                  if (!treffenByModel.has(mid)) treffenByModel.set(mid, []);
-                  treffenByModel.get(mid)!.push(rId);
-                  alleTreffer.push(rId);
-                }
-              }
-              continue;
-            }
-
-            // 2b: getObjects Metadaten (falls TC layer-Info mitliefert)
-            const metaHasLayer = allObjsMeta.some(o => o.layer != null);
-            if (metaHasLayer) {
-              for (const objMeta of allObjsMeta) {
-                if (objMeta.layer && wertPasst(String(objMeta.layer))) {
-                  if (!treffenByModel.has(mid)) treffenByModel.set(mid, []);
-                  treffenByModel.get(mid)!.push(objMeta.id);
-                  alleTreffer.push(objMeta.id);
-                }
-              }
-              continue;
-            }
-
-            // 2c: Alle IDs auf einmal — TC liefert oft partielle Ergebnisse statt zu werfen
             try {
-              const allProps = await (api!.viewer as any).getObjectProperties(mid, allIds);
-              if (Array.isArray(allProps) && allProps.length > 0) {
-                for (const obj of allProps) {
-                  const rId = typeof obj?.id === "number" ? obj.id : null;
-                  if (rId == null) continue;
-                  let layerGefunden = false;
-                  for (const g of (obj?.properties ?? [])) {
-                    if ((g?.name || "") === "Presentation Layers") {
-                      for (const p of (g?.properties ?? [])) {
-                        if (p?.name === "Layer" && wertPasst(p?.value)) { layerGefunden = true; break; }
-                      }
-                    }
-                    if (layerGefunden) break;
-                  }
-                  if (!layerGefunden && wertPasst(obj?.class)) layerGefunden = true;
-                  if (layerGefunden) {
-                    if (!treffenByModel.has(mid)) treffenByModel.set(mid, []);
-                    treffenByModel.get(mid)!.push(rId);
-                    alleTreffer.push(rId);
-                  }
+              const layerResult = await (api.viewer as any).getObjects({
+                modelObjectIds: [{ modelId: mid }],
+                parameter: { properties: { Layer: ifcWert } }
+              }) as any[];
+              const gefunden: number[] = [];
+              for (const r of layerResult ?? []) {
+                for (const rId of (r?.objectRuntimeIds ?? [])) {
+                  const n = Number(rId);
+                  if (!isNaN(n)) gefunden.push(n);
                 }
-                continue;
               }
-            } catch {}
+              if (gefunden.length > 0) {
+                treffenByModel.set(mid, gefunden);
+                alleTreffer.push(...gefunden);
+              }
+            } catch { /* Layer-Filter nicht unterstützt → überspringen */ }
+            continue;
           }
 
           // Standard: getObjectProperties pro Objekt
@@ -487,7 +373,25 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     }
   }
 
+  // Gültigen Runtime-ID Pool eines Modells holen (= DataTable-Objekte, keine Container)
+  async function getValidPool(mid: string): Promise<Set<number>> {
+    try {
+      const result = await (api!.viewer as any).getObjects({
+        modelObjectIds: [{ modelId: mid }]
+      }) as any[];
+      const ids = new Set<number>();
+      for (const r of result ?? []) {
+        for (const rId of (r?.objectRuntimeIds ?? [])) {
+          const n = Number(rId);
+          if (!isNaN(n)) ids.add(n);
+        }
+      }
+      return ids;
+    } catch { return new Set(); }
+  }
+
   // Objekte im Viewer markieren — Format "modelId:::rId" oder Legacy "rId"
+  // Validiert IDs gegen gültigen Pool → keine Assembly-Container, keine 411-Selektion
   async function markiereObjekte(objektGuids: string[]) {
     if (!api || objektGuids.length === 0) return;
     const modellIds = aktiveSim?.modelle.map(m => m.id).filter(Boolean) ?? [];
@@ -513,16 +417,20 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
       }
     }
 
-    // Legacy IDs → erstes Modell (beste Schätzung)
-    if (legacyIds.length > 0) {
+    if (legacyIds.length > 0 && modellIds[0]) {
       if (!byModel.has(modellIds[0])) byModel.set(modellIds[0], []);
       byModel.get(modellIds[0])!.push(...legacyIds);
     }
 
-    const selection = [...byModel.entries()].map(([modelId, objectRuntimeIds]) => ({
-      modelId,
-      objectRuntimeIds: [...new Set(objectRuntimeIds)], // deduplizieren
-    }));
+    // Pro Modell: gegen gültigen Pool validieren → nur echte Bauteile selektieren
+    const selection: { modelId: string; objectRuntimeIds: number[] }[] = [];
+    for (const [mid, rIds] of byModel.entries()) {
+      const pool = await getValidPool(mid);
+      const valid = pool.size > 0
+        ? [...new Set(rIds)].filter(id => pool.has(id))
+        : [...new Set(rIds)];
+      if (valid.length > 0) selection.push({ modelId: mid, objectRuntimeIds: valid });
+    }
 
     if (selection.length > 0) {
       try { await (api.viewer as any).setSelection(selection); } catch { /* ignore */ }
