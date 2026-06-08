@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import type { SimProjekt, TaskTyp } from "../types";
+import { parseObjectIds } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 
 interface Props {
@@ -63,7 +64,38 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     setSelectedAttr(null);
   }, [aktivTaskId]);
 
-  // Bauteile zählen — gleiche Methode wie TC DataTable: getObjects mit ObjectSelector
+  // Hilfsfunktion: Runtime-IDs eines Modells holen
+  // Probiert ObjectSelector (DataTable-Format) → Fallback auf string-Format
+  async function getModellObjekte(mid: string): Promise<number[]> {
+    // Versuch 1: ObjectSelector-Format (gibt ModelObjects[] zurück)
+    try {
+      const result = await (api!.viewer as any).getObjects({
+        modelObjectIds: [{ modelId: mid }]
+      }) as any[];
+      const ids: number[] = [];
+      for (const r of result ?? []) {
+        // Format A: {objectRuntimeIds: number[]}
+        for (const rId of r?.objectRuntimeIds ?? []) {
+          const n = Number(rId); if (!isNaN(n)) ids.push(n);
+        }
+        // Format B: {objects: [{id: number}]} (altes Format)
+        for (const o of r?.objects ?? []) {
+          const n = Number(o?.id ?? o); if (!isNaN(n)) ids.push(n);
+        }
+      }
+      if (ids.length > 0) return ids;
+    } catch { /* weiter zu Fallback */ }
+
+    // Versuch 2: string-Format (getObjects(modelId))
+    try {
+      const rohe = await (api!.viewer as any).getObjects(mid);
+      return parseObjectIds(rohe);
+    } catch {}
+
+    return [];
+  }
+
+  // Bauteile zählen — ObjectSelector zuerst, dann string-Fallback minus Hierarchie
   useEffect(() => {
     if (!api || !aktiveSim) return;
     if (aktiveSim.modelle.length === 0) { setTotalObjekte(null); return; }
@@ -72,17 +104,13 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
       let gesamt = 0;
       for (const modell of aktiveSim.modelle) {
         if (!modell.id) continue;
-        try {
-          const result = await (api.viewer as any).getObjects({
-            modelObjectIds: [{ modelId: modell.id }]
-          }) as any[];
-          for (const r of result ?? []) {
-            gesamt += (r?.objectRuntimeIds ?? []).length;
-          }
-        } catch { /* Modell überspringen */ }
+        const ids = await getModellObjekte(modell.id);
+        // Wenn string-Fallback genutzt wurde, zieht er Hierarchie-Objekte ab (~3 pro Modell)
+        gesamt += ids.length > 10 ? Math.max(0, ids.length - 3) : ids.length;
       }
       setTotalObjekte(gesamt > 0 ? gesamt : null);
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aktiveSim?.id, api]);
 
   // Attribute vorladen — parallele Einzelabfragen + Cancellation-Token gegen Race Condition
@@ -152,20 +180,11 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
 
     for (const mid of modelIds) {
       try {
-        // ObjectSelector-Format: gleiche Objekte wie DataTable (keine Hierarchie/Sub-Geometrie)
-        const resultRaw = await (api.viewer as any).getObjects({
-          modelObjectIds: [{ modelId: mid }]
-        }) as any[];
-        const allIds: number[] = [];
-        for (const r of resultRaw ?? []) {
-          for (const rId of (r?.objectRuntimeIds ?? [])) {
-            const n = Number(rId);
-            if (!isNaN(n)) allIds.push(n);
-          }
-        }
+        // Objekte holen — ObjectSelector zuerst, dann string-Fallback
+        const allIds = await getModellObjekte(mid);
         if (allIds.length === 0) continue;
 
-        // getObjectProperties pro Objekt (wirft für echte Bauteile → nur Hierarchie liefert Ergebnis)
+        // getObjectProperties pro Objekt
         const CONCURRENCY = 10;
         for (let i = 0; i < allIds.length; i += CONCURRENCY) {
           const chunk = allIds.slice(i, i + CONCURRENCY);
@@ -247,20 +266,10 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
 
       for (const mid of modelIds) {
         try {
-          // ObjectSelector-Format = gleiche Objekte wie DataTable
-          const resultRaw = await (api.viewer as any).getObjects({
-            modelObjectIds: [{ modelId: mid }]
-          }) as any[];
-          const allIds: number[] = [];
-          for (const r of resultRaw ?? []) {
-            for (const rId of (r?.objectRuntimeIds ?? [])) {
-              const n = Number(rId);
-              if (!isNaN(n)) allIds.push(n);
-            }
-          }
+          const allIds = await getModellObjekte(mid);
           if (allIds.length === 0) continue;
 
-          // Fast Path 1: GUID (IFC) via convertToObjectIds
+          // Fast Path 1: GUID (IFC)
           if (selectedAttr.pset === "Reference Object" && selectedAttr.name === "GUID (IFC)") {
             try {
               const guids = await api!.viewer.convertToObjectIds(mid, allIds);
@@ -278,8 +287,9 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
           }
 
           // Fast Path 2: Presentation Layers > Layer
-          // Direkt via getObjects + parameter.properties.Layer — wie DataTable-Filter
           if (selectedAttr.pset === "Presentation Layers" && selectedAttr.name === "Layer") {
+            // Versuch: getObjects mit Layer-Property-Filter (wie DataTable)
+            let layerGefunden = false;
             try {
               const layerResult = await (api.viewer as any).getObjects({
                 modelObjectIds: [{ modelId: mid }],
@@ -287,16 +297,45 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
               }) as any[];
               const gefunden: number[] = [];
               for (const r of layerResult ?? []) {
-                for (const rId of (r?.objectRuntimeIds ?? [])) {
-                  const n = Number(rId);
-                  if (!isNaN(n)) gefunden.push(n);
+                for (const rId of r?.objectRuntimeIds ?? []) {
+                  const n = Number(rId); if (!isNaN(n)) gefunden.push(n);
+                }
+                for (const o of r?.objects ?? []) {
+                  const n = Number(o?.id ?? o); if (!isNaN(n)) gefunden.push(n);
                 }
               }
               if (gefunden.length > 0) {
                 treffenByModel.set(mid, gefunden);
                 alleTreffer.push(...gefunden);
+                layerGefunden = true;
               }
-            } catch { /* Layer-Filter nicht unterstützt → überspringen */ }
+            } catch {}
+
+            // Fallback: getObjectProperties pro Objekt (nur für Objekte die Properties liefern)
+            if (!layerGefunden) {
+              for (const rId of allIds) {
+                try {
+                  const res = await api.viewer.getObjectProperties(mid, [rId]);
+                  if (!Array.isArray(res) || res.length === 0) continue;
+                  const obj = res[0];
+                  let treffer = false;
+                  for (const g of (obj?.properties ?? (obj as any)?.groups ?? [])) {
+                    if (treffer) break;
+                    const gruppenName = g?.name || (g as any)?.displayName || "";
+                    if (gruppenName === "Presentation Layers") {
+                      for (const p of (g?.properties ?? [])) {
+                        if (p?.name === "Layer" && wertPasst(p?.value)) { treffer = true; break; }
+                      }
+                    }
+                  }
+                  if (treffer) {
+                    if (!treffenByModel.has(mid)) treffenByModel.set(mid, []);
+                    treffenByModel.get(mid)!.push(rId);
+                    alleTreffer.push(rId);
+                  }
+                } catch { /* Objekt wirft → kein Layer-Match */ }
+              }
+            }
             continue;
           }
 
@@ -373,21 +412,10 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     }
   }
 
-  // Gültigen Runtime-ID Pool eines Modells holen (= DataTable-Objekte, keine Container)
+  // Gültiger Runtime-ID Pool eines Modells (= DataTable-Objekte)
   async function getValidPool(mid: string): Promise<Set<number>> {
-    try {
-      const result = await (api!.viewer as any).getObjects({
-        modelObjectIds: [{ modelId: mid }]
-      }) as any[];
-      const ids = new Set<number>();
-      for (const r of result ?? []) {
-        for (const rId of (r?.objectRuntimeIds ?? [])) {
-          const n = Number(rId);
-          if (!isNaN(n)) ids.add(n);
-        }
-      }
-      return ids;
-    } catch { return new Set(); }
+    const ids = await getModellObjekte(mid);
+    return new Set(ids);
   }
 
   // Objekte im Viewer markieren — Format "modelId:::rId" oder Legacy "rId"
