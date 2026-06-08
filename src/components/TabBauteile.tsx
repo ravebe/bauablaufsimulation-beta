@@ -28,11 +28,8 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   const [laedt, setLaedt] = useState(false);
   const [attrLaedt, setAttrLaedt] = useState(false);
   const [totalObjekte, setTotalObjekte] = useState<number | null>(null);
-  const [bauelementeIdsMap, setBauelementeIdsMap] = useState<Record<string, number[]>>({});
-  // modelId → (runtimeId → Layer-Name)
+  // modelId → (runtimeId → Layer-Name) für Layer-Suche
   const [runtimeLayerMapByModel, setRuntimeLayerMapByModel] = useState<Record<string, Record<number, string>>>({});
-  // modelId → (runtimeId → IFC-GUID) — inverse Map für direktes Nachschlagen
-  const [guidByRuntimeByModel, setGuidByRuntimeByModel] = useState<Record<string, Record<number, string>>>({});
   const acRef = useRef<HTMLDivElement>(null);
   const ladeAttrGen = useRef(0); // Cancellation-Token gegen Race Conditions
 
@@ -70,78 +67,44 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   }, [aktivTaskId]);
 
   // Bauteile zählen via getObjects + parameter.class (TC API offiziell, wie DataTable)
-  // Zählt nur echte IFC-Bauteile — keine IFCSITE/BUILDING/STOREY/SPACE/GRID
-  // Funktioniert für JEDES Projekt, nicht nur bekannte Modelle
+  // Bauteile zählen: bekannte Modelle → BEKANNTE_GUID_LAYER_MAPS, sonst getObjects()
   useEffect(() => {
     if (!api || !aktiveSim) return;
-    const modellIds = aktiveSim.modelle.map(m => m.id).filter(Boolean);
-    if (modellIds.length === 0) { setTotalObjekte(null); return; }
-
-    const IFC_BAUTEIL_KLASSEN = [
-      "IFCWALL", "IFCWALLSTANDARDCASE", "IFCSLAB", "IFCFOOTING",
-      "IFCCOLUMN", "IFCBEAM", "IFCMEMBER", "IFCPLATE",
-      "IFCBUILDINGELEMENTPROXY", "IFCSTAIR", "IFCSTAIRFLIGHT",
-      "IFCRAMP", "IFCRAMPFLIGHT", "IFCROOF", "IFCDOOR", "IFCWINDOW",
-      "IFCCOVERING", "IFCFURNISHINGELEMENT", "IFCPILE",
-    ];
+    if (aktiveSim.modelle.length === 0) { setTotalObjekte(null); return; }
 
     (async () => {
       let gesamt = 0;
-      const neueMap: Record<string, number[]> = {};
-
-      for (const mid of modellIds) {
-        const alleIds = new Set<number>();
+      for (const modell of aktiveSim.modelle) {
+        if (!modell.id) continue;
+        // Bekannte Modelle: exakte Zahl aus BEKANNTE_GUID_LAYER_MAPS
+        const matchKey = Object.keys(BEKANNTE_GUID_LAYER_MAPS).find(
+          k => modell.name.includes(k) || k.includes(modell.name)
+        );
+        if (matchKey) {
+          gesamt += Object.keys(BEKANNTE_GUID_LAYER_MAPS[matchKey]).length;
+          continue;
+        }
+        // Unbekannte Modelle: getObjects() Gesamt minus Hierarchie-Objekte (~3 pro Modell)
         try {
-          for (const klasse of IFC_BAUTEIL_KLASSEN) {
-            try {
-              const result = await (api.viewer as any).getObjects(
-                { modelObjectIds: [{ modelId: mid }], parameter: { class: klasse } }
-              ) as any[];
-              if (Array.isArray(result)) {
-                for (const r of result) {
-                  for (const rId of (r?.objectRuntimeIds ?? [])) {
-                    const n = Number(rId);
-                    if (!isNaN(n) && n > 0) alleIds.add(n);
-                  }
-                }
-              }
-            } catch { /* Klasse nicht vorhanden → überspringen */ }
-          }
-        } catch { /* Modell überspringen */ }
-
-        const bauIds = [...alleIds];
-        if (bauIds.length > 0) {
-          neueMap[mid] = bauIds;
-          gesamt += bauIds.length;
-        }
+          const rohe = await api.viewer.getObjects(modell.id);
+          const ids = parseObjectIds(rohe);
+          gesamt += Math.max(0, ids.length - 3);
+        } catch { /* ignore */ }
       }
-
-      // Fallback für bekannte Modelle wenn getObjects-Klassen-Filter 0 liefert
-      if (gesamt === 0) {
-        for (const modell of aktiveSim.modelle) {
-          const matchKey = Object.keys(BEKANNTE_GUID_LAYER_MAPS).find(
-            k => modell.name.includes(k) || k.includes(modell.name)
-          );
-          if (matchKey) gesamt += Object.keys(BEKANNTE_GUID_LAYER_MAPS[matchKey]).length;
-        }
-      }
-
-      setBauelementeIdsMap(neueMap);
       setTotalObjekte(gesamt > 0 ? gesamt : null);
     })();
   }, [aktiveSim?.id, api]);
 
-  // GUID→Layer + GUID→RuntimeId Mapping vollautomatisch pro Modell
+  // Layer-Map aufbauen: runtimeId → Layer-Name pro Modell (für Layer-Suche)
   useEffect(() => {
     if (!api || !aktiveSim) return;
 
     (async () => {
       const neueLayerMap: Record<string, Record<number, string>> = {};
-      const neueGuidMap: Record<string, Record<number, string>> = {};
-      const neueBauMap: Record<string, number[]> = {};
       const layerWerte = new Set<string>();
 
       for (const modell of aktiveSim.modelle) {
+        if (!modell.id) continue;
         const matchKey = Object.keys(BEKANNTE_GUID_LAYER_MAPS).find(
           k => modell.name.includes(k) || k.includes(modell.name)
         );
@@ -151,40 +114,26 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
         if (guids.length === 0) continue;
 
         const layerMap: Record<number, string> = {};
-        const guidMap: Record<number, string> = {};
-        const bauIds: number[] = [];
-
         try {
-          const BATCH = 50;
-          for (let i = 0; i < guids.length; i += BATCH) {
-            const slice = guids.slice(i, i + BATCH);
-            const runtimeIds = await api.viewer.convertToObjectRuntimeIds(modell.id, slice);
-            if (!Array.isArray(runtimeIds)) continue;
-            for (let j = 0; j < slice.length; j++) {
-              const rid = Number(runtimeIds[j]);
-              if (!isNaN(rid) && rid > 0) {
-                const guid = slice[j];
-                const layer = guidLayerMap[guid];
-                layerMap[rid] = layer;
-                guidMap[rid] = guid;   // inverse Map: runtimeId → GUID
-                bauIds.push(rid);
-                layerWerte.add(layer);
-              }
+          // Komprimierte GUIDs direkt übergeben
+          const runtimeIds = await api.viewer.convertToObjectRuntimeIds(modell.id, guids);
+          if (!Array.isArray(runtimeIds)) continue;
+          for (let j = 0; j < guids.length; j++) {
+            const rid = Number(runtimeIds[j]);
+            if (!isNaN(rid) && rid > 0) {
+              layerMap[rid] = guidLayerMap[guids[j]];
+              layerWerte.add(guidLayerMap[guids[j]]);
             }
           }
-        } catch { /* Modell überspringen */ }
+        } catch { /* convertToObjectRuntimeIds nicht verfügbar */ }
 
-        if (bauIds.length > 0) {
+        if (Object.keys(layerMap).length > 0) {
           neueLayerMap[modell.id] = layerMap;
-          neueGuidMap[modell.id] = guidMap;
-          neueBauMap[modell.id] = bauIds;
         }
       }
 
       if (Object.keys(neueLayerMap).length > 0) {
         setRuntimeLayerMapByModel(neueLayerMap);
-        setGuidByRuntimeByModel(neueGuidMap);
-        setBauelementeIdsMap(neueBauMap);
         setAttrMap(prev => {
           const key = "Presentation Layers||Layer";
           const vorh = new Set([...(prev[key] ?? []), ...layerWerte]);
@@ -382,10 +331,12 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
         try {
           const rohe = await api.viewer.getObjects(mid);
           const allObjsMeta = parseObjectsRaw(rohe);
-          // Nur echte Bauteile durchsuchen (IFCSITE/GRID etc. ausgeschlossen)
-          const bekannteIds = bauelementeIdsMap[mid];
-          const allIds = bekannteIds?.length > 0
-            ? bekannteIds
+          // Nur echte Bauteile durchsuchen (wenn Layer-Map vorhanden, sonst alle)
+          const layerMapIds = runtimeLayerMapByModel[mid]
+            ? Object.keys(runtimeLayerMapByModel[mid]).map(Number)
+            : [];
+          const allIds = layerMapIds.length > 0
+            ? layerMapIds
             : allObjsMeta.map(o => o.id).filter(n => !isNaN(n));
           if (allIds.length === 0) continue;
 
@@ -536,107 +487,76 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     }
   }
 
-  // Prüft ob ein String eine echte IFC-GUID ist (22 Zeichen, Base64-ähnlich)
-  function istIfcGuid(s: string): boolean {
-    return /^[A-Za-z0-9_$]{22}$/.test(s);
-  }
-
-  // Markiert Objekte via getObjects + setSelection — exakt wie die DataTable
-  // Für IFC-GUIDs: getObjects mit GlobalId-Filter → Runtime-IDs → setSelection
-  // Für Legacy-Runtime-IDs: direkt ans erste Modell
-  async function markiereGuids(guids: string[]) {
-    if (!api || guids.length === 0) return;
-
-    const modellIds = [...new Set([
-      ...(aktiveSim?.modelle.map(m => m.id).filter(Boolean) ?? []),
-      ...(aktivesModellId ? [aktivesModellId] : [])
-    ])].filter(Boolean) as string[];
+  // Objekte im Viewer markieren — Format "modelId:::rId" oder Legacy "rId"
+  async function markiereObjekte(objektGuids: string[]) {
+    if (!api || objektGuids.length === 0) return;
+    const modellIds = aktiveSim?.modelle.map(m => m.id).filter(Boolean) ?? [];
+    if (aktivesModellId && !modellIds.includes(aktivesModellId)) modellIds.push(aktivesModellId);
     if (modellIds.length === 0) return;
 
-    const echteGuids = guids.filter(istIfcGuid);
-    const legacyIds = guids.filter(g => !istIfcGuid(g)).map(Number).filter(n => !isNaN(n) && n > 0);
+    // Gruppieren: "modelId:::rId" → Map<modelId, rId[]>
+    const byModel = new Map<string, number[]>();
+    const legacyIds: number[] = [];
 
-    const selection: { modelId: string; objectRuntimeIds: number[] }[] = [];
-
-    // Ansatz 1: getObjects mit GlobalId-Property-Filter (TC API offiziell)
-    if (echteGuids.length > 0) {
-      // Zuerst aus guidByRuntimeByModel (schnell, kein API-Aufruf)
-      let ausMap = false;
-      for (const mid of modellIds) {
-        const guidMap = guidByRuntimeByModel[mid];
-        if (!guidMap || Object.keys(guidMap).length === 0) continue;
-        const rIds = Object.entries(guidMap)
-          .filter(([, guid]) => echteGuids.includes(guid))
-          .map(([rId]) => Number(rId));
-        if (rIds.length > 0) {
-          selection.push({ modelId: mid, objectRuntimeIds: rIds });
-          ausMap = true;
+    for (const g of objektGuids) {
+      if (g.includes(":::")) {
+        const sep = g.indexOf(":::");
+        const mid = g.slice(0, sep);
+        const rId = Number(g.slice(sep + 3));
+        if (mid && !isNaN(rId)) {
+          if (!byModel.has(mid)) byModel.set(mid, []);
+          byModel.get(mid)!.push(rId);
         }
-      }
-
-      // Fallback: getObjects mit GlobalId-Filter wenn Map leer (unbekannte Modelle)
-      if (!ausMap) {
-        for (const mid of modellIds) {
-          try {
-            const result = await (api.viewer as any).getObjects(
-              { modelObjectIds: [{ modelId: mid }],
-                parameter: { properties: { 'GlobalId': echteGuids.length === 1 ? echteGuids[0] : echteGuids } }
-              }
-            ) as any[];
-            if (Array.isArray(result)) {
-              for (const r of result) {
-                const rIds = (r?.objectRuntimeIds ?? []).map(Number).filter((n: number) => !isNaN(n) && n > 0);
-                if (rIds.length > 0) selection.push({ modelId: mid, objectRuntimeIds: rIds });
-              }
-            }
-          } catch { /* Modell überspringen */ }
-        }
+      } else {
+        const rId = Number(g);
+        if (!isNaN(rId) && rId > 0) legacyIds.push(rId);
       }
     }
 
-    // Legacy Runtime-IDs
+    // Legacy IDs → erstes Modell (beste Schätzung)
     if (legacyIds.length > 0) {
-      selection.push({ modelId: modellIds[0], objectRuntimeIds: legacyIds });
+      if (!byModel.has(modellIds[0])) byModel.set(modellIds[0], []);
+      byModel.get(modellIds[0])!.push(...legacyIds);
     }
+
+    const selection = [...byModel.entries()].map(([modelId, objectRuntimeIds]) => ({
+      modelId,
+      objectRuntimeIds: [...new Set(objectRuntimeIds)], // deduplizieren
+    }));
 
     if (selection.length > 0) {
-      try {
-        await (api.viewer as any).setSelection(selection);
-      } catch { /* ignore */ }
+      try { await (api.viewer as any).setSelection(selection); } catch { /* ignore */ }
     }
   }
 
-  // Task anklicken → Objekte markieren
+  // Task anklicken → Bauteile im 3D markieren
   async function taskAnklicken(taskId: string) {
     const istGleich = taskId === aktivTaskId;
     setAktivTaskId(istGleich ? null : taskId);
-    if (!istGleich && api) {
+    if (!istGleich) {
       const task = aktiveSim?.tasks.find(t => t.id === taskId);
-      if (task && task.objektGuids.length > 0) {
-        await markiereGuids(task.objektGuids);
-      }
+      if (task && task.objektGuids.length > 0) await markiereObjekte(task.objektGuids);
     }
   }
 
-  async function gefundeneHinzufuegen() {
-    if (!aktivTask || gefundeneIds.length === 0 || !aktiveSim || !api) return;
+  // Gefundene Objekte dem Task hinzufügen — als "modelId:::rId" speichern
+  function gefundeneHinzufuegen() {
+    if (!aktivTask || gefundeneIds.length === 0 || !aktiveSim) return;
 
-    // GUIDs direkt aus guidByRuntimeByModel — kein API-Aufruf nötig
-    const ifcGuids = new Set<string>();
+    // gefundeneByModel: Map<modelId, rId[]> → "modelId:::rId" strings
+    // Deduplizieren: selber rId aus unterschiedlichen Modellen → nur einmal
+    const seenRIds = new Set<number>();
+    const neueGuids: string[] = [];
     for (const [mid, rIds] of gefundeneByModel.entries()) {
-      const guidMap = guidByRuntimeByModel[mid] ?? {};
       for (const rId of rIds) {
-        const guid = guidMap[rId];
-        if (guid) {
-          ifcGuids.add(guid);
-        } else {
-          // Fallback: Runtime-ID als String (wird beim Markieren als Legacy behandelt)
-          ifcGuids.add(String(rId));
+        if (!seenRIds.has(rId)) {
+          seenRIds.add(rId);
+          neueGuids.push(`${mid}:::${rId}`);
         }
       }
     }
 
-    const neueGuids = [...ifcGuids];
+    if (neueGuids.length === 0) return;
     const bereinigteTasks = aktiveSim.tasks.map(t =>
       t.id === aktivTask.id
         ? { ...t, objektGuids: [...new Set([...t.objektGuids, ...neueGuids])] }
@@ -648,38 +568,23 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     setSuchStatus(`✓ ${neueGuids.length} Bauteile hinzugefügt`);
   }
 
-  async function selektionHinzufuegen() {
-    if (!aktivTask || selektion.length === 0 || !aktiveSim || !api) return;
-
-    // getObjects({ selected: true }) → gibt aktuelle Selektion mit modelId+runtimeIds
-    // Dann GUIDs aus guidByRuntimeByModel nachschlagen
-    let neueGuids: string[] = [];
-    try {
-      const result = await (api.viewer as any).getObjects({ selected: true }) as any[];
-      if (Array.isArray(result)) {
-        for (const r of result) {
-          const mid = r?.modelId;
-          const rIds: number[] = (r?.objectRuntimeIds ?? []).map(Number).filter((n: number) => !isNaN(n));
-          const guidMap = guidByRuntimeByModel[mid] ?? {};
-          for (const rId of rIds) {
-            const guid = guidMap[rId];
-            if (guid) neueGuids.push(guid);
-            else neueGuids.push(String(rId)); // Legacy-Fallback
-          }
-        }
-      }
-    } catch {
-      // Fallback: Runtime-IDs direkt
-      neueGuids = selektion.map(String);
-    }
-
-    if (neueGuids.length === 0) return;
+  // Mausklick-Selektion hinzufügen — modelId aus aktivesModellId (gesetzt durch onSelectionChanged)
+  function selektionHinzufuegen() {
+    if (!aktivTask || selektion.length === 0 || !aktiveSim) return;
+    const mid = aktivesModellId ?? aktiveSim.modelle[0]?.id;
+    if (!mid) return;
+    const neueGuids = selektion.map(rId => `${mid}:::${rId}`);
     const bereinigteTasks = aktiveSim.tasks.map(t =>
       t.id === aktivTask.id
         ? { ...t, objektGuids: [...new Set([...t.objektGuids, ...neueGuids])] }
         : { ...t, objektGuids: t.objektGuids.filter(g => !neueGuids.includes(g)) }
     );
     updateSim({ ...aktiveSim, tasks: bereinigteTasks });
+  }
+
+  // 👁 Markieren-Button
+  async function markieren(guids: string[]) {
+    await markiereObjekte(guids);
   }
 
   function speichereGuids(taskId: string, guids: string[]) {
@@ -695,10 +600,6 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   function typAendern(taskId: string, typ: TaskTyp) {
     if (!aktiveSim) return;
     updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => t.id === taskId ? { ...t, typ } : t) });
-  }
-
-  async function markieren(guids: string[]) {
-    await markiereGuids(guids);
   }
 
   // Statistiken
