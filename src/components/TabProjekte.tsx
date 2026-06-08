@@ -1,6 +1,5 @@
 import { useState } from "react";
-import type { SimProjekt, SimModell } from "../types";
-import { BEKANNTE_GUID_LAYER_MAPS } from "../types";
+import type { SimProjekt } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import GanttImport from "./GanttImport";
 
@@ -106,21 +105,10 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId }:
       setModellMsg({ simId: modellPicker.simId, typ: "err", text: "Mindestens 1 Modell auswählen" });
       return;
     }
-    // ifcGuidLayerMap automatisch aus BEKANNTE_GUID_LAYER_MAPS zuordnen (Dateiname-Matching)
-    const mitMap: SimModell[] = ausgewaehlt.map(m => {
-      const matchKey = Object.keys(BEKANNTE_GUID_LAYER_MAPS).find(
-        k => m.name.includes(k) || k.includes(m.name)
-      );
-      return matchKey
-        ? { ...m, ifcGuidLayerMap: BEKANNTE_GUID_LAYER_MAPS[matchKey] }
-        : m;
-    });
     setSims(prev => prev.map(s =>
-      s.id === modellPicker.simId ? { ...s, modelle: mitMap } : s
+      s.id === modellPicker.simId ? { ...s, modelle: ausgewaehlt } : s
     ));
-    const mitMapCount = mitMap.filter(m => m.ifcGuidLayerMap).length;
-    const mapHinweis = mitMapCount > 0 ? ` · ${mitMapCount} mit Layer-Map` : "";
-    setModellMsg({ simId: modellPicker.simId, typ: "ok", text: `✓ ${mitMap.length} Modelle gespeichert${mapHinweis}` });
+    setModellMsg({ simId: modellPicker.simId, typ: "ok", text: `✓ ${ausgewaehlt.length} Modelle gespeichert` });
     setModellPicker(null);
   }
 

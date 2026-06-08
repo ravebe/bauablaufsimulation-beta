@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import type { SimProjekt, TaskTyp } from "../types";
-import { parseObjectIds, parseObjectsRaw } from "../types";
+import { parseObjectIds, parseObjectsRaw, BEKANNTE_GUID_LAYER_MAPS } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 
 interface Props {
@@ -28,6 +28,8 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   const [attrLaedt, setAttrLaedt] = useState(false);
   const [totalObjekte, setTotalObjekte] = useState<number | null>(null);
   const [bauelementeIdsMap, setBauelementeIdsMap] = useState<Record<string, number[]>>({});
+  // runtimeId → Layer-Name — wird via BEKANNTE_GUID_LAYER_MAPS + convertToObjectRuntimeIds aufgebaut
+  const [runtimeLayerMap, setRuntimeLayerMap] = useState<Record<number, string>>({});
   const acRef = useRef<HTMLDivElement>(null);
   const ladeAttrGen = useRef(0); // Cancellation-Token gegen Race Conditions
 
@@ -66,6 +68,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   // Bauteile automatisch identifizieren:
   // - getObjectProperties erfolgreich → Hierarchie/Grid → AUSSCHLIESSEN
   // - getObjectProperties wirft + getHierarchyParents > 0 → echtes Bauteil → EINSCHLIESSEN
+  // - Fallback: Anzahl aus BEKANNTE_GUID_LAYER_MAPS (exakt bekannt)
   useEffect(() => {
     if (!api) return;
     const modelIds = [...new Set([
@@ -94,11 +97,15 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
           }));
 
           // Schritt 2: Reste → Sub-Geometrie (keine Parents) ausfiltern
+          // getHierarchyParents gibt manchmal eine Zahl statt Array zurück (TC-Bug) → defensiv behandeln
           const kandidaten = allIds.filter(id => !nichtBauteile.has(id));
           const ergebnisse = await Promise.allSettled(
             kandidaten.map(async rId => {
-              const parents = await api.viewer.getHierarchyParents(mid, rId);
-              return Array.isArray(parents) && parents.length > 0 ? rId : null;
+              try {
+                const parents = await api.viewer.getHierarchyParents(mid, rId);
+                const arr = Array.isArray(parents) ? parents : (parents != null ? [parents] : []);
+                return arr.length > 0 ? rId : null;
+              } catch { return null; }
             })
           );
           const bauIds = ergebnisse
@@ -111,10 +118,76 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
         } catch { /* Modell überspringen */ }
       }
 
+      // Fallback: wenn TC-API-Bugs zu 0 führen → Anzahl aus BEKANNTE_GUID_LAYER_MAPS
+      if (gesamtBauteile === 0 && aktiveSim) {
+        for (const modell of aktiveSim.modelle) {
+          const matchKey = Object.keys(BEKANNTE_GUID_LAYER_MAPS).find(
+            k => modell.name.includes(k) || k.includes(modell.name)
+          );
+          if (matchKey) gesamtBauteile += Object.keys(BEKANNTE_GUID_LAYER_MAPS[matchKey]).length;
+        }
+      }
+
       setBauelementeIdsMap(neueMap);
       setTotalObjekte(gesamtBauteile > 0 ? gesamtBauteile : null);
     })();
   }, [aktivesModellId, aktiveSim?.id]);
+
+  // GUID→Layer-Mapping vollautomatisch:
+  // Dateiname der geladenen Modelle → BEKANNTE_GUID_LAYER_MAPS → convertToObjectRuntimeIds
+  // Kein manueller Upload, kein Picker-Umweg nötig
+  useEffect(() => {
+    if (!api || !aktiveSim) return;
+
+    (async () => {
+      const neueMap: Record<number, string> = {};
+      const layerWerte = new Set<string>();
+
+      for (const modell of aktiveSim.modelle) {
+        // Dateiname mit bekannten Keys abgleichen
+        const matchKey = Object.keys(BEKANNTE_GUID_LAYER_MAPS).find(
+          k => modell.name.includes(k) || k.includes(modell.name)
+        );
+        if (!matchKey) continue;
+        const guidLayerMap = BEKANNTE_GUID_LAYER_MAPS[matchKey];
+        const guids = Object.keys(guidLayerMap);
+        if (guids.length === 0) continue;
+
+        try {
+          const BATCH = 50;
+          for (let i = 0; i < guids.length; i += BATCH) {
+            const slice = guids.slice(i, i + BATCH);
+            const runtimeIds = await api.viewer.convertToObjectRuntimeIds(modell.id, slice);
+            if (!Array.isArray(runtimeIds)) continue;
+            for (let j = 0; j < slice.length; j++) {
+              const rid = runtimeIds[j];
+              if (rid != null && !isNaN(Number(rid))) {
+                const layer = guidLayerMap[slice[j]];
+                neueMap[Number(rid)] = layer;
+                layerWerte.add(layer);
+              }
+            }
+          }
+        } catch { /* Modell überspringen */ }
+      }
+
+      if (Object.keys(neueMap).length > 0) {
+        setRuntimeLayerMap(neueMap);
+        // Layer-Werte sofort in Dropdown eintragen
+        setAttrMap(prev => {
+          const key = "Presentation Layers||Layer";
+          const vorh = new Set([...(prev[key] ?? []), ...layerWerte]);
+          return { ...prev, [key]: vorh };
+        });
+        setAllAttrs(prev => {
+          const key = "Presentation Layers||Layer";
+          return prev.some(a => a.key === key)
+            ? prev
+            : [...prev, { pset: "Presentation Layers", name: "Layer", key }];
+        });
+      }
+    })();
+  }, [aktiveSim?.id, api]);
 
   // Attribute vorladen — parallele Einzelabfragen + Cancellation-Token gegen Race Condition
   async function ladeAttr() {
@@ -324,7 +397,22 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
 
           // Fast Path 2: Presentation Layers > Layer
           if (selectedAttr.pset === "Presentation Layers" && selectedAttr.name === "Layer") {
-            // 2a: getObjects Metadaten (falls TC layer-Info mitliefert)
+            // 2a: runtimeLayerMap (aus ifcGuidLayerMap via convertToObjectRuntimeIds) — schnellster Weg
+            const mapHasEntries = Object.keys(runtimeLayerMap).length > 0;
+            if (mapHasEntries) {
+              for (const rId of allIds) {
+                const layer = runtimeLayerMap[rId];
+                if (layer && wertPasst(layer)) {
+                  if (!treffenByModel.has(mid)) treffenByModel.set(mid, []);
+                  treffenByModel.get(mid)!.push(rId);
+                  alleTreffer.push(rId);
+                }
+              }
+              // Wenn Map vorhanden aber 0 Treffer → trotzdem continue (Map ist die authoritative Quelle)
+              continue;
+            }
+
+            // 2b: getObjects Metadaten (falls TC layer-Info mitliefert)
             const metaHasLayer = allObjsMeta.some(o => o.layer != null);
             if (metaHasLayer) {
               for (const objMeta of allObjsMeta) {
@@ -520,7 +608,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
               </span>
             )}
             {totalObjekte != null && nichtZugewiesen != null && nichtZugewiesen > 0 && (
-              <span style={{ color: "var(--tc-orange)", fontSize: 9 }}>
+              <span style={{ color: "#3B82F6", fontSize: 9 }}>
                 ∅ {nichtZugewiesen} offen
               </span>
             )}
@@ -688,17 +776,34 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
             )}
           </div>
 
-          {/* Übersicht nicht zugewiesen */}
-          {nichtZugewiesen != null && nichtZugewiesen > 0 && (
-            <div className="detail-block" style={{ background: "#FFF8F0", border: "0.5px solid var(--tc-orange)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ color: "var(--tc-orange)", fontSize: 11 }}>⚠</span>
-                <span style={{ fontSize: 10, color: "var(--tc-text-2)" }}>
-                  <strong>{nichtZugewiesen}</strong> von <strong>{totalObjekte}</strong> Bauteilen noch keinem Task zugewiesen
+          {/* Übersicht Bauteile — blauer Info-Block */}
+          {totalObjekte != null && (
+            <div className="detail-block" style={{
+              background: "#EFF6FF",
+              border: "0.5px solid #BFDBFE",
+              borderRadius: 6,
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 10, color: "#1D4ED8", fontWeight: 600 }}>
+                  ⬡ {alleGuids.size} / {totalObjekte} Bauteile zugewiesen
                 </span>
+                {nichtZugewiesen != null && nichtZugewiesen > 0 && (
+                  <span style={{ fontSize: 9, color: "#3B82F6" }}>
+                    {nichtZugewiesen} offen
+                  </span>
+                )}
               </div>
-              <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 3 }}>
-                Zugewiesen: {alleGuids.size} eindeutige Bauteile über {aktiveSim.tasks.filter(t => t.objektGuids.length > 0).length} Tasks
+              <div style={{ marginTop: 4, height: 4, borderRadius: 2, background: "#BFDBFE", overflow: "hidden" }}>
+                <div style={{
+                  height: "100%",
+                  borderRadius: 2,
+                  background: "#3B82F6",
+                  width: `${totalObjekte > 0 ? Math.round((alleGuids.size / totalObjekte) * 100) : 0}%`,
+                  transition: "width 0.3s ease",
+                }} />
+              </div>
+              <div style={{ fontSize: 9, color: "#60A5FA", marginTop: 3 }}>
+                {aktiveSim.tasks.filter(t => t.objektGuids.length > 0).length} Tasks mit Bauteilen
               </div>
             </div>
           )}
