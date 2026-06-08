@@ -139,6 +139,33 @@ export function parseIfcLayerMap(ifcContent: string): Record<string, string> {
 // localStorage Keys
 export const SIMS_KEY = "4d-sims-v3";
 export const AKTIV_KEY = "4d-aktiv-v3";
+
+// Bekannte GUID→Layer-Mappings pro IFC-Dateiname
+// Wird in TabProjekte beim Speichern von Modellen automatisch zugeordnet
+export const BEKANNTE_GUID_LAYER_MAPS: Record<string, Record<string, string>> = {
+  "01_Fundation.ifc": {
+    "2RStUXPRzDTODhQYCAgNtz": "Bodenplatte",
+    "0PSm7dj6TFsRpMdhU9gAoQ": "Bodenplatte",
+    "3Yy8jISHLEjAfoVc2X3vYI": "Bodenplatte",
+    "2dMFD2uuT8RgtbFiFxL14c": "Einzelfundament",
+    "26EP9y5WnBxe$6oD6qLJiT": "Einzelfundament",
+    "1dYP93zBD3qv43MwQaghQ7": "Schachtwand",
+    "22OfFu1HjB$Au5hzUJCk7h": "Schachtwand",
+    "0wy8wdemn7yOBss5WqhVyI": "Schachtwand",
+    "3UiflBx_P3efXY5_Ms78Cn": "Schachtwand",
+    "1wds5CjtP1Ux3A$RAT8xAJ": "Schachtkopfplatte",
+  },
+  "00_Stützmauer.ifc": {
+    "0vrXFjjuHDvxoeqqQIoFsY": "Streifenfundament",
+    "3QXZD7dQf6kw6_cUIdzuxj": "Streifenfundament",
+    "1wp4DjU212zwtWruHR1WyL": "Streifenfundament",
+    "2DeAUwEUjEEOr2Amnywcjv": "Streifenfundament",
+    "18B79q_S15DfFY7suBu1ZR": "Stützmauerwand_Anzug",
+    "0uGi26OHP9VO8b_Rq2Hnoy": "Stützmauerwand_Anzug",
+    "1d7go44TP268ceR6y3vuYq": "Stützmauerwand_Anzug",
+    "0ldZPaxBX7meqZ72qJDoBn": "Stützmauerwand_Anzug",
+  },
+};
 // Datum validieren: YYYY-MM-DD
 export function isValidDatum(s: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(s);
