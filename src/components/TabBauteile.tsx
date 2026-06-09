@@ -485,12 +485,30 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     const istGleich = taskId === aktivTaskId;
     setAktivTaskId(istGleich ? null : taskId);
     if (istGleich) {
-      // Task deselektiert → Selektion aufheben + Reset
       try { await (api?.viewer as any)?.setSelection([]); } catch { /* ignore */ }
+    } else {
+      const task = aktiveSim?.tasks.find(t => t.id === taskId);
+      if (!task || task.objektGuids.length === 0 || !api) return;
+
+      // Stored guids parsen
+      const byModel = new Map<string, number[]>();
+      for (const g of task.objektGuids) {
+        if (g.includes(":::")) {
+          const sep = g.indexOf(":::");
+          const mid = g.slice(0, sep); const rId = Number(g.slice(sep + 3));
+          if (mid && !isNaN(rId)) { if (!byModel.has(mid)) byModel.set(mid, []); byModel.get(mid)!.push(rId); }
+        }
+      }
+      if (byModel.size === 0) return;
+
+      // setSelection mit recursive: false → KEINE Kinder-Expansion mehr!
+      const selection = [...byModel.entries()].map(([modelId, rIds]) => ({
+        modelId,
+        objectRuntimeIds: [...new Set(rIds)],
+        recursive: false,   // ← verhindert die 189/411-Expansion
+      }));
+      try { await (api.viewer as any).setSelection(selection); } catch { /* ignore */ }
     }
-    // Kein automatisches setSelection mehr beim Öffnen eines Tasks —
-    // TC selektiert bei programmatischen Aufrufen immer das ganze Modell (Sub-Geometrie + GUID-Matching über Modelle).
-    // Stattdessen: User nutzt "Nur diese" / "Ausblenden" Buttons.
   }
 
   // Gefundene Objekte dem Task hinzufügen — als "modelId:::rId" speichern
@@ -552,29 +570,21 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     }
     if (byModel.size === 0) return;
 
-    for (const [mid, rIds] of byModel.entries()) {
-      const unique = [...new Set(rIds)];
-
-      // 1. Gesamtes Modell ausblenden
-      try { await api.viewer.setObjectState([{ modelId: mid }] as any, { visible: false } as any); } catch { /* ignore */ }
-
-      // 2. Eltern-Objekte (IFCELEMENTASSEMBLY, IFCSITE usw.) ermitteln und einblenden
-      //    Ohne sichtbare Parents bleiben Kinder-Objekte in TC unsichtbar
-      let parentIds: number[] = [];
-      try {
-        const res = await (api.viewer as any).getHierarchyParents(mid, unique);
-        if (Array.isArray(res)) parentIds = res.flat().filter((n: any) => typeof n === 'number');
-        else if (res && typeof res === 'object') parentIds = (Object.values(res) as any[]).flat().filter((n: any) => typeof n === 'number');
-      } catch { /* ignore — falls API nicht unterstützt */ }
-
-      // 3. Task-Objekte + ihre Parents einblenden
-      const alleEinblenden = [...new Set([...unique, ...parentIds])];
-      try {
-        await api.viewer.setObjectState(
-          [{ modelId: mid, objectRuntimeIds: alleEinblenden }] as any,
-          { visible: true } as any
-        );
-      } catch { /* ignore */ }
+    // isolateEntities = TC-Organizer-Methode: zeigt nur diese Objekte, alles andere ausgeblendet
+    const entities = [...byModel.entries()].map(([modelId, rIds]) => ({
+      modelId,
+      objectRuntimeIds: [...new Set(rIds)],
+    }));
+    try {
+      await (api.viewer as any).isolateEntities(entities);
+    } catch {
+      // Fallback: manuell ausblenden + einblenden
+      for (const mid of byModel.keys()) {
+        try { await api.viewer.setObjectState([{ modelId: mid }] as any, { visible: false } as any); } catch { /* ignore */ }
+      }
+      for (const [mid, rIds] of byModel.entries()) {
+        try { await api.viewer.setObjectState([{ modelId: mid, objectRuntimeIds: [...new Set(rIds)] }] as any, { visible: true } as any); } catch { /* ignore */ }
+      }
     }
   }
 
