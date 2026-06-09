@@ -31,6 +31,8 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   const [totalLaedt, setTotalLaedt] = useState(false);
   // Cache: "simId_modellId" → echte Bauteil-IDs (nur einmal berechnen pro Session)
   const echteBauteileCache = useRef<Record<string, number[]>>({});
+  // Cache: "modellId" → "tekla" | "standard"
+  const modellTypCache = useRef<Record<string, 'tekla' | 'standard'>>({});
   const acRef = useRef<HTMLDivElement>(null);
   const ladeAttrGen = useRef(0); // Cancellation-Token gegen Race Conditions
 
@@ -99,10 +101,30 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     return [];
   }
 
-  // Filtert echte Bauteile: getObjectProperties wirft → echtes Bauteil ✅
-  // getObjectProperties gibt Ergebnis → Hierarchie (IFCSITE/BUILDING/STOREY) ❌
-  // Läuft in Batches von 10 parallelen Calls
+  // Erkennt Modell-Typ: Tekla-Export (getObjectProperties wirft für echte Bauteile)
+  // vs. Standard IFC (Revit/ArchiCAD — getObjectProperties funktioniert für alle)
+  async function detectIstTekla(mid: string, sampleIds: number[]): Promise<boolean> {
+    if (modellTypCache.current[mid]) return modellTypCache.current[mid] === 'tekla';
+    const start = Math.min(3, Math.max(0, sampleIds.length - 6));
+    const sample = sampleIds.slice(start, start + 6);
+    if (sample.length === 0) return false;
+    const results = await Promise.allSettled(
+      sample.map(rId => api!.viewer.getObjectProperties(mid, [rId]))
+    );
+    const throwCount = results.filter(r => r.status === 'rejected').length;
+    const istTekla = throwCount >= Math.ceil(sample.length * 0.7);
+    modellTypCache.current[mid] = istTekla ? 'tekla' : 'standard';
+    return istTekla;
+  }
+
+  // Filtert echte Bauteile — model-type-aware:
+  // Standard IFC: alle rIds sind echte Bauteile → direkt zurückgeben
+  // Tekla IFC: rejected = echtes Bauteil, fulfilled = Hierarchie
   async function filterEchteBauteile(mid: string, rIds: number[]): Promise<number[]> {
+    if (rIds.length === 0) return [];
+    const istTekla = await detectIstTekla(mid, rIds);
+    if (!istTekla) return rIds; // Standard: alle sind gültig
+
     const echte: number[] = [];
     const BATCH = 10;
     for (let i = 0; i < rIds.length; i += BATCH) {
@@ -122,7 +144,22 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     const key = `${aktiveSim?.id ?? 'x'}_${mid}`;
     if (echteBauteileCache.current[key]) return echteBauteileCache.current[key];
     const allIds = await getModellObjekte(mid);
-    const echte = await filterEchteBauteile(mid, allIds);
+    if (allIds.length === 0) { echteBauteileCache.current[key] = []; return []; }
+
+    const istTekla = await detectIstTekla(mid, allIds);
+    let echte: number[];
+    if (!istTekla) {
+      // Standard IFC: IFCSITE + IFCBUILDING + IFCBUILDINGSTOREY = ~3 Hierarchie-Objekte
+      // Hierarchie-IDs testen: die ersten getObjectProperties die NICHT werfen = Hierarchie
+      const hierarchie = new Set<number>();
+      for (const rId of allIds.slice(0, 15)) {
+        try { await api!.viewer.getObjectProperties(mid, [rId]); hierarchie.add(rId); }
+        catch { break; }
+      }
+      echte = allIds.filter(id => !hierarchie.has(id));
+    } else {
+      echte = await filterEchteBauteile(mid, allIds);
+    }
     echteBauteileCache.current[key] = echte;
     return echte;
   }
@@ -471,16 +508,25 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
       byModel.get(modellIds[0])!.push(...legacyIds);
     }
 
-    // Nur echte Bauteile selektieren (Hierarchie-Container ausschliessen)
-    const selection: { modelId: string; objectRuntimeIds: number[] }[] = [];
+    // Nur echte Bauteile hervorheben via setObjectState (kein Assembly-Expansion!)
+    // 1. Alle Objekte auf Standard zurücksetzen
+    try {
+      await api.viewer.setObjectState(
+        { modelObjectIds: modellIds.map(mid => ({ modelId: mid })) } as any,
+        { color: "reset" } as any
+      );
+    } catch { /* ignore */ }
+
+    // 2. Task-Objekte gelb einfärben (exakt diese rIds, keine TC-Expansion)
     for (const [mid, rIds] of byModel.entries()) {
       const unique = [...new Set(rIds)];
-      const echte = await filterEchteBauteile(mid, unique);
-      if (echte.length > 0) selection.push({ modelId: mid, objectRuntimeIds: echte });
-    }
-
-    if (selection.length > 0) {
-      try { await (api.viewer as any).setSelection(selection); } catch { /* ignore */ }
+      if (unique.length === 0) continue;
+      try {
+        await api.viewer.setObjectState(
+          { modelObjectIds: [{ modelId: mid, objectRuntimeIds: unique }] } as any,
+          { color: { r: 255, g: 215, b: 0 } } as any
+        );
+      } catch { /* ignore */ }
     }
   }
 
@@ -488,7 +534,18 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   async function taskAnklicken(taskId: string) {
     const istGleich = taskId === aktivTaskId;
     setAktivTaskId(istGleich ? null : taskId);
-    if (!istGleich) {
+    if (istGleich) {
+      // Task deselektiert → Farben zurücksetzen
+      if (api && aktiveSim) {
+        const modellIds = aktiveSim.modelle.map(m => m.id).filter(Boolean);
+        try {
+          await api.viewer.setObjectState(
+            { modelObjectIds: modellIds.map(mid => ({ modelId: mid })) } as any,
+            { color: "reset" } as any
+          );
+        } catch { /* ignore */ }
+      }
+    } else {
       const task = aktiveSim?.tasks.find(t => t.id === taskId);
       if (task && task.objektGuids.length > 0) await markiereObjekte(task.objektGuids);
     }
