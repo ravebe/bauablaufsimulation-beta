@@ -578,13 +578,8 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
 
   // Sichtbarkeits-Funktionen via setObjectState (umgeht TC's setSelection-Expansion)
   async function nurAnzeigen(guids: string[]) {
-    if (!api || !aktiveSim) return;
-    const modellIds = aktiveSim.modelle.map(m => m.id).filter(Boolean);
-    // 1. Alle ausblenden
-    for (const mid of modellIds) {
-      try { await api.viewer.setObjectState([{ modelId: mid }] as any, { visible: false } as any); } catch { /* ignore */ }
-    }
-    // 2. Task-Objekte einblenden
+    if (!api) return;
+    // Modell-IDs und rIds aus gespeicherten Guids lesen (gleiche Quelle wie ausblenden)
     const byModel = new Map<string, number[]>();
     for (const g of guids) {
       if (g.includes(":::")) {
@@ -593,6 +588,12 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
         if (mid && !isNaN(rId)) { if (!byModel.has(mid)) byModel.set(mid, []); byModel.get(mid)!.push(rId); }
       }
     }
+    if (byModel.size === 0) return;
+    // 1. Alle Objekte in den betroffenen Modellen ausblenden
+    for (const mid of byModel.keys()) {
+      try { await api.viewer.setObjectState([{ modelId: mid }] as any, { visible: false } as any); } catch { /* ignore */ }
+    }
+    // 2. Task-Objekte wieder einblenden
     for (const [mid, rIds] of byModel.entries()) {
       try { await api.viewer.setObjectState([{ modelId: mid, objectRuntimeIds: [...new Set(rIds)] }] as any, { visible: true } as any); } catch { /* ignore */ }
     }
