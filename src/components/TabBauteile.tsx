@@ -570,21 +570,26 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     }
     if (byModel.size === 0) return;
 
-    // isolateEntities = TC-Organizer-Methode: zeigt nur diese Objekte, alles andere ausgeblendet
-    const entities = [...byModel.entries()].map(([modelId, rIds]) => ({
-      modelId,
-      objectRuntimeIds: [...new Set(rIds)],
-    }));
-    try {
-      await (api.viewer as any).isolateEntities(entities);
-    } catch {
-      // Fallback: manuell ausblenden + einblenden
-      for (const mid of byModel.keys()) {
-        try { await api.viewer.setObjectState([{ modelId: mid }] as any, { visible: false } as any); } catch { /* ignore */ }
-      }
-      for (const [mid, rIds] of byModel.entries()) {
-        try { await api.viewer.setObjectState([{ modelId: mid, objectRuntimeIds: [...new Set(rIds)] }] as any, { visible: true } as any); } catch { /* ignore */ }
-      }
+    for (const [mid, rIds] of byModel.entries()) {
+      const unique = [...new Set(rIds)];
+
+      // 1. Alle Objekte im Modell ausblenden
+      try { await api.viewer.setObjectState([{ modelId: mid }] as any, { visible: false } as any); } catch { /* ignore */ }
+
+      // 2. Eltern-Container ermitteln (IFCELEMENTASSEMBLY, IFCBUILDINGSTOREY usw.)
+      //    recursive: true → alle Vorfahren bis zur Wurzel
+      //    Ohne sichtbare Parents zeigt TC Kinder-Objekte nicht an
+      let parentIds: number[] = [];
+      try {
+        const parents: any[] = await (api.viewer.getHierarchyParents as any)(mid, unique, undefined, true);
+        parentIds = (parents ?? []).map((p: any) =>
+          typeof p === 'number' ? p : (p?.entityId ?? p?.runtimeId ?? p?.id ?? p?.objectRuntimeId)
+        ).filter((id: any) => typeof id === 'number');
+      } catch { /* getHierarchyParents nicht verfügbar oder kein Ergebnis */ }
+
+      // 3. Task-Objekte + alle Vorfahren einblenden
+      const allShow = [...new Set([...unique, ...parentIds])];
+      try { await api.viewer.setObjectState([{ modelId: mid, objectRuntimeIds: allShow }] as any, { visible: true } as any); } catch { /* ignore */ }
     }
   }
 
