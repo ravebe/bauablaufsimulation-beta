@@ -570,26 +570,30 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     }
     if (byModel.size === 0) return;
 
-    for (const [mid, rIds] of byModel.entries()) {
-      const unique = [...new Set(rIds)];
+    for (const [mid, taskRIds] of byModel.entries()) {
+      const taskSet = new Set<number>(taskRIds);
 
-      // 1. Alle Objekte im Modell ausblenden
-      try { await api.viewer.setObjectState([{ modelId: mid }] as any, { visible: false } as any); } catch { /* ignore */ }
+      // Alle Objekte des Modells holen
+      const alleIds = await getModellObjekte(mid);
 
-      // 2. Eltern-Container ermitteln (IFCELEMENTASSEMBLY, IFCBUILDINGSTOREY usw.)
-      //    recursive: true → alle Vorfahren bis zur Wurzel
-      //    Ohne sichtbare Parents zeigt TC Kinder-Objekte nicht an
-      let parentIds: number[] = [];
+      // Nur NICHT-Task-Objekte ausblenden → Hierarchie-Container werden nie berührt!
+      const hideIds = alleIds.filter(id => !taskSet.has(id));
       try {
-        const parents: any[] = await (api.viewer.getHierarchyParents as any)(mid, unique, undefined, true);
-        parentIds = (parents ?? []).map((p: any) =>
-          typeof p === 'number' ? p : (p?.entityId ?? p?.runtimeId ?? p?.id ?? p?.objectRuntimeId)
-        ).filter((id: any) => typeof id === 'number');
-      } catch { /* getHierarchyParents nicht verfügbar oder kein Ergebnis */ }
+        if (hideIds.length > 0) {
+          await api.viewer.setObjectState(
+            [{ modelId: mid, objectRuntimeIds: hideIds }] as any,
+            { visible: false } as any
+          );
+        }
+      } catch { /* ignore */ }
 
-      // 3. Task-Objekte + alle Vorfahren einblenden
-      const allShow = [...new Set([...unique, ...parentIds])];
-      try { await api.viewer.setObjectState([{ modelId: mid, objectRuntimeIds: allShow }] as any, { visible: true } as any); } catch { /* ignore */ }
+      // Task-Objekte explizit einblenden (falls vorher ausgeblendet)
+      try {
+        await api.viewer.setObjectState(
+          [{ modelId: mid, objectRuntimeIds: [...taskSet] }] as any,
+          { visible: true } as any
+        );
+      } catch { /* ignore */ }
     }
   }
 
@@ -816,12 +820,23 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
                 ? `✓ ${selektion.length} Bauteil(e) ausgewählt`
                 : "Bauteil(e) im Viewer anklicken…"}
             </div>
-            {selektion.length > 0 && (
-              <button className="tc-btn-secondary" style={{ width: "100%", marginTop: 5 }}
-                onClick={selektionHinzufuegen}>
-                + Ausgewählte Bauteile hinzufügen ({selektion.length})
-              </button>
-            )}
+            {selektion.length > 0 && (() => {
+              // Nur neue Objekte anzeigen (nicht bereits im Task)
+              const bereitsImTask = new Set(
+                aktivTask?.objektGuids.map(g => g.includes(":::") ? Number(g.split(":::")[1]) : Number(g)) ?? []
+              );
+              const neueAnzahl = selektion.filter(rId => !bereitsImTask.has(rId)).length;
+              return neueAnzahl > 0 ? (
+                <button className="tc-btn-primary" style={{ width: "100%", marginTop: 5, background: "#16a34a", borderColor: "#16a34a" }}
+                  onClick={selektionHinzufuegen}>
+                  + Hinzufügen ({neueAnzahl} neu)
+                </button>
+              ) : (
+                <div style={{ fontSize: 10, color: "#888", marginTop: 4 }}>
+                  Alle ausgewählten Objekte bereits im Task
+                </div>
+              );
+            })()}
           </div>
 
           {/* Übersicht Bauteile — blauer Info-Block */}
