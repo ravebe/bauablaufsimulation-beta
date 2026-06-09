@@ -29,6 +29,8 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   const [attrLaedt, setAttrLaedt] = useState(false);
   const [totalObjekte, setTotalObjekte] = useState<number | null>(null);
   const [totalLaedt, setTotalLaedt] = useState(false);
+  // Anzeige-Namen für gespeicherte Objekte: {guid → {name, ifcId}}
+  const [guidInfo, setGuidInfo] = useState<Map<string, {name: string; ifcId: string}>>(new Map());
   // Cache: "simId_modellId" → echte Bauteil-IDs (nur einmal berechnen pro Session)
   const echteBauteileCache = useRef<Record<string, number[]>>({});
   // Cache: "modellId" → "tekla" | "standard"
@@ -67,7 +69,43 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     setIfcQuery("");
     setIfcWert("");
     setSelectedAttr(null);
+    setGuidInfo(new Map());
   }, [aktivTaskId]);
+
+  // Guid-Labels laden: Product Name + IFC GUID pro gespeichertem Objekt
+  useEffect(() => {
+    if (!api || !aktivTask?.objektGuids.length) return;
+    const guids = aktivTask.objektGuids;
+    (async () => {
+      const info = new Map<string, {name: string; ifcId: string}>();
+      for (const g of guids) {
+        if (!g.includes(":::")) continue;
+        const sep = g.indexOf(":::");
+        const mid = g.slice(0, sep); const rId = Number(g.slice(sep + 3));
+        let name = ""; let ifcId = "";
+        // IFC GUID holen
+        try {
+          const ids = await api.viewer.convertToObjectIds(mid, [rId]);
+          ifcId = (ids as any)?.[0] ?? "";
+        } catch { /* nicht verfügbar */ }
+        // Product Name aus Properties
+        try {
+          const props: any[] = await api.viewer.getObjectProperties(mid, [rId]) as any;
+          outer: for (const pset of props ?? []) {
+            for (const p of pset?.properties ?? []) {
+              const n = (p?.name ?? "").toLowerCase();
+              if (n === "name" || n === "product name" || n === "bezeichnung") {
+                name = String(p?.value ?? ""); break outer;
+              }
+            }
+          }
+        } catch { /* Tekla-Modell: getObjectProperties wirft */ }
+        info.set(g, { name: name || `rId: ${rId}`, ifcId });
+      }
+      setGuidInfo(info);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aktivTask?.id, aktivTask?.objektGuids.length, api]);
 
   // Hilfsfunktion: Runtime-IDs eines Modells holen
   // Probiert ObjectSelector (DataTable-Format) → Fallback auf string-Format
@@ -559,41 +597,27 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
 
   // Sichtbarkeits-Funktionen via setObjectState (umgeht TC's setSelection-Expansion)
   async function nurAnzeigen(guids: string[]) {
-    if (!api) return;
+    if (!api || !aktiveSim) return;
     const byModel = new Map<string, number[]>();
     for (const g of guids) {
-      if (g.includes(":::")) {
-        const sep = g.indexOf(":::");
-        const mid = g.slice(0, sep); const rId = Number(g.slice(sep + 3));
-        if (mid && !isNaN(rId)) { if (!byModel.has(mid)) byModel.set(mid, []); byModel.get(mid)!.push(rId); }
-      }
+      if (!g.includes(":::")) continue;
+      const sep = g.indexOf(":::");
+      const mid = g.slice(0, sep); const rId = Number(g.slice(sep + 3));
+      if (mid && !isNaN(rId)) { if (!byModel.has(mid)) byModel.set(mid, []); byModel.get(mid)!.push(rId); }
     }
     if (byModel.size === 0) return;
 
+    // Schritt 1: Reset → sauberer Zustand (kein Modell-Level-Hide der Element-Show blockiert)
+    try { await api.viewer.reset(); } catch { /* ignore */ }
+
+    // Schritt 2: Inverse-Hide — nur NICHT-Task-Objekte ausblenden (kein Hierarchie-Problem)
     for (const [mid, taskRIds] of byModel.entries()) {
       const taskSet = new Set<number>(taskRIds);
-
-      // Alle Objekte des Modells holen
       const alleIds = await getModellObjekte(mid);
-
-      // Nur NICHT-Task-Objekte ausblenden → Hierarchie-Container werden nie berührt!
       const hideIds = alleIds.filter(id => !taskSet.has(id));
-      try {
-        if (hideIds.length > 0) {
-          await api.viewer.setObjectState(
-            [{ modelId: mid, objectRuntimeIds: hideIds }] as any,
-            { visible: false } as any
-          );
-        }
-      } catch { /* ignore */ }
-
-      // Task-Objekte explizit einblenden (falls vorher ausgeblendet)
-      try {
-        await api.viewer.setObjectState(
-          [{ modelId: mid, objectRuntimeIds: [...taskSet] }] as any,
-          { visible: true } as any
-        );
-      } catch { /* ignore */ }
+      if (hideIds.length > 0) {
+        try { await api.viewer.setObjectState([{ modelId: mid, objectRuntimeIds: hideIds }], { visible: false }); } catch { /* ignore */ }
+      }
     }
   }
 
@@ -906,12 +930,24 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
 
             {aktivTask.objektGuids.length > 0 && (
               <div className="guid-list">
-                {aktivTask.objektGuids.map((g, i) => (
-                  <div key={i} className="guid-row">
-                    <span className="guid-row-id">{g}</span>
-                    <button className="guid-row-x" onClick={() => guidEntfernen(aktivTask.id, g)}>✕</button>
-                  </div>
-                ))}
+                {aktivTask.objektGuids.map((g, i) => {
+                  const info = guidInfo.get(g);
+                  return (
+                    <div key={i} className="guid-row">
+                      <div className="guid-row-id" style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {info?.name ?? g}
+                        </div>
+                        {info?.ifcId && (
+                          <div style={{ fontSize: 9, opacity: 0.55, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {info.ifcId}
+                          </div>
+                        )}
+                      </div>
+                      <button className="guid-row-x" onClick={() => guidEntfernen(aktivTask.id, g)}>✕</button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
