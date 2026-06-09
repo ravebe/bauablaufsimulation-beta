@@ -480,54 +480,17 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   }
 
   // Objekte im Viewer markieren — Format "modelId:::rId" oder Legacy "rId"
-  async function markiereObjekte(objektGuids: string[]) {
-    if (!api || objektGuids.length === 0) return;
-    const modellIds = aktiveSim?.modelle.map(m => m.id).filter(Boolean) ?? [];
-    if (modellIds.length === 0) return;
-
-    const byModel = new Map<string, number[]>();
-    const legacyIds: number[] = [];
-
-    for (const g of objektGuids) {
-      if (g.includes(":::")) {
-        const sep = g.indexOf(":::");
-        const mid = g.slice(0, sep);
-        const rId = Number(g.slice(sep + 3));
-        if (mid && !isNaN(rId)) {
-          if (!byModel.has(mid)) byModel.set(mid, []);
-          byModel.get(mid)!.push(rId);
-        }
-      } else {
-        const rId = Number(g);
-        if (!isNaN(rId) && rId > 0) legacyIds.push(rId);
-      }
-    }
-
-    if (legacyIds.length > 0 && modellIds[0]) {
-      if (!byModel.has(modellIds[0])) byModel.set(modellIds[0], []);
-      byModel.get(modellIds[0])!.push(...legacyIds);
-    }
-
-    // Direkt setSelection — kein async Filter davor (verhindert Race Conditions)
-    // Die gespeicherten rIds kommen vom Mausklick und sind bereits Leaf-Elemente
-    const selection = [...byModel.entries()].map(([modelId, rIds]) => ({
-      modelId,
-      objectRuntimeIds: [...new Set(rIds)],
-    }));
-    try { await (api.viewer as any).setSelection(selection); } catch { /* ignore */ }
-  }
-
   // Task anklicken → Bauteile im 3D markieren
   async function taskAnklicken(taskId: string) {
     const istGleich = taskId === aktivTaskId;
     setAktivTaskId(istGleich ? null : taskId);
     if (istGleich) {
-      // Task deselektiert → Selektion aufheben
+      // Task deselektiert → Selektion aufheben + Reset
       try { await (api?.viewer as any)?.setSelection([]); } catch { /* ignore */ }
-    } else {
-      const task = aktiveSim?.tasks.find(t => t.id === taskId);
-      if (task && task.objektGuids.length > 0) await markiereObjekte(task.objektGuids);
     }
+    // Kein automatisches setSelection mehr beim Öffnen eines Tasks —
+    // TC selektiert bei programmatischen Aufrufen immer das ganze Modell (Sub-Geometrie + GUID-Matching über Modelle).
+    // Stattdessen: User nutzt "Nur diese" / "Ausblenden" Buttons.
   }
 
   // Gefundene Objekte dem Task hinzufügen — als "modelId:::rId" speichern
@@ -889,17 +852,18 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
               <div style={{ display: "flex", gap: 4 }}>
                 {aktivTask.objektGuids.length > 0 && (
                   <>
-                    <button className="tc-btn-ghost" title="Nur diese Bauteile anzeigen, alle anderen ausblenden"
+                    <button className="tc-btn-primary" title="Nur diese Bauteile anzeigen, alle anderen ausblenden"
+                      style={{ fontSize: 10, padding: "3px 8px" }}
                       onClick={() => nurAnzeigen(aktivTask.objektGuids)}>
                       👁 Nur diese
                     </button>
                     <button className="tc-btn-ghost" title="Diese Bauteile ausblenden"
                       onClick={() => ausblenden(aktivTask.objektGuids)}>
-                      🚫 Ausblenden
+                      🚫
                     </button>
                     <button className="tc-btn-ghost" title="Alle Objekte wieder einblenden"
                       onClick={alleEinblenden}>
-                      ↺ Reset
+                      ↺
                     </button>
                     <button className="tc-btn-ghost" style={{ color: "var(--tc-red)" }}
                       onClick={() => speichereGuids(aktivTask.id, [])}>
