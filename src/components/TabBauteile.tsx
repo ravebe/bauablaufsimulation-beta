@@ -76,14 +76,15 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
         modelObjectIds: [{ modelId: mid }]
       }) as any[];
       const ids: number[] = [];
+      const seen = new Set<number>();
       for (const r of result ?? []) {
         // Format A: {objectRuntimeIds: number[]}
         for (const rId of r?.objectRuntimeIds ?? []) {
-          const n = Number(rId); if (!isNaN(n)) ids.push(n);
+          const n = Number(rId); if (!isNaN(n) && !seen.has(n)) { seen.add(n); ids.push(n); }
         }
-        // Format B: {objects: [{id: number}]} (altes Format)
+        // Format B: {objects: [{id: number}]}
         for (const o of r?.objects ?? []) {
-          const n = Number(o?.id ?? o); if (!isNaN(n)) ids.push(n);
+          const n = Number(o?.id ?? o); if (!isNaN(n) && !seen.has(n)) { seen.add(n); ids.push(n); }
         }
       }
       if (ids.length > 0) return ids;
@@ -149,10 +150,8 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   async function ladeAttr() {
     if (!api) return;
 
-    const modelIds = [...new Set([
-      ...(aktiveSim?.modelle.map(m => m.id).filter(Boolean) ?? []),
-      ...(aktivesModellId ? [aktivesModellId] : [])
-    ])].filter(Boolean) as string[];
+    // Nur Modelle der aktiven Simulation (aktivesModellId kann falsches Modell sein!)
+    const modelIds = (aktiveSim?.modelle.map(m => m.id).filter(Boolean) ?? []) as string[];
 
     if (modelIds.length === 0) return;
     const myGen = ++ladeAttrGen.current; // Diese Generation merken
@@ -274,15 +273,14 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
 
   // IFC Suche — batch=1 garantiert korrekte Runtime-ID (obj.id ist IFC-GUID, nicht Runtime-ID!)
   async function ifcSuchen() {
-    if (!api || !selectedAttr || !ifcWert || !aktivTask) return;
+    if (!api || !selectedAttr || !ifcWert || !aktivTask || !aktiveSim) return;
     setSuchStatus(null);
     setGefundeneIds([]);
     setLaedt(true);
 
-    const modelIds = [...new Set([
-      ...(aktiveSim?.modelle.map(m => m.id).filter(Boolean) ?? []),
-      ...(aktivesModellId ? [aktivesModellId] : [])
-    ])].filter(Boolean) as string[];
+    // Nur Modelle der aktiven Simulation — aktivesModellId NICHT einschliessen
+    // (könnte Modell einer anderen Simulation sein → falsche Treffer!)
+    const modelIds = aktiveSim.modelle.map(m => m.id).filter(Boolean) as string[];
 
     if (modelIds.length === 0) { setSuchStatus("Kein Modell gefunden"); setLaedt(false); return; }
 
@@ -448,7 +446,6 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   async function markiereObjekte(objektGuids: string[]) {
     if (!api || objektGuids.length === 0) return;
     const modellIds = aktiveSim?.modelle.map(m => m.id).filter(Boolean) ?? [];
-    if (aktivesModellId && !modellIds.includes(aktivesModellId)) modellIds.push(aktivesModellId);
     if (modellIds.length === 0) return;
 
     const byModel = new Map<string, number[]>();
@@ -501,15 +498,15 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   function gefundeneHinzufuegen() {
     if (!aktivTask || gefundeneIds.length === 0 || !aktiveSim) return;
 
-    // gefundeneByModel: Map<modelId, rId[]> → "modelId:::rId" strings
-    // Deduplizieren: selber rId aus unterschiedlichen Modellen → nur einmal
-    const seenRIds = new Set<number>();
+    // Deduplizieren per "modelId:::rId" — gleiche rId in verschiedenen Modellen = verschiedene Objekte!
+    const seen = new Set<string>();
     const neueGuids: string[] = [];
     for (const [mid, rIds] of gefundeneByModel.entries()) {
       for (const rId of rIds) {
-        if (!seenRIds.has(rId)) {
-          seenRIds.add(rId);
-          neueGuids.push(`${mid}:::${rId}`);
+        const key = `${mid}:::${rId}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          neueGuids.push(key);
         }
       }
     }
