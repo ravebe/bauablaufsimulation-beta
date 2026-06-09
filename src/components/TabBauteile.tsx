@@ -576,9 +576,46 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     updateSim({ ...aktiveSim, tasks: bereinigteTasks });
   }
 
-  // 👁 Markieren-Button
-  async function markieren(guids: string[]) {
-    await markiereObjekte(guids);
+  // Sichtbarkeits-Funktionen via setObjectState (umgeht TC's setSelection-Expansion)
+  async function nurAnzeigen(guids: string[]) {
+    if (!api || !aktiveSim) return;
+    const modellIds = aktiveSim.modelle.map(m => m.id).filter(Boolean);
+    // 1. Alle ausblenden
+    for (const mid of modellIds) {
+      try { await api.viewer.setObjectState([{ modelId: mid }] as any, { visible: false } as any); } catch { /* ignore */ }
+    }
+    // 2. Task-Objekte einblenden
+    const byModel = new Map<string, number[]>();
+    for (const g of guids) {
+      if (g.includes(":::")) {
+        const sep = g.indexOf(":::");
+        const mid = g.slice(0, sep); const rId = Number(g.slice(sep + 3));
+        if (mid && !isNaN(rId)) { if (!byModel.has(mid)) byModel.set(mid, []); byModel.get(mid)!.push(rId); }
+      }
+    }
+    for (const [mid, rIds] of byModel.entries()) {
+      try { await api.viewer.setObjectState([{ modelId: mid, objectRuntimeIds: [...new Set(rIds)] }] as any, { visible: true } as any); } catch { /* ignore */ }
+    }
+  }
+
+  async function ausblenden(guids: string[]) {
+    if (!api) return;
+    const byModel = new Map<string, number[]>();
+    for (const g of guids) {
+      if (g.includes(":::")) {
+        const sep = g.indexOf(":::");
+        const mid = g.slice(0, sep); const rId = Number(g.slice(sep + 3));
+        if (mid && !isNaN(rId)) { if (!byModel.has(mid)) byModel.set(mid, []); byModel.get(mid)!.push(rId); }
+      }
+    }
+    for (const [mid, rIds] of byModel.entries()) {
+      try { await api.viewer.setObjectState([{ modelId: mid, objectRuntimeIds: [...new Set(rIds)] }] as any, { visible: false } as any); } catch { /* ignore */ }
+    }
+  }
+
+  async function alleEinblenden() {
+    if (!api) return;
+    try { await api.viewer.reset(); } catch { /* ignore */ }
   }
 
   function speichereGuids(taskId: string, guids: string[]) {
@@ -835,12 +872,21 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
               <div style={{ display: "flex", gap: 4 }}>
                 {aktivTask.objektGuids.length > 0 && (
                   <>
-                    <button className="tc-btn-ghost" onClick={() => markieren(aktivTask.objektGuids)}>
-                      👁 Markieren
+                    <button className="tc-btn-ghost" title="Nur diese Bauteile anzeigen, alle anderen ausblenden"
+                      onClick={() => nurAnzeigen(aktivTask.objektGuids)}>
+                      👁 Nur diese
+                    </button>
+                    <button className="tc-btn-ghost" title="Diese Bauteile ausblenden"
+                      onClick={() => ausblenden(aktivTask.objektGuids)}>
+                      🚫 Ausblenden
+                    </button>
+                    <button className="tc-btn-ghost" title="Alle Objekte wieder einblenden"
+                      onClick={alleEinblenden}>
+                      ↺ Reset
                     </button>
                     <button className="tc-btn-ghost" style={{ color: "var(--tc-red)" }}
                       onClick={() => speichereGuids(aktivTask.id, [])}>
-                      🗑 Alle
+                      🗑
                     </button>
                   </>
                 )}
