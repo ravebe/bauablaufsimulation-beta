@@ -508,16 +508,13 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
       byModel.get(modellIds[0])!.push(...legacyIds);
     }
 
-    // Objekte selektieren — für TC-Sichtbarkeits-Funktionen (Ausblenden, Isolieren etc.)
-    const selection: { modelId: string; objectRuntimeIds: number[] }[] = [];
-    for (const [mid, rIds] of byModel.entries()) {
-      const unique = [...new Set(rIds)];
-      const echte = await filterEchteBauteile(mid, unique);
-      if (echte.length > 0) selection.push({ modelId: mid, objectRuntimeIds: echte });
-    }
-    if (selection.length > 0) {
-      try { await (api.viewer as any).setSelection(selection); } catch { /* ignore */ }
-    }
+    // Direkt setSelection — kein async Filter davor (verhindert Race Conditions)
+    // Die gespeicherten rIds kommen vom Mausklick und sind bereits Leaf-Elemente
+    const selection = [...byModel.entries()].map(([modelId, rIds]) => ({
+      modelId,
+      objectRuntimeIds: [...new Set(rIds)],
+    }));
+    try { await (api.viewer as any).setSelection(selection); } catch { /* ignore */ }
   }
 
   // Task anklicken → Bauteile im 3D markieren
