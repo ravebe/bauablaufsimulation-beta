@@ -28,6 +28,9 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   const [laedt, setLaedt] = useState(false);
   const [attrLaedt, setAttrLaedt] = useState(false);
   const [totalObjekte, setTotalObjekte] = useState<number | null>(null);
+  const [totalLaedt, setTotalLaedt] = useState(false);
+  // Cache: "simId_modellId" → echte Bauteil-IDs (nur einmal berechnen pro Session)
+  const echteBauteileCache = useRef<Record<string, number[]>>({});
   const acRef = useRef<HTMLDivElement>(null);
   const ladeAttrGen = useRef(0); // Cancellation-Token gegen Race Conditions
 
@@ -95,54 +98,49 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     return [];
   }
 
-  // Bauteile zählen — Klassen-Filter pro IFC-Typ (DataTable zählt IFCELEMENTASSEMBLY nicht)
+  // Filtert echte Bauteile: getObjectProperties wirft → echtes Bauteil ✅
+  // getObjectProperties gibt Ergebnis → Hierarchie (IFCSITE/BUILDING/STOREY) ❌
+  // Läuft in Batches von 10 parallelen Calls
+  async function filterEchteBauteile(mid: string, rIds: number[]): Promise<number[]> {
+    const echte: number[] = [];
+    const BATCH = 10;
+    for (let i = 0; i < rIds.length; i += BATCH) {
+      const chunk = rIds.slice(i, i + BATCH);
+      const results = await Promise.allSettled(
+        chunk.map(rId => api!.viewer.getObjectProperties(mid, [rId]))
+      );
+      for (let j = 0; j < chunk.length; j++) {
+        if (results[j].status === 'rejected') echte.push(chunk[j]);
+      }
+    }
+    return echte;
+  }
+
+  // Echte Bauteile eines Modells holen — mit Cache (nur einmal pro Modell/Session)
+  async function getEchteBauteile(mid: string): Promise<number[]> {
+    const key = `${aktiveSim?.id ?? 'x'}_${mid}`;
+    if (echteBauteileCache.current[key]) return echteBauteileCache.current[key];
+    const allIds = await getModellObjekte(mid);
+    const echte = await filterEchteBauteile(mid, allIds);
+    echteBauteileCache.current[key] = echte;
+    return echte;
+  }
+  // Bauteile zählen — nur echte Bauteile (ohne Hierarchie-Container)
   useEffect(() => {
     if (!api || !aktiveSim) return;
     if (aktiveSim.modelle.length === 0) { setTotalObjekte(null); return; }
-
-    const REAL_CLASSES = [
-      "IFCWALL", "IFCWALLSTANDARDCASE", "IFCSLAB", "IFCFOOTING",
-      "IFCCOLUMN", "IFCBEAM", "IFCMEMBER", "IFCPLATE",
-      "IFCBUILDINGELEMENTPROXY", "IFCSTAIR", "IFCSTAIRFLIGHT",
-      "IFCRAMP", "IFCRAMPFLIGHT", "IFCROOF", "IFCDOOR", "IFCWINDOW",
-      "IFCCOVERING", "IFCFURNISHINGELEMENT", "IFCPILE",
-      "IFCFASTENER", "IFCDISCRETEACCESSORY", "IFCREINFORCINGBAR",
-      "IFCREINFORCINGMESH", "IFCMECHANICALFASTENER",
-    ];
+    echteBauteileCache.current = {};
 
     (async () => {
+      setTotalLaedt(true);
       let gesamt = 0;
       for (const modell of aktiveSim.modelle) {
         if (!modell.id) continue;
-        let modellGesamt = 0;
-        let klassenFilter = false;
-
-        // Versuch: Klassen-basierter Filter
-        for (const klasse of REAL_CLASSES) {
-          try {
-            const result = await (api.viewer as any).getObjects({
-              modelObjectIds: [{ modelId: modell.id }],
-              parameter: { class: klasse }
-            }) as any[];
-            for (const r of result ?? []) {
-              modellGesamt += (r?.objectRuntimeIds ?? []).length;
-              for (const o of r?.objects ?? []) {
-                if (o?.id != null) modellGesamt++;
-              }
-            }
-            klassenFilter = true;
-          } catch { /* Klasse nicht vorhanden */ }
-        }
-
-        // Fallback: getModellObjekte minus Hierarchie
-        if (!klassenFilter || modellGesamt === 0) {
-          const ids = await getModellObjekte(modell.id);
-          modellGesamt = Math.max(0, ids.length - 3);
-        }
-
-        gesamt += modellGesamt;
+        const echte = await getEchteBauteile(modell.id);
+        gesamt += echte.length;
       }
       setTotalObjekte(gesamt > 0 ? gesamt : null);
+      setTotalLaedt(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aktiveSim?.id, api]);
@@ -476,11 +474,13 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
       byModel.get(modellIds[0])!.push(...legacyIds);
     }
 
-    // Direkt setSelection — keine Pool-Validierung (würde gültige IDs rausfiltern)
-    const selection = [...byModel.entries()].map(([modelId, rIds]) => ({
-      modelId,
-      objectRuntimeIds: [...new Set(rIds)],
-    }));
+    // Nur echte Bauteile selektieren (Hierarchie-Container ausschliessen)
+    const selection: { modelId: string; objectRuntimeIds: number[] }[] = [];
+    for (const [mid, rIds] of byModel.entries()) {
+      const unique = [...new Set(rIds)];
+      const echte = await filterEchteBauteile(mid, unique);
+      if (echte.length > 0) selection.push({ modelId: mid, objectRuntimeIds: echte });
+    }
 
     if (selection.length > 0) {
       try { await (api.viewer as any).setSelection(selection); } catch { /* ignore */ }
@@ -526,12 +526,15 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     setSuchStatus(`✓ ${neueGuids.length} Bauteile hinzugefügt`);
   }
 
-  // Mausklick-Selektion hinzufügen — modelId aus aktivesModellId (gesetzt durch onSelectionChanged)
-  function selektionHinzufuegen() {
+  // Mausklick-Selektion hinzufügen — filtert Hierarchie-Objekte heraus
+  async function selektionHinzufuegen() {
     if (!aktivTask || selektion.length === 0 || !aktiveSim) return;
     const mid = aktivesModellId ?? aktiveSim.modelle[0]?.id;
     if (!mid) return;
-    const neueGuids = selektion.map(rId => `${mid}:::${rId}`);
+    // Nur echte Bauteile speichern (Hierarchie-Objekte werden rausgefiltert)
+    const echteIds = await filterEchteBauteile(mid, selektion);
+    if (echteIds.length === 0) return;
+    const neueGuids = echteIds.map(rId => `${mid}:::${rId}`);
     const bereinigteTasks = aktiveSim.tasks.map(t =>
       t.id === aktivTask.id
         ? { ...t, objektGuids: [...new Set([...t.objektGuids, ...neueGuids])] }
@@ -757,7 +760,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
           </div>
 
           {/* Übersicht Bauteile — blauer Info-Block */}
-          {totalObjekte != null && (
+          {(totalObjekte != null || totalLaedt) && (
             <div className="detail-block" style={{
               background: "#EFF6FF",
               border: "0.5px solid #BFDBFE",
@@ -765,7 +768,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
             }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ fontSize: 10, color: "#1D4ED8", fontWeight: 600 }}>
-                  ⬡ {alleGuids.size} / {totalObjekte} Bauteile zugewiesen
+                  ⬡ {alleGuids.size} / {totalLaedt ? "…" : totalObjekte} Bauteile zugewiesen
                 </span>
                 {nichtZugewiesen != null && nichtZugewiesen > 0 && (
                   <span style={{ fontSize: 9, color: "#3B82F6" }}>
