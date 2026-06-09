@@ -781,7 +781,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
                   height: "100%",
                   borderRadius: 2,
                   background: "#3B82F6",
-                  width: `${totalObjekte > 0 ? Math.round((alleGuids.size / totalObjekte) * 100) : 0}%`,
+                  width: `${totalObjekte ? Math.round((alleGuids.size / totalObjekte) * 100) : 0}%`,
                   transition: "width 0.3s ease",
                 }} />
               </div>
