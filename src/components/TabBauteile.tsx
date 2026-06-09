@@ -508,25 +508,15 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
       byModel.get(modellIds[0])!.push(...legacyIds);
     }
 
-    // Nur echte Bauteile hervorheben via setObjectState (kein Assembly-Expansion!)
-    // 1. Alle Objekte auf Standard zurücksetzen
-    try {
-      await api.viewer.setObjectState(
-        { modelObjectIds: modellIds.map(mid => ({ modelId: mid })) } as any,
-        { color: "reset" } as any
-      );
-    } catch { /* ignore */ }
-
-    // 2. Task-Objekte gelb einfärben (exakt diese rIds, keine TC-Expansion)
+    // Objekte selektieren — für TC-Sichtbarkeits-Funktionen (Ausblenden, Isolieren etc.)
+    const selection: { modelId: string; objectRuntimeIds: number[] }[] = [];
     for (const [mid, rIds] of byModel.entries()) {
       const unique = [...new Set(rIds)];
-      if (unique.length === 0) continue;
-      try {
-        await api.viewer.setObjectState(
-          { modelObjectIds: [{ modelId: mid, objectRuntimeIds: unique }] } as any,
-          { color: { r: 255, g: 215, b: 0 } } as any
-        );
-      } catch { /* ignore */ }
+      const echte = await filterEchteBauteile(mid, unique);
+      if (echte.length > 0) selection.push({ modelId: mid, objectRuntimeIds: echte });
+    }
+    if (selection.length > 0) {
+      try { await (api.viewer as any).setSelection(selection); } catch { /* ignore */ }
     }
   }
 
@@ -535,16 +525,8 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
     const istGleich = taskId === aktivTaskId;
     setAktivTaskId(istGleich ? null : taskId);
     if (istGleich) {
-      // Task deselektiert → Farben zurücksetzen
-      if (api && aktiveSim) {
-        const modellIds = aktiveSim.modelle.map(m => m.id).filter(Boolean);
-        try {
-          await api.viewer.setObjectState(
-            { modelObjectIds: modellIds.map(mid => ({ modelId: mid })) } as any,
-            { color: "reset" } as any
-          );
-        } catch { /* ignore */ }
-      }
+      // Task deselektiert → Selektion aufheben
+      try { await (api?.viewer as any)?.setSelection([]); } catch { /* ignore */ }
     } else {
       const task = aktiveSim?.tasks.find(t => t.id === taskId);
       if (task && task.objektGuids.length > 0) await markiereObjekte(task.objektGuids);
