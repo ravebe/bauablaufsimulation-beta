@@ -579,7 +579,6 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   // Sichtbarkeits-Funktionen via setObjectState (umgeht TC's setSelection-Expansion)
   async function nurAnzeigen(guids: string[]) {
     if (!api) return;
-    // Modell-IDs und rIds aus gespeicherten Guids lesen (gleiche Quelle wie ausblenden)
     const byModel = new Map<string, number[]>();
     for (const g of guids) {
       if (g.includes(":::")) {
@@ -589,13 +588,30 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
       }
     }
     if (byModel.size === 0) return;
-    // 1. Alle Objekte in den betroffenen Modellen ausblenden
-    for (const mid of byModel.keys()) {
-      try { await api.viewer.setObjectState([{ modelId: mid }] as any, { visible: false } as any); } catch { /* ignore */ }
-    }
-    // 2. Task-Objekte wieder einblenden
+
     for (const [mid, rIds] of byModel.entries()) {
-      try { await api.viewer.setObjectState([{ modelId: mid, objectRuntimeIds: [...new Set(rIds)] }] as any, { visible: true } as any); } catch { /* ignore */ }
+      const unique = [...new Set(rIds)];
+
+      // 1. Gesamtes Modell ausblenden
+      try { await api.viewer.setObjectState([{ modelId: mid }] as any, { visible: false } as any); } catch { /* ignore */ }
+
+      // 2. Eltern-Objekte (IFCELEMENTASSEMBLY, IFCSITE usw.) ermitteln und einblenden
+      //    Ohne sichtbare Parents bleiben Kinder-Objekte in TC unsichtbar
+      let parentIds: number[] = [];
+      try {
+        const res = await (api.viewer as any).getHierarchyParents(mid, unique);
+        if (Array.isArray(res)) parentIds = res.flat().filter((n: any) => typeof n === 'number');
+        else if (res && typeof res === 'object') parentIds = (Object.values(res) as any[]).flat().filter((n: any) => typeof n === 'number');
+      } catch { /* ignore — falls API nicht unterstützt */ }
+
+      // 3. Task-Objekte + ihre Parents einblenden
+      const alleEinblenden = [...new Set([...unique, ...parentIds])];
+      try {
+        await api.viewer.setObjectState(
+          [{ modelId: mid, objectRuntimeIds: alleEinblenden }] as any,
+          { visible: true } as any
+        );
+      } catch { /* ignore */ }
     }
   }
 
