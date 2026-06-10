@@ -21,8 +21,9 @@ export default function SelectionTools({ aktivTask, aktiveSim, api, updateSim }:
     setLaedt(true);
     setStatus(null);
     try {
-      // Aktuelle TC-Selektion direkt abfragen — unabhängig von selektion-Prop
       const result = await (api.viewer as any).getObjects({ selected: true }) as any[];
+      console.log("[SelectionTools] result:", JSON.stringify(result?.slice?.(0, 2)));
+
       if (!Array.isArray(result) || result.length === 0) {
         setStatus("Keine Objekte ausgewählt");
         return;
@@ -30,15 +31,24 @@ export default function SelectionTools({ aktivTask, aktiveSim, api, updateSim }:
 
       const neueGuids: string[] = [];
       const bereitsImTask = new Set(aktivTask.objektGuids);
+      // Fallback: erstes Modell der Sim wenn response kein modelId hat
+      const fallbackMid = aktiveSim.modelle[0]?.id ?? "";
 
       for (const r of result) {
-        const mid: string = r?.modelId ?? "";
-        if (!mid) continue;
-        const rIds: number[] = (r?.objectRuntimeIds ?? []).map(Number).filter((n: number) => !isNaN(n));
+        // Beide mögliche Felder für modelId probieren
+        const mid: string = r?.modelId ?? r?.id ?? fallbackMid;
+        if (!mid) { console.log("[SelectionTools] kein mid in:", JSON.stringify(r)); continue; }
+
+        // Beide response-Formate: {objectRuntimeIds:[N]} und {objects:[{id:N}]}
+        const rIds: number[] = [];
+        for (const rId of r?.objectRuntimeIds ?? []) { const n = Number(rId); if (!isNaN(n)) rIds.push(n); }
+        for (const o of r?.objects ?? []) { const n = Number(o?.id ?? o); if (!isNaN(n)) rIds.push(n); }
+
+        console.log("[SelectionTools] mid:", mid, "rIds:", rIds);
         if (rIds.length === 0) continue;
 
-        // Nur echte Bauteile (filtert Hierarchie-Objekte raus)
         const echte = await filterEchteBauteile(api, mid, rIds);
+        console.log("[SelectionTools] echte:", echte);
         for (const rId of echte) {
           const key = `${mid}:::${rId}`;
           if (!bereitsImTask.has(key)) neueGuids.push(key);
@@ -46,7 +56,7 @@ export default function SelectionTools({ aktivTask, aktiveSim, api, updateSim }:
       }
 
       if (neueGuids.length === 0) {
-        setStatus("Alle ausgewählten Objekte bereits im Task");
+        setStatus("Keine neuen Bauteile in Selektion");
         return;
       }
 
