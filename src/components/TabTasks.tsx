@@ -208,7 +208,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
         ) : (
           aktiveSim.tasks.map(task => (
             <div key={task.id} className={`task-row ${task.id === aktivTaskId ? "active" : ""}`} onClick={() => onTaskClick(task.id)}>
-              <span className={`task-row-dot ${task.typ}`} />
+              <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: task.typ === "neubau" ? "#22C55E" : task.typ === "abbruch" ? "#EAB308" : "#999" }} />
               <span className="task-row-name">{task.name}</span>
               <span className="task-row-date">{task.start}</span>
               <span className="task-row-count">
@@ -225,7 +225,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
       {aktivTask ? (
         <div className="detail-section">
           <div className="detail-header">
-            <span className={`task-row-dot ${aktivTask.typ}`} style={{ width: 8, height: 8 }} />
+            <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: aktivTask.typ === "neubau" ? "#22C55E" : aktivTask.typ === "abbruch" ? "#EAB308" : "#999" }} />
             <span className="detail-task-name">{aktivTask.name}</span>
             <span style={{ fontSize: 9, color: "var(--tc-blue)", fontWeight: 500 }}>
               {totalObjekte != null ? `⬡ ${aktivTask.objektGuids.length} / ${totalObjekte}` : `⬡ ${aktivTask.objektGuids.length}`}
@@ -238,7 +238,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
             <div className="typ-btns">
               {(["neubau", "bestand", "abbruch"] as TaskTyp[]).map(typ => (
                 <button key={typ} className={`typ-btn ${aktivTask.typ === typ ? `aktiv-${typ}` : ""}`} onClick={() => typAendern(aktivTask.id, typ)}>
-                  {typ === "neubau" ? "🟢" : typ === "bestand" ? "🟡" : "🔴"} {typ}
+                  {typ === "neubau" ? "🟢" : typ === "bestand" ? "⚫" : "🟡"} {typ}
                 </button>
               ))}
             </div>
