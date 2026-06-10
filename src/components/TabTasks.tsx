@@ -1,8 +1,8 @@
 // TabTasks.tsx — Task-Liste + Task-Detail + Visibility-Buttons + Guid-Liste
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import type { SimProjekt, Task, TaskTyp } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
-import { getModellObjekte } from "./modelHelpers";
+
 
 interface GuidInfo { name: string; ifcId: string; }
 
@@ -65,8 +65,6 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
     updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => t.id === taskId ? { ...t, objektGuids: t.objektGuids.filter(g => g !== guid) } : t) });
   }
 
-  const nurAnzeigenLaeuft = useRef(false);
-
   async function einzelnMarkieren(guid: string) {
     if (!api || !guid.includes(":::")) return;
     const sep = guid.indexOf(":::");
@@ -82,38 +80,43 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
   }
 
   async function nurAnzeigen(guids: string[]) {
-    if (!api || nurAnzeigenLaeuft.current) return;
-    nurAnzeigenLaeuft.current = true;
-    try {
-      const byModel = new Map<string, number[]>();
-      for (const g of guids) {
-        if (!g.includes(":::")) continue;
-        const sep = g.indexOf(":::"); const mid = g.slice(0, sep); const rId = Number(g.slice(sep + 3));
-        if (mid && !isNaN(rId)) { if (!byModel.has(mid)) byModel.set(mid, []); byModel.get(mid)!.push(rId); }
-      }
-      if (byModel.size === 0) return;
-      for (const [mid, taskRIds] of byModel.entries()) {
-        const taskSet = new Set<number>(taskRIds);
-        const alleIds = await getModellObjekte(api, mid);
-        const hideIds = alleIds.filter(id => !taskSet.has(id));
-        console.log("[nurAnzeigen] mid:", mid, "alle:", alleIds.length, "task:", taskRIds.length, "hide:", hideIds.length);
-        if (hideIds.length > 0) try { await api.viewer.setObjectState([{ modelId: mid, objectRuntimeIds: hideIds }], { visible: false }); } catch {}
-      }
-    } finally {
-      setTimeout(() => { nurAnzeigenLaeuft.current = false; }, 500);
-    }
-  }
-
-  async function ausblenden(guids: string[]) {
     if (!api) return;
+    // Alle Task-Objekte selektieren (markieren) — korrekte API-Signatur
     const byModel = new Map<string, number[]>();
     for (const g of guids) {
       if (!g.includes(":::")) continue;
       const sep = g.indexOf(":::"); const mid = g.slice(0, sep); const rId = Number(g.slice(sep + 3));
       if (mid && !isNaN(rId)) { if (!byModel.has(mid)) byModel.set(mid, []); byModel.get(mid)!.push(rId); }
     }
-    for (const [mid, rIds] of byModel.entries())
-      try { await api.viewer.setObjectState([{ modelId: mid, objectRuntimeIds: [...new Set(rIds)] }] as any, { visible: false } as any); } catch {}
+    if (byModel.size === 0) return;
+    const modelObjectIds = [...byModel.entries()].map(([modelId, rIds]) => ({
+      modelId, objectRuntimeIds: [...new Set(rIds)]
+    }));
+    try {
+      await (api.viewer as any).setSelection({ modelObjectIds }, "set");
+      console.log("[nurAnzeigen] Selektiert:", modelObjectIds.map(m => `${m.modelId}: ${m.objectRuntimeIds.length} Obj`));
+    } catch (e) { console.log("[nurAnzeigen] Fehler:", e); }
+  }
+
+  async function ausblenden(guids: string[]) {
+    if (!api) return;
+    // Nur die verknüpften Objekte ausblenden — nicht das ganze Modell
+    const byModel = new Map<string, number[]>();
+    for (const g of guids) {
+      if (!g.includes(":::")) continue;
+      const sep = g.indexOf(":::"); const mid = g.slice(0, sep); const rId = Number(g.slice(sep + 3));
+      if (mid && !isNaN(rId)) { if (!byModel.has(mid)) byModel.set(mid, []); byModel.get(mid)!.push(rId); }
+    }
+    for (const [mid, rIds] of byModel.entries()) {
+      const unique = [...new Set(rIds)];
+      try {
+        await api.viewer.setObjectState(
+          { modelObjectIds: [{ modelId: mid, objectRuntimeIds: unique }] } as any,
+          { visible: false } as any
+        );
+        console.log("[ausblenden] Ausgeblendet:", mid, unique.length, "Objekte");
+      } catch (e) { console.log("[ausblenden] Fehler:", e); }
+    }
   }
 
   async function alleEinblenden() {
