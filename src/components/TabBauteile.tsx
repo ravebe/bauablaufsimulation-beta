@@ -103,11 +103,9 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
             resetSignal={resetSignal}
           />
           <SelectionTools
-            selektion={selektion}
             aktivTask={aktivTask}
             aktiveSim={aktiveSim}
             api={api}
-            aktivesModellId={aktivesModellId}
             updateSim={updateSim}
           />
           <ModelSelector
