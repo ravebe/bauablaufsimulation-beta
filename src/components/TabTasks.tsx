@@ -67,35 +67,34 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
 
   const nurAnzeigenLaeuft = useRef(false);
 
+  const letzteMarkierung = useRef<{ mid: string; rId: number } | null>(null);
+
   async function einzelnMarkieren(guid: string) {
     if (!api || !guid.includes(":::")) return;
     const sep = guid.indexOf(":::");
     const mid = guid.slice(0, sep); const rId = Number(guid.slice(sep + 3));
     if (!mid || isNaN(rId)) return;
 
-    // IFC GUID holen
-    let ifcGuid = "";
-    try {
-      const ids = await api.viewer.convertToObjectIds(mid, [rId]);
-      ifcGuid = (ids as any)?.[0] ?? "";
-    } catch {}
-
-    console.log("[einzelnMarkieren] mid:", mid, "rId:", rId, "ifcGuid:", ifcGuid);
-
-    // Versuch 1: setSelection mit objectIds (IFC GUID) statt objectRuntimeIds
-    if (ifcGuid) {
+    // Vorherige Markierung zurücksetzen
+    if (letzteMarkierung.current) {
+      const prev = letzteMarkierung.current;
       try {
-        await (api.viewer as any).setSelection([{ modelId: mid, objectIds: [ifcGuid] }]);
-        console.log("[einzelnMarkieren] setSelection mit objectIds OK");
-        return;
-      } catch (e) { console.log("[einzelnMarkieren] objectIds fehlgeschlagen:", e); }
+        await api.viewer.setObjectState(
+          [{ modelId: prev.mid, objectRuntimeIds: [prev.rId] }] as any,
+          { color: null } as any  // Farbe entfernen → Originalfarbe
+        );
+      } catch {}
     }
 
-    // Versuch 2: setSelection mit recursive:false
+    // Neues Objekt farblich hervorheben (helles Blau)
     try {
-      await (api.viewer as any).setSelection([{ modelId: mid, objectRuntimeIds: [rId], recursive: false }]);
-      console.log("[einzelnMarkieren] setSelection mit recursive:false OK");
-    } catch (e) { console.log("[einzelnMarkieren] recursive:false fehlgeschlagen:", e); }
+      await api.viewer.setObjectState(
+        [{ modelId: mid, objectRuntimeIds: [rId] }] as any,
+        { color: [0.2, 0.6, 1.0, 1.0] } as any
+      );
+      letzteMarkierung.current = { mid, rId };
+      console.log("[einzelnMarkieren] Objekt gefärbt:", mid, rId);
+    } catch (e) { console.log("[einzelnMarkieren] Fehler:", e); }
   }
 
   async function nurAnzeigen(guids: string[]) {
