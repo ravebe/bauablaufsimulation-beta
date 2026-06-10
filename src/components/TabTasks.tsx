@@ -193,6 +193,13 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
       <div className="gantt-section">
         <div className="gantt-section-header">
           <span>Gantt · {aktiveSim.tasks.length} Tasks</span>
+          {totalObjekte != null && (() => {
+            const vergeben = new Set(aktiveSim.tasks.flatMap(t => t.objektGuids)).size;
+            const offen = Math.max(0, totalObjekte - vergeben);
+            return <span style={{ fontSize: 9, color: offen > 0 ? "var(--tc-blue)" : "#16a34a" }}>
+              {offen > 0 ? `${offen} offen` : "✓ alle verteilt"}
+            </span>;
+          })()}
         </div>
         {aktiveSim.tasks.length === 0 ? (
           <div style={{ padding: 10, fontSize: 11, color: "var(--tc-text-3)", textAlign: "center" }}>
