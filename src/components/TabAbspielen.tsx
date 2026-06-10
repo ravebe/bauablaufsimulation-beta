@@ -1,5 +1,5 @@
-import { useState, useRef, useCallback } from "react";
-import type { SimProjekt } from "../types";
+import { useState, useRef, useCallback, useEffect } from "react";
+import type { SimProjekt, Task } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 
 interface Props {
@@ -8,238 +8,301 @@ interface Props {
   aktivesModellId: string | null;
 }
 
-const FARBEN = { neubau: "#22C55E", bestand: "#EAB308", abbruch: "#EF4444" };
+interface TaskGruppe { datum: string; tage: number; tasks: Task[]; }
+
+const FARBEN = { neubau: "#22C55E", bestand: "#999999", abbruch: "#EAB308" };
+
+function parseDatum(s: string): Date | null {
+  if (!s) return null;
+  const d = new Date(s + "T00:00:00");
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function tageDiff(a: Date, b: Date): number {
+  return Math.round((b.getTime() - a.getTime()) / 86400000);
+}
+
+function datumBeiTag(min: Date, tag: number): string {
+  const d = new Date(min.getTime() + tag * 86400000);
+  return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
 
 export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props) {
-  const [sekProTask, setSekProTask] = useState(3);
+  const [sekProTag, setSekProTag] = useState(0.5);
   const [laeuft, setLaeuft] = useState(false);
-  const [aktivIndex, setAktivIndex] = useState(-1);
+  const [currentTag, setCurrentTag] = useState(0);
   const [status, setStatus] = useState<string | null>(null);
-  const [bereit, setBereit] = useState(false); // Startzustand aufgebaut?
   const stopRef = useRef(false);
+  const animRef = useRef<number | null>(null);
+  const lastTimeRef = useRef(0);
+  const aktivierteGruppen = useRef(new Set<number>());
 
   const modellIds = [...new Set([
     ...(aktiveSim?.modelle.map(m => m.id) ?? []),
     ...(aktivesModellId ? [aktivesModellId] : [])
   ])].filter(Boolean);
 
-  // Tasks sortiert nach Startdatum
-  const sortiert = (aktiveSim?.tasks ?? [])
-    .filter(t => t.objektGuids.length > 0)
-    .sort((a, b) => (a.start ?? "").localeCompare(b.start ?? ""));
+  // Tasks mit Bauteilen + gültigem Datum, gruppiert nach Startdatum
+  const { gruppen, minDate, maxDate, totalTage } = (() => {
+    const tasks = (aktiveSim?.tasks ?? []).filter(t => t.objektGuids.length > 0 && t.start);
+    if (tasks.length === 0) return { gruppen: [] as TaskGruppe[], minDate: null, maxDate: null, totalTage: 0 };
 
-  function sleep(ms: number) {
-    return new Promise<void>(resolve => setTimeout(resolve, ms));
-  }
+    const daten = tasks.map(t => parseDatum(t.start!)).filter(Boolean) as Date[];
+    const min = new Date(Math.min(...daten.map(d => d.getTime())));
+    const max = new Date(Math.max(...daten.map(d => d.getTime())));
+    const total = Math.max(1, tageDiff(min, max));
 
-  // Guids → modelObjectIds Format
+    const map = new Map<string, Task[]>();
+    for (const t of tasks) {
+      if (!map.has(t.start)) map.set(t.start, []);
+      map.get(t.start)!.push(t);
+    }
+
+    const g: TaskGruppe[] = [...map.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([datum, tasks]) => ({ datum, tage: tageDiff(min, parseDatum(datum)!), tasks }));
+
+    return { gruppen: g, minDate: min, maxDate: max, totalTage: total };
+  })();
+
+  // Cleanup animation on unmount
+  useEffect(() => () => { if (animRef.current) cancelAnimationFrame(animRef.current); }, []);
+
+  // --- API Hilfsfunktionen ---
   function zuModelObjects(guids: string[]): { modelId: string; objectRuntimeIds: number[] }[] {
     const byModel = new Map<string, number[]>();
     for (const g of guids) {
       if (!g.includes(":::")) continue;
-      const sep = g.indexOf(":::");
-      const mid = g.slice(0, sep); const rId = Number(g.slice(sep + 3));
+      const sep = g.indexOf(":::"); const mid = g.slice(0, sep); const rId = Number(g.slice(sep + 3));
       if (mid && !isNaN(rId)) { if (!byModel.has(mid)) byModel.set(mid, []); byModel.get(mid)!.push(rId); }
     }
     return [...byModel.entries()].map(([modelId, rIds]) => ({ modelId, objectRuntimeIds: [...new Set(rIds)] }));
   }
 
-  // Sichtbarkeit setzen
   async function sichtbarkeit(guids: string[], visible: boolean) {
     if (!api || guids.length === 0) return;
-    const modelObjectIds = zuModelObjects(guids);
-    for (const mo of modelObjectIds) {
-      try {
-        await api.viewer.setObjectState(
-          { modelObjectIds: [mo] } as any,
-          { visible } as any
-        );
-      } catch {}
+    for (const mo of zuModelObjects(guids)) {
+      try { await api.viewer.setObjectState({ modelObjectIds: [mo] } as any, { visible } as any); } catch {}
     }
   }
 
-  // Farbe setzen (null = entfernen)
-  async function farbe(guids: string[], color: string | null) {
+  async function farbeSetzen(guids: string[], color: string | null) {
     if (!api || guids.length === 0) return;
-    const modelObjectIds = zuModelObjects(guids);
-    for (const mo of modelObjectIds) {
-      try {
-        await api.viewer.setObjectState(
-          { modelObjectIds: [mo] } as any,
-          { color } as any
-        );
-      } catch {}
+    for (const mo of zuModelObjects(guids)) {
+      try { await api.viewer.setObjectState({ modelObjectIds: [mo] } as any, { color } as any); } catch {}
     }
   }
 
-  // Selektieren
   async function selektieren(guids: string[]) {
     if (!api || guids.length === 0) return;
-    const modelObjectIds = zuModelObjects(guids);
-    try { await (api.viewer as any).setSelection({ modelObjectIds }, "set"); } catch {}
+    try { await (api.viewer as any).setSelection({ modelObjectIds: zuModelObjects(guids) }, "set"); } catch {}
   }
 
-  // Startzustand aufbauen
+  // --- Zustand bei einem bestimmten Tag komplett aufbauen ---
+  async function zustandBeiTag(tag: number) {
+    if (!api || !aktiveSim) return;
+
+    // 1. Alles ausblenden + Farben entfernen
+    for (const mid of modellIds) {
+      try { await api.viewer.setObjectState({ modelObjectIds: [{ modelId: mid }] } as any, { visible: false, color: null } as any); } catch {}
+    }
+
+    const selGuids: string[] = [];
+
+    for (const g of gruppen) {
+      if (g.tage <= tag) {
+        // Gruppe ist aktiviert
+        for (const t of g.tasks) {
+          if (t.typ === "neubau") {
+            await sichtbarkeit(t.objektGuids, true);
+            // Nur aktuelle Gruppe farbig + selektiert
+            if (g.tage === Math.floor(tag)) {
+              await farbeSetzen(t.objektGuids, FARBEN.neubau);
+              selGuids.push(...t.objektGuids);
+            }
+          } else if (t.typ === "abbruch") {
+            // Abbruch: nach Aktivierung ausgeblendet
+            await sichtbarkeit(t.objektGuids, false);
+          } else {
+            // Bestand: grau, immer sichtbar, nicht selektiert
+            await sichtbarkeit(t.objektGuids, true);
+            await farbeSetzen(t.objektGuids, FARBEN.bestand);
+          }
+        }
+      } else {
+        // Gruppe noch nicht aktiviert
+        for (const t of g.tasks) {
+          if (t.typ === "abbruch") {
+            // Abbruch steht noch (noch nicht abgerissen)
+            await sichtbarkeit(t.objektGuids, true);
+          } else if (t.typ === "bestand") {
+            await sichtbarkeit(t.objektGuids, true);
+            await farbeSetzen(t.objektGuids, FARBEN.bestand);
+          }
+          // Neubau bleibt ausgeblendet
+        }
+      }
+    }
+
+    if (selGuids.length > 0) await selektieren(selGuids);
+
+    // Status
+    const aktuelleGruppe = gruppen.find(g => g.tage === Math.floor(tag));
+    if (aktuelleGruppe) {
+      const namen = aktuelleGruppe.tasks.map(t => {
+        const icon = t.typ === "neubau" ? "🟢" : t.typ === "abbruch" ? "🟡" : "⚫";
+        return `${icon} ${t.name}`;
+      }).join(", ");
+      setStatus(namen);
+    }
+  }
+
+  // --- Gruppe inkrementell aktivieren (für Playback) ---
+  async function gruppeAktivieren(g: TaskGruppe) {
+    const selGuids: string[] = [];
+
+    for (const t of g.tasks) {
+      if (t.typ === "neubau") {
+        await sichtbarkeit(t.objektGuids, true);
+        await farbeSetzen(t.objektGuids, FARBEN.neubau);
+        selGuids.push(...t.objektGuids);
+      } else if (t.typ === "abbruch") {
+        await farbeSetzen(t.objektGuids, FARBEN.abbruch);
+        selGuids.push(...t.objektGuids);
+        // Nach kurzer Pause ausblenden
+        setTimeout(async () => {
+          await sichtbarkeit(t.objektGuids, false);
+          await farbeSetzen(t.objektGuids, null);
+        }, Math.max(1000, sekProTag * 800));
+      }
+      // Bestand: keine Änderung (bleibt grau + sichtbar)
+    }
+
+    if (selGuids.length > 0) await selektieren(selGuids);
+
+    const namen = g.tasks.map(t => {
+      const icon = t.typ === "neubau" ? "🟢" : t.typ === "abbruch" ? "🟡" : "⚫";
+      return `${icon} ${t.name}`;
+    }).join(", ");
+    setStatus(`${g.datum} · ${namen}`);
+  }
+
+  // Vorherige Gruppe: Farbe entfernen (nur neubau, abbruch ist schon weg)
+  async function gruppeFarbeEntfernen(g: TaskGruppe) {
+    for (const t of g.tasks) {
+      if (t.typ === "neubau") await farbeSetzen(t.objektGuids, null);
+    }
+  }
+
+  // --- Startzustand ---
   async function startzustand() {
     if (!api || !aktiveSim) return;
-    setStatus("⟳ Startzustand aufbauen…");
-    setAktivIndex(-1);
+    setStatus("⟳ Startzustand…");
+    aktivierteGruppen.current.clear();
 
-    // 1. Alles ausblenden
+    // Alles ausblenden
     for (const mid of modellIds) {
       try { await api.viewer.setObjectState({ modelObjectIds: [{ modelId: mid }] } as any, { visible: false, color: null } as any); } catch {}
     }
     try { await (api.viewer as any).setSelection({ modelObjectIds: [] }, "set"); } catch {}
 
-    // 2. Bestand einblenden (steht schon)
-    const bestandGuids = aktiveSim.tasks.filter(t => t.typ === "bestand").flatMap(t => t.objektGuids);
-    if (bestandGuids.length > 0) await sichtbarkeit(bestandGuids, true);
-
-    // 3. Abbruch einblenden (steht noch, wird erst später abgerissen)
-    const abbruchGuids = aktiveSim.tasks.filter(t => t.typ === "abbruch").flatMap(t => t.objektGuids);
-    if (abbruchGuids.length > 0) await sichtbarkeit(abbruchGuids, true);
-
-    // Neubau bleibt ausgeblendet
-    setBereit(true);
-    setStatus("✓ Startzustand: Bestand + Abbruch sichtbar, Neubau ausgeblendet");
-  }
-
-  // Einen Task anwenden (Schritt vorwärts)
-  async function taskAnwenden(index: number) {
-    if (!api || index < 0 || index >= sortiert.length) return;
-    const task = sortiert[index];
-    const guids = task.objektGuids;
-    setAktivIndex(index);
-
-    if (task.typ === "neubau") {
-      setStatus(`🟢 ${task.name} · ${guids.length} Bauteile werden gebaut`);
-      await sichtbarkeit(guids, true);
-      await farbe(guids, FARBEN.neubau);
-      await selektieren(guids);
-    } else if (task.typ === "abbruch") {
-      setStatus(`🔴 ${task.name} · ${guids.length} Bauteile werden abgerissen`);
-      await farbe(guids, FARBEN.abbruch);
-      await selektieren(guids);
-      await sleep(Math.max(800, sekProTask * 300));
-      await sichtbarkeit(guids, false);
-    } else {
-      // bestand
-      setStatus(`🟡 ${task.name} · ${guids.length} Bauteile (Bestand)`);
-      await farbe(guids, FARBEN.bestand);
-      await selektieren(guids);
+    // Bestand + Abbruch einblenden
+    for (const g of gruppen) {
+      for (const t of g.tasks) {
+        if (t.typ === "bestand") {
+          await sichtbarkeit(t.objektGuids, true);
+          await farbeSetzen(t.objektGuids, FARBEN.bestand);
+        } else if (t.typ === "abbruch") {
+          await sichtbarkeit(t.objektGuids, true);
+        }
+      }
     }
+
+    setCurrentTag(0);
+    setStatus("✓ Bereit — Bestand (grau) + Abbruch sichtbar");
   }
 
-  // Vorherigen Task-Farbe entfernen
-  async function farbeEntfernen(index: number) {
-    if (index < 0 || index >= sortiert.length) return;
-    const task = sortiert[index];
-    if (task.typ !== "abbruch") { // abbruch ist schon ausgeblendet
-      await farbe(task.objektGuids, null);
-    }
-  }
-
-  // Automatisch abspielen
+  // --- Playback mit requestAnimationFrame ---
   const starten = useCallback(async () => {
-    if (!api || !aktiveSim || laeuft || modellIds.length === 0) return;
+    if (!api || !aktiveSim || laeuft || modellIds.length === 0 || gruppen.length === 0) return;
     stopRef.current = false;
     setLaeuft(true);
 
-    // Startzustand aufbauen falls noch nicht geschehen
-    if (!bereit) await startzustand();
-    if (stopRef.current) { setLaeuft(false); return; }
+    await startzustand();
 
-    // Ab aktuellem Index oder von vorne
-    const startIdx = aktivIndex >= 0 ? aktivIndex : 0;
+    lastTimeRef.current = performance.now();
 
-    for (let i = startIdx; i < sortiert.length; i++) {
-      if (stopRef.current) break;
+    function frame(now: number) {
+      if (stopRef.current) return;
+      const delta = (now - lastTimeRef.current) / 1000; // Sekunden seit letztem Frame
+      lastTimeRef.current = now;
 
-      // Vorherige Farbe entfernen
-      if (i > 0) await farbeEntfernen(i - 1);
+      const tageProSekunde = sekProTag > 0 ? 1 / sekProTag : 1;
+      const neuerTag = currentTagRef.current + delta * tageProSekunde;
 
-      await taskAnwenden(i);
-      await sleep(sekProTask * 1000);
+      if (neuerTag >= totalTage) {
+        setCurrentTag(totalTage);
+        currentTagRef.current = totalTage;
+        setLaeuft(false);
+        setStatus("✓ Simulation abgeschlossen");
+        return;
+      }
+
+      setCurrentTag(neuerTag);
+      currentTagRef.current = neuerTag;
+
+      // Prüfe ob neue Gruppen aktiviert werden müssen
+      for (let i = 0; i < gruppen.length; i++) {
+        if (gruppen[i].tage <= neuerTag && !aktivierteGruppen.current.has(i)) {
+          aktivierteGruppen.current.add(i);
+          // Vorherige Farbe entfernen
+          if (i > 0) {
+            const prevIdx = [...aktivierteGruppen.current].sort((a, b) => a - b);
+            const prev = prevIdx[prevIdx.length - 2];
+            if (prev !== undefined) gruppeFarbeEntfernen(gruppen[prev]);
+          }
+          gruppeAktivieren(gruppen[i]);
+        }
+      }
+
+      animRef.current = requestAnimationFrame(frame);
     }
 
-    // Letzte Farbe entfernen
-    if (!stopRef.current && sortiert.length > 0) {
-      await farbeEntfernen(sortiert.length - 1);
-      setStatus("✓ Simulation abgeschlossen");
-      setAktivIndex(-1);
-    } else {
-      setStatus("■ Gestoppt");
-    }
-    setLaeuft(false);
+    currentTagRef.current = 0;
+    animRef.current = requestAnimationFrame(frame);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, aktiveSim, laeuft, sekProTask, modellIds, bereit, aktivIndex, sortiert]);
+  }, [api, aktiveSim, laeuft, sekProTag, modellIds, gruppen, totalTage]);
+
+  const currentTagRef = useRef(0);
+  useEffect(() => { currentTagRef.current = currentTag; }, [currentTag]);
 
   function stoppen() {
     stopRef.current = true;
+    if (animRef.current) { cancelAnimationFrame(animRef.current); animRef.current = null; }
     setLaeuft(false);
     setStatus("■ Gestoppt");
   }
 
-  // Schritt vor
-  async function schrittVor() {
+  // --- Manueller Slider ---
+  async function sliderChange(tag: number) {
     if (laeuft) return;
-    if (!bereit) await startzustand();
-    const nextIdx = aktivIndex < 0 ? 0 : aktivIndex + 1;
-    if (nextIdx >= sortiert.length) return;
-    if (aktivIndex >= 0) await farbeEntfernen(aktivIndex);
-    await taskAnwenden(nextIdx);
-  }
-
-  // Schritt zurück
-  async function schrittZurueck() {
-    if (laeuft || aktivIndex <= 0) return;
-    const task = sortiert[aktivIndex];
-    // Aktuellen Task rückgängig machen
-    if (task.typ === "neubau") {
-      await sichtbarkeit(task.objektGuids, false);
-      await farbe(task.objektGuids, null);
-    } else if (task.typ === "abbruch") {
-      await sichtbarkeit(task.objektGuids, true);
-      await farbe(task.objektGuids, null);
-    } else {
-      await farbe(task.objektGuids, null);
-    }
-    // Vorherigen Task hervorheben
-    const prevIdx = aktivIndex - 1;
-    await taskAnwenden(prevIdx);
-  }
-
-  // Slider — zu bestimmtem Index springen
-  async function zuIndex(idx: number) {
-    if (laeuft) return;
-    // Startzustand aufbauen, dann alle Tasks bis idx anwenden
-    await startzustand();
-    for (let i = 0; i <= idx; i++) {
-      const task = sortiert[i];
-      if (task.typ === "neubau") {
-        await sichtbarkeit(task.objektGuids, true);
-      } else if (task.typ === "abbruch") {
-        await sichtbarkeit(task.objektGuids, false);
-      }
-    }
-    // Aktuellen Task farbig markieren
-    if (idx >= 0 && idx < sortiert.length) {
-      const task = sortiert[idx];
-      if (task.typ !== "abbruch") await farbe(task.objektGuids, FARBEN[task.typ]);
-      await selektieren(task.objektGuids);
-      setAktivIndex(idx);
-      setStatus(`▶ ${task.name}`);
-    }
+    setCurrentTag(tag);
+    currentTagRef.current = tag;
+    aktivierteGruppen.current.clear();
+    gruppen.forEach((g, i) => { if (g.tage <= tag) aktivierteGruppen.current.add(i); });
+    await zustandBeiTag(tag);
   }
 
   // Reset
   async function reset() {
     if (!api) return;
-    setAktivIndex(-1); setBereit(false);
+    stoppen();
+    setCurrentTag(0); currentTagRef.current = 0;
+    aktivierteGruppen.current.clear();
     setStatus("⟳ Reset…");
     try { await api.viewer.reset(); } catch {}
     try { await (api.viewer as any).setSelection({ modelObjectIds: [] }, "set"); } catch {}
-    setStatus("↺ Alle Bauteile eingeblendet");
+    setStatus("↺ Modell zurückgesetzt");
   }
 
   if (!aktiveSim) {
@@ -252,8 +315,8 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     );
   }
 
-  const fortschritt = aktivIndex >= 0 && sortiert.length > 0
-    ? Math.round(((aktivIndex + 1) / sortiert.length) * 100) : 0;
+  const fortschritt = totalTage > 0 ? Math.round((currentTag / totalTage) * 100) : 0;
+  const aktuellesDatum = minDate ? datumBeiTag(minDate, currentTag) : "";
 
   return (
     <div className="tc-setup-content">
@@ -262,80 +325,88 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
       <div className="player-card">
         <div className="detail-block-title">Einstellungen</div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
-          <span style={{ flex: 1, color: "var(--tc-text-2)" }}>Sekunden pro Task</span>
-          <input type="number" min={1} max={30} value={sekProTask}
-            onChange={e => setSekProTask(Number(e.target.value))} disabled={laeuft}
+          <span style={{ flex: 1, color: "var(--tc-text-2)" }}>Sekunden pro Tag</span>
+          <input type="number" min={0.1} max={10} step={0.1} value={sekProTag}
+            onChange={e => setSekProTag(Number(e.target.value))} disabled={laeuft}
             className="player-sek-input" />
+        </div>
+        <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 3 }}>
+          Gesamtdauer: ~{totalTage > 0 ? Math.round(totalTage * sekProTag) : 0}s für {totalTage} Tage
         </div>
       </div>
 
       {/* Steuerung */}
       <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-        <button className="tc-btn-ghost" disabled={laeuft || aktivIndex <= 0}
-          onClick={schrittZurueck} title="Schritt zurück">⏮</button>
         {!laeuft ? (
           <button className="tc-btn-green" style={{ flex: 1 }}
-            disabled={!api || modellIds.length === 0 || sortiert.length === 0}
+            disabled={!api || modellIds.length === 0 || gruppen.length === 0}
             onClick={starten}>▶ Starten</button>
         ) : (
           <button className="tc-btn-danger" style={{ flex: 1 }} onClick={stoppen}>■ Stoppen</button>
         )}
-        <button className="tc-btn-ghost" disabled={laeuft || aktivIndex >= sortiert.length - 1}
-          onClick={schrittVor} title="Schritt vor">⏭</button>
         <button className="tc-btn-secondary" disabled={laeuft || !api}
           onClick={reset} title="Reset">↺</button>
       </div>
 
       {/* Timeline-Slider */}
-      {sortiert.length > 0 && (
-        <div style={{ marginTop: 8 }}>
-          <input type="range" min={0} max={sortiert.length - 1} value={aktivIndex < 0 ? 0 : aktivIndex}
-            onChange={e => zuIndex(Number(e.target.value))} disabled={laeuft}
+      {totalTage > 0 && minDate && maxDate && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ textAlign: "center", fontSize: 13, fontWeight: 700, color: "var(--tc-text)", marginBottom: 4 }}>
+            {aktuellesDatum}
+          </div>
+          <input type="range" min={0} max={totalTage} step={0.5} value={currentTag}
+            onChange={e => sliderChange(Number(e.target.value))} disabled={laeuft}
             style={{ width: "100%" }} />
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "var(--tc-text-3)" }}>
-            <span>{sortiert[0]?.start ?? ""}</span>
-            <span>{sortiert[sortiert.length - 1]?.start ?? ""}</span>
+            <span>{minDate.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}</span>
+            <span>{maxDate.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}</span>
           </div>
         </div>
       )}
 
       {/* Fortschritt */}
-      {(laeuft || aktivIndex >= 0) && (
+      {(laeuft || currentTag > 0) && (
         <div className="player-card" style={{ marginTop: 6 }}>
           <div className="player-progress">
-            <div className="player-progress-fill" style={{ width: `${fortschritt}%` }} />
-          </div>
-          <div style={{ fontSize: 10, color: "var(--tc-blue)", textAlign: "center", fontWeight: 500 }}>
-            Task {aktivIndex + 1} / {sortiert.length}
-            {sortiert[aktivIndex] && ` · ${sortiert[aktivIndex].name}`}
+            <div className="player-progress-fill" style={{ width: `${fortschritt}%`, transition: laeuft ? "none" : "width 0.3s" }} />
           </div>
         </div>
       )}
 
-      {/* Task-Liste */}
+      {/* Task-Gruppen-Liste */}
       <div className="detail-block-title" style={{ marginTop: 8, marginBottom: 4 }}>
-        Tasks ({sortiert.length} mit Bauteilen)
+        Timeline ({gruppen.length} Zeitpunkte, {gruppen.reduce((s, g) => s + g.tasks.length, 0)} Tasks)
       </div>
       <div className="player-card" style={{ padding: 0, overflow: "hidden" }}>
-        {sortiert.length === 0 ? (
+        {gruppen.length === 0 ? (
           <div style={{ padding: 10, fontSize: 11, color: "var(--tc-text-3)", textAlign: "center" }}>
-            Keine Tasks mit Bauteilen — Tab „Bauteile" → Objekte zuweisen
+            Keine Tasks mit Bauteilen + Startdatum
           </div>
         ) : (
-          sortiert.map((task, i) => {
-            const istAktiv = aktivIndex === i;
+          gruppen.map((g, gi) => {
+            const istAktiv = g.tage <= currentTag && (gi === gruppen.length - 1 || gruppen[gi + 1].tage > currentTag);
+            const istVorbei = !istAktiv && g.tage < currentTag;
             return (
-              <div key={task.id}
-                className={`player-task-row ${istAktiv ? "aktiv" : ""}`}
-                style={{ cursor: laeuft ? "default" : "pointer" }}
-                onClick={() => { if (!laeuft) zuIndex(i); }}>
-                <span style={{ width: 14, fontSize: 10 }}>{istAktiv ? "▶" : ""}</span>
-                <span className={`task-row-dot ${task.typ}`} />
-                <span className="player-task-name">{task.name}</span>
-                <span style={{ fontSize: 9, color: "var(--tc-text-3)" }}>{task.start}</span>
-                <span className="task-row-count">
-                  <span style={{ color: "var(--tc-blue)" }}>⬡ {task.objektGuids.length}</span>
-                </span>
+              <div key={g.datum} style={{ borderBottom: "1px solid var(--tc-border)" }}>
+                <div style={{
+                  padding: "4px 8px", fontSize: 9, fontWeight: 600,
+                  color: istAktiv ? "var(--tc-blue)" : istVorbei ? "var(--tc-text-3)" : "var(--tc-text-2)",
+                  background: istAktiv ? "#EFF6FF" : "transparent",
+                  display: "flex", justifyContent: "space-between",
+                }}>
+                  <span>{istAktiv ? "▶ " : ""}{g.datum}</span>
+                  <span>{g.tasks.length} Task{g.tasks.length > 1 ? "s" : ""}</span>
+                </div>
+                {g.tasks.map(task => (
+                  <div key={task.id} className={`player-task-row ${istAktiv ? "aktiv" : ""}`}
+                    style={{ paddingLeft: 16, opacity: istVorbei ? 0.5 : 1 }}>
+                    <span className={`task-row-dot ${task.typ}`} />
+                    <span className="player-task-name">{task.name}</span>
+                    <span className="task-row-count">
+                      <span style={{ color: "var(--tc-blue)" }}>⬡ {task.objektGuids.length}</span>
+                    </span>
+                  </div>
+                ))}
               </div>
             );
           })
@@ -345,9 +416,9 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
       {/* Legende */}
       <div className="player-legende">
         <div className="detail-block-title" style={{ marginBottom: 6 }}>Legende</div>
-        <div className="legende-row"><span style={{ color: FARBEN.neubau }}>●</span><span>Neubau — Bauteile erscheinen</span></div>
-        <div className="legende-row"><span style={{ color: FARBEN.bestand }}>●</span><span>Bestand — bleibt sichtbar</span></div>
-        <div className="legende-row"><span style={{ color: FARBEN.abbruch }}>●</span><span>Abbruch — Bauteile verschwinden</span></div>
+        <div className="legende-row"><span style={{ color: FARBEN.neubau }}>●</span><span>Neubau — erscheint + markiert</span></div>
+        <div className="legende-row"><span style={{ color: FARBEN.bestand }}>●</span><span>Bestand — grau, bleibt sichtbar</span></div>
+        <div className="legende-row"><span style={{ color: FARBEN.abbruch }}>●</span><span>Abbruch — gelb, dann ausgeblendet</span></div>
       </div>
 
       {modellIds.length === 0 && (
