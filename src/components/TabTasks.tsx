@@ -1,5 +1,5 @@
 // TabTasks.tsx — Task-Liste + Task-Detail + Visibility-Buttons + Guid-Liste
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { SimProjekt, Task, TaskTyp } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { getModellObjekte } from "./modelHelpers";
@@ -65,21 +65,28 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
     updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => t.id === taskId ? { ...t, objektGuids: t.objektGuids.filter(g => g !== guid) } : t) });
   }
 
+  const nurAnzeigenLaeuft = useRef(false);
+
   async function nurAnzeigen(guids: string[]) {
-    if (!api) return;
-    const byModel = new Map<string, number[]>();
-    for (const g of guids) {
-      if (!g.includes(":::")) continue;
-      const sep = g.indexOf(":::"); const mid = g.slice(0, sep); const rId = Number(g.slice(sep + 3));
-      if (mid && !isNaN(rId)) { if (!byModel.has(mid)) byModel.set(mid, []); byModel.get(mid)!.push(rId); }
-    }
-    if (byModel.size === 0) return;
-    for (const [mid, taskRIds] of byModel.entries()) {
-      const taskSet = new Set<number>(taskRIds);
-      const alleIds = await getModellObjekte(api, mid);
-      const hideIds = alleIds.filter(id => !taskSet.has(id));
-      console.log("[nurAnzeigen] mid:", mid, "alle:", alleIds.length, "task:", taskRIds.length, "hide:", hideIds.length);
-      if (hideIds.length > 0) try { await api.viewer.setObjectState([{ modelId: mid, objectRuntimeIds: hideIds }], { visible: false }); } catch {}
+    if (!api || nurAnzeigenLaeuft.current) return;
+    nurAnzeigenLaeuft.current = true;
+    try {
+      const byModel = new Map<string, number[]>();
+      for (const g of guids) {
+        if (!g.includes(":::")) continue;
+        const sep = g.indexOf(":::"); const mid = g.slice(0, sep); const rId = Number(g.slice(sep + 3));
+        if (mid && !isNaN(rId)) { if (!byModel.has(mid)) byModel.set(mid, []); byModel.get(mid)!.push(rId); }
+      }
+      if (byModel.size === 0) return;
+      for (const [mid, taskRIds] of byModel.entries()) {
+        const taskSet = new Set<number>(taskRIds);
+        const alleIds = await getModellObjekte(api, mid);
+        const hideIds = alleIds.filter(id => !taskSet.has(id));
+        console.log("[nurAnzeigen] mid:", mid, "alle:", alleIds.length, "task:", taskRIds.length, "hide:", hideIds.length);
+        if (hideIds.length > 0) try { await api.viewer.setObjectState([{ modelId: mid, objectRuntimeIds: hideIds }], { visible: false }); } catch {}
+      }
+    } finally {
+      setTimeout(() => { nurAnzeigenLaeuft.current = false; }, 500);
     }
   }
 

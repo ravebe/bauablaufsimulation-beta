@@ -28,10 +28,25 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   const aktivTask = aktiveSim?.tasks.find(t => t.id === aktivTaskId) ?? null;
   const alleGuids = new Set(aktiveSim?.tasks.flatMap(t => t.objektGuids) ?? []);
 
-  function taskAnklicken(taskId: string) {
+  async function taskAnklicken(taskId: string) {
     const istGleich = taskId === aktivTaskId;
     setAktivTaskId(istGleich ? null : taskId);
-    setResetSignal(s => s + 1); // AttributeFilter zurücksetzen
+    setResetSignal(s => s + 1);
+    if (istGleich || !api) return;
+    // Task-Objekte im 3D-Viewer markieren
+    const task = aktiveSim?.tasks.find(t => t.id === taskId);
+    if (!task || task.objektGuids.length === 0) return;
+    const byModel = new Map<string, number[]>();
+    for (const g of task.objektGuids) {
+      if (!g.includes(":::")) continue;
+      const sep = g.indexOf(":::");
+      const mid = g.slice(0, sep); const rId = Number(g.slice(sep + 3));
+      if (mid && !isNaN(rId)) { if (!byModel.has(mid)) byModel.set(mid, []); byModel.get(mid)!.push(rId); }
+    }
+    const selection = [...byModel.entries()].map(([modelId, objectRuntimeIds]) => ({
+      modelId, objectRuntimeIds: [...new Set(objectRuntimeIds)],
+    }));
+    if (selection.length > 0) try { await (api.viewer as any).setSelection(selection); } catch {}
   }
 
   // Gesamtzählung echte Bauteile
