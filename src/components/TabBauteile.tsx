@@ -17,7 +17,7 @@ interface Props {
   aktivesModellId: string | null;
 }
 
-const SHOW_DEBUG = false; // auf true setzen für Diagnose
+const SHOW_DEBUG = true; // auf true setzen für Diagnose
 
 export default function TabBauteile({ api, aktiveSim, updateSim, selektion, aktivesModellId }: Props) {
   const [aktivTaskId, setAktivTaskId] = useState<string | null>(null);
