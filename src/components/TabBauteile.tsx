@@ -7,7 +7,6 @@ import TabTasks from "./TabTasks";
 import AttributeFilter from "./AttributeFilter";
 import SelectionTools from "./SelectionTools";
 import ModelSelector from "./ModelSelector";
-import TabDebug from "./TabDebug";
 
 interface Props {
   api: ApiInstance | null;
@@ -17,13 +16,11 @@ interface Props {
   aktivesModellId: string | null;
 }
 
-const SHOW_DEBUG = true; // auf true setzen für Diagnose
-
-export default function TabBauteile({ api, aktiveSim, updateSim, selektion, aktivesModellId }: Props) {
+export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId }: Props) {
   const [aktivTaskId, setAktivTaskId] = useState<string | null>(null);
   const [totalObjekte, setTotalObjekte] = useState<number | null>(null);
   const [totalLaedt, setTotalLaedt] = useState(false);
-  const [resetSignal, setResetSignal] = useState(0); // erhöht sich bei Task-Wechsel
+  const [resetSignal, setResetSignal] = useState(0);
 
   const aktivTask = aktiveSim?.tasks.find(t => t.id === aktivTaskId) ?? null;
   const alleGuids = new Set(aktiveSim?.tasks.flatMap(t => t.objektGuids) ?? []);
@@ -64,24 +61,6 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
 
   return (
     <div className="tasklist-wrap">
-      {SHOW_DEBUG && (
-        <TabDebug
-          selektion={selektion}
-          aktivesModellId={aktivesModellId}
-          aktivSimId={aktiveSim.id}
-          aktivTaskId={aktivTaskId}
-          totalObjekte={totalObjekte}
-        />
-      )}
-
-      {/* Gantt-Header */}
-      <div className="gantt-section-header" style={{ padding: "6px 10px" }}>
-        <span>Gantt · {aktiveSim.tasks.length} Tasks</span>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {totalObjekte != null && <span style={{ color: "var(--tc-blue)", fontSize: 9 }}>⬡ {alleGuids.size} / {totalObjekte}</span>}
-        </div>
-      </div>
-
       <TabTasks
         api={api}
         aktiveSim={aktiveSim}
@@ -102,17 +81,17 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
             updateSim={updateSim}
             resetSignal={resetSignal}
           />
-          <SelectionTools
-            aktivTask={aktivTask}
-            aktiveSim={aktiveSim}
-            api={api}
-            updateSim={updateSim}
-          />
           <ModelSelector
             aktiveSim={aktiveSim}
             totalObjekte={totalObjekte}
             totalLaedt={totalLaedt}
             alleGuids={alleGuids}
+          />
+          <SelectionTools
+            aktivTask={aktivTask}
+            aktiveSim={aktiveSim}
+            api={api}
+            updateSim={updateSim}
           />
         </>
       )}
