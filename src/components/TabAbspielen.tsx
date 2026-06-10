@@ -111,27 +111,27 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     console.log("[preload] Geladen:", [...alleIdsCache.current.entries()].map(([m, ids]) => `${m}: ${ids.length}`).join(", "));
   }
 
-  // --- Alles ausblenden: reset + chunked hide ---
-  async function allesAusblenden() {
+  // --- Manuell: Alle Objekte ausblenden (Button) ---
+  async function alleAusblenden() {
     if (!api) return;
-    // Erst reset → sauberer Zustand
-    try { await api.viewer.reset(); } catch {}
-    await sleep(200);
-    // Dann alle Objekte in Chunks ausblenden
+    setStatus("⟳ Alle ausblenden…");
+    // Alle IDs laden falls noch nicht geschehen
+    if (alleIdsCache.current.size === 0) await preload();
+    // Alle selektieren
+    const modelObjectIds: { modelId: string; objectRuntimeIds: number[] }[] = [];
     for (const [mid, ids] of alleIdsCache.current.entries()) {
-      if (ids.length === 0) continue;
-      const CHUNK = 500;
-      for (let i = 0; i < ids.length; i += CHUNK) {
-        const chunk = ids.slice(i, i + CHUNK);
-        try {
-          await api.viewer.setObjectState(
-            { modelObjectIds: [{ modelId: mid, objectRuntimeIds: chunk }] } as any,
-            { visible: false, color: null } as any
-          );
-        } catch {}
+      if (ids.length > 0) modelObjectIds.push({ modelId: mid, objectRuntimeIds: ids });
+    }
+    if (modelObjectIds.length > 0) {
+      try { await (api.viewer as any).setSelection({ modelObjectIds }, "set"); } catch {}
+      await sleep(300);
+      // Ausblenden
+      for (const mo of modelObjectIds) {
+        try { await api.viewer.setObjectState({ modelObjectIds: [mo] } as any, { visible: false } as any); } catch {}
       }
     }
     try { await (api.viewer as any).setSelection({ modelObjectIds: [] }, "set"); } catch {}
+    setStatus("✓ Alle ausgeblendet");
   }
 
   // --- Startzustand ---
@@ -139,22 +139,15 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     if (!api || !aktiveSim) return;
     aktivierteGruppen.current.clear();
 
-    // Pre-load alle IDs
     setStatus("⟳ Objekte laden…");
     await preload();
 
-    // Alles ausblenden
-    setStatus("⟳ Alles ausblenden…");
-    await allesAusblenden();
-    await sleep(600);
-
-    // Bestand (grau) + Abbruch einblenden — ein Call je Typ
+    // Bestand (grau) + Abbruch einblenden
     setStatus("⟳ Bestand + Abbruch einblenden…");
     const bestandGuids = aktiveSim.tasks.filter(t => t.typ === "bestand").flatMap(t => t.objektGuids);
     const abbruchGuids = aktiveSim.tasks.filter(t => t.typ === "abbruch").flatMap(t => t.objektGuids);
     if (bestandGuids.length > 0) await setzeZustand(bestandGuids, { visible: true, color: FARBEN.bestand });
     if (abbruchGuids.length > 0) await setzeZustand(abbruchGuids, { visible: true });
-    await sleep(400);
 
     setCurrentTag(0);
     currentTagRef.current = 0;
@@ -166,7 +159,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     if (!api || !aktiveSim) return;
     if (alleIdsCache.current.size === 0) await preload();
 
-    await allesAusblenden();
+    await alleAusblenden();
 
     // Bestand immer sichtbar (grau)
     const bestandGuids = aktiveSim.tasks.filter(t => t.typ === "bestand").flatMap(t => t.objektGuids);
@@ -226,10 +219,13 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
         // Gelb färben + selektieren
         setzeZustandAsync(t.objektGuids, { color: FARBEN.abbruch });
         selGuids.push(...t.objektGuids);
+        // Nach Pause ausblenden
         const guids = [...t.objektGuids];
+        const batch = zuBatch(guids);
+        const viewer = api!.viewer;
         setTimeout(() => {
-          setzeZustandAsync(guids, { visible: false, color: null });
-        }, Math.max(1000, sekProTag * 800));
+          viewer.setObjectState({ modelObjectIds: batch } as any, { visible: false, color: null } as any).catch(() => {});
+        }, Math.max(1500, sekProTag * 1000));
       }
     }
 
@@ -362,6 +358,8 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
       </div>
 
       <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+        <button className="tc-btn-ghost" disabled={laeuft || !api}
+          onClick={alleAusblenden} title="Alle Objekte ausblenden">🚫</button>
         {!laeuft ? (
           <button className="tc-btn-green" style={{ flex: 1 }}
             disabled={!api || modellIds.length === 0 || gruppen.length === 0}
