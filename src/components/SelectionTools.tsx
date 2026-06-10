@@ -67,10 +67,27 @@ export default function SelectionTools({ aktivTask, aktiveSim, api, updateSim }:
         setStatus("Keine neuen Bauteile in Selektion");
         return;
       }
+
+      // Konflikte prüfen: welche GUIDs sind bereits in anderen Tasks?
+      const konflikte = new Map<string, number>();
+      for (const t of aktiveSim.tasks) {
+        if (t.id === aktivTask.id) continue;
+        const overlap = t.objektGuids.filter(g => neueGuids.includes(g)).length;
+        if (overlap > 0) konflikte.set(t.name, overlap);
+      }
+      if (konflikte.size > 0) {
+        const details = [...konflikte.entries()].map(([name, n]) => `  • ${n} aus „${name}"`).join("\n");
+        if (!window.confirm(`Objekte werden von anderen Tasks entfernt:\n${details}\n\nFortfahren?`)) {
+          setStatus("Abgebrochen");
+          return;
+        }
+      }
+
+      // Exklusive Zuweisung: aus anderen Tasks entfernen
       const bereinigteTasks = aktiveSim.tasks.map(t =>
         t.id === aktivTask.id
           ? { ...t, objektGuids: [...new Set([...t.objektGuids, ...neueGuids])] }
-          : t
+          : { ...t, objektGuids: t.objektGuids.filter(g => !neueGuids.includes(g)) }
       );
       updateSim({ ...aktiveSim, tasks: bereinigteTasks });
       setStatus(`✓ ${neueGuids.length} Bauteile hinzugefügt`);
@@ -98,7 +115,7 @@ export default function SelectionTools({ aktivTask, aktiveSim, api, updateSim }:
         }
       </button>
       {status && (
-        <div className={`alert ${status.startsWith("✓") ? "ok" : "err"}`} style={{ marginTop: 5 }}>
+        <div className={`alert ${status.startsWith("✓") ? "ok" : status === "Abgebrochen" ? "info" : "err"}`} style={{ marginTop: 5 }}>
           {status}
         </div>
       )}

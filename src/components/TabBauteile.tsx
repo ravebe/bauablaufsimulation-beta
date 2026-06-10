@@ -1,4 +1,4 @@
-// TabBauteile.tsx — Orchestrator (schlanker Einstieg, delegiert an Sub-Komponenten)
+// TabBauteile.tsx — Orchestrator
 import { useState, useEffect } from "react";
 import type { SimProjekt } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
@@ -6,7 +6,6 @@ import { getEchteBauteile, clearEchteBauteileCache } from "./modelHelpers";
 import TabTasks from "./TabTasks";
 import AttributeFilter from "./AttributeFilter";
 import SelectionTools from "./SelectionTools";
-import ModelSelector from "./ModelSelector";
 
 interface Props {
   api: ApiInstance | null;
@@ -19,24 +18,20 @@ interface Props {
 export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId }: Props) {
   const [aktivTaskId, setAktivTaskId] = useState<string | null>(null);
   const [totalObjekte, setTotalObjekte] = useState<number | null>(null);
-  const [totalLaedt, setTotalLaedt] = useState(false);
   const [resetSignal, setResetSignal] = useState(0);
 
   const aktivTask = aktiveSim?.tasks.find(t => t.id === aktivTaskId) ?? null;
-  const alleGuids = new Set(aktiveSim?.tasks.flatMap(t => t.objektGuids) ?? []);
 
-  async function taskAnklicken(taskId: string) {
+  function taskAnklicken(taskId: string) {
     const istGleich = taskId === aktivTaskId;
     setAktivTaskId(istGleich ? null : taskId);
     setResetSignal(s => s + 1);
   }
 
-  // Gesamtzählung echte Bauteile
   useEffect(() => {
     if (!api || !aktiveSim || aktiveSim.modelle.length === 0) { setTotalObjekte(null); return; }
     clearEchteBauteileCache();
     (async () => {
-      setTotalLaedt(true);
       let gesamt = 0;
       for (const modell of aktiveSim.modelle) {
         if (!modell.id) continue;
@@ -44,9 +39,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
         gesamt += echte.length;
       }
       setTotalObjekte(gesamt > 0 ? gesamt : null);
-      setTotalLaedt(false);
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aktiveSim?.id, api]);
 
   if (!aktiveSim) {
@@ -70,7 +63,6 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
         updateSim={updateSim}
         onTaskClick={taskAnklicken}
       />
-
       {aktivTask && (
         <>
           <AttributeFilter
@@ -80,12 +72,6 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
             aktivesModellId={aktivesModellId}
             updateSim={updateSim}
             resetSignal={resetSignal}
-          />
-          <ModelSelector
-            aktiveSim={aktiveSim}
-            totalObjekte={totalObjekte}
-            totalLaedt={totalLaedt}
-            alleGuids={alleGuids}
           />
           <SelectionTools
             aktivTask={aktivTask}

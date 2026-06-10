@@ -30,10 +30,11 @@ export default function AttributeFilter({ api, aktiveSim, aktivTask, aktivesMode
   const acRef = useRef<HTMLDivElement>(null);
   const ladeAttrGen = useRef(0);
 
-  // Reset bei Task-Wechsel
+  // Reset bei Task-Wechsel: Attribut behalten, nur Wert + Ergebnisse leeren
   useEffect(() => {
     setSuchStatus(null); setGefundeneByModel(new Map());
-    setIfcQuery(""); setIfcWert(""); setSelectedAttr(null);
+    setIfcWert("");
+    // ifcQuery und selectedAttr bleiben stehen
   }, [resetSignal]);
 
   // Autocomplete schließen bei Klick außerhalb
@@ -185,6 +186,19 @@ export default function AttributeFilter({ api, aktiveSim, aktivTask, aktivesMode
     const seen = new Set<string>(); const neueGuids: string[] = [];
     for (const [mid, rIds] of gefundeneByModel.entries()) for (const rId of rIds) { const k = `${mid}:::${rId}`; if (!seen.has(k)) { seen.add(k); neueGuids.push(k); } }
     if (neueGuids.length === 0) return;
+
+    // Konflikte prüfen: welche GUIDs sind bereits in anderen Tasks?
+    const konflikte = new Map<string, number>(); // taskName → Anzahl
+    for (const t of aktiveSim.tasks) {
+      if (t.id === aktivTask.id) continue;
+      const overlap = t.objektGuids.filter(g => neueGuids.includes(g)).length;
+      if (overlap > 0) konflikte.set(t.name, overlap);
+    }
+    if (konflikte.size > 0) {
+      const details = [...konflikte.entries()].map(([name, n]) => `  • ${n} aus „${name}"`).join("\n");
+      if (!window.confirm(`Objekte werden von anderen Tasks entfernt:\n${details}\n\nFortfahren?`)) return;
+    }
+
     const bereinigteTasks = aktiveSim.tasks.map(t =>
       t.id === aktivTask.id ? { ...t, objektGuids: [...new Set([...t.objektGuids, ...neueGuids])] }
         : { ...t, objektGuids: t.objektGuids.filter(g => !neueGuids.includes(g)) }
