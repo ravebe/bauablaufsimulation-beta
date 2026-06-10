@@ -111,17 +111,25 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     console.log("[preload] Geladen:", [...alleIdsCache.current.entries()].map(([m, ids]) => `${m}: ${ids.length}`).join(", "));
   }
 
-  // --- Alles ausblenden (ein Call pro Modell mit ALLEN IDs) ---
+  // --- Alles ausblenden: reset + chunked hide ---
   async function allesAusblenden() {
     if (!api) return;
+    // Erst reset → sauberer Zustand
+    try { await api.viewer.reset(); } catch {}
+    await sleep(200);
+    // Dann alle Objekte in Chunks ausblenden
     for (const [mid, ids] of alleIdsCache.current.entries()) {
       if (ids.length === 0) continue;
-      try {
-        await api.viewer.setObjectState(
-          { modelObjectIds: [{ modelId: mid, objectRuntimeIds: ids }] } as any,
-          { visible: false, color: null } as any
-        );
-      } catch {}
+      const CHUNK = 500;
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const chunk = ids.slice(i, i + CHUNK);
+        try {
+          await api.viewer.setObjectState(
+            { modelObjectIds: [{ modelId: mid, objectRuntimeIds: chunk }] } as any,
+            { visible: false, color: null } as any
+          );
+        } catch {}
+      }
     }
     try { await (api.viewer as any).setSelection({ modelObjectIds: [] }, "set"); } catch {}
   }
@@ -207,20 +215,30 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
 
   // --- Gruppe inkrementell aktivieren (für fließende Animation) ---
   function gruppeAktivierenAsync(g: TaskGruppe) {
+    const selGuids: string[] = [];
+
     for (const t of g.tasks) {
       if (t.typ === "neubau") {
-        // Einblenden ohne Farbe (Original-IFC-Farbe)
+        // Einblenden ohne Farbe (Original-IFC-Farbe) + selektieren (gelbe Umrandung)
         setzeZustandAsync(t.objektGuids, { visible: true });
+        selGuids.push(...t.objektGuids);
       } else if (t.typ === "abbruch") {
-        // Gelb färben
+        // Gelb färben + selektieren
         setzeZustandAsync(t.objektGuids, { color: FARBEN.abbruch });
-        // Nach Pause ausblenden
+        selGuids.push(...t.objektGuids);
         const guids = [...t.objektGuids];
         setTimeout(() => {
           setzeZustandAsync(guids, { visible: false, color: null });
         }, Math.max(1000, sekProTag * 800));
       }
     }
+
+    // Selektion setzen (gelbe Umrandung) — fire-and-forget
+    if (selGuids.length > 0) {
+      const modelObjectIds = zuBatch(selGuids);
+      (api!.viewer as any).setSelection({ modelObjectIds }, "set").catch(() => {});
+    }
+
     const namen = g.tasks.map(t => `${t.typ === "neubau" ? "🟢" : t.typ === "abbruch" ? "🟡" : "⚫"} ${t.name}`).join(", ");
     setStatus(`${g.datum} · ${namen}`);
   }
