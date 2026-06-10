@@ -24,37 +24,29 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     return new Promise<void>(resolve => setTimeout(resolve, ms));
   }
 
-  function istIfcGuid(s: string): boolean {
-    return /^[A-Za-z0-9_$]{22}$/.test(s);
-  }
-
-  // Markiert Objekte via getObjects (wie DataTable) — Runtime-IDs intern von TC aufgelöst
-  async function guidZuSelection(guids: string[]): Promise<{ modelId: string; objectRuntimeIds: number[] }[]> {
-    if (!api || guids.length === 0) return [];
-    const echteGuids = guids.filter(istIfcGuid);
-    const legacyIds = guids.filter(g => !istIfcGuid(g)).map(Number).filter(n => !isNaN(n) && n > 0);
-    const selection: { modelId: string; objectRuntimeIds: number[] }[] = [];
-
-    if (echteGuids.length > 0) {
-      for (const mid of modellIds) {
-        try {
-          const result = await (api.viewer as any).getObjects({
-            modelObjectIds: [{ modelId: mid }],
-            parameter: { properties: { 'GlobalId': echteGuids.length === 1 ? echteGuids[0] : echteGuids } }
-          }) as any[];
-          if (Array.isArray(result)) {
-            for (const r of result) {
-              const rIds = (r?.objectRuntimeIds ?? []).map(Number).filter((n: number) => !isNaN(n) && n > 0);
-              if (rIds.length > 0) selection.push({ modelId: mid, objectRuntimeIds: rIds });
-            }
-          }
-        } catch { /* Modell überspringen */ }
+  // Objekte aus "modelId:::rId" Format in setSelection-Struktur umwandeln
+  function objektZuSelection(objektGuids: string[]): { modelId: string; objectRuntimeIds: number[] }[] {
+    const byModel = new Map<string, number[]>();
+    const legacy: number[] = [];
+    for (const g of objektGuids) {
+      if (g.includes(":::")) {
+        const sep = g.indexOf(":::");
+        const mid = g.slice(0, sep);
+        const rId = Number(g.slice(sep + 3));
+        if (mid && !isNaN(rId)) {
+          if (!byModel.has(mid)) byModel.set(mid, []);
+          byModel.get(mid)!.push(rId);
+        }
+      } else {
+        const rId = Number(g);
+        if (!isNaN(rId) && rId > 0) legacy.push(rId);
       }
     }
-    if (legacyIds.length > 0 && modellIds.length > 0) {
-      selection.push({ modelId: modellIds[0], objectRuntimeIds: legacyIds });
+    if (legacy.length > 0 && modellIds.length > 0) {
+      if (!byModel.has(modellIds[0])) byModel.set(modellIds[0], []);
+      byModel.get(modellIds[0])!.push(...legacy);
     }
-    return selection;
+    return [...byModel.entries()].map(([modelId, objectRuntimeIds]) => ({ modelId, objectRuntimeIds: [...new Set(objectRuntimeIds)] }));
   }
 
   // Reset — alle Objekte wieder einblenden
@@ -103,7 +95,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
       setStatus(`▶ ${task.name} · ${guids.length} Bauteile`);
 
       if (guids.length > 0) {
-        const selection = await guidZuSelection(guids);
+        const selection = objektZuSelection(guids);
         for (const { modelId, objectRuntimeIds } of selection) {
           try {
             await api.viewer.setObjectState(
