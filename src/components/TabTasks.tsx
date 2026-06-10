@@ -72,9 +72,30 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
     const sep = guid.indexOf(":::");
     const mid = guid.slice(0, sep); const rId = Number(guid.slice(sep + 3));
     if (!mid || isNaN(rId)) return;
+
+    // IFC GUID holen
+    let ifcGuid = "";
     try {
-      await (api.viewer as any).setSelection([{ modelId: mid, objectRuntimeIds: [rId] }]);
-    } catch (e) { console.log("[einzelnMarkieren] Fehler:", e); }
+      const ids = await api.viewer.convertToObjectIds(mid, [rId]);
+      ifcGuid = (ids as any)?.[0] ?? "";
+    } catch {}
+
+    console.log("[einzelnMarkieren] mid:", mid, "rId:", rId, "ifcGuid:", ifcGuid);
+
+    // Versuch 1: setSelection mit objectIds (IFC GUID) statt objectRuntimeIds
+    if (ifcGuid) {
+      try {
+        await (api.viewer as any).setSelection([{ modelId: mid, objectIds: [ifcGuid] }]);
+        console.log("[einzelnMarkieren] setSelection mit objectIds OK");
+        return;
+      } catch (e) { console.log("[einzelnMarkieren] objectIds fehlgeschlagen:", e); }
+    }
+
+    // Versuch 2: setSelection mit recursive:false
+    try {
+      await (api.viewer as any).setSelection([{ modelId: mid, objectRuntimeIds: [rId], recursive: false }]);
+      console.log("[einzelnMarkieren] setSelection mit recursive:false OK");
+    } catch (e) { console.log("[einzelnMarkieren] recursive:false fehlgeschlagen:", e); }
   }
 
   async function nurAnzeigen(guids: string[]) {
