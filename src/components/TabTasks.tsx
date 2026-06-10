@@ -67,33 +67,17 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
 
   const nurAnzeigenLaeuft = useRef(false);
 
-  const letzteMarkierung = useRef<{ mid: string; rId: number } | null>(null);
-
   async function einzelnMarkieren(guid: string) {
     if (!api || !guid.includes(":::")) return;
     const sep = guid.indexOf(":::");
     const mid = guid.slice(0, sep); const rId = Number(guid.slice(sep + 3));
     if (!mid || isNaN(rId)) return;
-
-    // Vorherige Markierung zurücksetzen
-    if (letzteMarkierung.current) {
-      const prev = letzteMarkierung.current;
-      try {
-        await api.viewer.setObjectState(
-          [{ modelId: prev.mid, objectRuntimeIds: [prev.rId] }] as any,
-          { color: null } as any  // Farbe entfernen → Originalfarbe
-        );
-      } catch {}
-    }
-
-    // Neues Objekt farblich hervorheben (helles Blau)
     try {
-      await api.viewer.setObjectState(
-        [{ modelId: mid, objectRuntimeIds: [rId] }] as any,
-        { color: "#3399FF" } as any
+      await (api.viewer as any).setSelection(
+        { modelObjectIds: [{ modelId: mid, objectRuntimeIds: [rId] }] },
+        "set"
       );
-      letzteMarkierung.current = { mid, rId };
-      console.log("[einzelnMarkieren] Objekt gefärbt:", mid, rId);
+      console.log("[einzelnMarkieren] OK:", mid, rId);
     } catch (e) { console.log("[einzelnMarkieren] Fehler:", e); }
   }
 
