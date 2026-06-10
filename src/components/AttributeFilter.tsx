@@ -27,15 +27,23 @@ export default function AttributeFilter({ api, aktiveSim, aktivTask, aktivesMode
   const [gefundeneByModel, setGefundeneByModel] = useState<Map<string, number[]>>(new Map());
   const [laedt, setLaedt] = useState(false);
   const [attrLaedt, setAttrLaedt] = useState(false);
+  const [konflikt, setKonflikt] = useState<{ details: { name: string; anzahl: number }[]; guids: string[] } | null>(null);
   const acRef = useRef<HTMLDivElement>(null);
   const ladeAttrGen = useRef(0);
 
   // Reset bei Task-Wechsel: Attribut behalten, nur Wert + Ergebnisse leeren
   useEffect(() => {
-    setSuchStatus(null); setGefundeneByModel(new Map());
+    setSuchStatus(null); setGefundeneByModel(new Map()); setKonflikt(null);
     setIfcWert("");
-    // ifcQuery und selectedAttr bleiben stehen
   }, [resetSignal]);
+
+  // Status bei nächstem Klick löschen
+  useEffect(() => {
+    if (!suchStatus) return;
+    const handler = () => { setSuchStatus(null); };
+    const timer = setTimeout(() => document.addEventListener("click", handler, { once: true }), 300);
+    return () => { clearTimeout(timer); document.removeEventListener("click", handler); };
+  }, [suchStatus]);
 
   // Autocomplete schließen bei Klick außerhalb
   useEffect(() => {
@@ -181,30 +189,34 @@ export default function AttributeFilter({ api, aktiveSim, aktivTask, aktivesMode
     finally { setLaedt(false); }
   }
 
+  function filterZuweisen(guids: string[]) {
+    if (!aktivTask || !aktiveSim) return;
+    const bereinigteTasks = aktiveSim.tasks.map(t =>
+      t.id === aktivTask.id ? { ...t, objektGuids: [...new Set([...t.objektGuids, ...guids])] }
+        : { ...t, objektGuids: t.objektGuids.filter(g => !guids.includes(g)) }
+    );
+    updateSim({ ...aktiveSim, tasks: bereinigteTasks });
+    setGefundeneByModel(new Map()); setKonflikt(null);
+    setSuchStatus(`✓ ${guids.length} Bauteile hinzugefügt`);
+  }
+
   function gefundeneHinzufuegen() {
     if (!aktivTask || gefundeneByModel.size === 0 || !aktiveSim) return;
     const seen = new Set<string>(); const neueGuids: string[] = [];
     for (const [mid, rIds] of gefundeneByModel.entries()) for (const rId of rIds) { const k = `${mid}:::${rId}`; if (!seen.has(k)) { seen.add(k); neueGuids.push(k); } }
     if (neueGuids.length === 0) return;
 
-    // Konflikte prüfen: welche GUIDs sind bereits in anderen Tasks?
-    const konflikte = new Map<string, number>(); // taskName → Anzahl
+    const details: { name: string; anzahl: number }[] = [];
     for (const t of aktiveSim.tasks) {
       if (t.id === aktivTask.id) continue;
       const overlap = t.objektGuids.filter(g => neueGuids.includes(g)).length;
-      if (overlap > 0) konflikte.set(t.name, overlap);
+      if (overlap > 0) details.push({ name: t.name, anzahl: overlap });
     }
-    if (konflikte.size > 0) {
-      const details = [...konflikte.entries()].map(([name, n]) => `  • ${n} aus „${name}"`).join("\n");
-      if (!window.confirm(`Objekte werden von anderen Tasks entfernt:\n${details}\n\nFortfahren?`)) return;
+    if (details.length > 0) {
+      setKonflikt({ details, guids: neueGuids });
+    } else {
+      filterZuweisen(neueGuids);
     }
-
-    const bereinigteTasks = aktiveSim.tasks.map(t =>
-      t.id === aktivTask.id ? { ...t, objektGuids: [...new Set([...t.objektGuids, ...neueGuids])] }
-        : { ...t, objektGuids: t.objektGuids.filter(g => !neueGuids.includes(g)) }
-    );
-    updateSim({ ...aktiveSim, tasks: bereinigteTasks });
-    setGefundeneByModel(new Map()); setSuchStatus(`✓ ${neueGuids.length} Bauteile hinzugefügt`);
   }
 
   const vorschlaege = selectedAttr && attrMap[selectedAttr.key]
@@ -249,11 +261,24 @@ export default function AttributeFilter({ api, aktiveSim, aktivTask, aktivesMode
       </button>
       {!modellId && <div className="alert info" style={{ marginTop: 5, fontSize: 9 }}>⟳ Warte auf Modell-Verbindung…</div>}
       {suchStatus && <div className={`alert ${suchStatus.startsWith("✓") ? "ok" : "err"}`} style={{ marginTop: 5 }}>{suchStatus}</div>}
-      {gefundeneAnzahl > 0 && (
+      {konflikt ? (
+        <div style={{ background: "#FFF7ED", border: "1px solid #FB923C", borderRadius: 6, padding: 8, fontSize: 11, marginTop: 6 }}>
+          <div style={{ fontWeight: 600, color: "#C2410C", marginBottom: 4 }}>⚠ Objekte in anderen Tasks:</div>
+          {konflikt.details.map((k, i) => (
+            <div key={i} style={{ color: "#9A3412" }}>• {k.anzahl} aus „{k.name}"</div>
+          ))}
+          <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+            <button className="tc-btn-primary" style={{ flex: 1, background: "#16a34a", borderColor: "#16a34a", fontSize: 11 }}
+              onClick={() => filterZuweisen(konflikt.guids)}>Verschieben</button>
+            <button className="tc-btn-ghost" style={{ flex: 1, fontSize: 11 }}
+              onClick={() => { setKonflikt(null); setSuchStatus("Abgebrochen"); }}>Abbrechen</button>
+          </div>
+        </div>
+      ) : gefundeneAnzahl > 0 ? (
         <button className="tc-btn-green" style={{ width: "100%", marginTop: 6 }} onClick={gefundeneHinzufuegen}>
           + Gefundene hinzufügen ({gefundeneAnzahl})
         </button>
-      )}
+      ) : null}
     </div>
   );
 }
