@@ -90,7 +90,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
     try {
       await api.viewer.setObjectState(
         [{ modelId: mid, objectRuntimeIds: [rId] }] as any,
-        { color: [0.2, 0.6, 1.0, 1.0] } as any
+        { color: "#3399FF" } as any
       );
       letzteMarkierung.current = { mid, rId };
       console.log("[einzelnMarkieren] Objekt gefärbt:", mid, rId);
