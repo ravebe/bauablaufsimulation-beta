@@ -88,19 +88,30 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
           const ids = await api.viewer.convertToObjectIds(mid, [rId]);
           ifcId = (ids as any)?.[0] ?? "";
         } catch { /* nicht verfügbar */ }
-        // Product Name aus Properties
+        // Product Name aus Properties — breite Suche (IFC-Entity-Name, Revit, Tekla)
         try {
           const props: any[] = await api.viewer.getObjectProperties(mid, [rId]) as any;
-          outer: for (const pset of props ?? []) {
+          for (const pset of props ?? []) {
+            // Direkt der PSet-Name könnte der Objekt-Name sein
             for (const p of pset?.properties ?? []) {
-              const n = (p?.name ?? "").toLowerCase();
-              if (n === "name" || n === "product name" || n === "bezeichnung") {
-                name = String(p?.value ?? ""); break outer;
+              const pn = (p?.name ?? "").toLowerCase();
+              if (pn === "name" || pn === "product name" || pn === "bezeichnung" ||
+                  pn === "objectname" || pn === "object name" || pn === "bauteilname") {
+                const v = String(p?.value ?? "").trim();
+                if (v && v !== "null" && v !== "undefined") { name = v; break; }
               }
+            }
+            if (name) break;
+          }
+          // Fallback: erster nicht-leerer Wert aus dem ersten PSet
+          if (!name && props?.[0]?.properties?.length) {
+            for (const p of props[0].properties) {
+              const v = String(p?.value ?? "").trim();
+              if (v && v.length > 1 && v !== "null") { name = v; break; }
             }
           }
         } catch { /* Tekla-Modell: getObjectProperties wirft */ }
-        info.set(g, { name: name || `rId: ${rId}`, ifcId });
+        info.set(g, { name: name || ifcId.slice(0, 22) || `Objekt ${rId}`, ifcId });
       }
       setGuidInfo(info);
     })();
@@ -518,35 +529,10 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
   }
 
   // Objekte im Viewer markieren — Format "modelId:::rId" oder Legacy "rId"
-  // Task anklicken → Bauteile im 3D markieren
+  // Task anklicken → Detail-Panel öffnen (kein setSelection — stört manuelle Selektion)
   async function taskAnklicken(taskId: string) {
     const istGleich = taskId === aktivTaskId;
     setAktivTaskId(istGleich ? null : taskId);
-    if (istGleich) {
-      try { await (api?.viewer as any)?.setSelection([]); } catch { /* ignore */ }
-    } else {
-      const task = aktiveSim?.tasks.find(t => t.id === taskId);
-      if (!task || task.objektGuids.length === 0 || !api) return;
-
-      // Stored guids parsen
-      const byModel = new Map<string, number[]>();
-      for (const g of task.objektGuids) {
-        if (g.includes(":::")) {
-          const sep = g.indexOf(":::");
-          const mid = g.slice(0, sep); const rId = Number(g.slice(sep + 3));
-          if (mid && !isNaN(rId)) { if (!byModel.has(mid)) byModel.set(mid, []); byModel.get(mid)!.push(rId); }
-        }
-      }
-      if (byModel.size === 0) return;
-
-      // setSelection mit recursive: false → KEINE Kinder-Expansion mehr!
-      const selection = [...byModel.entries()].map(([modelId, rIds]) => ({
-        modelId,
-        objectRuntimeIds: [...new Set(rIds)],
-        recursive: false,   // ← verhindert die 189/411-Expansion
-      }));
-      try { await (api.viewer as any).setSelection(selection); } catch { /* ignore */ }
-    }
   }
 
   // Gefundene Objekte dem Task hinzufügen — als "modelId:::rId" speichern
@@ -615,6 +601,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
       const taskSet = new Set<number>(taskRIds);
       const alleIds = await getModellObjekte(mid);
       const hideIds = alleIds.filter(id => !taskSet.has(id));
+      console.log("[nurAnzeigen] mid:", mid, "alleIds:", alleIds.length, "taskRIds:", taskRIds.length, "hideIds:", hideIds.length, "sample hideIds:", hideIds.slice(0,5));
       if (hideIds.length > 0) {
         try { await api.viewer.setObjectState([{ modelId: mid, objectRuntimeIds: hideIds }], { visible: false }); } catch { /* ignore */ }
       }
