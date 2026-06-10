@@ -16,11 +16,11 @@ interface Props {
   onTaskClick: (id: string) => void;
 }
 
-const STORAGE_KEY = "4d-guid-display";
+const STORAGE_PREFIX = "4d-guid-display-";
 
-function ladeDisplayConfig(): { zeile1: string; zeile2: string } {
+function ladeDisplayConfig(simId: string): { zeile1: string; zeile2: string } {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_PREFIX + simId);
     if (raw) return JSON.parse(raw);
   } catch {}
   return { zeile1: "Layer||Layer", zeile2: "Reference Object||Common Type" };
@@ -29,13 +29,20 @@ function ladeDisplayConfig(): { zeile1: string; zeile2: string } {
 export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, totalObjekte, updateSim, onTaskClick }: Props) {
   const [guidWerte, setGuidWerte] = useState<Map<string, ObjWerte>>(new Map());
   const [verfuegbareAttrs, setVerfuegbareAttrs] = useState<string[]>([]);
-  const [displayConfig, setDisplayConfig] = useState(ladeDisplayConfig);
+  const [displayConfig, setDisplayConfig] = useState(() => ladeDisplayConfig(aktiveSim.id));
   const [settingsOffen, setSettingsOffen] = useState(false);
+  const [loeschenBestaetigen, setLoeschenBestaetigen] = useState(false);
+
+  // Display-Config neu laden wenn Sim wechselt
+  useEffect(() => {
+    setDisplayConfig(ladeDisplayConfig(aktiveSim.id));
+  }, [aktiveSim.id]);
 
   // Alle Properties für Task-Objekte laden
   useEffect(() => {
     setGuidWerte(new Map());
     setVerfuegbareAttrs([]);
+    setLoeschenBestaetigen(false);
     if (!api || !aktivTask?.objektGuids.length) return;
     (async () => {
       const werte = new Map<string, ObjWerte>();
@@ -111,7 +118,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
 
   function saveDisplayConfig(cfg: { zeile1: string; zeile2: string }) {
     setDisplayConfig(cfg);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+    localStorage.setItem(STORAGE_PREFIX + aktiveSim.id, JSON.stringify(cfg));
   }
 
   function typAendern(taskId: string, typ: TaskTyp) {
@@ -242,13 +249,28 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                     <button className="tc-btn-primary" title="Nur diese anzeigen" style={{ fontSize: 10, padding: "3px 8px" }} onClick={() => nurAnzeigen(aktivTask.objektGuids)}>👁 Nur diese</button>
                     <button className="tc-btn-ghost" title="Ausblenden" onClick={() => ausblenden(aktivTask.objektGuids)}>🚫</button>
                     <button className="tc-btn-ghost" title="Alle einblenden" onClick={alleEinblenden}>↺</button>
-                    <button className="tc-btn-ghost" style={{ color: "var(--tc-red)" }} onClick={() => speichereGuids(aktivTask.id, [])}>🗑</button>
+                    <button className="tc-btn-ghost" style={{ color: "var(--tc-red)" }} onClick={() => setLoeschenBestaetigen(true)}>🗑</button>
                   </>
                 )}
                 <button className="tc-btn-ghost" title="Anzeige-Einstellungen" style={{ fontSize: 12 }}
                   onClick={() => setSettingsOffen(s => !s)}>⚙</button>
               </div>
             </div>
+
+            {/* Lösch-Bestätigung */}
+            {loeschenBestaetigen && (
+              <div style={{ background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: 6, padding: 8, marginBottom: 6, fontSize: 11 }}>
+                <div style={{ fontWeight: 600, color: "#DC2626", marginBottom: 4 }}>
+                  ⚠ Alle {aktivTask.objektGuids.length} Bauteile von „{aktivTask.name}" entfernen?
+                </div>
+                <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                  <button className="tc-btn-primary" style={{ flex: 1, background: "#DC2626", borderColor: "#DC2626", fontSize: 11 }}
+                    onClick={() => { speichereGuids(aktivTask.id, []); setLoeschenBestaetigen(false); }}>Alle entfernen</button>
+                  <button className="tc-btn-ghost" style={{ flex: 1, fontSize: 11 }}
+                    onClick={() => setLoeschenBestaetigen(false)}>Abbrechen</button>
+                </div>
+              </div>
+            )}
 
             {/* Anzeige-Einstellungen */}
             {settingsOffen && verfuegbareAttrs.length > 0 && (
