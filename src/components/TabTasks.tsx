@@ -67,6 +67,16 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
 
   const nurAnzeigenLaeuft = useRef(false);
 
+  async function einzelnMarkieren(guid: string) {
+    if (!api || !guid.includes(":::")) return;
+    const sep = guid.indexOf(":::");
+    const mid = guid.slice(0, sep); const rId = Number(guid.slice(sep + 3));
+    if (!mid || isNaN(rId)) return;
+    try {
+      await (api.viewer as any).setSelection([{ modelId: mid, objectRuntimeIds: [rId] }]);
+    } catch (e) { console.log("[einzelnMarkieren] Fehler:", e); }
+  }
+
   async function nurAnzeigen(guids: string[]) {
     if (!api || nurAnzeigenLaeuft.current) return;
     nurAnzeigenLaeuft.current = true;
@@ -188,6 +198,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                           </div>
                         )}
                       </div>
+                      <button className="guid-row-x" title="Im 3D markieren" style={{ color: "var(--tc-blue)", fontSize: 12 }} onClick={() => einzelnMarkieren(g)}>👁</button>
                       <button className="guid-row-x" onClick={() => guidEntfernen(aktivTask.id, g)}>✕</button>
                     </div>
                   );
