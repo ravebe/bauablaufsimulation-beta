@@ -12,6 +12,8 @@ interface TaskGruppe { datum: string; tage: number; tasks: Task[]; }
 
 const FARBEN = { neubau: "#22C55E", bestand: "#999999", abbruch: "#EAB308" };
 
+function sleep(ms: number) { return new Promise<void>(r => setTimeout(r, ms)); }
+
 function parseDatum(s: string): Date | null {
   if (!s) return null;
   const d = new Date(s + "T00:00:00");
@@ -197,16 +199,18 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
   // --- Startzustand ---
   async function startzustand() {
     if (!api || !aktiveSim) return;
-    setStatus("⟳ Startzustand…");
     aktivierteGruppen.current.clear();
 
-    // Alles ausblenden
+    // Schritt 1: ALLES ausblenden — nichts sichtbar
+    setStatus("⟳ Alles ausblenden…");
     for (const mid of modellIds) {
       try { await api.viewer.setObjectState({ modelObjectIds: [{ modelId: mid }] } as any, { visible: false, color: null } as any); } catch {}
     }
     try { await (api.viewer as any).setSelection({ modelObjectIds: [] }, "set"); } catch {}
+    await sleep(800);
 
-    // Bestand + Abbruch einblenden
+    // Schritt 2: Bestand (grau) + Abbruch einblenden
+    setStatus("⟳ Bestand + Abbruch einblenden…");
     for (const g of gruppen) {
       for (const t of g.tasks) {
         if (t.typ === "bestand") {
@@ -217,9 +221,10 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
         }
       }
     }
+    await sleep(600);
 
     setCurrentTag(0);
-    setStatus("✓ Bereit — Bestand (grau) + Abbruch sichtbar");
+    setStatus("✓ Bereit");
   }
 
   // --- Playback mit requestAnimationFrame ---
@@ -286,6 +291,17 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
   // --- Manueller Slider ---
   async function sliderChange(tag: number) {
     if (laeuft) return;
+    setCurrentTag(tag);
+    currentTagRef.current = tag;
+    aktivierteGruppen.current.clear();
+    gruppen.forEach((g, i) => { if (g.tage <= tag) aktivierteGruppen.current.add(i); });
+    await zustandBeiTag(tag);
+  }
+
+  // --- Klick auf Task-Gruppe in Timeline ---
+  async function zuGruppe(gruppenIndex: number) {
+    if (laeuft || gruppenIndex < 0 || gruppenIndex >= gruppen.length) return;
+    const tag = gruppen[gruppenIndex].tage;
     setCurrentTag(tag);
     currentTagRef.current = tag;
     aktivierteGruppen.current.clear();
@@ -387,7 +403,8 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
             const istAktiv = g.tage <= currentTag && (gi === gruppen.length - 1 || gruppen[gi + 1].tage > currentTag);
             const istVorbei = !istAktiv && g.tage < currentTag;
             return (
-              <div key={g.datum} style={{ borderBottom: "1px solid var(--tc-border)" }}>
+              <div key={g.datum} style={{ borderBottom: "1px solid var(--tc-border)", cursor: laeuft ? "default" : "pointer" }}
+                onClick={() => zuGruppe(gi)}>
                 <div style={{
                   padding: "4px 8px", fontSize: 9, fontWeight: 600,
                   color: istAktiv ? "var(--tc-blue)" : istVorbei ? "var(--tc-text-3)" : "var(--tc-text-2)",
