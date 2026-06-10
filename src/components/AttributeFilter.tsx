@@ -180,8 +180,8 @@ export default function AttributeFilter({ api, aktiveSim, aktivTask, aktivesMode
         } catch {}
       }
       if (alleTreffer.length === 0) { setSuchStatus("Keine Bauteile gefunden"); return; }
-      const selection = [...treffenByModel.entries()].map(([modelId, objectRuntimeIds]) => ({ modelId, objectRuntimeIds }));
-      await (api.viewer as any).setSelection(selection);
+      const modelObjectIds = [...treffenByModel.entries()].map(([modelId, objectRuntimeIds]) => ({ modelId, objectRuntimeIds }));
+      await (api.viewer as any).setSelection({ modelObjectIds }, "set");
       setGefundeneByModel(new Map(treffenByModel));
       const maxTreffer = Math.max(...[...treffenByModel.values()].map(ids => ids.length));
       setSuchStatus(`✓ ${maxTreffer} Bauteile gefunden & markiert`);
@@ -230,10 +230,12 @@ export default function AttributeFilter({ api, aktiveSim, aktivTask, aktivesMode
         {attrLaedt && <span style={{ color: "var(--tc-text-3)", fontWeight: 400, marginLeft: 6 }}>⟳ lädt…</span>}
         {!attrLaedt && allAttrs.length > 0 && <span style={{ color: "var(--tc-text-3)", fontWeight: 400, marginLeft: 6 }}>{allAttrs.length} Attribute</span>}
       </div>
-      <div className="ac-wrap" ref={acRef}>
-        <input className="ac-input" placeholder="Attribut suchen… (z.B. Material)" value={ifcQuery}
+      <div className="ac-wrap" ref={acRef} style={{ position: "relative" }}>
+        <input className="ac-input" style={{ paddingRight: 24 }} placeholder="Attribut suchen… (z.B. Material)" value={ifcQuery}
           onChange={e => { setIfcQuery(e.target.value); setSelectedAttr(null); setAcOffen(true); setGefundeneByModel(new Map()); setSuchStatus(null); }}
           onFocus={() => { setAcOffen(true); if (!allAttrs.length && modellId) ladeAttr(); }} />
+        {ifcQuery && <button style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#999", fontSize: 14, padding: 2 }}
+          onClick={() => { setIfcQuery(""); setSelectedAttr(null); setGefundeneByModel(new Map()); setSuchStatus(null); }}>✕</button>}
         {acOffen && acItems.length > 0 && (
           <div className="ac-dropdown">
             {acItems.map((item, i) => (
@@ -245,10 +247,12 @@ export default function AttributeFilter({ api, aktiveSim, aktivTask, aktivesMode
           </div>
         )}
       </div>
-      <div className="ac-wrap" style={{ marginTop: 4 }}>
-        <input className="ac-input" placeholder="Wert (z.B. Beton NPK C)…" value={ifcWert}
+      <div className="ac-wrap" style={{ marginTop: 4, position: "relative" }}>
+        <input className="ac-input" style={{ paddingRight: 24 }} placeholder="Wert (z.B. Beton NPK C)…" value={ifcWert}
           onChange={e => { setIfcWert(e.target.value); setGefundeneByModel(new Map()); setSuchStatus(null); setWertDropdownOffen(true); }}
           onFocus={() => setWertDropdownOffen(true)} onBlur={() => setTimeout(() => setWertDropdownOffen(false), 150)} />
+        {ifcWert && <button style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#999", fontSize: 14, padding: 2 }}
+          onClick={() => { setIfcWert(""); setGefundeneByModel(new Map()); setSuchStatus(null); }}>✕</button>}
         {wertDropdownOffen && vorschlaege.length > 0 && (
           <div className="ac-dropdown">
             {vorschlaege.map((v, i) => <div key={i} className="ac-item" onMouseDown={() => { setIfcWert(v); setWertDropdownOffen(false); }}><div style={{ color: "var(--tc-text)" }}>{v}</div></div>)}

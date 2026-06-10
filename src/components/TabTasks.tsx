@@ -3,8 +3,7 @@ import { useState, useEffect } from "react";
 import type { SimProjekt, Task, TaskTyp } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 
-
-interface GuidInfo { name: string; ifcId: string; }
+interface GuidInfo { layer: string; commonType: string; }
 
 interface Props {
   api: ApiInstance | null;
@@ -29,27 +28,35 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
         if (!g.includes(":::")) continue;
         const sep = g.indexOf(":::");
         const mid = g.slice(0, sep); const rId = Number(g.slice(sep + 3));
-        let name = ""; let ifcId = "";
-        try { const ids = await api.viewer.convertToObjectIds(mid, [rId]); ifcId = (ids as any)?.[0] ?? ""; } catch {}
+        let layer = ""; let commonType = "";
         try {
           const props: any[] = await api.viewer.getObjectProperties(mid, [rId]) as any;
-          outer: for (const pset of props ?? []) {
-            for (const p of pset?.properties ?? []) {
-              const pn = (p?.name ?? "").toLowerCase();
-              if (["name","product name","bezeichnung","objectname","object name","bauteilname"].includes(pn)) {
-                const v = String(p?.value ?? "").trim();
-                if (v && v !== "null" && v !== "undefined") { name = v; break outer; }
+          // Layer suchen
+          const sucheWert = (psets: any[], namen: string[]): string => {
+            for (const pset of psets ?? []) {
+              for (const p of pset?.properties ?? []) {
+                const pn = (p?.name ?? "").toLowerCase();
+                if (namen.includes(pn)) { const v = String(p?.value ?? "").trim(); if (v && v !== "null") return v; }
+                // Verschachtelte Properties
+                const sub = p?.properties ?? p?.items;
+                if (Array.isArray(sub)) {
+                  for (const sp of sub) {
+                    const spn = (sp?.name ?? "").toLowerCase();
+                    if (namen.includes(spn)) { const v = String(sp?.value ?? "").trim(); if (v && v !== "null") return v; }
+                  }
+                }
               }
             }
-          }
-          // Fallback: erster nicht-leerer Wert
-          if (!name && props?.[0]?.properties?.length) {
-            for (const p of props[0].properties) { const v = String(p?.value ?? "").trim(); if (v && v.length > 1 && v !== "null") { name = v; break; } }
-          }
-          // Fallback: product.name
-          if (!name) for (const obj of (props ?? [])) if (obj?.product?.name) { name = String(obj.product.name); break; }
+            return "";
+          };
+          layer = sucheWert(props, ["layer", "presentation layer", "schicht", "ebene"]);
+          commonType = sucheWert(props, ["common type", "objecttype", "object type", "typ", "type"]);
+          // Fallback: product.objectType für Common Type
+          if (!commonType) for (const obj of (props ?? [])) if (obj?.product?.objectType) { commonType = String(obj.product.objectType); break; }
+          // Fallback: product.name für Layer wenn leer
+          if (!layer) for (const obj of (props ?? [])) if (obj?.product?.name) { layer = String(obj.product.name); break; }
         } catch {}
-        info.set(g, { name: name || ifcId.slice(0, 22) || `Objekt ${rId}`, ifcId });
+        info.set(g, { layer: layer || `Objekt ${rId}`, commonType });
       }
       setGuidInfo(info);
     })();
@@ -197,11 +204,11 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                     <div key={i} className="guid-row">
                       <div className="guid-row-id" style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 11, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {info?.name ?? g}
+                          {info?.layer ?? g}
                         </div>
-                        {info?.ifcId && info.ifcId !== info.name && (
-                          <div style={{ fontSize: 9, opacity: 0.55, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {info.ifcId}
+                        {info?.commonType && (
+                          <div style={{ fontSize: 9, opacity: 0.55, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {info.commonType}
                           </div>
                         )}
                       </div>
