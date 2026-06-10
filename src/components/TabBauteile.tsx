@@ -592,16 +592,13 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
       if (mid && !isNaN(rId)) { if (!byModel.has(mid)) byModel.set(mid, []); byModel.get(mid)!.push(rId); }
     }
     if (byModel.size === 0) return;
-
-    // Schritt 1: Reset → sauberer Zustand (kein Modell-Level-Hide der Element-Show blockiert)
-    try { await api.viewer.reset(); } catch { /* ignore */ }
-
-    // Schritt 2: Inverse-Hide — nur NICHT-Task-Objekte ausblenden (kein Hierarchie-Problem)
+    // KEIN reset() — triggert onModelReset → andere Komponenten rufen reset() erneut auf
+    // Direkt Inverse-Hide: nur Nicht-Task-Objekte ausblenden
     for (const [mid, taskRIds] of byModel.entries()) {
       const taskSet = new Set<number>(taskRIds);
       const alleIds = await getModellObjekte(mid);
       const hideIds = alleIds.filter(id => !taskSet.has(id));
-      console.log("[nurAnzeigen] mid:", mid, "alleIds:", alleIds.length, "taskRIds:", taskRIds.length, "hideIds:", hideIds.length, "sample hideIds:", hideIds.slice(0,5));
+      console.log("[nurAnzeigen] mid:", mid, "alleIds:", alleIds.length, "taskRIds:", taskRIds.length, "hideIds:", hideIds.length);
       if (hideIds.length > 0) {
         try { await api.viewer.setObjectState([{ modelId: mid, objectRuntimeIds: hideIds }], { visible: false }); } catch { /* ignore */ }
       }
@@ -925,7 +922,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, selektion, akti
                         <div style={{ fontSize: 11, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {info?.name ?? g}
                         </div>
-                        {info?.ifcId && (
+                        {info?.ifcId && info.ifcId !== info.name && (
                           <div style={{ fontSize: 9, opacity: 0.55, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {info.ifcId}
                           </div>
