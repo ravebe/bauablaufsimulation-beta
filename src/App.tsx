@@ -48,7 +48,7 @@ export default function App() {
       {/* Header */}
       <div className="tc-header">
         <div className="tc-header-left">
-          <div className="tc-logo">4D</div>
+          <span className="tc-logo">4D</span>
           <span className="tc-header-title">
             {aktiveSim ? aktiveSim.name : "Bauablauf"}
           </span>
@@ -58,30 +58,41 @@ export default function App() {
             <span className="tc-task-badge">{taskCount} Tasks</span>
           )}
           <span className={`tc-dot ${ready ? "on" : "off"}`} title={ready ? "Verbunden" : fehler ?? "Verbinde…"} />
+          <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ opacity: 0.7, cursor: "pointer" }}>
+            <circle cx="10" cy="10" r="2.5"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.22 4.22l1.42 1.42M14.36 14.36l1.42 1.42M4.22 15.78l1.42-1.42M14.36 5.64l1.42-1.42"/>
+          </svg>
         </div>
       </div>
 
       {/* Tabs */}
       <div className="tc-tabs">
         <button
-          className={aktTab === "projekte" ? "active" : ""}
+          className={`tc-tab ${aktTab === "projekte" ? "active" : ""}`}
           onClick={() => setAktTab("projekte")}
         >
-          <span className="tc-tab-icon">📊</span>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" width="16" height="16">
+            <rect x="2" y="2" width="5" height="5" rx="0.5"/><rect x="9" y="2" width="5" height="5" rx="0.5"/>
+            <rect x="2" y="9" width="5" height="5" rx="0.5"/><rect x="9" y="9" width="5" height="5" rx="0.5"/>
+          </svg>
           <span>Projekte</span>
         </button>
         <button
-          className={aktTab === "bauteile" ? "active" : ""}
+          className={`tc-tab ${aktTab === "bauteile" ? "active" : ""}`}
           onClick={() => setAktTab("bauteile")}
         >
-          <span className="tc-tab-icon">🔧</span>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" width="16" height="16">
+            <path d="M8 1.5L14.5 5v6L8 14.5 1.5 11V5L8 1.5z"/>
+            <path d="M8 14.5V8M1.5 5L8 8M14.5 5L8 8"/>
+          </svg>
           <span>Bauteile</span>
         </button>
         <button
-          className={aktTab === "abspielen" ? "active" : ""}
+          className={`tc-tab ${aktTab === "abspielen" ? "active" : ""}`}
           onClick={() => setAktTab("abspielen")}
         >
-          <span className="tc-tab-icon">▶</span>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" width="16" height="16">
+            <path d="M4 2l10 6-10 6V2z"/>
+          </svg>
           <span>Abspielen</span>
         </button>
       </div>
