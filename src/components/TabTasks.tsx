@@ -191,34 +191,38 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
     <>
       {/* Task-Liste */}
       <div className="gantt-section">
-        <div className="gantt-section-header">
-          <span>Gantt · {aktiveSim.tasks.length} Tasks</span>
+        <div className="gantt-section-header" style={{ letterSpacing: ".8px", color: "#8a9baa", fontWeight: 600 }}>
+          <span>GANTT · {aktiveSim.tasks.length} TASKS</span>
           {totalObjekte != null && (() => {
             const vergeben = new Set(aktiveSim.tasks.flatMap(t => t.objektGuids)).size;
             const offen = Math.max(0, totalObjekte - vergeben);
-            return <span style={{ fontSize: 9, color: offen > 0 ? "var(--tc-blue)" : "#16a34a" }}>
-              {offen > 0 ? `${offen} offen` : "✓ alle verteilt"}
+            return <span style={{ fontSize: 11, color: offen > 0 ? "#2d7dbd" : "#16a34a", fontWeight: 600 }}>
+              {offen > 0 ? `${offen} OFFEN` : "✓ VERTEILT"}
             </span>;
           })()}
         </div>
+        <div style={{ minHeight: 180, maxHeight: 350, overflowY: "auto" }}>
         {aktiveSim.tasks.length === 0 ? (
-          <div style={{ padding: 10, fontSize: 11, color: "var(--tc-text-3)", textAlign: "center" }}>
+          <div style={{ padding: 10, fontSize: 11, color: "#8a9baa", textAlign: "center" }}>
             Noch keine Tasks — Gantt in Tab „Projekte" importieren
           </div>
         ) : (
           aktiveSim.tasks.map(task => (
-            <div key={task.id} className={`task-row ${task.id === aktivTaskId ? "active" : ""}`} onClick={() => onTaskClick(task.id)}>
-              <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: task.typ === "neubau" ? "#22C55E" : task.typ === "abbruch" ? "#EAB308" : "#999" }} />
-              <span className="task-row-name">{task.name}</span>
-              <span className="task-row-date">{task.start}</span>
-              <span className="task-row-count">
+            <div key={task.id} className={`task-row ${task.id === aktivTaskId ? "active" : ""}`}
+              style={{ borderBottom: "1px solid #eef1f4", padding: "6px 10px", gap: 7 }}
+              onClick={() => onTaskClick(task.id)}>
+              <span style={{ width: 9, height: 9, borderRadius: "50%", flexShrink: 0, background: task.typ === "neubau" ? "#6cc07a" : task.typ === "abbruch" ? "#edb94c" : "#888" }} />
+              <span className="task-row-name" style={{ fontSize: 13, color: task.id === aktivTaskId ? "#2d7dbd" : "#333", fontWeight: task.id === aktivTaskId ? 600 : 400 }}>{task.name}</span>
+              <span className="task-row-date" style={{ fontSize: 12, color: "#8a9baa" }}>{task.start}</span>
+              <span className="task-row-count" style={{ fontSize: 12, color: "#8a9baa", marginLeft: 8 }}>
                 {task.objektGuids.length > 0
-                  ? <span style={{ color: "var(--tc-blue)" }}>⬡ {task.objektGuids.length}</span>
-                  : <span style={{ color: "var(--tc-border)" }}>∅</span>}
+                  ? <span style={{ color: "#8a9baa" }}>O {task.objektGuids.length}</span>
+                  : <span style={{ color: "#d4dce4" }}>∅</span>}
               </span>
             </div>
           ))
         )}
+        </div>
       </div>
 
       {/* Task-Detail */}

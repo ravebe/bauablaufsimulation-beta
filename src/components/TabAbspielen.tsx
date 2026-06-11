@@ -184,10 +184,15 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     if (!api || !aktiveSim || laeuft || modellIds.length === 0 || gruppen.length === 0) return;
     stopRef.current = false;
     setLaeuft(true);
-    await startzustand();
-    if (stopRef.current) { setLaeuft(false); return; }
+
+    // Nur Startzustand aufbauen wenn noch am Anfang
+    if (currentTagRef.current <= 0) {
+      await startzustand();
+      if (stopRef.current) { setLaeuft(false); return; }
+    }
+
     lastTimeRef.current = performance.now();
-    currentTagRef.current = 0;
+    // Weiter ab aktueller Position (nicht auf 0 zurücksetzen)
 
     function frame(now: number) {
       if (stopRef.current) return;
@@ -326,12 +331,14 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
                 <span>{istAktiv ? "▶ " : ""}{g.datum}</span>
                 <span>{g.tasks.length} Task{g.tasks.length > 1 ? "s" : ""}</span>
               </div>
-              {g.tasks.map(task => (
-                <div key={task.id} style={{ display: "flex", alignItems: "center", padding: "3px 8px 3px 16px",
-                  fontSize: 11, opacity: istVorbei ? 0.5 : 1, gap: 4 }}>
+              {g.tasks.map((task, ti) => (
+                <div key={task.id} style={{ display: "flex", alignItems: "center", padding: "5px 8px 5px 16px",
+                  fontSize: 13, opacity: istVorbei ? 0.5 : 1, gap: 6,
+                  borderBottom: ti < g.tasks.length - 1 ? "1px solid #eef1f4" : "none",
+                  background: istAktiv ? "#f5f9fc" : "transparent" }}>
                   <span style={dot(task.typ)} />
                   <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{task.name}</span>
-                  <span style={{ fontSize: 9, color: "var(--tc-blue)" }}>⬡ {task.objektGuids.length}</span>
+                  <span style={{ fontSize: 11, color: "#8a9baa" }}>⬡ {task.objektGuids.length}</span>
                 </div>
               ))}
             </div>
