@@ -75,22 +75,19 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     return [...byModel.entries()].map(([modelId, rIds]) => ({ modelId, objectRuntimeIds: [...rIds] }));
   }
 
-  // --- Ein einziger API-Call für visible + color ---
-  async function setzeZustand(guids: string[], opts: { visible?: boolean; color?: string | null }) {
+  // --- Ein API-Call: korrektes Format ModelObjectIds[] direkt ---
+  async function setzeZustand(guids: string[], opts: { visible?: boolean | "reset"; color?: string | null }) {
     if (!api || guids.length === 0) return;
-    const modelObjectIds = zuBatch(guids);
-    if (modelObjectIds.length === 0) return;
-    try {
-      await api.viewer.setObjectState({ modelObjectIds } as any, opts as any);
-    } catch (e) { console.log("[setzeZustand] Fehler:", e); }
+    const batch = zuBatch(guids);
+    if (batch.length === 0) return;
+    try { await api.viewer.setObjectState(batch as any, opts as any); } catch (e) { console.log("[setzeZustand]", e); }
   }
 
-  // Fire-and-forget (für fließende Animation)
-  function setzeZustandAsync(guids: string[], opts: { visible?: boolean; color?: string | null }) {
+  function setzeZustandAsync(guids: string[], opts: { visible?: boolean | "reset"; color?: string | null }) {
     if (!api || guids.length === 0) return;
-    const modelObjectIds = zuBatch(guids);
-    if (modelObjectIds.length === 0) return;
-    api.viewer.setObjectState({ modelObjectIds } as any, opts as any).catch(() => {});
+    const batch = zuBatch(guids);
+    if (batch.length === 0) return;
+    api.viewer.setObjectState(batch as any, opts as any).catch(() => {});
   }
 
   async function selektieren(guids: string[]) {
@@ -98,7 +95,6 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     try { await (api.viewer as any).setSelection({ modelObjectIds: zuBatch(guids) }, "set"); } catch {}
   }
 
-  // --- Pre-Load: alle Objekt-IDs holen und cachen ---
   async function preload() {
     if (!api) return;
     alleIdsCache.current.clear();
@@ -106,22 +102,15 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
       const ids = await getModellObjekte(api, mid);
       alleIdsCache.current.set(mid, ids);
     }
-    console.log("[preload] Geladen:", [...alleIdsCache.current.entries()].map(([m, ids]) => `${m}: ${ids.length}`).join(", "));
+    console.log("[preload]", [...alleIdsCache.current.entries()].map(([m, ids]) => `${m}: ${ids.length}`).join(", "));
   }
 
-  // --- Manuell: Alle Objekte ausblenden (nur Button, kein Selektieren) ---
+  // --- Manuell: Alle ausblenden (Modell-Level, ohne objectRuntimeIds) ---
   async function alleAusblenden() {
     if (!api) return;
     setStatus("⟳ Alle ausblenden…");
-    if (alleIdsCache.current.size === 0) await preload();
-    for (const [mid, ids] of alleIdsCache.current.entries()) {
-      if (ids.length === 0) continue;
-      try {
-        await api.viewer.setObjectState(
-          { modelObjectIds: [{ modelId: mid, objectRuntimeIds: ids }] } as any,
-          { visible: false } as any
-        );
-      } catch {}
+    for (const mid of modellIds) {
+      try { await api.viewer.setObjectState([{ modelId: mid }] as any, { visible: false } as any); } catch {}
     }
     setStatus("✓ Alle ausgeblendet");
   }
@@ -219,7 +208,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
         const batch = zuBatch(guids);
         const viewer = api!.viewer;
         setTimeout(() => {
-          viewer.setObjectState({ modelObjectIds: batch } as any, { visible: false, color: null } as any).catch(() => {});
+          viewer.setObjectState(batch as any, { visible: false, color: null } as any).catch(() => {});
         }, Math.max(1500, sekProTag * 1000));
       }
     }
