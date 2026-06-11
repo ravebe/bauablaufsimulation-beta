@@ -75,19 +75,19 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     return [...byModel.entries()].map(([modelId, rIds]) => ({ modelId, objectRuntimeIds: [...rIds] }));
   }
 
-  // --- Ein API-Call: korrektes Format ModelObjectIds[] direkt ---
-  async function setzeZustand(guids: string[], opts: { visible?: boolean | "reset"; color?: string | null }) {
+  // --- API Calls: {modelObjectIds: batch} Format (funktioniert für Timeline) ---
+  async function setzeZustand(guids: string[], opts: { visible?: boolean; color?: string | null }) {
     if (!api || guids.length === 0) return;
     const batch = zuBatch(guids);
     if (batch.length === 0) return;
-    try { await api.viewer.setObjectState(batch as any, opts as any); } catch (e) { console.log("[setzeZustand]", e); }
+    try { await api.viewer.setObjectState({ modelObjectIds: batch } as any, opts as any); } catch (e) { console.log("[setzeZustand]", e); }
   }
 
-  function setzeZustandAsync(guids: string[], opts: { visible?: boolean | "reset"; color?: string | null }) {
+  function setzeZustandAsync(guids: string[], opts: { visible?: boolean; color?: string | null }) {
     if (!api || guids.length === 0) return;
     const batch = zuBatch(guids);
     if (batch.length === 0) return;
-    api.viewer.setObjectState(batch as any, opts as any).catch(() => {});
+    api.viewer.setObjectState({ modelObjectIds: batch } as any, opts as any).catch(() => {});
   }
 
   async function selektieren(guids: string[]) {
@@ -95,22 +95,13 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     try { await (api.viewer as any).setSelection({ modelObjectIds: zuBatch(guids) }, "set"); } catch {}
   }
 
-  async function preload() {
-    if (!api) return;
-    alleIdsCache.current.clear();
-    for (const mid of modellIds) {
-      const ids = await getModellObjekte(api, mid);
-      alleIdsCache.current.set(mid, ids);
-    }
-    console.log("[preload]", [...alleIdsCache.current.entries()].map(([m, ids]) => `${m}: ${ids.length}`).join(", "));
-  }
-
-  // --- Manuell: Alle ausblenden (Modell-Level, ohne objectRuntimeIds) ---
+  // --- Manuell: Alle Task-Objekte ausblenden ---
   async function alleAusblenden() {
-    if (!api) return;
+    if (!api || !aktiveSim) return;
     setStatus("⟳ Alle ausblenden…");
-    for (const mid of modellIds) {
-      try { await api.viewer.setObjectState([{ modelId: mid }] as any, { visible: false } as any); } catch {}
+    const alleGuids = aktiveSim.tasks.flatMap(t => t.objektGuids);
+    if (alleGuids.length > 0) {
+      await setzeZustand(alleGuids, { visible: false, color: null });
     }
     setStatus("✓ Alle ausgeblendet");
   }
