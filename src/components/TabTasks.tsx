@@ -14,6 +14,7 @@ interface Props {
   totalObjekte: number | null;
   updateSim: (sim: SimProjekt) => void;
   onTaskClick: (id: string) => void;
+  selGuids: Set<string>;
 }
 
 const STORAGE_PREFIX = "4d-guid-display-";
@@ -26,7 +27,7 @@ function ladeDisplayConfig(simId: string): { zeile1: string; zeile2: string } {
   return { zeile1: "Layer||Layer", zeile2: "Reference Object||Common Type" };
 }
 
-export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, totalObjekte, updateSim, onTaskClick }: Props) {
+export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, totalObjekte, updateSim, onTaskClick, selGuids }: Props) {
   const [guidWerte, setGuidWerte] = useState<Map<string, ObjWerte>>(new Map());
   const [verfuegbareAttrs, setVerfuegbareAttrs] = useState<string[]>([]);
   const [displayConfig, setDisplayConfig] = useState(() => ladeDisplayConfig(aktiveSim.id));
@@ -207,20 +208,27 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
             Noch keine Tasks — Gantt in Tab „Projekte" importieren
           </div>
         ) : (
-          aktiveSim.tasks.map(task => (
+          aktiveSim.tasks.map(task => {
+            const hatSelektierte = selGuids.size > 0 && task.objektGuids.some(g => selGuids.has(g));
+            const selAnzahl = hatSelektierte ? task.objektGuids.filter(g => selGuids.has(g)).length : 0;
+            return (
             <div key={task.id} className={`task-row ${task.id === aktivTaskId ? "active" : ""}`}
-              style={{ borderBottom: "1px solid #eef1f4", padding: "6px 10px", gap: 7 }}
+              style={{ borderBottom: "1px solid #eef1f4", padding: "6px 10px", gap: 7,
+                background: task.id === aktivTaskId ? "#e8f2fa" : hatSelektierte ? "#f0f0f0" : undefined }}
               onClick={() => onTaskClick(task.id)}>
               <span style={{ width: 9, height: 9, borderRadius: "50%", flexShrink: 0, background: task.typ === "neubau" ? "#6cc07a" : task.typ === "abbruch" ? "#edb94c" : "#888" }} />
-              <span className="task-row-name" style={{ fontSize: 13, color: task.id === aktivTaskId ? "#2d7dbd" : "#333", fontWeight: task.id === aktivTaskId ? 600 : 400 }}>{task.name}</span>
+              <span className="task-row-name" style={{ fontSize: 13, color: task.id === aktivTaskId ? "#2d7dbd" : "#333", fontWeight: task.id === aktivTaskId || hatSelektierte ? 600 : 400 }}>{task.name}</span>
               <span className="task-row-date" style={{ fontSize: 12, color: "#8a9baa" }}>{task.start}</span>
-              <span className="task-row-count" style={{ fontSize: 12, color: "#8a9baa", marginLeft: 8 }}>
-                {task.objektGuids.length > 0
-                  ? <span style={{ color: "#8a9baa" }}>O {task.objektGuids.length}</span>
-                  : <span style={{ color: "#d4dce4" }}>∅</span>}
+              <span className="task-row-count" style={{ fontSize: 12, marginLeft: 8 }}>
+                {hatSelektierte
+                  ? <span style={{ color: "#2d7dbd", fontWeight: 600 }}>{selAnzahl}/{task.objektGuids.length}</span>
+                  : task.objektGuids.length > 0
+                    ? <span style={{ color: "#8a9baa" }}>O {task.objektGuids.length}</span>
+                    : <span style={{ color: "#d4dce4" }}>∅</span>}
               </span>
             </div>
-          ))
+            );
+          })
         )}
         </div>
       </div>
@@ -311,10 +319,15 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                   const w = guidWerte.get(g);
                   const val1 = w?.[displayConfig.zeile1] ?? "";
                   const val2 = displayConfig.zeile2 ? (w?.[displayConfig.zeile2] ?? "") : "";
+                  const istSelektiert = selGuids.has(g);
                   return (
-                    <div key={i} className="guid-row">
+                    <div key={i} className="guid-row" style={{
+                      background: istSelektiert ? "#e8f2fa" : undefined,
+                      borderLeft: istSelektiert ? "3px solid #2d7dbd" : "3px solid transparent",
+                    }}>
                       <div className="guid-row-id" style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 11, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <div style={{ fontSize: 11, fontWeight: istSelektiert ? 700 : 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          color: istSelektiert ? "#2d7dbd" : undefined }}>
                           {val1 || `Objekt ${g.split(":::")[1] ?? i}`}
                         </div>
                         {val2 && (
