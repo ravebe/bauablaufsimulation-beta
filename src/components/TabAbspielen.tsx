@@ -163,9 +163,13 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
         // Nach Pause ausblenden
         const batch = zuBatch(t.objektGuids);
         const viewer = api!.viewer;
+        const delay = Math.max(1500, sekProTag * 1000);
         setTimeout(() => {
-          viewer.setObjectState({ modelObjectIds: batch } as any, { visible: false, color: null } as any).catch(() => {});
-        }, Math.max(1500, sekProTag * 1000));
+          console.log("[abbruch] ausblenden:", batch.map(b => b.objectRuntimeIds.length).join(","), "nach", delay, "ms");
+          // Erst Farbe entfernen, dann ausblenden
+          viewer.setObjectState({ modelObjectIds: batch } as any, { color: null } as any).catch(() => {});
+          viewer.setObjectState({ modelObjectIds: batch } as any, { visible: false } as any).catch(() => {});
+        }, delay);
       }
     }
     if (selGuids.length > 0) {
