@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { SimProjekt, Task } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
-import { getModellObjekte } from "./modelHelpers";
 
 interface Props {
   api: ApiInstance | null;
@@ -18,11 +17,7 @@ function parseDatum(s: string): Date | null {
   const d = new Date(s + "T00:00:00");
   return isNaN(d.getTime()) ? null : d;
 }
-
-function tageDiff(a: Date, b: Date): number {
-  return Math.round((b.getTime() - a.getTime()) / 86400000);
-}
-
+function tageDiff(a: Date, b: Date): number { return Math.round((b.getTime() - a.getTime()) / 86400000); }
 function datumBeiTag(min: Date, tag: number): string {
   const d = new Date(min.getTime() + tag * 86400000);
   return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
@@ -38,8 +33,6 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
   const lastTimeRef = useRef(0);
   const currentTagRef = useRef(0);
   const aktivierteGruppen = useRef(new Set<number>());
-  // Pre-loaded IDs: alle Objekte pro Modell
-  const alleIdsCache = useRef<Map<string, number[]>>(new Map());
 
   const modellIds = [...new Set([
     ...(aktiveSim?.modelle.map(m => m.id) ?? []),
@@ -64,7 +57,6 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
   useEffect(() => () => { if (animRef.current) cancelAnimationFrame(animRef.current); }, []);
   useEffect(() => { currentTagRef.current = currentTag; }, [currentTag]);
 
-  // --- Guids → ein gebatchtes modelObjectIds Array ---
   function zuBatch(guids: string[]): { modelId: string; objectRuntimeIds: number[] }[] {
     const byModel = new Map<string, Set<number>>();
     for (const g of guids) {
@@ -75,12 +67,11 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     return [...byModel.entries()].map(([modelId, rIds]) => ({ modelId, objectRuntimeIds: [...rIds] }));
   }
 
-  // --- API Calls: {modelObjectIds: batch} Format (funktioniert für Timeline) ---
   async function setzeZustand(guids: string[], opts: { visible?: boolean; color?: string | null }) {
     if (!api || guids.length === 0) return;
     const batch = zuBatch(guids);
     if (batch.length === 0) return;
-    try { await api.viewer.setObjectState({ modelObjectIds: batch } as any, opts as any); } catch (e) { console.log("[setzeZustand]", e); }
+    try { await api.viewer.setObjectState({ modelObjectIds: batch } as any, opts as any); } catch {}
   }
 
   function setzeZustandAsync(guids: string[], opts: { visible?: boolean; color?: string | null }) {
@@ -95,30 +86,18 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     try { await (api.viewer as any).setSelection({ modelObjectIds: zuBatch(guids) }, "set"); } catch {}
   }
 
-  // --- Manuell: Alle Task-Objekte ausblenden ---
-  async function alleAusblenden() {
-    if (!api || !aktiveSim) return;
-    setStatus("⟳ Alle ausblenden…");
-    const alleGuids = aktiveSim.tasks.flatMap(t => t.objektGuids);
-    if (alleGuids.length > 0) {
-      await setzeZustand(alleGuids, { visible: false, color: null });
-    }
-    setStatus("✓ Alle ausgeblendet");
-  }
-
   // --- Startzustand ---
   async function startzustand() {
     if (!api || !aktiveSim) return;
     aktivierteGruppen.current.clear();
+    setStatus("⟳ Bereit machen…");
 
-    setStatus("⟳ Objekte laden…");
-    await preload();
-
-    // Bestand (grau) + Abbruch einblenden
-    setStatus("⟳ Bestand + Abbruch einblenden…");
+    // Bestand (grau) einblenden
     const bestandGuids = aktiveSim.tasks.filter(t => t.typ === "bestand").flatMap(t => t.objektGuids);
-    const abbruchGuids = aktiveSim.tasks.filter(t => t.typ === "abbruch").flatMap(t => t.objektGuids);
     if (bestandGuids.length > 0) await setzeZustand(bestandGuids, { visible: true, color: FARBEN.bestand });
+
+    // Abbruch einblenden (steht noch)
+    const abbruchGuids = aktiveSim.tasks.filter(t => t.typ === "abbruch").flatMap(t => t.objektGuids);
     if (abbruchGuids.length > 0) await setzeZustand(abbruchGuids, { visible: true });
 
     setCurrentTag(0);
@@ -126,106 +105,83 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     setStatus("✓ Bereit");
   }
 
-  // --- Zustand bei Tag komplett aufbauen (für Slider + Task-Klick) ---
-  // Kein alleAusblenden! Direkt pro Gruppe den richtigen Zustand setzen.
+  // --- Zustand bei Tag aufbauen (Slider + Task-Klick) ---
   async function zustandBeiTag(tag: number) {
     if (!api || !aktiveSim) return;
-    if (alleIdsCache.current.size === 0) await preload();
 
-    // Alle Task-Objekte sammeln und richtigen Zustand setzen
-    const zeigeAn: string[] = [];   // sichtbar machen
-    const verberge: string[] = [];  // ausblenden
+    const zeigeAn: string[] = [];
+    const verberge: string[] = [];
     const bestandGuids: string[] = [];
+    const selGuids: string[] = [];
 
     for (const g of gruppen) {
       for (const t of g.tasks) {
         if (t.typ === "bestand") {
           bestandGuids.push(...t.objektGuids);
         } else if (t.typ === "neubau") {
-          if (g.tage <= tag) {
-            zeigeAn.push(...t.objektGuids);
-          } else {
-            verberge.push(...t.objektGuids);
-          }
+          if (g.tage <= tag) zeigeAn.push(...t.objektGuids);
+          else verberge.push(...t.objektGuids);
         } else if (t.typ === "abbruch") {
-          if (g.tage <= tag) {
-            verberge.push(...t.objektGuids); // abgerissen
-          } else {
-            zeigeAn.push(...t.objektGuids); // steht noch
-          }
+          if (g.tage <= tag) verberge.push(...t.objektGuids);
+          else zeigeAn.push(...t.objektGuids);
         }
       }
     }
 
-    // Bestand: immer sichtbar + grau
     if (bestandGuids.length > 0) await setzeZustand(bestandGuids, { visible: true, color: FARBEN.bestand });
-    // Neubau vergangen + Abbruch noch stehend: sichtbar
     if (zeigeAn.length > 0) await setzeZustand(zeigeAn, { visible: true });
-    // Neubau zukünftig + Abbruch vergangen: ausblenden
     if (verberge.length > 0) await setzeZustand(verberge, { visible: false });
 
-    // Aktuelle Gruppe: Abbruch gelb, Neubau+Abbruch selektiert
-    const aktuelleGruppe = gruppen.find(g => g.tage === Math.floor(tag));
-    if (aktuelleGruppe) {
-      const selGuids: string[] = [];
-      for (const t of aktuelleGruppe.tasks) {
-        if (t.typ === "abbruch") {
+    // Aktuelle Gruppe hervorheben
+    const aktGruppe = gruppen.find(g => g.tage === Math.floor(tag));
+    if (aktGruppe) {
+      for (const t of aktGruppe.tasks) {
+        if (t.typ === "abbruch" && aktGruppe.tage <= tag) {
           await setzeZustand(t.objektGuids, { visible: true, color: FARBEN.abbruch });
-          selGuids.push(...t.objektGuids);
         }
-        if (t.typ === "neubau") selGuids.push(...t.objektGuids);
+        if (t.typ === "neubau" || t.typ === "abbruch") selGuids.push(...t.objektGuids);
       }
-      if (selGuids.length > 0) await selektieren(selGuids);
-      const namen = aktuelleGruppe.tasks.map(t => `${t.typ === "neubau" ? "🟢" : t.typ === "abbruch" ? "🟡" : "⚫"} ${t.name}`).join(", ");
-      setStatus(`${aktuelleGruppe.datum} · ${namen}`);
+    }
+    if (selGuids.length > 0) await selektieren(selGuids);
+
+    if (aktGruppe) {
+      const namen = aktGruppe.tasks.map(t => `${t.typ === "neubau" ? "🟢" : t.typ === "abbruch" ? "🟡" : "⚫"} ${t.name}`).join(", ");
+      setStatus(`${aktGruppe.datum} · ${namen}`);
     }
   }
 
-  // --- Gruppe inkrementell aktivieren (für fließende Animation) ---
+  // --- Gruppe inkrementell aktivieren (Playback, fire-and-forget) ---
   function gruppeAktivierenAsync(g: TaskGruppe) {
     const selGuids: string[] = [];
-
     for (const t of g.tasks) {
       if (t.typ === "neubau") {
-        // Einblenden ohne Farbe (Original-IFC-Farbe) + selektieren (gelbe Umrandung)
         setzeZustandAsync(t.objektGuids, { visible: true });
         selGuids.push(...t.objektGuids);
       } else if (t.typ === "abbruch") {
-        // Gelb färben + selektieren
         setzeZustandAsync(t.objektGuids, { color: FARBEN.abbruch });
         selGuids.push(...t.objektGuids);
         // Nach Pause ausblenden
-        const guids = [...t.objektGuids];
-        const batch = zuBatch(guids);
+        const batch = zuBatch(t.objektGuids);
         const viewer = api!.viewer;
         setTimeout(() => {
-          viewer.setObjectState(batch as any, { visible: false, color: null } as any).catch(() => {});
+          viewer.setObjectState({ modelObjectIds: batch } as any, { visible: false, color: null } as any).catch(() => {});
         }, Math.max(1500, sekProTag * 1000));
       }
     }
-
-    // Selektion setzen (gelbe Umrandung) — fire-and-forget
     if (selGuids.length > 0) {
-      const modelObjectIds = zuBatch(selGuids);
-      (api!.viewer as any).setSelection({ modelObjectIds }, "set").catch(() => {});
+      (api!.viewer as any).setSelection({ modelObjectIds: zuBatch(selGuids) }, "set").catch(() => {});
     }
-
     const namen = g.tasks.map(t => `${t.typ === "neubau" ? "🟢" : t.typ === "abbruch" ? "🟡" : "⚫"} ${t.name}`).join(", ");
     setStatus(`${g.datum} · ${namen}`);
   }
-
-  // Vorherige Neubau-Farbe entfernen (nicht nötig da keine Einfärbung)
-  // Abbruch wird via setTimeout ausgeblendet
 
   // --- Playback ---
   const starten = useCallback(async () => {
     if (!api || !aktiveSim || laeuft || modellIds.length === 0 || gruppen.length === 0) return;
     stopRef.current = false;
     setLaeuft(true);
-
     await startzustand();
     if (stopRef.current) { setLaeuft(false); return; }
-
     lastTimeRef.current = performance.now();
     currentTagRef.current = 0;
 
@@ -233,10 +189,8 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
       if (stopRef.current) return;
       const delta = (now - lastTimeRef.current) / 1000;
       lastTimeRef.current = now;
-
       const tageProSekunde = sekProTag > 0 ? 1 / sekProTag : 1;
       const neuerTag = currentTagRef.current + delta * tageProSekunde;
-
       if (neuerTag >= totalTage) {
         setCurrentTag(totalTage);
         currentTagRef.current = totalTage;
@@ -244,21 +198,16 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
         setStatus("✓ Simulation abgeschlossen");
         return;
       }
-
       setCurrentTag(neuerTag);
       currentTagRef.current = neuerTag;
-
-      // Neue Gruppen aktivieren (fire-and-forget)
       for (let i = 0; i < gruppen.length; i++) {
         if (gruppen[i].tage <= neuerTag && !aktivierteGruppen.current.has(i)) {
           aktivierteGruppen.current.add(i);
           gruppeAktivierenAsync(gruppen[i]);
         }
       }
-
       animRef.current = requestAnimationFrame(frame);
     }
-
     animRef.current = requestAnimationFrame(frame);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, aktiveSim, laeuft, sekProTag, modellIds, gruppen, totalTage]);
@@ -272,8 +221,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
 
   async function sliderChange(tag: number) {
     if (laeuft) return;
-    setCurrentTag(tag);
-    currentTagRef.current = tag;
+    setCurrentTag(tag); currentTagRef.current = tag;
     aktivierteGruppen.current.clear();
     gruppen.forEach((g, i) => { if (g.tage <= tag) aktivierteGruppen.current.add(i); });
     await zustandBeiTag(tag);
@@ -281,12 +229,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
 
   async function zuGruppe(gi: number) {
     if (laeuft || gi < 0 || gi >= gruppen.length) return;
-    const tag = gruppen[gi].tage;
-    setCurrentTag(tag);
-    currentTagRef.current = tag;
-    aktivierteGruppen.current.clear();
-    gruppen.forEach((g, i) => { if (g.tage <= tag) aktivierteGruppen.current.add(i); });
-    await zustandBeiTag(tag);
+    await sliderChange(gruppen[gi].tage);
   }
 
   async function reset() {
@@ -294,7 +237,6 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     stoppen();
     setCurrentTag(0); currentTagRef.current = 0;
     aktivierteGruppen.current.clear();
-    setStatus("⟳ Reset…");
     try { await api.viewer.reset(); } catch {}
     try { await (api.viewer as any).setSelection({ modelObjectIds: [] }, "set"); } catch {}
     setStatus("↺ Modell zurückgesetzt");
@@ -312,10 +254,8 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
 
   const fortschritt = totalTage > 0 ? Math.round((currentTag / totalTage) * 100) : 0;
   const aktuellesDatum = minDate ? datumBeiTag(minDate, currentTag) : "";
-  const dotStyle = (typ: string) => ({
-    width: 8, height: 8, borderRadius: "50%", display: "inline-block", marginRight: 6, flexShrink: 0,
-    background: typ === "neubau" ? FARBEN.neubau : typ === "abbruch" ? FARBEN.abbruch : FARBEN.bestand,
-  });
+  const dot = (typ: string) => ({ width: 8, height: 8, borderRadius: "50%", display: "inline-block" as const, marginRight: 6, flexShrink: 0 as const,
+    background: typ === "neubau" ? FARBEN.neubau : typ === "abbruch" ? FARBEN.abbruch : FARBEN.bestand });
 
   return (
     <div className="tc-setup-content">
@@ -324,8 +264,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
         <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
           <span style={{ flex: 1, color: "var(--tc-text-2)" }}>Sekunden pro Tag</span>
           <input type="number" min={0.1} max={10} step={0.1} value={sekProTag}
-            onChange={e => setSekProTag(Number(e.target.value))} disabled={laeuft}
-            className="player-sek-input" />
+            onChange={e => setSekProTag(Number(e.target.value))} disabled={laeuft} className="player-sek-input" />
         </div>
         <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 3 }}>
           Gesamtdauer: ~{totalTage > 0 ? Math.round(totalTage * sekProTag) : 0}s für {totalTage} Tage
@@ -333,8 +272,6 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
       </div>
 
       <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-        <button className="tc-btn-ghost" disabled={laeuft || !api}
-          onClick={alleAusblenden} title="Alle Objekte ausblenden">🚫</button>
         {!laeuft ? (
           <button className="tc-btn-green" style={{ flex: 1 }}
             disabled={!api || modellIds.length === 0 || gruppen.length === 0}
@@ -351,8 +288,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
             {aktuellesDatum}
           </div>
           <input type="range" min={0} max={totalTage} step={0.5} value={currentTag}
-            onChange={e => sliderChange(Number(e.target.value))} disabled={laeuft}
-            style={{ width: "100%" }} />
+            onChange={e => sliderChange(Number(e.target.value))} disabled={laeuft} style={{ width: "100%" }} />
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "var(--tc-text-3)" }}>
             <span>{minDate.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}</span>
             <span>{maxDate.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}</span>
@@ -373,50 +309,38 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
       </div>
       <div className="player-card" style={{ padding: 0, overflow: "hidden" }}>
         {gruppen.length === 0 ? (
-          <div style={{ padding: 10, fontSize: 11, color: "var(--tc-text-3)", textAlign: "center" }}>
-            Keine Tasks mit Bauteilen + Startdatum
-          </div>
-        ) : (
-          gruppen.map((g, gi) => {
-            const istAktiv = g.tage <= currentTag && (gi === gruppen.length - 1 || gruppen[gi + 1].tage > currentTag);
-            const istVorbei = !istAktiv && g.tage < currentTag;
-            return (
-              <div key={g.datum} style={{ borderBottom: "1px solid var(--tc-border)", cursor: laeuft ? "default" : "pointer" }}
-                onClick={() => zuGruppe(gi)}>
-                <div style={{
-                  padding: "4px 8px", fontSize: 9, fontWeight: 600,
-                  color: istAktiv ? "var(--tc-blue)" : istVorbei ? "var(--tc-text-3)" : "var(--tc-text-2)",
-                  background: istAktiv ? "#EFF6FF" : "transparent",
-                  display: "flex", justifyContent: "space-between",
-                }}>
-                  <span>{istAktiv ? "▶ " : ""}{g.datum}</span>
-                  <span>{g.tasks.length} Task{g.tasks.length > 1 ? "s" : ""}</span>
-                </div>
-                {g.tasks.map(task => (
-                  <div key={task.id} style={{
-                    display: "flex", alignItems: "center", padding: "3px 8px 3px 16px",
-                    fontSize: 11, opacity: istVorbei ? 0.5 : 1, gap: 4,
-                  }}>
-                    <span style={dotStyle(task.typ)} />
-                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{task.name}</span>
-                    <span style={{ fontSize: 9, color: "var(--tc-blue)" }}>⬡ {task.objektGuids.length}</span>
-                  </div>
-                ))}
+          <div style={{ padding: 10, fontSize: 11, color: "var(--tc-text-3)", textAlign: "center" }}>Keine Tasks mit Bauteilen + Startdatum</div>
+        ) : gruppen.map((g, gi) => {
+          const istAktiv = g.tage <= currentTag && (gi === gruppen.length - 1 || gruppen[gi + 1].tage > currentTag);
+          const istVorbei = !istAktiv && g.tage < currentTag;
+          return (
+            <div key={g.datum} style={{ borderBottom: "1px solid var(--tc-border)", cursor: laeuft ? "default" : "pointer" }}
+              onClick={() => zuGruppe(gi)}>
+              <div style={{ padding: "4px 8px", fontSize: 9, fontWeight: 600,
+                color: istAktiv ? "var(--tc-blue)" : istVorbei ? "var(--tc-text-3)" : "var(--tc-text-2)",
+                background: istAktiv ? "#EFF6FF" : "transparent", display: "flex", justifyContent: "space-between" }}>
+                <span>{istAktiv ? "▶ " : ""}{g.datum}</span>
+                <span>{g.tasks.length} Task{g.tasks.length > 1 ? "s" : ""}</span>
               </div>
-            );
-          })
-        )}
+              {g.tasks.map(task => (
+                <div key={task.id} style={{ display: "flex", alignItems: "center", padding: "3px 8px 3px 16px",
+                  fontSize: 11, opacity: istVorbei ? 0.5 : 1, gap: 4 }}>
+                  <span style={dot(task.typ)} />
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{task.name}</span>
+                  <span style={{ fontSize: 9, color: "var(--tc-blue)" }}>⬡ {task.objektGuids.length}</span>
+                </div>
+              ))}
+            </div>
+          );
+        })}
       </div>
 
       <div style={{ padding: "8px 0", fontSize: 10, color: "var(--tc-text-3)" }}>
-        <span style={{ ...dotStyle("neubau"), width: 6, height: 6, marginRight: 3 }} /> Neubau
-        <span style={{ ...dotStyle("bestand"), width: 6, height: 6, marginLeft: 10, marginRight: 3 }} /> Bestand
-        <span style={{ ...dotStyle("abbruch"), width: 6, height: 6, marginLeft: 10, marginRight: 3 }} /> Abbruch
+        <span style={{ ...dot("neubau"), width: 6, height: 6, marginRight: 3 }} /> Neubau
+        <span style={{ ...dot("bestand"), width: 6, height: 6, marginLeft: 10, marginRight: 3 }} /> Bestand
+        <span style={{ ...dot("abbruch"), width: 6, height: 6, marginLeft: 10, marginRight: 3 }} /> Abbruch
       </div>
 
-      {modellIds.length === 0 && (
-        <div className="alert err" style={{ marginTop: 8 }}>Kein Modell verbunden</div>
-      )}
       {status && (
         <div className={`alert ${status.startsWith("✓") ? "ok" : status.startsWith("■") ? "err" : "info"}`}
           style={{ marginTop: 8 }}>{status}</div>
