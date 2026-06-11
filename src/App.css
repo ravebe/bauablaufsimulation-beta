@@ -26,7 +26,7 @@
 /* === LAYOUT === */
 .tc-app { font-family: var(--tc-font); font-size: 13px; color: var(--tc-text); background: #fff; min-height: 100%; }
 .tc-tab-content { overflow-y: auto; }
-.tc-setup-content { padding: 0; font-family: var(--tc-font); font-size: 13px; color: var(--tc-text); }
+.tc-setup-content { padding: 8px 0; font-family: var(--tc-font); font-size: 13px; color: var(--tc-text); }
 .tasklist-wrap { font-family: var(--tc-font); font-size: 13px; color: var(--tc-text); }
 
 /* === HEADER === */
@@ -61,7 +61,11 @@
 .tc-tab svg { width: 16px; height: 16px; }
 
 /* === SECTION HEADERS === */
-.tc-section-label, .gantt-section-header {
+.tc-section-label {
+  font-size: 11px; font-weight: 600; color: var(--tc-text-3); letter-spacing: .8px;
+  text-transform: uppercase;
+}
+.gantt-section-header {
   font-size: 11px; font-weight: 600; color: var(--tc-text-3); letter-spacing: .8px;
   padding: 10px 10px 5px; display: flex; align-items: center; justify-content: space-between;
 }
@@ -221,24 +225,47 @@
 .sel-status.aktiv { color: var(--tc-blue); font-weight: 600; }
 
 /* === SIMULATION CARDS (TabProjekte) === */
-.sim-card-header { display: flex; align-items: center; padding: 7px 8px; gap: 6px; }
-.sim-card-left { width: 22px; height: 22px; background: var(--tc-blue); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; flex-shrink: 0; }
-.sim-card-name { font-weight: 600; color: var(--tc-text); font-size: 13px; flex: 1; }
-.sim-card-right { display: flex; align-items: center; gap: 4px; }
-.sim-card-body { padding: 0; }
-.sim-card-meta { padding: 2px 8px 6px; font-size: 11px; color: var(--tc-text-3); }
-.sim-aktiv-badge { border: 1px solid var(--tc-blue); color: var(--tc-blue); font-size: 11px; padding: 0 7px; font-weight: 600; background: #fff; }
-.sim-chevron { cursor: pointer; color: var(--tc-text-3); }
-.sim-neu-form { padding: 8px; }
+.sim-card {
+  margin: 6px 10px; border: 1px solid var(--tc-border); background: #fff; cursor: pointer;
+}
+.sim-card.aktiv {
+  border-color: var(--tc-blue); border-left: 3px solid #6cc07a;
+}
+.sim-card-header {
+  padding: 7px 8px; display: flex; align-items: center; gap: 6px;
+}
+.sim-card-left {
+  display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;
+}
+.sim-card-name {
+  font-weight: 600; color: var(--tc-text); font-size: 13px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sim-card-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.sim-card-body { padding: 0 8px 8px; }
+.sim-card-meta { font-size: 11px; color: var(--tc-text-3); margin-top: 1px; }
+.sim-aktiv-badge {
+  border: 1px solid var(--tc-blue); color: var(--tc-blue); font-size: 11px;
+  padding: 0 7px; font-weight: 600; background: #fff; white-space: nowrap;
+}
+.sim-chevron { cursor: pointer; color: var(--tc-text-3); font-size: 12px; user-select: none; }
+.sim-neu-form { padding: 8px 10px; }
 
 .tc-input {
-  width: 100%; padding: 5px 7px; border: 1px solid var(--tc-border); font-size: 12px;
-  color: var(--tc-text); font-family: var(--tc-font);
+  width: 100%; padding: 6px 8px; border: 1px solid var(--tc-border); font-size: 12px;
+  color: var(--tc-text); font-family: var(--tc-font); background: #fff;
 }
+.tc-input::placeholder { color: #aab8c4; }
 .tc-input:focus { outline: none; border-color: var(--tc-blue); }
 
-.tc-divider { height: 1px; background: var(--tc-border-light); margin: 4px 0; }
+.tc-divider { height: 1px; background: var(--tc-border-light); margin: 8px 0; }
 
-.modell-row { display: flex; align-items: center; padding: 5px 8px; border-bottom: 1px solid var(--tc-border-light); gap: 6px; }
-.modell-name { flex: 1; font-size: 12px; color: var(--tc-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.modell-id { padding: 1px 10px; font-size: 11px; color: var(--tc-text-3); }
+.modell-row {
+  display: flex; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--tc-border-light);
+  gap: 6px;
+}
+.modell-name {
+  flex: 1; font-size: 12px; color: var(--tc-text); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.modell-id { font-size: 11px; color: var(--tc-text-3); margin-top: 1px; }
