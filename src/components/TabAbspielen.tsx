@@ -13,8 +13,6 @@ interface TaskGruppe { datum: string; tage: number; tasks: Task[]; }
 
 const FARBEN = { neubau: "#22C55E", bestand: "#999999", abbruch: "#EAB308" };
 
-function sleep(ms: number) { return new Promise<void>(r => setTimeout(r, ms)); }
-
 function parseDatum(s: string): Date | null {
   if (!s) return null;
   const d = new Date(s + "T00:00:00");
@@ -111,26 +109,20 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     console.log("[preload] Geladen:", [...alleIdsCache.current.entries()].map(([m, ids]) => `${m}: ${ids.length}`).join(", "));
   }
 
-  // --- Manuell: Alle Objekte ausblenden (Button) ---
+  // --- Manuell: Alle Objekte ausblenden (nur Button, kein Selektieren) ---
   async function alleAusblenden() {
     if (!api) return;
     setStatus("⟳ Alle ausblenden…");
-    // Alle IDs laden falls noch nicht geschehen
     if (alleIdsCache.current.size === 0) await preload();
-    // Alle selektieren
-    const modelObjectIds: { modelId: string; objectRuntimeIds: number[] }[] = [];
     for (const [mid, ids] of alleIdsCache.current.entries()) {
-      if (ids.length > 0) modelObjectIds.push({ modelId: mid, objectRuntimeIds: ids });
+      if (ids.length === 0) continue;
+      try {
+        await api.viewer.setObjectState(
+          { modelObjectIds: [{ modelId: mid, objectRuntimeIds: ids }] } as any,
+          { visible: false } as any
+        );
+      } catch {}
     }
-    if (modelObjectIds.length > 0) {
-      try { await (api.viewer as any).setSelection({ modelObjectIds }, "set"); } catch {}
-      await sleep(300);
-      // Ausblenden
-      for (const mo of modelObjectIds) {
-        try { await api.viewer.setObjectState({ modelObjectIds: [mo] } as any, { visible: false } as any); } catch {}
-      }
-    }
-    try { await (api.viewer as any).setSelection({ modelObjectIds: [] }, "set"); } catch {}
     setStatus("✓ Alle ausgeblendet");
   }
 
@@ -155,55 +147,58 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
   }
 
   // --- Zustand bei Tag komplett aufbauen (für Slider + Task-Klick) ---
+  // Kein alleAusblenden! Direkt pro Gruppe den richtigen Zustand setzen.
   async function zustandBeiTag(tag: number) {
     if (!api || !aktiveSim) return;
     if (alleIdsCache.current.size === 0) await preload();
 
-    await alleAusblenden();
+    // Alle Task-Objekte sammeln und richtigen Zustand setzen
+    const zeigeAn: string[] = [];   // sichtbar machen
+    const verberge: string[] = [];  // ausblenden
+    const bestandGuids: string[] = [];
 
-    // Bestand immer sichtbar (grau)
-    const bestandGuids = aktiveSim.tasks.filter(t => t.typ === "bestand").flatMap(t => t.objektGuids);
+    for (const g of gruppen) {
+      for (const t of g.tasks) {
+        if (t.typ === "bestand") {
+          bestandGuids.push(...t.objektGuids);
+        } else if (t.typ === "neubau") {
+          if (g.tage <= tag) {
+            zeigeAn.push(...t.objektGuids);
+          } else {
+            verberge.push(...t.objektGuids);
+          }
+        } else if (t.typ === "abbruch") {
+          if (g.tage <= tag) {
+            verberge.push(...t.objektGuids); // abgerissen
+          } else {
+            zeigeAn.push(...t.objektGuids); // steht noch
+          }
+        }
+      }
+    }
+
+    // Bestand: immer sichtbar + grau
     if (bestandGuids.length > 0) await setzeZustand(bestandGuids, { visible: true, color: FARBEN.bestand });
+    // Neubau vergangen + Abbruch noch stehend: sichtbar
+    if (zeigeAn.length > 0) await setzeZustand(zeigeAn, { visible: true });
+    // Neubau zukünftig + Abbruch vergangen: ausblenden
+    if (verberge.length > 0) await setzeZustand(verberge, { visible: false });
 
-    // Neubau: sichtbar wenn start <= tag (keine Einfärbung, Original-IFC-Farbe)
-    const neubauSichtbar: string[] = [];
-    for (const g of gruppen) {
-      if (g.tage <= tag) {
-        for (const t of g.tasks) {
-          if (t.typ === "neubau") neubauSichtbar.push(...t.objektGuids);
-        }
-      }
-    }
-    if (neubauSichtbar.length > 0) await setzeZustand(neubauSichtbar, { visible: true });
-
-    // Abbruch: sichtbar wenn start > tag (noch nicht abgerissen)
-    const abbruchSichtbar: string[] = [];
-    for (const g of gruppen) {
-      if (g.tage > tag) {
-        for (const t of g.tasks) {
-          if (t.typ === "abbruch") abbruchSichtbar.push(...t.objektGuids);
-        }
-      }
-    }
-    if (abbruchSichtbar.length > 0) await setzeZustand(abbruchSichtbar, { visible: true });
-
-    // Abbruch aktuell aktiv: gelb + selektiert
-    const aktuelleAbbruch: string[] = [];
-    const aktuelleNeubau: string[] = [];
+    // Aktuelle Gruppe: Abbruch gelb, Neubau+Abbruch selektiert
     const aktuelleGruppe = gruppen.find(g => g.tage === Math.floor(tag));
     if (aktuelleGruppe) {
+      const selGuids: string[] = [];
       for (const t of aktuelleGruppe.tasks) {
-        if (t.typ === "abbruch") aktuelleAbbruch.push(...t.objektGuids);
-        if (t.typ === "neubau") aktuelleNeubau.push(...t.objektGuids);
+        if (t.typ === "abbruch") {
+          await setzeZustand(t.objektGuids, { visible: true, color: FARBEN.abbruch });
+          selGuids.push(...t.objektGuids);
+        }
+        if (t.typ === "neubau") selGuids.push(...t.objektGuids);
       }
+      if (selGuids.length > 0) await selektieren(selGuids);
+      const namen = aktuelleGruppe.tasks.map(t => `${t.typ === "neubau" ? "🟢" : t.typ === "abbruch" ? "🟡" : "⚫"} ${t.name}`).join(", ");
+      setStatus(`${aktuelleGruppe.datum} · ${namen}`);
     }
-    if (aktuelleAbbruch.length > 0) await setzeZustand(aktuelleAbbruch, { visible: true, color: FARBEN.abbruch });
-    // Neubau aktuell: selektieren (keine Farbe)
-    const selGuids = [...aktuelleNeubau, ...aktuelleAbbruch];
-    if (selGuids.length > 0) await selektieren(selGuids);
-
-    const namen = aktuelleGruppe?.tasks.map(t => `${t.typ === "neubau" ? "🟢" : t.typ === "abbruch" ? "🟡" : "⚫"} ${t.name}`).join(", ");
-    setStatus(namen ?? "");
   }
 
   // --- Gruppe inkrementell aktivieren (für fließende Animation) ---
