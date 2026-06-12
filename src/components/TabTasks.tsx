@@ -33,6 +33,9 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
   const [displayConfig, setDisplayConfig] = useState(() => ladeDisplayConfig(aktiveSim.id));
   const [settingsOffen, setSettingsOffen] = useState(false);
   const [loeschenBestaetigen, setLoeschenBestaetigen] = useState(false);
+  const [settingsQuery1, setSettingsQuery1] = useState("");
+  const [settingsQuery2, setSettingsQuery2] = useState("");
+  const [settingsFocus, setSettingsFocus] = useState<1 | 2 | null>(null);
 
   // Display-Config neu laden wenn Sim wechselt
   useEffect(() => {
@@ -159,29 +162,6 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
     try { await (api.viewer as any).setSelection({ modelObjectIds }, "set"); } catch {}
   }
 
-  async function ausblenden(guids: string[]) {
-    if (!api) return;
-    const byModel = new Map<string, number[]>();
-    for (const g of guids) {
-      if (!g.includes(":::")) continue;
-      const sep = g.indexOf(":::"); const mid = g.slice(0, sep); const rId = Number(g.slice(sep + 3));
-      if (mid && !isNaN(rId)) { if (!byModel.has(mid)) byModel.set(mid, []); byModel.get(mid)!.push(rId); }
-    }
-    for (const [mid, rIds] of byModel.entries()) {
-      try {
-        await api.viewer.setObjectState(
-          { modelObjectIds: [{ modelId: mid, objectRuntimeIds: [...new Set(rIds)] }] } as any,
-          { visible: false } as any
-        );
-      } catch {}
-    }
-  }
-
-  async function alleEinblenden() {
-    if (!api) return;
-    try { await api.viewer.reset(); } catch {}
-  }
-
   function displayName(key: string): string {
     if (!key.includes("||")) return key;
     const [pset, name] = key.split("||");
@@ -202,7 +182,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
             </span>;
           })()}
         </div>
-        <div style={{ minHeight: 180, maxHeight: 350, overflowY: "auto" }}>
+        <div style={{ minHeight: 220, maxHeight: 450, overflowY: "auto" }}>
         {aktiveSim.tasks.length === 0 ? (
           <div style={{ padding: 10, fontSize: 11, color: "#8a9baa", textAlign: "center" }}>
             Noch keine Tasks — Gantt in Tab „Projekte" importieren
@@ -266,8 +246,6 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                 {aktivTask.objektGuids.length > 0 && (
                   <>
                     <button className="tc-btn-primary" title="Nur diese anzeigen" style={{ fontSize: 10, padding: "3px 8px" }} onClick={() => nurAnzeigen(aktivTask.objektGuids)}>👁 Nur diese</button>
-                    <button className="tc-btn-ghost" title="Ausblenden" onClick={() => ausblenden(aktivTask.objektGuids)}>🚫</button>
-                    <button className="tc-btn-ghost" title="Alle einblenden" onClick={alleEinblenden}>↺</button>
                     <button className="tc-btn-ghost" style={{ color: "var(--tc-red)" }} onClick={() => setLoeschenBestaetigen(true)}>🗑</button>
                   </>
                 )}
@@ -278,7 +256,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
 
             {/* Lösch-Bestätigung */}
             {loeschenBestaetigen && (
-              <div style={{ background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: 6, padding: 8, marginBottom: 6, fontSize: 11 }}>
+              <div style={{ background: "#FEF2F2", border: "1px solid #FCA5A5", padding: 8, marginBottom: 6, fontSize: 11 }}>
                 <div style={{ fontWeight: 600, color: "#DC2626", marginBottom: 4 }}>
                   ⚠ Alle {aktivTask.objektGuids.length} Bauteile von „{aktivTask.name}" entfernen?
                 </div>
@@ -291,28 +269,64 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
               </div>
             )}
 
-            {/* Anzeige-Einstellungen */}
+            {/* Anzeige-Einstellungen — Autocomplete */}
             {settingsOffen && verfuegbareAttrs.length > 0 && (
-              <div style={{ background: "#F8FAFC", border: "1px solid var(--tc-border)", borderRadius: 4, padding: 6, marginBottom: 6, fontSize: 10 }}>
+              <div style={{ background: "#F8FAFC", border: "1px solid var(--tc-border)", padding: 6, marginBottom: 6, fontSize: 10 }}>
                 <div style={{ fontWeight: 600, marginBottom: 4, color: "var(--tc-text-2)" }}>Anzeige-Attribute</div>
-                <div style={{ marginBottom: 3 }}>
-                  <span style={{ color: "var(--tc-text-3)" }}>Zeile 1: </span>
-                  <select style={{ fontSize: 10, padding: "1px 4px", maxWidth: 200 }} value={displayConfig.zeile1}
-                    onChange={e => saveDisplayConfig({ ...displayConfig, zeile1: e.target.value })}>
-                    {verfuegbareAttrs.map(a => <option key={a} value={a}>{displayName(a)}</option>)}
-                  </select>
+                {/* Zeile 1 */}
+                <div style={{ marginBottom: 4, position: "relative" }}>
+                  <span style={{ color: "var(--tc-text-3)", fontSize: 9 }}>Zeile 1:</span>
+                  <input className="ac-input" style={{ fontSize: 10, padding: "2px 6px", width: "100%", marginTop: 2 }}
+                    placeholder={displayName(displayConfig.zeile1)}
+                    value={settingsQuery1}
+                    onChange={e => { setSettingsQuery1(e.target.value); setSettingsFocus(1); }}
+                    onFocus={() => setSettingsFocus(1)}
+                  />
+                  {settingsFocus === 1 && (
+                    <div className="ac-dropdown" style={{ maxHeight: 120 }}>
+                      {verfuegbareAttrs
+                        .filter(a => !settingsQuery1 || displayName(a).toLowerCase().includes(settingsQuery1.toLowerCase()))
+                        .slice(0, 15)
+                        .map(a => (
+                          <div key={a} className="ac-item" style={{ fontSize: 10, padding: "3px 6px" }}
+                            onMouseDown={() => { saveDisplayConfig({ ...displayConfig, zeile1: a }); setSettingsQuery1(""); setSettingsFocus(null); }}>
+                            {displayName(a)}
+                          </div>
+                        ))}
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <span style={{ color: "var(--tc-text-3)" }}>Zeile 2: </span>
-                  <select style={{ fontSize: 10, padding: "1px 4px", maxWidth: 200 }} value={displayConfig.zeile2}
-                    onChange={e => saveDisplayConfig({ ...displayConfig, zeile2: e.target.value })}>
-                    <option value="">— keine —</option>
-                    {verfuegbareAttrs.map(a => <option key={a} value={a}>{displayName(a)}</option>)}
-                  </select>
+                {/* Zeile 2 */}
+                <div style={{ position: "relative" }}>
+                  <span style={{ color: "var(--tc-text-3)", fontSize: 9 }}>Zeile 2:</span>
+                  <input className="ac-input" style={{ fontSize: 10, padding: "2px 6px", width: "100%", marginTop: 2 }}
+                    placeholder={displayConfig.zeile2 ? displayName(displayConfig.zeile2) : "— keine —"}
+                    value={settingsQuery2}
+                    onChange={e => { setSettingsQuery2(e.target.value); setSettingsFocus(2); }}
+                    onFocus={() => setSettingsFocus(2)}
+                  />
+                  {settingsFocus === 2 && (
+                    <div className="ac-dropdown" style={{ maxHeight: 120 }}>
+                      <div className="ac-item" style={{ fontSize: 10, padding: "3px 6px", color: "#8a9baa" }}
+                        onMouseDown={() => { saveDisplayConfig({ ...displayConfig, zeile2: "" }); setSettingsQuery2(""); setSettingsFocus(null); }}>
+                        — keine —
+                      </div>
+                      {verfuegbareAttrs
+                        .filter(a => !settingsQuery2 || displayName(a).toLowerCase().includes(settingsQuery2.toLowerCase()))
+                        .slice(0, 15)
+                        .map(a => (
+                          <div key={a} className="ac-item" style={{ fontSize: 10, padding: "3px 6px" }}
+                            onMouseDown={() => { saveDisplayConfig({ ...displayConfig, zeile2: a }); setSettingsQuery2(""); setSettingsFocus(null); }}>
+                            {displayName(a)}
+                          </div>
+                        ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
 
+            {/* Objekt-Liste — kompakt, klickbar */}
             {aktivTask.objektGuids.length > 0 && (
               <div className="guid-list">
                 {aktivTask.objektGuids.map((g, i) => {
@@ -322,22 +336,16 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                   const istSelektiert = selGuids.has(g);
                   return (
                     <div key={i} className="guid-row" style={{
+                      padding: "3px 8px", cursor: "pointer",
                       background: istSelektiert ? "#e8f2fa" : undefined,
                       borderLeft: istSelektiert ? "3px solid #2d7dbd" : "3px solid transparent",
-                    }}>
-                      <div className="guid-row-id" style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 11, fontWeight: istSelektiert ? 700 : 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                          color: istSelektiert ? "#2d7dbd" : undefined }}>
-                          {val1 || `Objekt ${g.split(":::")[1] ?? i}`}
-                        </div>
-                        {val2 && (
-                          <div style={{ fontSize: 9, opacity: 0.55, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {val2}
-                          </div>
-                        )}
+                    }} onClick={() => einzelnMarkieren(g)}>
+                      <div style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        fontSize: 11, fontWeight: istSelektiert ? 600 : 400, color: istSelektiert ? "#2d7dbd" : "#555" }}>
+                        {val1 || `Objekt ${g.split(":::")[1] ?? i}`}
+                        {val2 && <span style={{ fontSize: 9, opacity: 0.5, marginLeft: 6 }}>{val2}</span>}
                       </div>
-                      <button className="guid-row-x" title="Im 3D markieren" style={{ color: "var(--tc-blue)", fontSize: 12 }} onClick={() => einzelnMarkieren(g)}>👁</button>
-                      <button className="guid-row-x" onClick={() => guidEntfernen(aktivTask.id, g)}>✕</button>
+                      <button className="guid-row-x" style={{ fontSize: 12 }} onClick={e => { e.stopPropagation(); guidEntfernen(aktivTask.id, g); }}>✕</button>
                     </div>
                   );
                 })}
