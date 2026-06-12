@@ -33,6 +33,30 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
   const lastTimeRef = useRef(0);
   const currentTagRef = useRef(0);
   const aktivierteGruppen = useRef(new Set<number>());
+  const [selGuids, setSelGuids] = useState<Set<string>>(new Set());
+  const selIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Selektion alle 1.5s pollen
+  useEffect(() => {
+    if (!api) return;
+    async function check() {
+      try {
+        const sel = await (api!.viewer as any).getSelection();
+        const guids = new Set<string>();
+        if (Array.isArray(sel)) {
+          for (const s of sel) {
+            const mid = s?.modelId ?? "";
+            for (const rId of s?.objectRuntimeIds ?? []) guids.add(`${mid}:::${rId}`);
+            for (const o of s?.objects ?? []) guids.add(`${mid}:::${o?.id ?? o}`);
+          }
+        }
+        setSelGuids(guids);
+      } catch { setSelGuids(new Set()); }
+    }
+    check();
+    selIntervalRef.current = setInterval(check, 1500);
+    return () => { if (selIntervalRef.current) clearInterval(selIntervalRef.current); };
+  }, [api]);
 
   const modellIds = [...new Set([
     ...(aktiveSim?.modelle.map(m => m.id) ?? []),
@@ -331,16 +355,23 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
                 <span>{istAktiv ? "▶ " : ""}{g.datum}</span>
                 <span>{g.tasks.length} Task{g.tasks.length > 1 ? "s" : ""}</span>
               </div>
-              {g.tasks.map((task, ti) => (
+              {g.tasks.map((task, ti) => {
+                const hatSel = selGuids.size > 0 && task.objektGuids.some(g => selGuids.has(g));
+                const selAnz = hatSel ? task.objektGuids.filter(g => selGuids.has(g)).length : 0;
+                return (
                 <div key={task.id} style={{ display: "flex", alignItems: "center", padding: "5px 8px 5px 16px",
                   fontSize: 13, opacity: istVorbei ? 0.5 : 1, gap: 6,
                   borderBottom: ti < g.tasks.length - 1 ? "1px solid #eef1f4" : "none",
-                  background: istAktiv ? "#f5f9fc" : "transparent" }}>
+                  background: hatSel ? "#f0f0f0" : istAktiv ? "#f5f9fc" : "transparent",
+                  fontWeight: hatSel ? 600 : 400 }}>
                   <span style={dot(task.typ)} />
                   <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{task.name}</span>
-                  <span style={{ fontSize: 11, color: "#8a9baa" }}>⬡ {task.objektGuids.length}</span>
+                  <span style={{ fontSize: 11, color: hatSel ? "#2d7dbd" : "#8a9baa" }}>
+                    {hatSel ? `${selAnz}/${task.objektGuids.length}` : `⬡ ${task.objektGuids.length}`}
+                  </span>
                 </div>
-              ))}
+                );
+              })}
             </div>
           );
         })}
