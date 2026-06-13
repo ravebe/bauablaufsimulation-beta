@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import type { SimProjekt, Task, TaskTyp } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
+import { getModellObjekte } from "./modelHelpers";
 
 // Alle Werte eines Objekts flach sammeln
 interface ObjWerte { [key: string]: string; } // "PSet||PropName" → value
@@ -147,6 +148,21 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
     } catch (e) { console.log("[einzelnMarkieren] Fehler:", e); }
   }
 
+  async function offeneMarkieren() {
+    if (!api || !aktiveSim) return;
+    const vergeben = new Set(aktiveSim.tasks.flatMap(t => t.objektGuids));
+    const byModel = new Map<string, number[]>();
+    for (const modell of aktiveSim.modelle) {
+      if (!modell.id) continue;
+      const alleIds = await getModellObjekte(api, modell.id);
+      const offene = alleIds.filter(rId => !vergeben.has(`${modell.id}:::${rId}`));
+      if (offene.length > 0) byModel.set(modell.id, offene);
+    }
+    if (byModel.size === 0) return;
+    const modelObjectIds = [...byModel.entries()].map(([modelId, rIds]) => ({ modelId, objectRuntimeIds: rIds }));
+    try { await (api.viewer as any).setSelection({ modelObjectIds }, "set"); } catch {}
+  }
+
   async function nurAnzeigen(guids: string[]) {
     if (!api) return;
     const byModel = new Map<string, number[]>();
@@ -177,9 +193,15 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
           {totalObjekte != null && (() => {
             const vergeben = new Set(aktiveSim.tasks.flatMap(t => t.objektGuids)).size;
             const offen = Math.max(0, totalObjekte - vergeben);
-            return <span style={{ fontSize: 11, color: offen > 0 ? "#2d7dbd" : "#16a34a", fontWeight: 600 }}>
-              {offen > 0 ? `${offen} OFFEN` : "✓ VERTEILT"}
-            </span>;
+            return offen > 0 ? (
+              <button style={{ fontSize: 11, color: "#2d7dbd", fontWeight: 600, background: "none", border: "1px solid #2d7dbd",
+                padding: "1px 8px", cursor: "pointer", fontFamily: "inherit" }}
+                onClick={offeneMarkieren} title="Offene Bauteile im 3D markieren">
+                {offen} OFFEN
+              </button>
+            ) : (
+              <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 600 }}>✓ VERTEILT</span>
+            );
           })()}
         </div>
         <div style={{ minHeight: 220, maxHeight: 450, overflowY: "auto" }}>
