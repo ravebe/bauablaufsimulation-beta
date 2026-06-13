@@ -1,28 +1,28 @@
-// AttributeFilter.tsx — IFC-Attribut-Suche mit Autocomplete
+// AttributeFilter.tsx — IFC-Attribut-Suche mit Autocomplete + Multi-Filter
 import { useState, useEffect, useRef } from "react";
 import type { SimProjekt, Task } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { getModellObjekte } from "./modelHelpers";
 
 interface AttrItem { pset: string; name: string; key: string; }
+interface FilterRow { query: string; selectedAttr: AttrItem | null; wert: string; acOffen: boolean; wertOffen: boolean; }
 interface Props {
   api: ApiInstance | null;
   aktiveSim: SimProjekt | null;
   aktivTask: Task | null;
   aktivesModellId: string | null;
   updateSim: (sim: SimProjekt) => void;
-  onAttrReset?: () => void; // wird bei Task-Wechsel aufgerufen
-  resetSignal?: number; // erhöht sich bei Task-Wechsel → löst Reset aus
+  onAttrReset?: () => void;
+  resetSignal?: number;
 }
+
+function neuerFilter(): FilterRow { return { query: "", selectedAttr: null, wert: "", acOffen: false, wertOffen: false }; }
 
 export default function AttributeFilter({ api, aktiveSim, aktivTask, aktivesModellId, updateSim, resetSignal }: Props) {
   const [allAttrs, setAllAttrs] = useState<AttrItem[]>([]);
   const [attrMap, setAttrMap] = useState<Record<string, Set<string>>>({});
-  const [selectedAttr, setSelectedAttr] = useState<AttrItem | null>(null);
-  const [ifcQuery, setIfcQuery] = useState("");
-  const [ifcWert, setIfcWert] = useState("");
-  const [acOffen, setAcOffen] = useState(false);
-  const [wertDropdownOffen, setWertDropdownOffen] = useState(false);
+  const [filters, setFilters] = useState<FilterRow[]>([neuerFilter()]);
+  const [collapsed, setCollapsed] = useState(true);
   const [suchStatus, setSuchStatus] = useState<string | null>(null);
   const [gefundeneByModel, setGefundeneByModel] = useState<Map<string, number[]>>(new Map());
   const [laedt, setLaedt] = useState(false);
@@ -31,160 +31,159 @@ export default function AttributeFilter({ api, aktiveSim, aktivTask, aktivesMode
   const acRef = useRef<HTMLDivElement>(null);
   const ladeAttrGen = useRef(0);
 
-  // Reset bei Task-Wechsel: Attribut behalten, nur Wert + Ergebnisse leeren
+  // Reset bei Task-Wechsel: Attribute behalten, Werte leeren
   useEffect(() => {
     setSuchStatus(null); setGefundeneByModel(new Map()); setKonflikt(null);
-    setIfcWert("");
+    setFilters(prev => prev.map(f => ({ ...f, wert: "", acOffen: false, wertOffen: false })));
   }, [resetSignal]);
 
-  // Status bei nächstem Klick löschen
+  // Status auto-dismiss
   useEffect(() => {
     if (!suchStatus) return;
-    const handler = () => { setSuchStatus(null); };
+    const handler = () => setSuchStatus(null);
     const timer = setTimeout(() => document.addEventListener("click", handler, { once: true }), 300);
     return () => { clearTimeout(timer); document.removeEventListener("click", handler); };
   }, [suchStatus]);
 
-  // Autocomplete schließen bei Klick außerhalb
+  // AC schließen bei Klick außerhalb
   useEffect(() => {
-    const handler = (e: MouseEvent) => { if (acRef.current && !acRef.current.contains(e.target as Node)) setAcOffen(false); };
+    const handler = (e: MouseEvent) => { if (acRef.current && !acRef.current.contains(e.target as Node)) setFilters(prev => prev.map(f => ({ ...f, acOffen: false }))); };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Attribute laden wenn Sim/Modell wechselt
-  useEffect(() => {
-    setAllAttrs([]); setAttrMap({}); setSelectedAttr(null);
-    if (api) ladeAttr();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aktiveSim?.id, aktivesModellId, api]);
-
   const modellId = aktiveSim?.modelle[0]?.id ?? aktivesModellId ?? null;
 
   async function ladeAttr() {
-    if (!api || !aktiveSim) return;
-    const modelIds = (aktiveSim.modelle.map(m => m.id).filter(Boolean)) as string[];
-    if (modelIds.length === 0) return;
-    const myGen = ++ladeAttrGen.current;
+    if (!api || !modellId) return;
     setAttrLaedt(true);
-    const map: Record<string, Set<string>> = {};
-    const attrsMap = new Map<string, AttrItem>();
-    const verarbeiteGruppe = (g: any, psetName: string) => {
-      for (const p of (g?.properties ?? (g as any)?.items ?? [])) {
-        if (!p?.name) continue;
-        const subProps = (p as any).properties ?? (p as any).items ?? (p as any).groups;
-        if (Array.isArray(subProps) && subProps.length > 0) { verarbeiteGruppe(p, p.name); }
-        else {
-          const key = `${psetName}||${p.name}`;
-          if (!attrsMap.has(key)) attrsMap.set(key, { pset: psetName, name: p.name, key });
-          if (p.value != null) { if (!map[key]) map[key] = new Set(); map[key].add(String(p.value)); }
-        }
+    const gen = ++ladeAttrGen.current;
+    try {
+      const allIds = await getModellObjekte(api, modellId);
+      const attrsMap = new Map<string, AttrItem>();
+      const map: Record<string, Set<string>> = {};
+      const probeIds = allIds.slice(0, Math.min(30, allIds.length));
+      for (const rId of probeIds) {
+        if (gen !== ladeAttrGen.current) return;
+        try {
+          const res = await api.viewer.getObjectProperties(modellId, [rId]);
+          if (!Array.isArray(res) || res.length === 0) continue;
+          const obj = res[0];
+          const sammel = (g: any, pn: string) => {
+            for (const p of (g?.properties ?? (g as any)?.items ?? [])) {
+              if (!p?.name) continue;
+              const sub = (p as any).properties ?? (p as any).items ?? (p as any).groups;
+              if (Array.isArray(sub) && sub.length > 0) { sammel(p, p.name); continue; }
+              const key = `${pn}||${p.name}`;
+              if (!attrsMap.has(key)) attrsMap.set(key, { pset: pn, name: p.name, key });
+              if (p.value != null) { if (!map[key]) map[key] = new Set(); const v = String(p.value).trim(); if (v && v !== "null") map[key].add(v); }
+            }
+          };
+          for (const g of (obj?.properties ?? (obj as any)?.groups ?? [])) sammel(g, g?.name || (g as any)?.displayName || "");
+          if (obj?.product) {
+            const pKey = "Product||Product Name"; const tKey = "Reference Object||Common Type";
+            if (!attrsMap.has(pKey)) attrsMap.set(pKey, { pset: "Product", name: "Product Name", key: pKey });
+            if (!attrsMap.has(tKey)) attrsMap.set(tKey, { pset: "Reference Object", name: "Common Type", key: tKey });
+            if (obj.product.name) { if (!map[pKey]) map[pKey] = new Set(); map[pKey].add(String(obj.product.name)); }
+            if (obj.product.objectType) { if (!map[tKey]) map[tKey] = new Set(); map[tKey].add(String(obj.product.objectType)); }
+          }
+        } catch {}
       }
-    };
-    const verarbeiteObj = (obj: any) => {
-      for (const g of (obj?.properties ?? (obj as any)?.groups ?? [])) {
-        verarbeiteGruppe(g, g?.name || (g as any)?.displayName || "Eigenschaften");
-      }
-      if (obj?.product) {
-        const p = obj.product;
-        const addAttr = (pset: string, name: string, val: any) => {
-          if (!val) return; const key = `${pset}||${name}`;
-          if (!attrsMap.has(key)) attrsMap.set(key, { pset, name, key });
-          if (!map[key]) map[key] = new Set(); map[key].add(String(val));
-        };
-        addAttr("Reference Object", "Common Type", p.objectType);
-        addAttr("Product", "Product Name", p.name);
-        addAttr("Product", "Product Description", p.description);
-      }
-    };
-    for (const mid of modelIds) {
+      // Layers
       try {
-        const allIds = await getModellObjekte(api, mid);
-        if (allIds.length === 0) continue;
-        for (let i = 0; i < allIds.length; i += 10) {
-          const chunk = allIds.slice(i, i + 10);
-          const res = await Promise.allSettled(chunk.map(rId => api.viewer.getObjectProperties(mid, [rId])));
-          for (const r of res) { if (r.status === 'fulfilled' && Array.isArray(r.value)) for (const obj of r.value) verarbeiteObj(obj); }
+        const layers = await api.viewer.getLayers(modellId);
+        if (Array.isArray(layers)) {
+          const lKey = "Layer||Layer";
+          if (!attrsMap.has(lKey)) attrsMap.set(lKey, { pset: "Layer", name: "Layer", key: lKey });
+          if (!map[lKey]) map[lKey] = new Set();
+          for (const l of layers) if (l?.name) map[lKey].add(String(l.name));
         }
-        try {
-          const layers = await api.viewer.getLayers(mid);
-          if (Array.isArray(layers)) {
-            const key = "Presentation Layers||Layer";
-            if (!attrsMap.has(key)) attrsMap.set(key, { pset: "Presentation Layers", name: "Layer", key });
-            if (!map[key]) map[key] = new Set();
-            for (const l of layers) { if (l?.name) map[key].add(String(l.name)); }
-          }
-        } catch {}
-        try {
-          const guids = await api.viewer.convertToObjectIds(mid, allIds);
-          if (Array.isArray(guids)) {
-            const key = "Reference Object||GUID (IFC)";
-            if (!attrsMap.has(key)) attrsMap.set(key, { pset: "Reference Object", name: "GUID (IFC)", key });
-            if (!map[key]) map[key] = new Set();
-            for (const g of guids) { if (g) map[key].add(String(g)); }
-          }
-        } catch {}
       } catch {}
-    }
-    if (myGen !== ladeAttrGen.current) return;
-    setAttrMap(map); setAllAttrs([...attrsMap.values()]); setAttrLaedt(false);
+      // GUID
+      const gKey = "Reference Object||GUID (IFC)";
+      if (!attrsMap.has(gKey)) attrsMap.set(gKey, { pset: "Reference Object", name: "GUID (IFC)", key: gKey });
+      if (gen !== ladeAttrGen.current) return;
+      setAttrMap(map); setAllAttrs([...attrsMap.values()]);
+    } catch {}
+    setAttrLaedt(false);
   }
 
-  const acItems = ifcQuery.length >= 1
-    ? allAttrs.filter(a => a.name.toLowerCase().startsWith(ifcQuery.toLowerCase()) || a.pset.toLowerCase().startsWith(ifcQuery.toLowerCase())).slice(0, 40)
-    : [];
+  function updateFilter(idx: number, patch: Partial<FilterRow>) {
+    setFilters(prev => prev.map((f, i) => i === idx ? { ...f, ...patch } : f));
+    setGefundeneByModel(new Map()); setSuchStatus(null);
+  }
 
+  function addFilter() {
+    if (filters.length >= 4) return;
+    setFilters(prev => [...prev, neuerFilter()]);
+  }
+
+  function removeFilter(idx: number) {
+    if (idx === 0) return;
+    setFilters(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  // Kombinierte Suche (AND)
   async function ifcSuchen() {
-    if (!api || !selectedAttr || !ifcWert || !aktivTask || !aktiveSim) return;
+    if (!api || !aktivTask || !aktiveSim) return;
+    const aktiveFilter = filters.filter(f => f.selectedAttr && f.wert);
+    if (aktiveFilter.length === 0) return;
     setSuchStatus(null); setGefundeneByModel(new Map()); setLaedt(true);
     const modelIds = aktiveSim.modelle.map(m => m.id).filter(Boolean) as string[];
-    if (modelIds.length === 0) { setSuchStatus("Kein Modell gefunden"); setLaedt(false); return; }
-    const wertPasst = (val: any) => { const s = String(val ?? "").toLowerCase(); return s === ifcWert.toLowerCase() || s.includes(ifcWert.toLowerCase()); };
+    if (modelIds.length === 0) { setSuchStatus("Kein Modell"); setLaedt(false); return; }
+
     try {
       const treffenByModel = new Map<string, number[]>();
-      const alleTreffer: number[] = [];
       for (const mid of modelIds) {
-        try {
-          const allIds = await getModellObjekte(api, mid);
-          if (allIds.length === 0) continue;
-          if (selectedAttr.pset === "Reference Object" && selectedAttr.name === "GUID (IFC)") {
-            try {
-              const guids = await api.viewer.convertToObjectIds(mid, allIds);
-              if (Array.isArray(guids)) for (let i = 0; i < guids.length; i++) if (guids[i] && wertPasst(guids[i])) { if (!treffenByModel.has(mid)) treffenByModel.set(mid, []); treffenByModel.get(mid)!.push(allIds[i]); alleTreffer.push(allIds[i]); }
-            } catch {}; continue;
-          }
-          for (const rId of allIds) {
-            try {
-              const res = await api.viewer.getObjectProperties(mid, [rId]);
-              if (!Array.isArray(res) || res.length === 0) continue;
-              const obj = res[0]; let gefunden = false;
-              const sucheInGruppe = (g: any, psetName: string): boolean => {
-                for (const p of (g?.properties ?? (g as any)?.items ?? [])) {
-                  if (!p?.name) continue;
-                  const sub = (p as any).properties ?? (p as any).items ?? (p as any).groups;
-                  if (Array.isArray(sub) && sub.length > 0) { if (sucheInGruppe(p, p.name)) return true; }
-                  else if (psetName === selectedAttr.pset && p.name === selectedAttr.name && wertPasst(p.value)) return true;
+        const allIds = await getModellObjekte(api, mid);
+        if (allIds.length === 0) continue;
+        for (const rId of allIds) {
+          let allePasst = true;
+          for (const f of aktiveFilter) {
+            const attr = f.selectedAttr!;
+            const wertPasst = (val: any) => { const s = String(val ?? "").toLowerCase(); return s === f.wert.toLowerCase() || s.includes(f.wert.toLowerCase()); };
+            let gefunden = false;
+
+            if (attr.pset === "Reference Object" && attr.name === "GUID (IFC)") {
+              try { const ids = await api.viewer.convertToObjectIds(mid, [rId]); gefunden = Array.isArray(ids) && ids.some(g => wertPasst(g)); } catch {}
+            } else if (attr.pset === "Layer" && attr.name === "Layer") {
+              try {
+                const layers = await api.viewer.getLayers(mid) as any[];
+                if (Array.isArray(layers)) for (const l of layers) { if (l?.name && wertPasst(l.name) && (l.objectRuntimeIds ?? []).includes(rId)) { gefunden = true; break; } }
+              } catch {}
+            } else {
+              try {
+                const res = await api.viewer.getObjectProperties(mid, [rId]);
+                if (Array.isArray(res) && res.length > 0) {
+                  const obj = res[0];
+                  const sucheIn = (g: any, pn: string): boolean => {
+                    for (const p of (g?.properties ?? (g as any)?.items ?? [])) {
+                      if (!p?.name) continue;
+                      const sub = (p as any).properties ?? (p as any).items;
+                      if (Array.isArray(sub) && sub.length > 0) { if (sucheIn(p, p.name)) return true; }
+                      else if (pn === attr.pset && p.name === attr.name && wertPasst(p.value)) return true;
+                    }
+                    return false;
+                  };
+                  for (const g of (obj?.properties ?? [])) { if (sucheIn(g, g?.name || "")) { gefunden = true; break; } }
+                  if (!gefunden && obj?.product) {
+                    if (attr.pset === "Reference Object" && attr.name === "Common Type" && wertPasst(obj.product.objectType)) gefunden = true;
+                    if (attr.pset === "Product" && attr.name === "Product Name" && wertPasst(obj.product.name)) gefunden = true;
+                  }
                 }
-                return false;
-              };
-              for (const g of (obj?.properties ?? (obj as any)?.groups ?? [])) { if (sucheInGruppe(g, g?.name || (g as any)?.displayName || "")) { gefunden = true; break; } }
-              if (!gefunden && obj?.product) {
-                const p = obj.product;
-                if (selectedAttr.pset === "Reference Object" && selectedAttr.name === "Common Type" && wertPasst(p.objectType)) gefunden = true;
-                if (selectedAttr.pset === "Product" && selectedAttr.name === "Product Name" && wertPasst(p.name)) gefunden = true;
-                if (selectedAttr.pset === "Product" && selectedAttr.name === "Product Description" && wertPasst(p.description)) gefunden = true;
-              }
-              if (gefunden) { if (!treffenByModel.has(mid)) treffenByModel.set(mid, []); treffenByModel.get(mid)!.push(rId); alleTreffer.push(rId); }
-            } catch {}
+              } catch {}
+            }
+            if (!gefunden) { allePasst = false; break; }
           }
-        } catch {}
+          if (allePasst) { if (!treffenByModel.has(mid)) treffenByModel.set(mid, []); treffenByModel.get(mid)!.push(rId); }
+        }
       }
-      if (alleTreffer.length === 0) { setSuchStatus("Keine Bauteile gefunden"); return; }
+      if ([...treffenByModel.values()].reduce((s, a) => s + a.length, 0) === 0) { setSuchStatus("Keine Bauteile gefunden"); return; }
       const modelObjectIds = [...treffenByModel.entries()].map(([modelId, objectRuntimeIds]) => ({ modelId, objectRuntimeIds }));
       await (api.viewer as any).setSelection({ modelObjectIds }, "set");
       setGefundeneByModel(new Map(treffenByModel));
-      const maxTreffer = Math.max(...[...treffenByModel.values()].map(ids => ids.length));
-      setSuchStatus(`✓ ${maxTreffer} Bauteile gefunden & markiert`);
+      const total = [...treffenByModel.values()].reduce((s, a) => s + a.length, 0);
+      setSuchStatus(`✓ ${total} Bauteile gefunden & markiert`);
     } catch (e) { setSuchStatus(`Fehler: ${e instanceof Error ? e.message : String(e)}`); }
     finally { setLaedt(false); }
   }
@@ -205,84 +204,114 @@ export default function AttributeFilter({ api, aktiveSim, aktivTask, aktivesMode
     const seen = new Set<string>(); const neueGuids: string[] = [];
     for (const [mid, rIds] of gefundeneByModel.entries()) for (const rId of rIds) { const k = `${mid}:::${rId}`; if (!seen.has(k)) { seen.add(k); neueGuids.push(k); } }
     if (neueGuids.length === 0) return;
-
     const details: { name: string; anzahl: number }[] = [];
     for (const t of aktiveSim.tasks) {
       if (t.id === aktivTask.id) continue;
       const overlap = t.objektGuids.filter(g => neueGuids.includes(g)).length;
       if (overlap > 0) details.push({ name: t.name, anzahl: overlap });
     }
-    if (details.length > 0) {
-      setKonflikt({ details, guids: neueGuids });
-    } else {
-      filterZuweisen(neueGuids);
-    }
+    if (details.length > 0) { setKonflikt({ details, guids: neueGuids }); }
+    else { filterZuweisen(neueGuids); }
   }
 
-  const vorschlaege = selectedAttr && attrMap[selectedAttr.key]
-    ? [...attrMap[selectedAttr.key]].filter(v => !ifcWert || v.toLowerCase().includes(ifcWert.toLowerCase())).slice(0, 8) : [];
-  const gefundeneAnzahl = gefundeneByModel.size > 0 ? Math.max(...[...gefundeneByModel.values()].map(ids => ids.length), 0) : 0;
+  const gefundeneAnzahl = gefundeneByModel.size > 0 ? [...gefundeneByModel.values()].reduce((s, a) => s + a.length, 0) : 0;
+  const kannSuchen = filters.some(f => f.selectedAttr && f.wert) && !!modellId;
 
   return (
-    <div className="detail-block">
-      <div className="detail-block-title">
-        IFC-Attribut Filter
-        {attrLaedt && <span style={{ color: "var(--tc-text-3)", fontWeight: 400, marginLeft: 6 }}>⟳ lädt…</span>}
-        {!attrLaedt && allAttrs.length > 0 && <span style={{ color: "var(--tc-text-3)", fontWeight: 400, marginLeft: 6 }}>{allAttrs.length} Attribute</span>}
-      </div>
-      <div className="ac-wrap" ref={acRef} style={{ position: "relative" }}>
-        <input className="ac-input" style={{ paddingRight: 24 }} placeholder="Attribut suchen… (z.B. Material)" value={ifcQuery}
-          onChange={e => { setIfcQuery(e.target.value); setSelectedAttr(null); setAcOffen(true); setGefundeneByModel(new Map()); setSuchStatus(null); }}
-          onFocus={() => { setAcOffen(true); if (!allAttrs.length && modellId) ladeAttr(); }} />
-        {ifcQuery && <button style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#999", fontSize: 14, padding: 2 }}
-          onClick={() => { setIfcQuery(""); setSelectedAttr(null); setGefundeneByModel(new Map()); setSuchStatus(null); }}>✕</button>}
-        {acOffen && acItems.length > 0 && (
-          <div className="ac-dropdown">
-            {acItems.map((item, i) => (
-              <div key={i} className="ac-item" onMouseDown={() => { setIfcQuery(`${item.name} › ${item.pset}`); setSelectedAttr(item); setAcOffen(false); }}>
-                <div style={{ fontWeight: 500, color: "var(--tc-text)" }}>{item.name}</div>
-                <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 1 }}>{item.pset}</div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-      <div className="ac-wrap" style={{ marginTop: 4, position: "relative" }}>
-        <input className="ac-input" style={{ paddingRight: 24 }} placeholder="Wert (z.B. Beton NPK C)…" value={ifcWert}
-          onChange={e => { setIfcWert(e.target.value); setGefundeneByModel(new Map()); setSuchStatus(null); setWertDropdownOffen(true); }}
-          onFocus={() => setWertDropdownOffen(true)} onBlur={() => setTimeout(() => setWertDropdownOffen(false), 150)} />
-        {ifcWert && <button style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#999", fontSize: 14, padding: 2 }}
-          onClick={() => { setIfcWert(""); setGefundeneByModel(new Map()); setSuchStatus(null); }}>✕</button>}
-        {wertDropdownOffen && vorschlaege.length > 0 && (
-          <div className="ac-dropdown">
-            {vorschlaege.map((v, i) => <div key={i} className="ac-item" onMouseDown={() => { setIfcWert(v); setWertDropdownOffen(false); }}><div style={{ color: "var(--tc-text)" }}>{v}</div></div>)}
-          </div>
-        )}
-      </div>
-      <button className="tc-btn-primary" style={{ width: "100%", marginTop: 6 }}
-        disabled={laedt || !selectedAttr || !ifcWert || !modellId} onClick={ifcSuchen}>
-        {laedt ? "⟳ Suche…" : "🔍 Suchen & Markieren"}
-      </button>
-      {!modellId && <div className="alert info" style={{ marginTop: 5, fontSize: 9 }}>⟳ Warte auf Modell-Verbindung…</div>}
-      {suchStatus && <div className={`alert ${suchStatus.startsWith("✓") ? "ok" : "err"}`} style={{ marginTop: 5 }}>{suchStatus}</div>}
-      {konflikt ? (
-        <div style={{ background: "#FFF7ED", border: "1px solid #FB923C", borderRadius: 6, padding: 8, fontSize: 11, marginTop: 6 }}>
-          <div style={{ fontWeight: 600, color: "#C2410C", marginBottom: 4 }}>⚠ Objekte in anderen Tasks:</div>
-          {konflikt.details.map((k, i) => (
-            <div key={i} style={{ color: "#9A3412" }}>• {k.anzahl} aus „{k.name}"</div>
-          ))}
-          <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-            <button className="tc-btn-primary" style={{ flex: 1, background: "#16a34a", borderColor: "#16a34a", fontSize: 11 }}
-              onClick={() => filterZuweisen(konflikt.guids)}>Verschieben</button>
-            <button className="tc-btn-ghost" style={{ flex: 1, fontSize: 11 }}
-              onClick={() => { setKonflikt(null); setSuchStatus("Abgebrochen"); }}>Abbrechen</button>
-          </div>
+    <div className="detail-block" ref={acRef}>
+      {/* Titel — klickbar zum Auf-/Zuklappen */}
+      <div style={{ display: "flex", alignItems: "center", cursor: "pointer", marginBottom: collapsed ? 0 : 6 }}
+        onClick={() => { setCollapsed(c => !c); if (collapsed && !allAttrs.length && modellId) ladeAttr(); }}>
+        <div className="detail-block-title" style={{ margin: 0, flex: 1 }}>
+          IFC-Attribut Filter
+          {attrLaedt && <span style={{ fontWeight: 400, marginLeft: 6 }}>⟳</span>}
+          {!attrLaedt && allAttrs.length > 0 && <span style={{ fontWeight: 400, marginLeft: 6 }}>{allAttrs.length} Attribute</span>}
         </div>
-      ) : gefundeneAnzahl > 0 ? (
-        <button className="tc-btn-green" style={{ width: "100%", marginTop: 6 }} onClick={gefundeneHinzufuegen}>
-          + Gefundene hinzufügen ({gefundeneAnzahl})
-        </button>
-      ) : null}
+        <span style={{ fontSize: 10, color: "#8a9baa", marginRight: 4 }}>{collapsed ? "▸" : "▾"}</span>
+        {!collapsed && filters.length < 4 && (
+          <button className="tc-btn-ghost" style={{ padding: "1px 6px", fontSize: 11, marginLeft: 2 }}
+            onClick={e => { e.stopPropagation(); addFilter(); }}>+</button>
+        )}
+      </div>
+
+      {/* Inhalt — nur wenn nicht collapsed */}
+      {!collapsed && (
+        <>
+          {filters.map((f, idx) => {
+            const acItems = f.query.length >= 1
+              ? allAttrs.filter(a => a.name.toLowerCase().includes(f.query.toLowerCase()) || a.pset.toLowerCase().includes(f.query.toLowerCase())).slice(0, 20)
+              : [];
+            const vorschlaege = f.selectedAttr && attrMap[f.selectedAttr.key]
+              ? [...attrMap[f.selectedAttr.key]].filter(v => !f.wert || v.toLowerCase().includes(f.wert.toLowerCase())).slice(0, 8) : [];
+
+            return (
+              <div key={idx} style={{ marginBottom: 6, position: "relative", borderLeft: idx > 0 ? "2px solid #2d7dbd" : "none", paddingLeft: idx > 0 ? 6 : 0 }}>
+                {idx > 0 && (
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
+                    <span style={{ fontSize: 9, color: "#8a9baa", fontWeight: 600 }}>UND-Filter {idx + 1}</span>
+                    <button style={{ background: "none", border: "none", cursor: "pointer", color: "#999", fontSize: 12, padding: 0 }}
+                      onClick={() => removeFilter(idx)}>✕</button>
+                  </div>
+                )}
+                {/* Attribut */}
+                <div style={{ position: "relative" }}>
+                  <input className="ac-input" style={{ paddingRight: 24 }} placeholder="Attribut suchen…" value={f.query}
+                    onChange={e => updateFilter(idx, { query: e.target.value, selectedAttr: null, acOffen: true })}
+                    onFocus={() => { updateFilter(idx, { acOffen: true }); if (!allAttrs.length && modellId) ladeAttr(); }} />
+                  {f.query && <button style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#999", fontSize: 14, padding: 2 }}
+                    onClick={() => updateFilter(idx, { query: "", selectedAttr: null })}>✕</button>}
+                  {f.acOffen && acItems.length > 0 && (
+                    <div className="ac-dropdown">
+                      {acItems.map((item, i) => (
+                        <div key={i} className="ac-item" onMouseDown={() => updateFilter(idx, { query: `${item.name} › ${item.pset}`, selectedAttr: item, acOffen: false })}>
+                          <div style={{ fontWeight: 500, color: "var(--tc-text)" }}>{item.name}</div>
+                          <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>{item.pset}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {/* Wert */}
+                <div style={{ marginTop: 3, position: "relative" }}>
+                  <input className="ac-input" style={{ paddingRight: 24 }} placeholder="Wert…" value={f.wert}
+                    onChange={e => updateFilter(idx, { wert: e.target.value, wertOffen: true })}
+                    onFocus={() => updateFilter(idx, { wertOffen: true })} onBlur={() => setTimeout(() => updateFilter(idx, { wertOffen: false }), 150)} />
+                  {f.wert && <button style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#999", fontSize: 14, padding: 2 }}
+                    onClick={() => updateFilter(idx, { wert: "" })}>✕</button>}
+                  {f.wertOffen && vorschlaege.length > 0 && (
+                    <div className="ac-dropdown">
+                      {vorschlaege.map((v, i) => <div key={i} className="ac-item" onMouseDown={() => updateFilter(idx, { wert: v, wertOffen: false })}>{v}</div>)}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          <button className="tc-btn-primary" style={{ width: "100%", marginTop: 2 }}
+            disabled={laedt || !kannSuchen} onClick={ifcSuchen}>
+            {laedt ? "⟳ Suche…" : `🔍 Suchen & Markieren${filters.filter(f => f.selectedAttr && f.wert).length > 1 ? ` (${filters.filter(f => f.selectedAttr && f.wert).length} Filter)` : ""}`}
+          </button>
+
+          {suchStatus && <div className={`alert ${suchStatus.startsWith("✓") ? "ok" : "err"}`} style={{ marginTop: 5 }}>{suchStatus}</div>}
+          {konflikt ? (
+            <div style={{ background: "#FFF7ED", border: "1px solid #FB923C", padding: 8, fontSize: 11, marginTop: 6 }}>
+              <div style={{ fontWeight: 600, color: "#C2410C", marginBottom: 4 }}>⚠ Objekte in anderen Tasks:</div>
+              {konflikt.details.map((k, i) => <div key={i} style={{ color: "#9A3412" }}>• {k.anzahl} aus „{k.name}"</div>)}
+              <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                <button className="tc-btn-primary" style={{ flex: 1, background: "#16a34a", borderColor: "#16a34a", fontSize: 11 }}
+                  onClick={() => filterZuweisen(konflikt.guids)}>Verschieben</button>
+                <button className="tc-btn-ghost" style={{ flex: 1, fontSize: 11 }}
+                  onClick={() => { setKonflikt(null); setSuchStatus("Abgebrochen"); }}>Abbrechen</button>
+              </div>
+            </div>
+          ) : gefundeneAnzahl > 0 ? (
+            <button className="tc-btn-green" style={{ width: "100%", marginTop: 6 }} onClick={gefundeneHinzufuegen}>
+              + Gefundene hinzufügen ({gefundeneAnzahl})
+            </button>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }
