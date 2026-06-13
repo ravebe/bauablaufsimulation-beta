@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import type { SimProjekt, Task, TaskTyp } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
-import { getModellObjekte } from "./modelHelpers";
+import { getEchteBauteile } from "./modelHelpers";
 
 // Alle Werte eines Objekts flach sammeln
 interface ObjWerte { [key: string]: string; } // "PSet||PropName" → value
@@ -154,8 +154,8 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
     const byModel = new Map<string, number[]>();
     for (const modell of aktiveSim.modelle) {
       if (!modell.id) continue;
-      const alleIds = await getModellObjekte(api, modell.id);
-      const offene = alleIds.filter(rId => !vergeben.has(`${modell.id}:::${rId}`));
+      const echteIds = await getEchteBauteile(api, aktiveSim.id, modell.id);
+      const offene = echteIds.filter(rId => !vergeben.has(`${modell.id}:::${rId}`));
       if (offene.length > 0) byModel.set(modell.id, offene);
     }
     if (byModel.size === 0) return;
