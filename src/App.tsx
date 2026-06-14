@@ -43,25 +43,63 @@ export default function App() {
 
   const taskCount = aktiveSim?.tasks.length ?? 0;
 
+  const [headerDropdown, setHeaderDropdown] = useState(false);
+  const [headerFilter, setHeaderFilter] = useState<"alle" | "meine" | "freigegeben">("alle");
+
   return (
-    <div className="tc-app">
-      {/* Header */}
-      <div className="tc-header">
-        <div className="tc-header-left">
-          <span className="tc-logo">4D</span>
-          <span className="tc-header-title">
-            {aktiveSim ? aktiveSim.name : "Bauablauf"}
-          </span>
+    <div className="tc-app" onClick={() => setHeaderDropdown(false)}>
+      {/* Header — Organizer Style */}
+      <div className="tc-header-org">
+        <div className="tc-header-org-top">
+          <div style={{ flex: 1 }}>
+            <div className="tc-header-org-title">
+              <span className="tc-logo">4D</span> Simulationen
+            </div>
+            <div className="tc-header-org-sub" onClick={e => { e.stopPropagation(); setHeaderDropdown(d => !d); }}>
+              {aktiveSim ? aktiveSim.name : "Kein Projekt"} {headerDropdown ? "▲" : "▼"}
+            </div>
+            {headerDropdown && (
+              <div className="tc-header-dropdown" onClick={e => e.stopPropagation()}>
+                <div className={`tc-header-dropdown-item ${headerFilter === "meine" ? "active" : ""}`}
+                  onClick={() => { setHeaderFilter("meine"); setHeaderDropdown(false); }}>
+                  Von mir erstellt {headerFilter === "meine" && "✓"}
+                </div>
+                <div className={`tc-header-dropdown-item ${headerFilter === "alle" ? "active" : ""}`}
+                  onClick={() => { setHeaderFilter("alle"); setHeaderDropdown(false); }}>
+                  Alle Simulationen {headerFilter === "alle" && "✓"}
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="tc-header-org-actions">
+            <button className="tc-header-icon-btn" title="Neue Simulation"
+              onClick={() => setAktTab("projekte")}>
+              <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.4">
+                <rect x="2" y="4" width="16" height="13" rx="1.5"/><path d="M2 7h16"/><path d="M6 4V2"/><path d="M14 4V2"/>
+                <circle cx="14" cy="11" r="3.5" fill="#2d7dbd" stroke="#2d7dbd"/><path d="M14 9.5v3M12.5 11h3" stroke="#fff" strokeWidth="1.5"/>
+              </svg>
+            </button>
+            <button className="tc-header-icon-btn" title="Filter">
+              <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M3 6h14M5 10h10M7 14h6"/>
+              </svg>
+            </button>
+            <div style={{ position: "relative" }}>
+              <button className="tc-header-icon-btn" title="Optionen">
+                <svg viewBox="0 0 20 20" width="18" height="18" fill="currentColor">
+                  <circle cx="10" cy="4" r="1.5"/><circle cx="10" cy="10" r="1.5"/><circle cx="10" cy="16" r="1.5"/>
+                </svg>
+              </button>
+            </div>
+          </div>
         </div>
-        <div className="tc-header-right">
-          {taskCount > 0 && (
-            <span className="tc-task-badge">{taskCount} Tasks</span>
-          )}
-          <span className={`tc-dot ${ready ? "on" : "off"}`} title={ready ? "Verbunden" : fehler ?? "Verbinde…"} />
-          <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ opacity: 0.7, cursor: "pointer" }}>
-            <circle cx="10" cy="10" r="2.5"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.22 4.22l1.42 1.42M14.36 14.36l1.42 1.42M4.22 15.78l1.42-1.42M14.36 5.64l1.42-1.42"/>
-          </svg>
-        </div>
+        {/* Task-Info */}
+        {taskCount > 0 && (
+          <div className="tc-header-org-info">
+            <span className="tc-task-badge-org">{taskCount} Tasks</span>
+            <span className={`tc-dot ${ready ? "on" : "off"}`} title={ready ? "Verbunden" : fehler ?? "Verbinde…"} />
+          </div>
+        )}
       </div>
 
       {/* Tabs */}

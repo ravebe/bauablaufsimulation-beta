@@ -29,21 +29,47 @@
 .tc-setup-content { padding: 8px 0; font-family: var(--tc-font); font-size: 13px; color: var(--tc-text); }
 .tasklist-wrap { font-family: var(--tc-font); font-size: 13px; color: var(--tc-text); }
 
-/* === HEADER === */
-.tc-header {
-  background: #2d7dbd; color: #fff; height: 34px; display: flex; align-items: center;
-  padding: 0 10px; justify-content: space-between;
+/* === HEADER — Organizer Style === */
+.tc-header-org {
+  background: #fff; border-bottom: 1px solid var(--tc-border); padding: 10px 12px 6px;
 }
-.tc-header-left { display: flex; align-items: center; gap: 7px; }
-.tc-header-right { display: flex; align-items: center; gap: 8px; }
+.tc-header-org-top {
+  display: flex; align-items: flex-start; gap: 8px;
+}
+.tc-header-org-title {
+  font-size: 18px; font-weight: 600; color: var(--tc-text); display: flex; align-items: center; gap: 6px;
+}
+.tc-header-org-sub {
+  font-size: 12px; color: var(--tc-text-3); cursor: pointer; margin-top: 2px; user-select: none;
+}
+.tc-header-org-sub:hover { color: var(--tc-blue); }
+.tc-header-org-actions {
+  display: flex; gap: 4px; align-items: center; margin-top: 2px;
+}
+.tc-header-icon-btn {
+  background: none; border: none; cursor: pointer; padding: 4px; color: #555;
+  display: flex; align-items: center; justify-content: center; border-radius: 3px;
+}
+.tc-header-icon-btn:hover { background: #f0f0f0; color: var(--tc-text); }
+.tc-header-org-info {
+  display: flex; align-items: center; gap: 8px; margin-top: 4px; padding-top: 4px;
+}
+.tc-task-badge-org {
+  font-size: 11px; color: var(--tc-text-3); font-weight: 500;
+}
+.tc-header-dropdown {
+  position: absolute; left: 12px; margin-top: 4px; background: #fff;
+  border: 1px solid var(--tc-border); box-shadow: 0 4px 12px rgba(0,0,0,.12);
+  z-index: 200; min-width: 180; font-size: 12px;
+}
+.tc-header-dropdown-item {
+  padding: 8px 14px; cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+}
+.tc-header-dropdown-item:hover { background: #f5f9fc; }
+.tc-header-dropdown-item.active { color: var(--tc-blue); font-weight: 600; }
 .tc-logo {
-  background: #1a5a8a; font-size: 9px; font-weight: 700; padding: 2px 5px;
+  background: #1a5a8a; color: #fff; font-size: 9px; font-weight: 700; padding: 2px 5px;
   letter-spacing: .5px; border-radius: 2px;
-}
-.tc-header-title { font-size: 13px; font-weight: 600; }
-.tc-task-badge {
-  background: rgba(255,255,255,.2); font-size: 11px; padding: 1px 9px;
-  border-radius: 10px; font-weight: 400; white-space: nowrap;
 }
 .tc-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .tc-dot.on { background: #6cc07a; }
