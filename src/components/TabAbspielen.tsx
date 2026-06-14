@@ -353,7 +353,11 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
               <div style={{ padding: "4px 8px", fontSize: 9, fontWeight: 600,
                 color: istAktiv ? "var(--tc-blue)" : istVorbei ? "var(--tc-text-3)" : "var(--tc-text-2)",
                 background: istAktiv ? "#EFF6FF" : "transparent", display: "flex", justifyContent: "space-between" }}>
-                <span>{istAktiv ? "▶ " : ""}{formatDatum(g.datum)}</span>
+                <span>{istAktiv ? "▶ " : ""}{formatDatum(g.datum)}{(() => {
+                  const ends = g.tasks.map(t => t.end).filter(Boolean);
+                  const latestEnd = ends.length > 0 ? ends.sort().pop()! : "";
+                  return latestEnd ? ` – ${formatDatum(latestEnd)}` : "";
+                })()}</span>
                 <span>{g.tasks.length} Task{g.tasks.length > 1 ? "s" : ""}</span>
               </div>
               {g.tasks.map((task, ti) => {
@@ -367,11 +371,8 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
                   fontWeight: hatSel ? 600 : 400 }}>
                   <span style={dot(task.typ)} />
                   <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{task.name}</span>
-                  <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.2, flexShrink: 0 }}>
-                    <span style={{ fontSize: 10, color: hatSel ? "#2d7dbd" : "#8a9baa" }}>
-                      {hatSel ? `${selAnz}/${task.objektGuids.length}` : `⬡ ${task.objektGuids.length}`}
-                    </span>
-                    {task.end && <span style={{ fontSize: 8, color: "#b0bec5" }}>{formatDatum(task.start)} – {formatDatum(task.end)}</span>}
+                  <span style={{ fontSize: 10, color: hatSel ? "#2d7dbd" : "#8a9baa" }}>
+                    {hatSel ? `${selAnz}/${task.objektGuids.length}` : `⬡ ${task.objektGuids.length}`}
                   </span>
                 </div>
                 );
