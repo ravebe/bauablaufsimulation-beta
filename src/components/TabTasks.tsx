@@ -1,6 +1,7 @@
 // TabTasks.tsx — Task-Liste + Task-Detail + Visibility-Buttons + Guid-Liste
 import { useState, useEffect } from "react";
 import type { SimProjekt, Task, TaskTyp } from "../types";
+import { formatDatum } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 
 // Alle Werte eines Objekts flach sammeln
@@ -225,7 +226,10 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
               onClick={() => onTaskClick(task.id)}>
               <span style={{ width: 9, height: 9, borderRadius: "50%", flexShrink: 0, background: task.typ === "neubau" ? "#6cc07a" : task.typ === "abbruch" ? "#edb94c" : "#888" }} />
               <span className="task-row-name" style={{ fontSize: 13, color: task.id === aktivTaskId ? "#2d7dbd" : "#333", fontWeight: task.id === aktivTaskId || hatSelektierte ? 600 : 400 }}>{task.name}</span>
-              <span className="task-row-date" style={{ fontSize: 12, color: "#8a9baa" }}>{task.start}</span>
+              <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.2 }}>
+                <span style={{ fontSize: 10, color: "#8a9baa" }}>{formatDatum(task.start)}</span>
+                {task.end && <span style={{ fontSize: 9, color: "#b0bec5" }}>{formatDatum(task.end)}</span>}
+              </span>
               <span className="task-row-count" style={{ fontSize: 12, marginLeft: 8 }}>
                 {hatSelektierte
                   ? <span style={{ color: "#2d7dbd", fontWeight: 600 }}>{selAnzahl}/{task.objektGuids.length}</span>

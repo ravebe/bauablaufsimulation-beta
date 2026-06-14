@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { SimProjekt, Task } from "../types";
+import { formatDatum } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 
 interface Props {
@@ -200,7 +201,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
       (api!.viewer as any).setSelection({ modelObjectIds: zuBatch(selGuids) }, "set").catch(() => {});
     }
     const namen = g.tasks.map(t => `${t.typ === "neubau" ? "🟢" : t.typ === "abbruch" ? "🟡" : "⚫"} ${t.name}`).join(", ");
-    setStatus(`${g.datum} · ${namen}`);
+    setStatus(`${formatDatum(g.datum)} · ${namen}`);
   }
 
   // --- Playback ---
@@ -323,8 +324,8 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
           <input type="range" min={0} max={totalTage} step={0.5} value={currentTag}
             onChange={e => sliderChange(Number(e.target.value))} disabled={laeuft} style={{ width: "100%" }} />
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "var(--tc-text-3)" }}>
-            <span>{minDate.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}</span>
-            <span>{maxDate.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}</span>
+            <span>{formatDatum(minDate.toISOString().slice(0, 10))}</span>
+            <span>{formatDatum(maxDate.toISOString().slice(0, 10))}</span>
           </div>
         </div>
       )}
@@ -352,7 +353,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
               <div style={{ padding: "4px 8px", fontSize: 9, fontWeight: 600,
                 color: istAktiv ? "var(--tc-blue)" : istVorbei ? "var(--tc-text-3)" : "var(--tc-text-2)",
                 background: istAktiv ? "#EFF6FF" : "transparent", display: "flex", justifyContent: "space-between" }}>
-                <span>{istAktiv ? "▶ " : ""}{g.datum}</span>
+                <span>{istAktiv ? "▶ " : ""}{formatDatum(g.datum)}</span>
                 <span>{g.tasks.length} Task{g.tasks.length > 1 ? "s" : ""}</span>
               </div>
               {g.tasks.map((task, ti) => {

@@ -58,7 +58,29 @@ export interface TcSelectionEvent {
   }>;
 }
 
-// Hilfsfunktion: Runtime IDs aus getObjects() Response parsen
+// Universeller Datum-Parser: akzeptiert YYYY-MM-DD, DD.MM.YYYY, MM/DD/YYYY etc.
+export function parseDateUniversal(s: string): Date | null {
+  if (!s) return null;
+  // DD.MM.YYYY
+  const de = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (de) return new Date(Number(de[3]), Number(de[2]) - 1, Number(de[1]));
+  // YYYY-MM-DD
+  const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+  // MM/DD/YYYY
+  const us = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (us) return new Date(Number(us[3]), Number(us[1]) - 1, Number(us[2]));
+  // Fallback
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// Datum als DD.MM.YYYY formatieren
+export function formatDatum(s: string): string {
+  const d = parseDateUniversal(s);
+  if (!d) return s;
+  return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
+}
 export function parseObjectIds(rohe: unknown): number[] {
   if (!Array.isArray(rohe)) return [];
   const ids: number[] = [];
