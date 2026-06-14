@@ -2,7 +2,6 @@
 import { useState, useEffect } from "react";
 import type { SimProjekt, Task, TaskTyp } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
-import { getEchteBauteile } from "./modelHelpers";
 
 // Alle Werte eines Objekts flach sammeln
 interface ObjWerte { [key: string]: string; } // "PSet||PropName" → value
@@ -150,19 +149,23 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
 
   async function offeneMarkieren() {
     if (!api || !aktiveSim) return;
-    const vergeben = new Set(aktiveSim.tasks.flatMap(t => t.objektGuids));
-    // Nur Modelle die bereits zugewiesene Objekte haben
-    const relevanteModelle = aktiveSim.modelle.filter(m => m.id && [...vergeben].some(g => g.startsWith(m.id + ":::")));
-    const byModel = new Map<string, number[]>();
-    for (const modell of relevanteModelle) {
-      const echteIds = await getEchteBauteile(api, aktiveSim.id, modell.id);
-      const offene = echteIds.filter(rId => !vergeben.has(`${modell.id}:::${rId}`));
-      console.log("[offeneMarkieren]", modell.id, "echte:", echteIds.length, "offen:", offene.length);
-      if (offene.length > 0) byModel.set(modell.id, offene);
+    // Alle zugewiesenen Guids sammeln
+    const vergeben = aktiveSim.tasks.flatMap(t => t.objektGuids);
+    if (vergeben.length === 0) return;
+
+    // Zugewiesene Objekte ausblenden → nur offene bleiben sichtbar
+    const byModel = new Map<string, Set<number>>();
+    for (const g of vergeben) {
+      if (!g.includes(":::")) continue;
+      const sep = g.indexOf(":::");
+      const mid = g.slice(0, sep); const rId = Number(g.slice(sep + 3));
+      if (mid && !isNaN(rId)) { if (!byModel.has(mid)) byModel.set(mid, new Set()); byModel.get(mid)!.add(rId); }
     }
-    if (byModel.size === 0) return;
-    const modelObjectIds = [...byModel.entries()].map(([modelId, rIds]) => ({ modelId, objectRuntimeIds: rIds }));
-    try { await (api.viewer as any).setSelection({ modelObjectIds }, "set"); } catch {}
+    const modelObjectIds = [...byModel.entries()].map(([modelId, rIds]) => ({ modelId, objectRuntimeIds: [...rIds] }));
+    try {
+      await api.viewer.setObjectState({ modelObjectIds } as any, { visible: false } as any);
+      console.log("[offeneMarkieren] Zugewiesene ausgeblendet:", vergeben.length);
+    } catch (e) { console.log("[offeneMarkieren] Fehler:", e); }
   }
 
   async function nurAnzeigen(guids: string[]) {
@@ -198,7 +201,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
             return offen > 0 ? (
               <button style={{ fontSize: 11, color: "#2d7dbd", fontWeight: 600, background: "none", border: "1px solid #2d7dbd",
                 padding: "1px 8px", cursor: "pointer", fontFamily: "inherit" }}
-                onClick={offeneMarkieren} title="Offene Bauteile im 3D markieren">
+                onClick={offeneMarkieren} title="Zugewiesene ausblenden → offene sichtbar">
                 {offen} OFFEN
               </button>
             ) : (
