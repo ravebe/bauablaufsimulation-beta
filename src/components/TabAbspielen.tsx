@@ -367,8 +367,11 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
                   fontWeight: hatSel ? 600 : 400 }}>
                   <span style={dot(task.typ)} />
                   <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{task.name}</span>
-                  <span style={{ fontSize: 11, color: hatSel ? "#2d7dbd" : "#8a9baa" }}>
-                    {hatSel ? `${selAnz}/${task.objektGuids.length}` : `⬡ ${task.objektGuids.length}`}
+                  <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.2, flexShrink: 0 }}>
+                    <span style={{ fontSize: 10, color: hatSel ? "#2d7dbd" : "#8a9baa" }}>
+                      {hatSel ? `${selAnz}/${task.objektGuids.length}` : `⬡ ${task.objektGuids.length}`}
+                    </span>
+                    {task.end && <span style={{ fontSize: 8, color: "#b0bec5" }}>{formatDatum(task.start)} – {formatDatum(task.end)}</span>}
                   </span>
                 </div>
                 );

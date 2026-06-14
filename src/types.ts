@@ -217,5 +217,12 @@ export const BEKANNTE_GUID_UUID_MAPS: Record<string, Record<string, string>> = {
 
 // Datum validieren: YYYY-MM-DD
 export function isValidDatum(s: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}$/.test(s);
+  return parseDateUniversal(s) !== null;
+}
+
+// Datum zu YYYY-MM-DD normalisieren (für interne Speicherung)
+export function normalizeDatum(s: string): string {
+  const d = parseDateUniversal(s);
+  if (!d) return s;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }

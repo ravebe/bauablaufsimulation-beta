@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import type { Task, TaskTyp } from "../types";
-import { isValidDatum } from "../types";
+import { isValidDatum, normalizeDatum } from "../types";
 
 interface Props {
   onImport: (tasks: Task[]) => void;
@@ -20,18 +20,19 @@ export default function GanttImport({ onImport, taskCount }: Props) {
   const [fehler, setFehler] = useState<ImportFehler[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
 
-  // Excel Seriennummer → YYYY-MM-DD
-  function excelDatum(v: unknown): string {
+  // Datum aus beliebigem Format → YYYY-MM-DD normalisieren
+  function parseDatum(v: unknown): string {
     if (typeof v === "number") {
-      // Excel epoch: 1899-12-30
+      // Excel Seriennummer → Datum
       const d = new Date(Math.round((v - 25569) * 86400 * 1000));
       const y = d.getUTCFullYear();
       const m = String(d.getUTCMonth() + 1).padStart(2, "0");
       const t = String(d.getUTCDate()).padStart(2, "0");
       return `${y}-${m}-${t}`;
     }
-    if (typeof v === "string") return v.trim();
-    return String(v ?? "");
+    const s = String(v ?? "").trim();
+    if (!s) return "";
+    return normalizeDatum(s); // dd.mm.yyyy, yyyy-mm-dd, mm/dd/yyyy → yyyy-mm-dd
   }
 
   function parseTyp(v: unknown): TaskTyp {
@@ -41,16 +42,42 @@ export default function GanttImport({ onImport, taskCount }: Props) {
     return "neubau";
   }
 
+  // Spaltenname flexibel finden
+  function findCol(row: Record<string, unknown>, namen: string[]): unknown {
+    for (const n of namen) {
+      if (row[n] !== undefined && row[n] !== "") return row[n];
+      // Case-insensitive
+      const key = Object.keys(row).find(k => k.toLowerCase() === n.toLowerCase());
+      if (key && row[key] !== undefined && row[key] !== "") return row[key];
+    }
+    return undefined;
+  }
+
   function parseXlsx(buf: ArrayBuffer): Task[] {
     const wb = XLSX.read(buf, { type: "array" });
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
-    return rows.map((row: Record<string, unknown>, i: number) => ({
+    return rows.map((row, i) => ({
       id: crypto.randomUUID(),
-      name: String(row["Name"] ?? row["name"] ?? row["Vorgangsname"] ?? `Task ${i + 1}`),
-      start: excelDatum(row["Start"] ?? row["start"] ?? row["Anfang"] ?? ""),
-      end: excelDatum(row["Ende"] ?? row["end"] ?? row["Finish"] ?? row["Fertig"] ?? ""),
-      typ: parseTyp(row["Typ"] ?? row["typ"] ?? row["Type"] ?? "neubau"),
+      name: String(findCol(row, ["Name", "name", "Vorgangsname", "Vorgang", "Task", "Bezeichnung"]) ?? `Task ${i + 1}`),
+      start: parseDatum(findCol(row, ["Start", "start", "Anfang", "Begin", "Von"])),
+      end: parseDatum(findCol(row, ["Ende", "end", "Finish", "Fertig", "Bis", "End"])),
+      typ: parseTyp(findCol(row, ["Typ", "typ", "Type", "type", "Kategorie"])),
+      objektGuids: [],
+    }));
+  }
+
+  function parseCsv(text: string): Task[] {
+    // CSV mit XLSX parsen (unterstützt ; und , Trenner)
+    const wb = XLSX.read(text, { type: "string" });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
+    return rows.map((row, i) => ({
+      id: crypto.randomUUID(),
+      name: String(findCol(row, ["Name", "name", "Vorgangsname", "Vorgang", "Task", "Bezeichnung"]) ?? `Task ${i + 1}`),
+      start: parseDatum(findCol(row, ["Start", "start", "Anfang", "Begin", "Von"])),
+      end: parseDatum(findCol(row, ["Ende", "end", "Finish", "Fertig", "Bis", "End"])),
+      typ: parseTyp(findCol(row, ["Typ", "typ", "Type", "type", "Kategorie"])),
       objektGuids: [],
     }));
   }
@@ -64,8 +91,8 @@ export default function GanttImport({ onImport, taskCount }: Props) {
       tasks.push({
         id: crypto.randomUUID(),
         name: g("Name") || g("name") || `Task ${i + 1}`,
-        start: g("Start") || g("start") || g("EarlyStart") || "",
-        end: g("Finish") || g("finish") || g("Ende") || g("End") || "",
+        start: parseDatum(g("Start") || g("start") || g("EarlyStart") || ""),
+        end: parseDatum(g("Finish") || g("finish") || g("Ende") || g("End") || g("EarlyFinish") || ""),
         typ: parseTyp(g("Typ") || g("typ") || g("Type") || "neubau"),
         objektGuids: [],
       });
@@ -77,7 +104,7 @@ export default function GanttImport({ onImport, taskCount }: Props) {
     const errs: ImportFehler[] = [];
     tasks.forEach((t, i) => {
       if (!isValidDatum(t.start)) errs.push({ zeile: i + 1, name: t.name, feld: "Start", wert: t.start });
-      if (!isValidDatum(t.end)) errs.push({ zeile: i + 1, name: t.name, feld: "Ende", wert: t.end });
+      if (t.end && !isValidDatum(t.end)) errs.push({ zeile: i + 1, name: t.name, feld: "Ende", wert: t.end });
     });
     return errs;
   }
@@ -92,11 +119,14 @@ export default function GanttImport({ onImport, taskCount }: Props) {
       if (ext === "xlsx" || ext === "xls") {
         const buf = await file.arrayBuffer();
         tasks = parseXlsx(buf);
-      } else if (ext === "xml") {
+      } else if (ext === "csv" || ext === "tsv") {
+        const text = await file.text();
+        tasks = parseCsv(text);
+      } else if (ext === "xml" || ext === "msp") {
         const text = await file.text();
         tasks = parseXml(text);
       } else {
-        setMsg("Nur .xlsx oder .xml Dateien");
+        setMsg("Unterstützte Formate: .xlsx, .xls, .csv, .xml, .msp");
         return;
       }
 
@@ -108,7 +138,6 @@ export default function GanttImport({ onImport, taskCount }: Props) {
       const errs = validiere(tasks);
       setFehler(errs);
 
-      // Ungültige Tasks trotzdem importieren, aber markieren
       onImport(tasks);
       setMsg(`${tasks.length} Tasks importiert${errs.length > 0 ? ` · ${errs.length} Datumsfehler` : ""}`);
     } catch (e) {
@@ -131,12 +160,12 @@ export default function GanttImport({ onImport, taskCount }: Props) {
         onClick={() => inputRef.current?.click()}
       >
         <span className="gantt-upload-icon">📂</span>
-        <span className="gantt-upload-text">xlsx oder xml importieren</span>
+        <span className="gantt-upload-text">xlsx, csv, xml oder msp importieren</span>
         <span className="gantt-upload-hint">Klicken oder Datei hierher ziehen</span>
         <input
           ref={inputRef}
           type="file"
-          accept=".xlsx,.xls,.xml"
+          accept=".xlsx,.xls,.csv,.tsv,.xml,.msp"
           style={{ display: "none" }}
           onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])}
         />
@@ -156,7 +185,7 @@ export default function GanttImport({ onImport, taskCount }: Props) {
         <div style={{ marginTop: 6 }}>
           {fehler.map((f, i) => (
             <div key={i} className="alert err" style={{ fontSize: 9, marginTop: 3 }}>
-              ! Zeile {f.zeile} „{f.name}" — {f.feld}: ungültiges Datum „{f.wert}" (erwartet YYYY-MM-DD)
+              ! Zeile {f.zeile} „{f.name}" — {f.feld}: ungültiges Datum „{f.wert}"
             </div>
           ))}
         </div>
