@@ -1,7 +1,7 @@
 // TabTasks.tsx — Task-Liste + Task-Detail + Visibility-Buttons + Guid-Liste
 import { useState, useEffect } from "react";
 import type { SimProjekt, Task, TaskTyp } from "../types";
-import { formatDatum } from "../types";
+import { formatDatum, normalizeDatum } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 
 // Alle Werte eines Objekts flach sammeln
@@ -37,6 +37,17 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
   const [settingsQuery1, setSettingsQuery1] = useState("");
   const [settingsQuery2, setSettingsQuery2] = useState("");
   const [settingsFocus, setSettingsFocus] = useState<1 | 2 | null>(null);
+  // Drag & Drop
+  const [hoverTaskId, setHoverTaskId] = useState<string | null>(null);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dropIdx, setDropIdx] = useState<number | null>(null);
+  // Datum bearbeiten
+  const [editDatumId, setEditDatumId] = useState<string | null>(null);
+  const [editStart, setEditStart] = useState("");
+  const [editEnd, setEditEnd] = useState("");
+  // Task hinzufügen
+  const [zeigeNeuTask, setZeigeNeuTask] = useState(false);
+  const [neuTaskName, setNeuTaskName] = useState("");
 
   // Display-Config neu laden wenn Sim wechselt
   useEffect(() => {
@@ -129,6 +140,41 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
   function typAendern(taskId: string, typ: TaskTyp) {
     updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => t.id === taskId ? { ...t, typ } : t) });
   }
+
+  function taskVerschieben(fromIdx: number, toIdx: number) {
+    if (fromIdx === toIdx) return;
+    const tasks = [...aktiveSim.tasks];
+    const [moved] = tasks.splice(fromIdx, 1);
+    tasks.splice(toIdx > fromIdx ? toIdx - 1 : toIdx, 0, moved);
+    updateSim({ ...aktiveSim, tasks });
+  }
+
+  function taskLoeschen(taskId: string) {
+    updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.filter(t => t.id !== taskId) });
+    if (aktivTaskId === taskId) onTaskClick(taskId); // deselect
+  }
+
+  function taskHinzufuegen() {
+    if (!neuTaskName.trim()) return;
+    const neuerTask: Task = {
+      id: crypto.randomUUID(),
+      name: neuTaskName.trim(),
+      start: new Date().toISOString().slice(0, 10),
+      end: new Date().toISOString().slice(0, 10),
+      typ: "neubau",
+      objektGuids: [],
+    };
+    updateSim({ ...aktiveSim, tasks: [...aktiveSim.tasks, neuerTask] });
+    setNeuTaskName("");
+    setZeigeNeuTask(false);
+  }
+
+  function datumSpeichern(taskId: string) {
+    const start = normalizeDatum(editStart);
+    const end = normalizeDatum(editEnd);
+    updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => t.id === taskId ? { ...t, start, end } : t) });
+    setEditDatumId(null);
+  }
   function speichereGuids(taskId: string, guids: string[]) {
     updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => t.id === taskId ? { ...t, objektGuids: guids } : t) });
   }
@@ -196,50 +242,130 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
       <div className="gantt-section">
         <div className="gantt-section-header" style={{ letterSpacing: ".8px", color: "#8a9baa", fontWeight: 600 }}>
           <span>GANTT · {aktiveSim.tasks.length} TASKS</span>
-          {totalObjekte != null && (() => {
-            const vergeben = new Set(aktiveSim.tasks.flatMap(t => t.objektGuids)).size;
-            const offen = Math.max(0, totalObjekte - vergeben);
-            return offen > 0 ? (
-              <button style={{ fontSize: 11, color: "#2d7dbd", fontWeight: 600, background: "none", border: "1px solid #2d7dbd",
-                padding: "1px 8px", cursor: "pointer", fontFamily: "inherit" }}
-                onClick={offeneMarkieren} title="Zugewiesene ausblenden → offene sichtbar">
-                {offen} OFFEN
-              </button>
-            ) : (
-              <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 600 }}>✓ VERTEILT</span>
-            );
-          })()}
+          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            {totalObjekte != null && (() => {
+              const vergeben = new Set(aktiveSim.tasks.flatMap(t => t.objektGuids)).size;
+              const offen = Math.max(0, totalObjekte - vergeben);
+              return offen > 0 ? (
+                <button style={{ fontSize: 11, color: "#2d7dbd", fontWeight: 600, background: "none", border: "1px solid #2d7dbd",
+                  padding: "1px 8px", cursor: "pointer", fontFamily: "inherit" }}
+                  onClick={offeneMarkieren} title="Zugewiesene ausblenden → offene sichtbar">
+                  {offen} OFFEN
+                </button>
+              ) : (
+                <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 600 }}>✓ VERTEILT</span>
+              );
+            })()}
+            <button style={{ fontSize: 11, color: "#2d7dbd", fontWeight: 600, background: "none", border: "1px solid #2d7dbd",
+              padding: "1px 6px", cursor: "pointer", fontFamily: "inherit" }}
+              onClick={() => setZeigeNeuTask(z => !z)}>+</button>
+          </div>
         </div>
+
+        {/* Neuen Task hinzufügen */}
+        {zeigeNeuTask && (
+          <div style={{ padding: "6px 10px", borderBottom: "1px solid #eef1f4", display: "flex", gap: 4 }}>
+            <input className="ac-input" style={{ flex: 1, fontSize: 11 }} placeholder="Task-Name…" value={neuTaskName}
+              onChange={e => setNeuTaskName(e.target.value)} onKeyDown={e => e.key === "Enter" && taskHinzufuegen()} autoFocus />
+            <button className="tc-btn-primary" style={{ fontSize: 10, padding: "2px 8px" }} onClick={taskHinzufuegen}>✓</button>
+            <button className="tc-btn-ghost" style={{ fontSize: 10, padding: "2px 6px" }} onClick={() => { setZeigeNeuTask(false); setNeuTaskName(""); }}>✕</button>
+          </div>
+        )}
+
         <div style={{ minHeight: 220, maxHeight: 450, overflowY: "auto" }}>
         {aktiveSim.tasks.length === 0 ? (
           <div style={{ padding: 10, fontSize: 11, color: "#8a9baa", textAlign: "center" }}>
-            Noch keine Tasks — Gantt in Tab „Projekte" importieren
+            Noch keine Tasks — „+" oder Gantt importieren
           </div>
         ) : (
-          aktiveSim.tasks.map(task => {
+          aktiveSim.tasks.map((task, idx) => {
             const hatSelektierte = selGuids.size > 0 && task.objektGuids.some(g => selGuids.has(g));
             const selAnzahl = hatSelektierte ? task.objektGuids.filter(g => selGuids.has(g)).length : 0;
+            const istHover = hoverTaskId === task.id;
+            const istDropTarget = dropIdx === idx;
             return (
-            <div key={task.id} className={`task-row ${task.id === aktivTaskId ? "active" : ""}`}
-              style={{ borderBottom: "1px solid #eef1f4", padding: "6px 10px", gap: 7,
-                background: task.id === aktivTaskId ? "#e8f2fa" : hatSelektierte ? "#f0f0f0" : undefined }}
-              onClick={() => onTaskClick(task.id)}>
-              <span style={{ width: 9, height: 9, borderRadius: "50%", flexShrink: 0, background: task.typ === "neubau" ? "#6cc07a" : task.typ === "abbruch" ? "#edb94c" : "#888" }} />
-              <span className="task-row-name" style={{ fontSize: 13, color: task.id === aktivTaskId ? "#2d7dbd" : "#333", fontWeight: task.id === aktivTaskId || hatSelektierte ? 600 : 400 }}>{task.name}</span>
-              <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.2 }}>
-                <span style={{ fontSize: 10, color: "#8a9baa" }}>{formatDatum(task.start)}</span>
-                {task.end && <span style={{ fontSize: 9, color: "#b0bec5" }}>{formatDatum(task.end)}</span>}
-              </span>
-              <span className="task-row-count" style={{ fontSize: 12, marginLeft: 8 }}>
-                {hatSelektierte
-                  ? <span style={{ color: "#2d7dbd", fontWeight: 600 }}>{selAnzahl}/{task.objektGuids.length}</span>
-                  : task.objektGuids.length > 0
-                    ? <span style={{ color: "#8a9baa" }}>O {task.objektGuids.length}</span>
-                    : <span style={{ color: "#d4dce4" }}>∅</span>}
-              </span>
+            <div key={task.id}>
+              {/* Drop-Indikator oben */}
+              {istDropTarget && dragIdx !== null && dragIdx !== idx && (
+                <div style={{ height: 2, background: "#2d7dbd", margin: "0 10px" }} />
+              )}
+              <div
+                className={`task-row ${task.id === aktivTaskId ? "active" : ""}`}
+                style={{ borderBottom: "1px solid #eef1f4", padding: "6px 10px", gap: 7,
+                  background: task.id === aktivTaskId ? "#e8f2fa" : hatSelektierte ? "#f0f0f0" : undefined,
+                  opacity: dragIdx === idx ? 0.4 : 1 }}
+                onClick={() => onTaskClick(task.id)}
+                onMouseEnter={() => setHoverTaskId(task.id)}
+                onMouseLeave={() => setHoverTaskId(null)}
+                onDragOver={e => { e.preventDefault(); setDropIdx(idx); }}
+                onDrop={e => { e.preventDefault(); if (dragIdx !== null) taskVerschieben(dragIdx, idx); setDragIdx(null); setDropIdx(null); }}
+              >
+                <span style={{ width: 9, height: 9, borderRadius: "50%", flexShrink: 0, background: task.typ === "neubau" ? "#6cc07a" : task.typ === "abbruch" ? "#edb94c" : "#888" }} />
+                <span className="task-row-name" style={{ fontSize: 13, flex: 1, color: task.id === aktivTaskId ? "#2d7dbd" : "#333", fontWeight: task.id === aktivTaskId || hatSelektierte ? 600 : 400 }}>{task.name}</span>
+
+                {/* Datum — klickbar zum Bearbeiten */}
+                <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.2, cursor: "pointer" }}
+                  onClick={e => { e.stopPropagation(); setEditDatumId(task.id); setEditStart(formatDatum(task.start)); setEditEnd(formatDatum(task.end)); }}>
+                  <span style={{ fontSize: 10, color: "#8a9baa" }}>{formatDatum(task.start)}</span>
+                  {task.end && <span style={{ fontSize: 9, color: "#b0bec5" }}>{formatDatum(task.end)}</span>}
+                </span>
+
+                {/* Rechts: Count oder Drag-Handle */}
+                {istHover && !dragIdx ? (
+                  <span
+                    draggable
+                    onDragStart={e => { setDragIdx(idx); e.dataTransfer.effectAllowed = "move"; }}
+                    onDragEnd={() => { setDragIdx(null); setDropIdx(null); }}
+                    style={{ cursor: "grab", color: "#8a9baa", fontSize: 14, padding: "0 2px", userSelect: "none", flexShrink: 0 }}
+                    onClick={e => e.stopPropagation()}
+                    title="Ziehen zum Verschieben"
+                  >☰</span>
+                ) : (
+                  <span className="task-row-count" style={{ fontSize: 12, marginLeft: 4, flexShrink: 0 }}>
+                    {hatSelektierte
+                      ? <span style={{ color: "#2d7dbd", fontWeight: 600 }}>{selAnzahl}/{task.objektGuids.length}</span>
+                      : task.objektGuids.length > 0
+                        ? <span style={{ color: "#8a9baa" }}>O {task.objektGuids.length}</span>
+                        : <span style={{ color: "#d4dce4" }}>∅</span>}
+                  </span>
+                )}
+              </div>
+
+              {/* Datum bearbeiten Dialog */}
+              {editDatumId === task.id && (
+                <div style={{ padding: "6px 10px", background: "#f8fafc", borderBottom: "1px solid #eef1f4", fontSize: 11 }}
+                  onClick={e => e.stopPropagation()}>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
+                    <span style={{ color: "#8a9baa", width: 40 }}>Start:</span>
+                    <input className="ac-input" style={{ flex: 1, fontSize: 11, padding: "2px 6px" }} value={editStart}
+                      onChange={e => setEditStart(e.target.value)} placeholder="DD.MM.YYYY" />
+                  </div>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
+                    <span style={{ color: "#8a9baa", width: 40 }}>Ende:</span>
+                    <input className="ac-input" style={{ flex: 1, fontSize: 11, padding: "2px 6px" }} value={editEnd}
+                      onChange={e => setEditEnd(e.target.value)} placeholder="DD.MM.YYYY" />
+                  </div>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <button className="tc-btn-primary" style={{ flex: 1, fontSize: 10, padding: "2px 6px" }}
+                      onClick={() => datumSpeichern(task.id)}>✓ Speichern</button>
+                    <button className="tc-btn-ghost" style={{ fontSize: 10, padding: "2px 6px", color: "#d44" }}
+                      onClick={e => { e.stopPropagation(); if (confirm(`Task „${task.name}" löschen?`)) taskLoeschen(task.id); }}>🗑</button>
+                    <button className="tc-btn-ghost" style={{ fontSize: 10, padding: "2px 6px" }}
+                      onClick={() => setEditDatumId(null)}>✕</button>
+                  </div>
+                </div>
+              )}
             </div>
             );
           })
+        )}
+        {/* Drop-Zone am Ende */}
+        {dragIdx !== null && (
+          <div style={{ height: 24, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#8a9baa" }}
+            onDragOver={e => { e.preventDefault(); setDropIdx(aktiveSim.tasks.length); }}
+            onDrop={e => { e.preventDefault(); if (dragIdx !== null) taskVerschieben(dragIdx, aktiveSim.tasks.length); setDragIdx(null); setDropIdx(null); }}>
+            {dropIdx === aktiveSim.tasks.length ? <div style={{ height: 2, background: "#2d7dbd", width: "90%" }} /> : ""}
+          </div>
         )}
         </div>
       </div>
