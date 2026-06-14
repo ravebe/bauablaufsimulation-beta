@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { SimProjekt } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import GanttImport from "./GanttImport";
+import GanttExport from "./GanttExport";
 
 interface Props {
   api: ApiInstance | null;
@@ -262,7 +263,10 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId }:
                 )}
 
                 {/* Gantt */}
-                <div className="tc-section-label" style={{ marginBottom: 4 }}>Gantt</div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                  <span className="tc-section-label">Gantt</span>
+                  {sim.tasks.length > 0 && <GanttExport tasks={sim.tasks} simName={sim.name} />}
+                </div>
                 <GanttImport
                   onImport={tasks => setSims(prev =>
                     prev.map(s => s.id === sim.id ? { ...s, tasks } : s)
