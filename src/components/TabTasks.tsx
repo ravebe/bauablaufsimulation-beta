@@ -151,23 +151,15 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
   async function offeneMarkieren() {
     if (!api || !aktiveSim) return;
     const vergeben = new Set(aktiveSim.tasks.flatMap(t => t.objektGuids));
+    // Nur Modelle die bereits zugewiesene Objekte haben
+    const relevanteModelle = aktiveSim.modelle.filter(m => m.id && [...vergeben].some(g => g.startsWith(m.id + ":::")));
     const byModel = new Map<string, number[]>();
-    let totalEchte = 0; let totalOffen = 0;
-    for (const modell of aktiveSim.modelle) {
-      if (!modell.id) continue;
+    for (const modell of relevanteModelle) {
       const echteIds = await getEchteBauteile(api, aktiveSim.id, modell.id);
       const offene = echteIds.filter(rId => !vergeben.has(`${modell.id}:::${rId}`));
-      totalEchte += echteIds.length; totalOffen += offene.length;
-      console.log("[offeneMarkieren] Modell:", modell.id, "echte:", echteIds.length, "vergeben:", echteIds.length - offene.length, "offen:", offene.length);
-      // Stichprobe: erste 3 vergebene zeigen
-      const vergebeneBeispiele = echteIds.filter(rId => vergeben.has(`${modell.id}:::${rId}`)).slice(0, 3);
-      console.log("[offeneMarkieren] Beispiele vergeben:", vergebeneBeispiele.map(r => `${modell.id}:::${r}`));
-      // Stichprobe: erste 3 aus vergeben-Set
-      const setBeispiele = [...vergeben].slice(0, 3);
-      console.log("[offeneMarkieren] Set-Beispiele:", setBeispiele);
+      console.log("[offeneMarkieren]", modell.id, "echte:", echteIds.length, "offen:", offene.length);
       if (offene.length > 0) byModel.set(modell.id, offene);
     }
-    console.log("[offeneMarkieren] Total echte:", totalEchte, "offen:", totalOffen);
     if (byModel.size === 0) return;
     const modelObjectIds = [...byModel.entries()].map(([modelId, rIds]) => ({ modelId, objectRuntimeIds: rIds }));
     try { await (api.viewer as any).setSelection({ modelObjectIds }, "set"); } catch {}
