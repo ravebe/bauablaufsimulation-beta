@@ -300,7 +300,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                 onDragOver={e => { e.preventDefault(); setDropIdx(idx); }}
                 onDrop={e => { e.preventDefault(); if (dragIdx !== null) taskVerschieben(dragIdx, idx); setDragIdx(null); setDropIdx(null); }}
               >
-                <span style={{ width: 9, height: 9, borderRadius: "50%", flexShrink: 0, background: task.typ === "neubau" ? "#6cc07a" : task.typ === "abbruch" ? "#edb94c" : "#888" }} />
+                <span style={{ width: 9, height: 9, borderRadius: "50%", flexShrink: 0, background: task.typ === "neubau" ? "#6cc07a" : task.typ === "abbruch" ? "#edb94c" : task.typ === "temporaer" ? "#a0522d" : "#888" }} />
                 <span className="task-row-name" style={{ fontSize: 13, flex: 1, color: task.id === aktivTaskId ? "#2d7dbd" : "#333", fontWeight: task.id === aktivTaskId || hatSelektierte ? 600 : 400 }}>{task.name}</span>
 
                 {/* Datum — klickbar zum Bearbeiten */}
@@ -385,9 +385,9 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
           <div className="detail-block">
             <div className="detail-block-title">Task-Typ</div>
             <div className="typ-btns">
-              {(["neubau", "bestand", "abbruch"] as TaskTyp[]).map(typ => (
+              {(["neubau", "bestand", "abbruch", "temporaer"] as TaskTyp[]).map(typ => (
                 <button key={typ} className={`typ-btn ${aktivTask.typ === typ ? `aktiv-${typ}` : ""}`} onClick={() => typAendern(aktivTask.id, typ)}>
-                  {typ === "neubau" ? "🟢" : typ === "bestand" ? "⚫" : "🟡"} {typ}
+                  {typ === "neubau" ? "🟢" : typ === "bestand" ? "⚫" : typ === "abbruch" ? "🟡" : "🟤"} {typ}
                 </button>
               ))}
             </div>

@@ -114,6 +114,7 @@
 .typ-btn.aktiv-neubau { color: #48a058; border-color: var(--tc-green); background: var(--tc-green-bg); }
 .typ-btn.aktiv-bestand { color: #666; border-color: #888; background: #f0f0f0; }
 .typ-btn.aktiv-abbruch { color: #a07a20; border-color: var(--tc-yellow); background: var(--tc-yellow-bg); }
+.typ-btn.aktiv-temporaer { color: #6b3a1f; border-color: #a0522d; background: #f5ebe0; }
 
 /* === ACTION BAR (Bauteile zugewiesen) === */
 .ab { padding: 6px 10px; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--tc-text-2); font-weight: 600; border-bottom: 1px solid var(--tc-border-light); }

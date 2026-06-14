@@ -1,4 +1,4 @@
-export type TaskTyp = "neubau" | "bestand" | "abbruch";
+export type TaskTyp = "neubau" | "bestand" | "abbruch" | "temporaer";
 
 export interface Task {
   id: string;
