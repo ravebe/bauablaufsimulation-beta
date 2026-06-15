@@ -78,7 +78,7 @@ export default function GanttImport({ onImport, taskCount }: Props) {
       typ: parseTyp(findCol(row, ["Typ", "typ", "Type", "type", "Kategorie"])),
       objektGuids: [],
       extraSpalten: extraSpalten(row),
-    }));
+    })).filter(t => t.name.trim() && !t.name.startsWith("="));
   }
 
   function parseCsv(text: string): Task[] {
@@ -93,7 +93,7 @@ export default function GanttImport({ onImport, taskCount }: Props) {
       typ: parseTyp(findCol(row, ["Typ", "typ", "Type", "type", "Kategorie"])),
       objektGuids: [],
       extraSpalten: extraSpalten(row),
-    }));
+    })).filter(t => t.name.trim() && !t.name.startsWith("="));
   }
 
   function parseXml(text: string): Task[] {

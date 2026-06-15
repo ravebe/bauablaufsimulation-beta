@@ -374,11 +374,14 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
       {aktivTask ? (
         <div className="detail-section">
           <div className="detail-header">
-            <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: aktivTask.typ === "neubau" ? "#22C55E" : aktivTask.typ === "abbruch" ? "#EAB308" : "#999" }} />
+            <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: aktivTask.typ === "neubau" ? "#22C55E" : aktivTask.typ === "abbruch" ? "#EAB308" : aktivTask.typ === "temporaer" ? "#a0522d" : "#999" }} />
             <span className="detail-task-name">{aktivTask.name}</span>
             <span style={{ fontSize: 9, color: "var(--tc-blue)", fontWeight: 500 }}>
               {totalObjekte != null ? `⬡ ${aktivTask.objektGuids.length} / ${totalObjekte}` : `⬡ ${aktivTask.objektGuids.length}`}
             </span>
+            <button className="tc-btn-ghost" style={{ color: "#d44", fontSize: 12, padding: "0 4px", marginLeft: "auto" }}
+              title="Task löschen"
+              onClick={e => { e.stopPropagation(); if (confirm(`Task „${aktivTask.name}" löschen?`)) taskLoeschen(aktivTask.id); }}>🗑</button>
           </div>
 
           {/* Task-Typ */}
