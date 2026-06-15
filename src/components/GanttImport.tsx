@@ -54,7 +54,7 @@ export default function GanttImport({ onImport, taskCount }: Props) {
   }
 
   // Standard-Spaltennamen die NICHT als Extra gelten
-  const STANDARD = new Set(["name","start","ende","end","finish","fertig","anfang","begin","von","bis","typ","type","kategorie","vorgangsname","vorgang","task","bezeichnung"]);
+  const STANDARD = new Set(["name","start","startdatum","ende","enddatum","end","finish","fertig","anfang","begin","von","bis","typ","type","kategorie","vorgangsname","vorgang","task","bezeichnung"]);
 
   function extraSpalten(row: Record<string, unknown>): Record<string, string> {
     const extra: Record<string, string> = {};
@@ -73,8 +73,8 @@ export default function GanttImport({ onImport, taskCount }: Props) {
     return rows.map((row, i) => ({
       id: crypto.randomUUID(),
       name: String(findCol(row, ["Name", "name", "Vorgangsname", "Vorgang", "Task", "Bezeichnung"]) ?? `Task ${i + 1}`),
-      start: parseDatum(findCol(row, ["Start", "start", "Anfang", "Begin", "Von"])),
-      end: parseDatum(findCol(row, ["Ende", "end", "Finish", "Fertig", "Bis", "End"])),
+      start: parseDatum(findCol(row, ["Start", "start", "Startdatum", "startdatum", "Anfang", "Begin", "Von"])),
+      end: parseDatum(findCol(row, ["Ende", "end", "Enddatum", "enddatum", "Finish", "Fertig", "Bis", "End"])),
       typ: parseTyp(findCol(row, ["Typ", "typ", "Type", "type", "Kategorie"])),
       objektGuids: [],
       extraSpalten: extraSpalten(row),
@@ -88,8 +88,8 @@ export default function GanttImport({ onImport, taskCount }: Props) {
     return rows.map((row, i) => ({
       id: crypto.randomUUID(),
       name: String(findCol(row, ["Name", "name", "Vorgangsname", "Vorgang", "Task", "Bezeichnung"]) ?? `Task ${i + 1}`),
-      start: parseDatum(findCol(row, ["Start", "start", "Anfang", "Begin", "Von"])),
-      end: parseDatum(findCol(row, ["Ende", "end", "Finish", "Fertig", "Bis", "End"])),
+      start: parseDatum(findCol(row, ["Start", "start", "Startdatum", "startdatum", "Anfang", "Begin", "Von"])),
+      end: parseDatum(findCol(row, ["Ende", "end", "Enddatum", "enddatum", "Finish", "Fertig", "Bis", "End"])),
       typ: parseTyp(findCol(row, ["Typ", "typ", "Type", "type", "Kategorie"])),
       objektGuids: [],
       extraSpalten: extraSpalten(row),
