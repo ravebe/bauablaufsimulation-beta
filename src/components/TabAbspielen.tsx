@@ -138,36 +138,14 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     setStatus("✓ Bereit");
   }
 
-  // --- Zustand bei Tag aufbauen (Slider/Klick) — isoliert Objekte ---
+  // --- Zustand bei Tag aufbauen (Slider/Klick) ---
   async function zustandBeiTag(tag: number) {
     if (!api || !aktiveSim || !minDate) return;
-
-    // ALLE Tasks der Simulation verwenden (nicht nur gefilterte)
-    const alleTasks = aktiveSim.tasks;
     const alleSel: string[] = [];
 
-    // 1. Alle zugewiesenen Objekte erst ausblenden (ein Batch)
-    const alleZugewiesenen = alleTasks.flatMap(t => t.objektGuids);
-    if (alleZugewiesenen.length > 0) await setzeZustand(alleZugewiesenen, { visible: false, color: null });
+    // Alle Tasks der Simulation (auch aus zweitem Modell)
+    const alleTasks = aktiveSim.tasks;
 
-    // 2. Nicht-zugewiesene Objekte ausblenden (Isolation)
-    for (const modell of aktiveSim.modelle) {
-      if (!modell.id) continue;
-      try {
-        const { getModellObjekte } = await import("./modelHelpers");
-        const alleIds = await getModellObjekte(api, modell.id);
-        const zugewiesen = new Set(alleZugewiesenen.filter(g => g.startsWith(modell.id + ":::")).map(g => Number(g.split(":::")[1])));
-        const nichtZugewiesen = alleIds.filter(id => !zugewiesen.has(id));
-        if (nichtZugewiesen.length > 0) {
-          await api.viewer.setObjectState(
-            { modelObjectIds: [{ modelId: modell.id, objectRuntimeIds: nichtZugewiesen }] } as any,
-            { visible: false } as any
-          );
-        }
-      } catch {}
-    }
-
-    // 3. Pro Task sichtbar/unsichtbar setzen
     for (const t of alleTasks) {
       if (t.objektGuids.length === 0) continue;
       const s = tagVonDatum(t.start, minDate);
@@ -175,13 +153,15 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
 
       if (t.typ === "neubau") {
         if (tag >= s) { await setzeZustand(t.objektGuids, { visible: true }); if (tag <= e) alleSel.push(...t.objektGuids); }
+        else await setzeZustand(t.objektGuids, { visible: false });
       } else if (t.typ === "bestand") {
         await setzeZustand(t.objektGuids, { visible: true, color: FARBEN.bestand });
       } else if (t.typ === "abbruch") {
-        if (tag > e) { /* bleibt ausgeblendet */ }
+        if (tag > e) await setzeZustand(t.objektGuids, { visible: false });
         else { await setzeZustand(t.objektGuids, { visible: true }); if (tag >= s) await setzeZustand(t.objektGuids, { color: FARBEN.abbruch }); }
       } else if (t.typ === "temporaer") {
-        if (tag <= e) await setzeZustand(t.objektGuids, { visible: true });
+        if (tag > e) await setzeZustand(t.objektGuids, { visible: false });
+        else await setzeZustand(t.objektGuids, { visible: true });
       }
     }
     if (alleSel.length > 0) await selektieren(alleSel);
