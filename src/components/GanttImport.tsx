@@ -53,6 +53,19 @@ export default function GanttImport({ onImport, taskCount }: Props) {
     return undefined;
   }
 
+  // Standard-Spaltennamen die NICHT als Extra gelten
+  const STANDARD = new Set(["name","start","ende","end","finish","fertig","anfang","begin","von","bis","typ","type","kategorie","vorgangsname","vorgang","task","bezeichnung"]);
+
+  function extraSpalten(row: Record<string, unknown>): Record<string, string> {
+    const extra: Record<string, string> = {};
+    for (const [key, val] of Object.entries(row)) {
+      if (STANDARD.has(key.toLowerCase())) continue;
+      const v = String(val ?? "").trim();
+      if (v && v !== "null" && v !== "undefined" && v !== "") extra[key] = v;
+    }
+    return extra;
+  }
+
   function parseXlsx(buf: ArrayBuffer): Task[] {
     const wb = XLSX.read(buf, { type: "array" });
     const ws = wb.Sheets[wb.SheetNames[0]];
@@ -64,11 +77,11 @@ export default function GanttImport({ onImport, taskCount }: Props) {
       end: parseDatum(findCol(row, ["Ende", "end", "Finish", "Fertig", "Bis", "End"])),
       typ: parseTyp(findCol(row, ["Typ", "typ", "Type", "type", "Kategorie"])),
       objektGuids: [],
+      extraSpalten: extraSpalten(row),
     }));
   }
 
   function parseCsv(text: string): Task[] {
-    // CSV mit XLSX parsen (unterstützt ; und , Trenner)
     const wb = XLSX.read(text, { type: "string" });
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
@@ -79,6 +92,7 @@ export default function GanttImport({ onImport, taskCount }: Props) {
       end: parseDatum(findCol(row, ["Ende", "end", "Finish", "Fertig", "Bis", "End"])),
       typ: parseTyp(findCol(row, ["Typ", "typ", "Type", "type", "Kategorie"])),
       objektGuids: [],
+      extraSpalten: extraSpalten(row),
     }));
   }
 

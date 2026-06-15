@@ -7,6 +7,7 @@ export interface Task {
   end: string;     // YYYY-MM-DD
   typ: TaskTyp;
   objektGuids: string[]; // Runtime IDs als strings
+  extraSpalten?: Record<string, string>; // Zusätzliche Gantt-Spalten für Auto-Verknüpfung
 }
 
 export interface SimModell {

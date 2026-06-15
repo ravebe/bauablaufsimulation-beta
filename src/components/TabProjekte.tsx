@@ -3,6 +3,7 @@ import type { SimProjekt } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import GanttImport from "./GanttImport";
 import GanttExport from "./GanttExport";
+import AutoVerknuepfung from "./AutoVerknuepfung";
 
 interface Props {
   api: ApiInstance | null;
@@ -273,6 +274,16 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId }:
                   )}
                   taskCount={sim.tasks.length}
                 />
+
+                {sim.tasks.length > 0 && sim.modelle.length > 0 && (
+                  <AutoVerknuepfung
+                    api={api}
+                    sim={sim}
+                    onUpdate={tasks => setSims(prev =>
+                      prev.map(s => s.id === sim.id ? { ...s, tasks } : s)
+                    )}
+                  />
+                )}
 
                 <div className="tc-divider" />
 
