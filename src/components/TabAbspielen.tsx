@@ -160,10 +160,42 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     if (aktive.length > 0) setStatus(aktive.map(t => `${t.typ === "neubau" ? "🟢" : t.typ === "abbruch" ? "🟡" : t.typ === "temporaer" ? "🟤" : "⚫"} ${t.name}`).join(", "));
   }
 
-  // --- Playback: Task-Events bei Tag-Übergang ---
+  // --- Pre-computed Events (sortiert nach Tag) ---
+  const events = (() => {
+    if (!minDate) return [] as { tag: number; taskId: string; type: "start" | "end" }[];
+    const evts: { tag: number; taskId: string; type: "start" | "end" }[] = [];
+    for (const t of tasks) {
+      evts.push({ tag: tagVonDatum(t.start, minDate), taskId: t.id, type: "start" });
+      if (t.end) evts.push({ tag: tagVonDatum(t.end, minDate), taskId: t.id, type: "end" });
+    }
+    return evts.sort((a, b) => a.tag - b.tag);
+  })();
+
+  const letzterEventTag = useRef(-1);
+
+  // --- Playback: Nur bei Event-Grenzen API aufrufen ---
   function pruefeTaskEvents(tag: number) {
     if (!minDate || !api) return;
-    const neueSel: string[] = [];
+
+    // Prüfe ob wir eine neue Event-Grenze überschritten haben
+    let neueEvents = false;
+    for (const evt of events) {
+      if (evt.tag > letzterEventTag.current && evt.tag <= tag) {
+        neueEvents = true;
+        break;
+      }
+    }
+    if (!neueEvents && gestartet.current.size > 0) {
+      letzterEventTag.current = tag;
+      return; // Kein neues Event → nichts tun
+    }
+    letzterEventTag.current = tag;
+
+    // Neue Events verarbeiten
+    const showGuids: string[] = [];
+    const hideGuids: string[] = [];
+    const selGuidsLocal: string[] = [];
+    let statusChanged = false;
 
     for (const t of tasks) {
       const s = tagVonDatum(t.start, minDate);
@@ -172,50 +204,55 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
       // Start-Event
       if (tag >= s && !gestartet.current.has(t.id)) {
         gestartet.current.add(t.id);
+        statusChanged = true;
         if (t.typ === "neubau") {
-          setzeZustandAsync(t.objektGuids, { visible: true });
-          neueSel.push(...t.objektGuids);
+          showGuids.push(...t.objektGuids);
         } else if (t.typ === "abbruch") {
+          // Abbruch wird erst bei End-Event ausgeblendet
           setzeZustandAsync(t.objektGuids, { color: FARBEN.abbruch });
         } else if (t.typ === "temporaer") {
-          // Flash select 1s
           selektierenAsync(t.objektGuids);
           setTimeout(() => { (api!.viewer as any).setSelection({ modelObjectIds: [] }, "set").catch(() => {}); }, 1000);
         }
       }
 
-      // Neubau: bleibt selektiert bis Ende
-      if (t.typ === "neubau" && tag >= s && tag <= e) neueSel.push(...t.objektGuids);
+      // Neubau bleibt selektiert während aktiv
+      if (t.typ === "neubau" && tag >= s && tag <= e) selGuidsLocal.push(...t.objektGuids);
 
       // End-Event
       if (tag > e && !beendet.current.has(t.id)) {
         beendet.current.add(t.id);
+        statusChanged = true;
         if (t.typ === "abbruch") {
-          const batch = zuBatch(t.objektGuids); const viewer = api!.viewer;
-          setTimeout(() => { viewer.setObjectState({ modelObjectIds: batch } as any, { visible: false, color: null } as any).catch(() => {}); }, 500);
+          hideGuids.push(...t.objektGuids);
         } else if (t.typ === "temporaer") {
-          // Flash select 1s, then hide
           selektierenAsync(t.objektGuids);
           const batch = zuBatch(t.objektGuids); const viewer = api!.viewer;
           setTimeout(() => {
             viewer.setObjectState({ modelObjectIds: batch } as any, { visible: false } as any).catch(() => {});
-            (viewer as any).setSelection({ modelObjectIds: [] }, "set").catch(() => {});
           }, 1000);
         }
       }
     }
 
-    // Neubau-Selektion aktualisieren
-    if (neueSel.length > 0) selektierenAsync(neueSel);
+    // Gebatchte API-Calls (maximal 3 statt hunderte)
+    if (showGuids.length > 0) setzeZustandAsync(showGuids, { visible: true });
+    if (hideGuids.length > 0) setzeZustandAsync(hideGuids, { visible: false });
+    if (statusChanged && selGuidsLocal.length > 0) selektierenAsync(selGuidsLocal);
 
-    const aktive = tasks.filter(t => istAktiv(t, tag));
-    if (aktive.length > 0) setStatus(aktive.map(t => `${t.typ === "neubau" ? "🟢" : t.typ === "abbruch" ? "🟡" : t.typ === "temporaer" ? "🟤" : "⚫"} ${t.name}`).join(", "));
+    if (statusChanged) {
+      const aktive = tasks.filter(t => istAktiv(t, tag));
+      if (aktive.length > 0) setStatus(aktive.map(t => `${t.typ === "neubau" ? "🟢" : t.typ === "abbruch" ? "🟡" : t.typ === "temporaer" ? "🟤" : "⚫"} ${t.name}`).join(", "));
+    }
   }
 
   // --- Playback ---
   const starten = useCallback(async () => {
     if (!api || !aktiveSim || laeuft || modellIds.length === 0 || tasks.length === 0) return;
     stopRef.current = false; setLaeuft(true);
+    // Polling pausieren während Playback
+    if (selRef.current) { clearInterval(selRef.current); selRef.current = null; }
+    letzterEventTag.current = -1;
     if (currentTagRef.current <= 0) { await startzustand(); if (stopRef.current) { setLaeuft(false); return; } }
     lastTimeRef.current = performance.now();
 
@@ -241,6 +278,18 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     stopRef.current = true;
     if (animRef.current) { cancelAnimationFrame(animRef.current); animRef.current = null; }
     setLaeuft(false); setStatus("■ Gestoppt");
+    // Polling wieder starten
+    if (api && !selRef.current) {
+      const check = async () => {
+        try {
+          const sel = await (api!.viewer as any).getSelection();
+          const guids = new Set<string>();
+          if (Array.isArray(sel)) for (const s of sel) { const mid = s?.modelId ?? ""; for (const rId of s?.objectRuntimeIds ?? []) guids.add(`${mid}:::${rId}`); }
+          setSelGuids(guids);
+        } catch { setSelGuids(new Set()); }
+      };
+      selRef.current = setInterval(check, 1500);
+    }
   }
 
   async function sliderChange(tag: number) {
