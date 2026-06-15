@@ -253,7 +253,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                   {offen} OFFEN
                 </button>
               ) : (
-                <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 600 }}>✓ VERTEILT</span>
+                <span style={{ fontSize: 11, color: "#2d7dbd", fontWeight: 600 }}>✓ VERTEILT</span>
               );
             })()}
             <button style={{ fontSize: 11, color: "#2d7dbd", fontWeight: 600, background: "none", border: "1px solid #2d7dbd",

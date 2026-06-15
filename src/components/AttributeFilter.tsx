@@ -299,7 +299,7 @@ export default function AttributeFilter({ api, aktiveSim, aktivTask, aktivesMode
               <div style={{ fontWeight: 600, color: "#C2410C", marginBottom: 4 }}>⚠ Objekte in anderen Tasks:</div>
               {konflikt.details.map((k, i) => <div key={i} style={{ color: "#9A3412" }}>• {k.anzahl} aus „{k.name}"</div>)}
               <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                <button className="tc-btn-primary" style={{ flex: 1, background: "#16a34a", borderColor: "#16a34a", fontSize: 11 }}
+                <button className="tc-btn-primary" style={{ flex: 1, background: "#2d7dbd", borderColor: "#2d7dbd", fontSize: 11 }}
                   onClick={() => filterZuweisen(konflikt.guids)}>Verschieben</button>
                 <button className="tc-btn-ghost" style={{ flex: 1, fontSize: 11 }}
                   onClick={() => { setKonflikt(null); setSuchStatus("Abgebrochen"); }}>Abbrechen</button>

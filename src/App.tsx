@@ -10,7 +10,7 @@ import "./App.css";
 type Tab = "projekte" | "bauteile" | "abspielen";
 
 export default function App() {
-  const { api, ready, fehler, selektion, aktivesModellId, geladeneModelle } = useApi();
+  const { api, ready, selektion, aktivesModellId, geladeneModelle } = useApi();
 
   const [aktTab, setAktTab] = useState<Tab>("projekte");
   const [sims, setSims] = useState<SimProjekt[]>([]);
@@ -40,8 +40,6 @@ export default function App() {
   function updateSim(updated: SimProjekt) {
     setSims(prev => prev.map(s => s.id === updated.id ? updated : s));
   }
-
-  const taskCount = aktiveSim?.tasks.length ?? 0;
 
   const [headerDropdown, setHeaderDropdown] = useState(false);
   const [headerFilter, setHeaderFilter] = useState<"alle" | "meine" | "freigegeben">("alle");
@@ -93,13 +91,6 @@ export default function App() {
             </div>
           </div>
         </div>
-        {/* Task-Info */}
-        {taskCount > 0 && (
-          <div className="tc-header-org-info">
-            <span className="tc-task-badge-org">{taskCount} Tasks</span>
-            <span className={`tc-dot ${ready ? "on" : "off"}`} title={ready ? "Verbunden" : fehler ?? "Verbinde…"} />
-          </div>
-        )}
       </div>
 
       {/* Tabs */}

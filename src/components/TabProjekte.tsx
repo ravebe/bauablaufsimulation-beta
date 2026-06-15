@@ -186,7 +186,11 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId }:
             {/* Sim Header */}
             <div className="sim-card-header" onClick={() => toggleAufgeklappt(sim.id)}>
               <div className="sim-card-left">
-                <span style={{ fontSize: 18 }}>📊</span>
+                <span style={{ flexShrink: 0 }}>
+                  <svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="#8a9baa" strokeWidth="1.5">
+                    <rect x="3" y="10" width="3" height="7" rx="0.5" fill="#c4cdd6"/><rect x="8.5" y="6" width="3" height="11" rx="0.5" fill="#a0adb8"/><rect x="14" y="3" width="3" height="14" rx="0.5" fill="#8a9baa"/>
+                  </svg>
+                </span>
                 <div>
                   <div className="sim-card-name">{sim.name}</div>
                   <div className="sim-card-meta">
@@ -206,8 +210,24 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId }:
                     <div style={{
                       position: "absolute", right: 0, top: "100%", background: "white",
                       border: "0.5px solid var(--tc-border)", borderRadius: 5,
-                      boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, minWidth: 150,
+                      boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, minWidth: 200,
                     }}>
+                      <div style={{ padding: "6px 14px", fontSize: 10, color: "var(--tc-text-3)", fontWeight: 600, borderBottom: "1px solid #eef1f4" }}>
+                        Zugriffskontrolle
+                      </div>
+                      {([
+                        { key: "edit", label: "Zugriff bearbeiten", icon: "✏", desc: "Inhalt hinzufügen, bearbeiten" },
+                        { key: "read", label: "Schreibgeschützt", icon: "👁", desc: "Nur Anzeigen von Inhalt" },
+                        { key: "none", label: "Kein Zugriff", icon: "🚫", desc: "" },
+                      ] as const).map(opt => (
+                        <button key={opt.key}
+                          style={{ display: "block", width: "100%", padding: "6px 14px", background: "none", border: "none", textAlign: "left", fontSize: 11, cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
+                          onClick={() => { setMenuOffen(null); /* TODO: Zugriffskontrolle speichern */ }}
+                        >
+                          <div style={{ fontWeight: 500 }}>{opt.icon} {opt.label}</div>
+                          {opt.desc && <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>{opt.desc}</div>}
+                        </button>
+                      ))}
                       <button
                         style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", fontSize: 11, color: "var(--tc-red)", cursor: "pointer" }}
                         onClick={() => loeschen(sim.id)}
