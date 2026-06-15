@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import type { SimProjekt, Task } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { formatDatum, parseDateUniversal } from "../types";
+import { getEchteBauteile } from "./modelHelpers";
 
 interface Props { api: ApiInstance | null; aktiveSim: SimProjekt | null; aktivesModellId: string | null; }
 
@@ -36,8 +37,8 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
 
   const modellIds = [...new Set([...(aktiveSim?.modelle.map(m => m.id) ?? []), ...(aktivesModellId ? [aktivesModellId] : [])])].filter(Boolean);
 
-  // Tasks mit Bauteilen + gültigem Startdatum
-  const tasks = (aktiveSim?.tasks ?? []).filter(t => t.objektGuids.length > 0 && t.start && parseDateUniversal(t.start));
+  // Alle Tasks mit gültigem Startdatum (aus ALLEN Modellen)
+  const tasks = (aktiveSim?.tasks ?? []).filter(t => t.start && parseDateUniversal(t.start));
 
   const { minDate, maxDate, totalTage } = (() => {
     if (tasks.length === 0) return { minDate: null, maxDate: null, totalTage: 0 };
@@ -142,10 +143,25 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
   async function zustandBeiTag(tag: number) {
     if (!api || !aktiveSim || !minDate) return;
     const alleSel: string[] = [];
-
-    // Alle Tasks der Simulation (auch aus zweitem Modell)
     const alleTasks = aktiveSim.tasks;
 
+    // Nicht-zugewiesene Blatt-Objekte ausblenden (nur echte Bauteile, keine Hierarchie)
+    const alleZugewiesenen = new Set(alleTasks.flatMap(t => t.objektGuids));
+    for (const modell of aktiveSim.modelle) {
+      if (!modell.id) continue;
+      try {
+        const echteIds = await getEchteBauteile(api, aktiveSim.id, modell.id);
+        const nichtZugewiesen = echteIds.filter(rId => !alleZugewiesenen.has(`${modell.id}:::${rId}`));
+        if (nichtZugewiesen.length > 0) {
+          await api.viewer.setObjectState(
+            { modelObjectIds: [{ modelId: modell.id, objectRuntimeIds: nichtZugewiesen }] } as any,
+            { visible: false } as any
+          );
+        }
+      } catch {}
+    }
+
+    // Pro Task sichtbar/unsichtbar setzen
     for (const t of alleTasks) {
       if (t.objektGuids.length === 0) continue;
       const s = tagVonDatum(t.start, minDate);
