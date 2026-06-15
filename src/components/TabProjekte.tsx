@@ -3,6 +3,7 @@ import type { SimProjekt } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import GanttImport from "./GanttImport";
 import GanttExport from "./GanttExport";
+import GanttVorlage from "./GanttVorlage";
 import AutoVerknuepfung from "./AutoVerknuepfung";
 
 interface Props {
@@ -266,7 +267,10 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId }:
                 {/* Gantt */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                   <span className="tc-section-label">Gantt</span>
-                  {sim.tasks.length > 0 && <GanttExport tasks={sim.tasks} simName={sim.name} />}
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <GanttVorlage />
+                    {sim.tasks.length > 0 && <GanttExport tasks={sim.tasks} simName={sim.name} />}
+                  </div>
                 </div>
                 <GanttImport
                   onImport={tasks => setSims(prev =>
