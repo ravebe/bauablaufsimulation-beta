@@ -49,8 +49,12 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
   // Task hinzufügen
   const [zeigeNeuTask, setZeigeNeuTask] = useState(false);
   const [neuTaskName, setNeuTaskName] = useState("");
-  const [bauteilListHeight, setBauteilListHeight] = useState(350);
+  const [bauteilListHeight, setBauteilListHeight] = useState(() => {
+    try { return Number(localStorage.getItem("4d-list-height-bauteile")) || 350; } catch { return 350; }
+  });
   const resizingRef = useRef(false);
+
+  useEffect(() => { localStorage.setItem("4d-list-height-bauteile", String(bauteilListHeight)); }, [bauteilListHeight]);
 
   // Display-Config neu laden wenn Sim wechselt
   useEffect(() => {

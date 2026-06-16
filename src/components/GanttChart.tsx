@@ -1,7 +1,7 @@
 // GanttChart.tsx — Horizontales Gantt-Diagramm mit Zeitachse und Playback-Nadel
-import { useRef, useEffect } from "react";
+import { useRef } from "react";
 import type { Task } from "../types";
-import { parseDateUniversal, formatDatum } from "../types";
+import { parseDateUniversal } from "../types";
 
 interface Props {
   tasks: Task[];
@@ -12,162 +12,90 @@ interface Props {
 }
 
 const FARBEN: Record<string, string> = { neubau: "#6cc07a", bestand: "#999", abbruch: "#edb94c", temporaer: "#a0522d" };
-const ROW_H = 24;
-const LABEL_W = 160;
-const HEAD_H = 32;
+const ROW_H = 22;
+const LABEL_W = 140;
+const HEAD_H = 28;
 
 export default function GanttChart({ tasks, currentTag, totalTage, minDate }: Props) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  // Canvas zeichnen
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || !minDate || totalTage <= 0) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const chartW = Math.max(totalTage * 6, 600);
-    const chartH = HEAD_H + tasks.length * ROW_H + 10;
-    canvas.width = (LABEL_W + chartW) * 2; // retina
-    canvas.height = chartH * 2;
-    canvas.style.width = `${LABEL_W + chartW}px`;
-    canvas.style.height = `${chartH}px`;
-    ctx.scale(2, 2);
-    ctx.clearRect(0, 0, LABEL_W + chartW, chartH);
-    ctx.font = "10px 'Segoe UI', sans-serif";
-
-    // Hintergrund
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(0, 0, LABEL_W + chartW, chartH);
-
-    // Zeitachse Header
-    ctx.fillStyle = "#f5f7f9";
-    ctx.fillRect(LABEL_W, 0, chartW, HEAD_H);
-    ctx.strokeStyle = "#e0e4e8";
-    ctx.lineWidth = 0.5;
-
-    // Monats-Labels + vertikale Linien
-    const pxProTag = chartW / totalTage;
-    let lastMonth = -1;
-    for (let d = 0; d <= totalTage; d++) {
-      const date = new Date(minDate.getTime() + d * 86400000);
-      const m = date.getMonth();
-      const x = LABEL_W + d * pxProTag;
-
-      // Wochenanfang: feine Linie
-      if (date.getDay() === 1) {
-        ctx.beginPath(); ctx.moveTo(x, HEAD_H); ctx.lineTo(x, chartH);
-        ctx.strokeStyle = "#f0f2f4"; ctx.stroke();
-      }
-
-      // Monatsanfang: Label + dickere Linie
-      if (m !== lastMonth) {
-        lastMonth = m;
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, chartH);
-        ctx.strokeStyle = "#d4dce4"; ctx.stroke();
-        const monat = date.toLocaleDateString("de-DE", { month: "short", year: "2-digit" });
-        ctx.fillStyle = "#555";
-        ctx.font = "bold 10px 'Segoe UI', sans-serif";
-        ctx.fillText(monat, x + 4, 14);
-        ctx.font = "10px 'Segoe UI', sans-serif";
-        // Tage des Monats
-        ctx.fillStyle = "#8a9baa";
-        ctx.fillText(`${date.getDate()}.`, x + 4, 26);
-      }
-    }
-
-    // Zeilen
-    for (let i = 0; i < tasks.length; i++) {
-      const y = HEAD_H + i * ROW_H;
-      const t = tasks[i];
-
-      // Zebra
-      if (i % 2 === 0) {
-        ctx.fillStyle = "#fafbfc";
-        ctx.fillRect(0, y, LABEL_W + chartW, ROW_H);
-      }
-
-      // Zeile: Trennlinie
-      ctx.beginPath(); ctx.moveTo(0, y + ROW_H); ctx.lineTo(LABEL_W + chartW, y + ROW_H);
-      ctx.strokeStyle = "#eef1f4"; ctx.lineWidth = 0.5; ctx.stroke();
-
-      // Label links
-      ctx.fillStyle = "#333";
-      const label = t.name.length > 22 ? t.name.slice(0, 20) + "…" : t.name;
-      ctx.fillText(label, 6, y + 16);
-
-      // Balken
-      const sd = parseDateUniversal(t.start);
-      const ed = parseDateUniversal(t.end);
-      if (sd && minDate) {
-        const startTag = Math.max(0, (sd.getTime() - minDate.getTime()) / 86400000);
-        const endTag = ed ? (ed.getTime() - minDate.getTime()) / 86400000 : startTag + 1;
-        const barX = LABEL_W + startTag * pxProTag;
-        const barW = Math.max((endTag - startTag) * pxProTag, 3);
-        const barY = y + 5;
-        const barH = ROW_H - 10;
-
-        ctx.fillStyle = FARBEN[t.typ] || "#6cc07a";
-        ctx.fillRect(barX, barY, barW, barH);
-
-        // Objekt-Count im Balken
-        if (barW > 30 && t.objektGuids.length > 0) {
-          ctx.fillStyle = "rgba(255,255,255,0.85)";
-          ctx.font = "bold 8px 'Segoe UI', sans-serif";
-          ctx.fillText(`${t.objektGuids.length}`, barX + 4, barY + barH - 2);
-          ctx.font = "10px 'Segoe UI', sans-serif";
-        }
-      }
-    }
-
-    // Label-Spalte Trennlinie
-    ctx.beginPath(); ctx.moveTo(LABEL_W, 0); ctx.lineTo(LABEL_W, chartH);
-    ctx.strokeStyle = "#d4dce4"; ctx.lineWidth = 1; ctx.stroke();
-
-    // Playback-Nadel
-    if (currentTag > 0) {
-      const nadelX = LABEL_W + currentTag * pxProTag;
-      ctx.beginPath(); ctx.moveTo(nadelX, 0); ctx.lineTo(nadelX, chartH);
-      ctx.strokeStyle = "#e63946"; ctx.lineWidth = 1.5; ctx.stroke();
-      // Dreieck oben
-      ctx.fillStyle = "#e63946";
-      ctx.beginPath();
-      ctx.moveTo(nadelX - 5, 0); ctx.lineTo(nadelX + 5, 0); ctx.lineTo(nadelX, 8);
-      ctx.fill();
-      // Datum-Label
-      if (minDate) {
-        const datumStr = formatDatum(new Date(minDate.getTime() + currentTag * 86400000).toISOString().slice(0, 10));
-        ctx.fillStyle = "#e63946";
-        ctx.font = "bold 9px 'Segoe UI', sans-serif";
-        const tw = ctx.measureText(datumStr).width;
-        ctx.fillRect(nadelX - tw / 2 - 3, 9, tw + 6, 13);
-        ctx.fillStyle = "#fff";
-        ctx.fillText(datumStr, nadelX - tw / 2, 19);
-      }
-    }
-  }, [tasks, currentTag, totalTage, minDate]);
-
-  // Auto-Scroll zur Nadel bei Playback
-  useEffect(() => {
-    if (!scrollRef.current || !minDate || totalTage <= 0) return;
-    const chartW = Math.max(totalTage * 6, 600);
-    const pxProTag = chartW / totalTage;
-    const nadelX = LABEL_W + currentTag * pxProTag;
-    const container = scrollRef.current;
-    const viewW = container.clientWidth;
-    if (nadelX > container.scrollLeft + viewW - 100 || nadelX < container.scrollLeft + LABEL_W) {
-      container.scrollLeft = Math.max(0, nadelX - viewW / 2);
-    }
-  }, [currentTag, totalTage, minDate]);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   if (!minDate || totalTage <= 0 || tasks.length === 0) {
     return <div style={{ padding: 12, fontSize: 11, color: "#8a9baa", textAlign: "center" }}>Keine Tasks für Gantt-Ansicht</div>;
   }
 
+  const pxProTag = Math.max(4, Math.min(12, 800 / totalTage));
+  const chartW = Math.max(totalTage * pxProTag, 400);
+  const totalW = LABEL_W + chartW;
+  const totalH = HEAD_H + tasks.length * ROW_H;
+
+  // Monats-Marker berechnen
+  const monate: { x: number; label: string }[] = [];
+  let lastMonth = -1;
+  for (let d = 0; d <= totalTage; d++) {
+    const date = new Date(minDate.getTime() + d * 86400000);
+    if (date.getMonth() !== lastMonth) {
+      lastMonth = date.getMonth();
+      monate.push({ x: LABEL_W + d * pxProTag, label: date.toLocaleDateString("de-DE", { month: "short", year: "2-digit" }) });
+    }
+  }
+
+  const nadelX = LABEL_W + currentTag * pxProTag;
+
   return (
-    <div ref={scrollRef} style={{ overflowX: "auto", overflowY: "auto", border: "1px solid #d4dce4", background: "#fff" }}>
-      <canvas ref={canvasRef} />
+    <div ref={containerRef} style={{ overflowX: "auto", overflowY: "auto", border: "1px solid #d4dce4", background: "#fff" }}>
+      <svg width={totalW} height={totalH} style={{ display: "block", minWidth: totalW }}>
+        {/* Header Hintergrund */}
+        <rect x={LABEL_W} y={0} width={chartW} height={HEAD_H} fill="#f5f7f9" />
+        <line x1={LABEL_W} y1={HEAD_H} x2={totalW} y2={HEAD_H} stroke="#d4dce4" strokeWidth={0.5} />
+
+        {/* Monats-Labels + Linien */}
+        {monate.map((m, i) => (
+          <g key={i}>
+            <line x1={m.x} y1={0} x2={m.x} y2={totalH} stroke="#e0e4e8" strokeWidth={0.5} />
+            <text x={m.x + 4} y={16} fontSize={9} fontWeight={600} fill="#555">{m.label}</text>
+          </g>
+        ))}
+
+        {/* Label-Spalte Trennlinie */}
+        <line x1={LABEL_W} y1={0} x2={LABEL_W} y2={totalH} stroke="#d4dce4" strokeWidth={1} />
+
+        {/* Zeilen */}
+        {tasks.map((t, i) => {
+          const y = HEAD_H + i * ROW_H;
+          const sd = parseDateUniversal(t.start);
+          const ed = parseDateUniversal(t.end);
+          const startTag = sd ? Math.max(0, (sd.getTime() - minDate.getTime()) / 86400000) : 0;
+          const endTag = ed ? (ed.getTime() - minDate.getTime()) / 86400000 : startTag + 1;
+          const barX = LABEL_W + startTag * pxProTag;
+          const barW = Math.max((endTag - startTag) * pxProTag, 3);
+          const label = t.name.length > 20 ? t.name.slice(0, 18) + "…" : t.name;
+
+          return (
+            <g key={t.id}>
+              {/* Zebra */}
+              {i % 2 === 0 && <rect x={0} y={y} width={totalW} height={ROW_H} fill="#fafbfc" />}
+              {/* Trennlinie */}
+              <line x1={0} y1={y + ROW_H} x2={totalW} y2={y + ROW_H} stroke="#eef1f4" strokeWidth={0.5} />
+              {/* Label */}
+              <text x={4} y={y + 15} fontSize={10} fill="#333">{label}</text>
+              {/* Balken */}
+              {sd && <rect x={barX} y={y + 4} width={barW} height={ROW_H - 8} rx={2} fill={FARBEN[t.typ] || "#6cc07a"} />}
+              {/* Count */}
+              {sd && barW > 25 && t.objektGuids.length > 0 && (
+                <text x={barX + 3} y={y + ROW_H - 6} fontSize={7} fill="rgba(255,255,255,0.9)" fontWeight={700}>{t.objektGuids.length}</text>
+              )}
+            </g>
+          );
+        })}
+
+        {/* Playback-Nadel */}
+        {currentTag > 0 && (
+          <g>
+            <line x1={nadelX} y1={0} x2={nadelX} y2={totalH} stroke="#e63946" strokeWidth={1.5} />
+            <polygon points={`${nadelX - 5},0 ${nadelX + 5},0 ${nadelX},7`} fill="#e63946" />
+          </g>
+        )}
+      </svg>
     </div>
   );
 }

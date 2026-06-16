@@ -29,8 +29,12 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
   const lastTimeRef = useRef(0);
   const currentTagRef = useRef(0);
   const [ganttOffen, setGanttOffen] = useState(false);
-  const [taskListHeight, setTaskListHeight] = useState(350);
+  const [taskListHeight, setTaskListHeight] = useState(() => {
+    try { return Number(localStorage.getItem("4d-list-height-abspielen")) || 350; } catch { return 350; }
+  });
   const resizingRef = useRef(false);
+
+  useEffect(() => { localStorage.setItem("4d-list-height-abspielen", String(taskListHeight)); }, [taskListHeight]);
   // Tracking: welche Tasks bereits gestartet/beendet wurden
   const gestartet = useRef(new Set<string>());
   const beendet = useRef(new Set<string>());
