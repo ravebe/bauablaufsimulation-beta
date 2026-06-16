@@ -385,7 +385,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
           laeuft={laeuft}
         />
       ) : (
-      <div className="player-card" style={{ padding: 0, overflow: "hidden", maxHeight: 400, overflowY: "auto" }}>
+      <div className="player-card" style={{ padding: 0, overflow: "hidden", flex: 1, overflowY: "auto" }}>
         {tasks.length === 0 ? (
           <div style={{ padding: 10, fontSize: 11, color: "var(--tc-text-3)", textAlign: "center" }}>Keine Tasks mit Bauteilen</div>
         ) : (() => {

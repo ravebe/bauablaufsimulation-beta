@@ -109,9 +109,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate }: Pr
         const barH = ROW_H - 10;
 
         ctx.fillStyle = FARBEN[t.typ] || "#6cc07a";
-        ctx.beginPath();
-        ctx.roundRect(barX, barY, barW, barH, 2);
-        ctx.fill();
+        ctx.fillRect(barX, barY, barW, barH);
 
         // Objekt-Count im Balken
         if (barW > 30 && t.objektGuids.length > 0) {
@@ -168,7 +166,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate }: Pr
   }
 
   return (
-    <div ref={scrollRef} style={{ overflowX: "auto", overflowY: "auto", maxHeight: 300, border: "1px solid #d4dce4", background: "#fff" }}>
+    <div ref={scrollRef} style={{ overflowX: "auto", overflowY: "auto", flex: 1, border: "1px solid #d4dce4", background: "#fff" }}>
       <canvas ref={canvasRef} />
     </div>
   );

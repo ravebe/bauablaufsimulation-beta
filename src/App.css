@@ -26,7 +26,7 @@
 /* === LAYOUT === */
 .tc-app { font-family: var(--tc-font); font-size: 13px; color: var(--tc-text); background: #fff; height: 100%; display: flex; flex-direction: column; overflow: hidden; }
 .tc-tab-content { flex: 1; overflow-y: auto; }
-.tc-setup-content { padding: 8px 0; font-family: var(--tc-font); font-size: 13px; color: var(--tc-text); }
+.tc-setup-content { padding: 8px 0; font-family: var(--tc-font); font-size: 13px; color: var(--tc-text); display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 .tasklist-wrap { font-family: var(--tc-font); font-size: 13px; color: var(--tc-text); display: flex; flex-direction: column; height: 100%; }
 
 /* === HEADER — Organizer Style === */
