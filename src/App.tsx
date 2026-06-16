@@ -43,9 +43,11 @@ export default function App() {
 
   const [headerDropdown, setHeaderDropdown] = useState(false);
   const [headerFilter, setHeaderFilter] = useState<"alle" | "meine" | "freigegeben">("alle");
+  const [taskSort, setTaskSort] = useState<"gantt" | "datum" | "aktiv">("gantt");
+  const [sortDropdown, setSortDropdown] = useState(false);
 
   return (
-    <div className="tc-app" onClick={() => setHeaderDropdown(false)}>
+    <div className="tc-app" onClick={() => { setHeaderDropdown(false); setSortDropdown(false); }}>
       {/* Header — Organizer Style */}
       <div className="tc-header-org">
         <div className="tc-header-org-top">
@@ -53,7 +55,7 @@ export default function App() {
             <div className="tc-header-org-title">
               <span className="tc-logo">4D</span> Simulationen
             </div>
-            <div className="tc-header-org-sub" onClick={e => { e.stopPropagation(); setHeaderDropdown(d => !d); }}>
+            <div className="tc-header-org-sub" onClick={e => { e.stopPropagation(); setHeaderDropdown(d => !d); setSortDropdown(false); }}>
               {aktiveSim ? aktiveSim.name : "Kein Projekt"} {headerDropdown ? "▲" : "▼"}
             </div>
             {headerDropdown && (
@@ -77,11 +79,32 @@ export default function App() {
                 <circle cx="14" cy="11" r="3.5" fill="#2d7dbd" stroke="#2d7dbd"/><path d="M14 9.5v3M12.5 11h3" stroke="#fff" strokeWidth="1.5"/>
               </svg>
             </button>
-            <button className="tc-header-icon-btn" title="Filter">
-              <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d="M3 6h14M5 10h10M7 14h6"/>
-              </svg>
-            </button>
+            <div style={{ position: "relative" }}>
+              <button className={`tc-header-icon-btn ${taskSort !== "gantt" ? "active-filter" : ""}`} title="Sortierung"
+                onClick={e => { e.stopPropagation(); setSortDropdown(d => !d); setHeaderDropdown(false); }}>
+                <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M3 6h14M5 10h10M7 14h6"/>
+                </svg>
+              </button>
+              {sortDropdown && (
+                <div className="tc-header-dropdown" style={{ right: 0, left: "auto", minWidth: 160 }} onClick={e => e.stopPropagation()}>
+                  {([
+                    { key: "gantt" as const, label: "Gantt-Reihenfolge", desc: "Wie importiert" },
+                    { key: "datum" as const, label: "Nach Datum", desc: "Frühestes Ende zuerst" },
+                    { key: "aktiv" as const, label: "Aktive zuerst", desc: "Markierte Objekte oben" },
+                  ]).map(opt => (
+                    <div key={opt.key} className={`tc-header-dropdown-item ${taskSort === opt.key ? "active" : ""}`}
+                      onClick={() => { setTaskSort(opt.key); setSortDropdown(false); }}>
+                      <div>
+                        <div style={{ fontWeight: 500 }}>{opt.label}</div>
+                        <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>{opt.desc}</div>
+                      </div>
+                      {taskSort === opt.key && <span>✓</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <div style={{ position: "relative" }}>
               <button className="tc-header-icon-btn" title="Optionen">
                 <svg viewBox="0 0 20 20" width="18" height="18" fill="currentColor">
@@ -146,6 +169,7 @@ export default function App() {
             updateSim={updateSim}
             selektion={selektion}
             aktivesModellId={aktivesModellId}
+            taskSort={taskSort}
           />
         )}
         {aktTab === "abspielen" && (
@@ -153,6 +177,7 @@ export default function App() {
             api={api}
             aktiveSim={aktiveSim}
             aktivesModellId={aktivesModellId}
+            taskSort={taskSort}
           />
         )}
       </div>

@@ -13,9 +13,10 @@ interface Props {
   updateSim: (sim: SimProjekt) => void;
   selektion: number[];
   aktivesModellId: string | null;
+  taskSort?: "gantt" | "datum" | "aktiv";
 }
 
-export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId }: Props) {
+export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId, taskSort }: Props) {
   const [aktivTaskId, setAktivTaskId] = useState<string | null>(null);
   const [totalObjekte, setTotalObjekte] = useState<number | null>(null);
   const [resetSignal, setResetSignal] = useState(0);
@@ -88,6 +89,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
         updateSim={updateSim}
         onTaskClick={taskAnklicken}
         selGuids={selGuids}
+        taskSort={taskSort}
       />
       {aktivTask && (
         <>

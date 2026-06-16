@@ -1,7 +1,7 @@
 // TabTasks.tsx — Task-Liste + Task-Detail + Visibility-Buttons + Guid-Liste
 import { useState, useEffect } from "react";
 import type { SimProjekt, Task, TaskTyp } from "../types";
-import { formatDatum, normalizeDatum } from "../types";
+import { formatDatum, normalizeDatum, parseDateUniversal } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 
 // Alle Werte eines Objekts flach sammeln
@@ -16,6 +16,7 @@ interface Props {
   updateSim: (sim: SimProjekt) => void;
   onTaskClick: (id: string) => void;
   selGuids: Set<string>;
+  taskSort?: "gantt" | "datum" | "aktiv";
 }
 
 const STORAGE_PREFIX = "4d-guid-display-";
@@ -28,7 +29,7 @@ function ladeDisplayConfig(simId: string): { zeile1: string; zeile2: string } {
   return { zeile1: "Layer||Layer", zeile2: "Reference Object||Common Type" };
 }
 
-export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, totalObjekte, updateSim, onTaskClick, selGuids }: Props) {
+export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, totalObjekte, updateSim, onTaskClick, selGuids, taskSort = "gantt" }: Props) {
   const [guidWerte, setGuidWerte] = useState<Map<string, ObjWerte>>(new Map());
   const [verfuegbareAttrs, setVerfuegbareAttrs] = useState<string[]>([]);
   const [displayConfig, setDisplayConfig] = useState(() => ladeDisplayConfig(aktiveSim.id));
@@ -282,7 +283,26 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
             Noch keine Tasks — „+" oder Gantt importieren
           </div>
         ) : (
-          aktiveSim.tasks.map((task, idx) => {
+          (() => {
+            // Sortierte Anzeige basierend auf taskSort
+            const tasksWithIdx = aktiveSim.tasks.map((task, idx) => ({ task, idx }));
+            if (taskSort === "datum") {
+              tasksWithIdx.sort((a, b) => {
+                const sa = parseDateUniversal(a.task.start)?.getTime() ?? 0;
+                const sb = parseDateUniversal(b.task.start)?.getTime() ?? 0;
+                if (sa !== sb) return sa - sb;
+                const ea = parseDateUniversal(a.task.end)?.getTime() ?? sa;
+                const eb = parseDateUniversal(b.task.end)?.getTime() ?? sb;
+                return ea - eb;
+              });
+            } else if (taskSort === "aktiv") {
+              tasksWithIdx.sort((a, b) => {
+                const aHat = selGuids.size > 0 && a.task.objektGuids.some(g => selGuids.has(g)) ? 1 : 0;
+                const bHat = selGuids.size > 0 && b.task.objektGuids.some(g => selGuids.has(g)) ? 1 : 0;
+                return bHat - aHat;
+              });
+            }
+            return tasksWithIdx.map(({ task, idx }) => {
             const hatSelektierte = selGuids.size > 0 && task.objektGuids.some(g => selGuids.has(g));
             const selAnzahl = hatSelektierte ? task.objektGuids.filter(g => selGuids.has(g)).length : 0;
             const istHover = hoverTaskId === task.id;
@@ -361,7 +381,8 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
               )}
             </div>
             );
-          })
+          });
+          })()
         )}
         {/* Drop-Zone am Ende */}
         {dragIdx !== null && (

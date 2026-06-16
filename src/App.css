@@ -51,6 +51,7 @@
   display: flex; align-items: center; justify-content: center; border-radius: 3px;
 }
 .tc-header-icon-btn:hover { background: #f0f0f0; color: var(--tc-text); }
+.tc-header-icon-btn.active-filter { color: var(--tc-blue); }
 .tc-header-org-info {
   display: flex; align-items: center; gap: 8px; margin-top: 4px; padding-top: 4px;
 }

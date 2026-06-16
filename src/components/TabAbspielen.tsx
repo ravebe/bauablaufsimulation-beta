@@ -3,7 +3,7 @@ import type { SimProjekt, Task } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { formatDatum, parseDateUniversal } from "../types";
 
-interface Props { api: ApiInstance | null; aktiveSim: SimProjekt | null; aktivesModellId: string | null; }
+interface Props { api: ApiInstance | null; aktiveSim: SimProjekt | null; aktivesModellId: string | null; taskSort?: "gantt" | "datum" | "aktiv"; }
 
 const FARBEN = { neubau: "#6cc07a", bestand: "#999999", abbruch: "#edb94c", temporaer: "#a0522d" };
 
@@ -18,7 +18,7 @@ function datumBeiTag(min: Date, tag: number): string {
   return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
-export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props) {
+export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort = "gantt" }: Props) {
   const [sekProTag, setSekProTag] = useState(0.5);
   const [laeuft, setLaeuft] = useState(false);
   const [currentTag, setCurrentTag] = useState(0);
@@ -393,7 +393,25 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
       <div className="player-card" style={{ padding: 0, overflow: "hidden", maxHeight: 400, overflowY: "auto" }}>
         {tasks.length === 0 ? (
           <div style={{ padding: 10, fontSize: 11, color: "var(--tc-text-3)", textAlign: "center" }}>Keine Tasks mit Bauteilen</div>
-        ) : tasks.map((task, i) => {
+        ) : (() => {
+          const sorted = [...tasks].map((t, i) => ({ task: t, origIdx: i }));
+          if (taskSort === "datum") {
+            sorted.sort((a, b) => {
+              const sa = parseDateUniversal(a.task.start)?.getTime() ?? 0;
+              const sb = parseDateUniversal(b.task.start)?.getTime() ?? 0;
+              if (sa !== sb) return sa - sb;
+              const ea = parseDateUniversal(a.task.end)?.getTime() ?? sa;
+              const eb = parseDateUniversal(b.task.end)?.getTime() ?? sb;
+              return ea - eb;
+            });
+          } else if (taskSort === "aktiv") {
+            sorted.sort((a, b) => {
+              const aHat = selGuids.size > 0 && a.task.objektGuids.some(g => selGuids.has(g)) ? 1 : 0;
+              const bHat = selGuids.size > 0 && b.task.objektGuids.some(g => selGuids.has(g)) ? 1 : 0;
+              return bHat - aHat;
+            });
+          }
+          return sorted.map(({ task, origIdx }) => {
           const aktiv = minDate ? istAktiv(task, currentTag) : false;
           const vorbei = minDate ? istVorbei(task, currentTag) : false;
           const hatSel = selGuids.size > 0 && task.objektGuids.some(g => selGuids.has(g));
@@ -404,7 +422,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
               borderBottom: "1px solid #eef1f4", cursor: laeuft ? "default" : "pointer",
               background: hatSel ? "#f0f0f0" : aktiv ? "#edf7ed" : "transparent",
               opacity: vorbei ? 0.5 : 1, fontWeight: aktiv || hatSel ? 600 : 400,
-            }} onClick={() => zuTask(i)}>
+            }} onClick={() => zuTask(origIdx)}>
               {aktiv && <span style={{ fontSize: 8, color: "#6cc07a" }}>▶</span>}
               <span style={dot(task.typ)} />
               <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12 }}>{task.name}</span>
@@ -416,7 +434,8 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
               </span>
             </div>
           );
-        })}
+        });
+        })()}
       </div>
 
       <div style={{ padding: "8px 0", fontSize: 10, color: "var(--tc-text-3)", display: "flex", gap: 10, flexWrap: "wrap" }}>
