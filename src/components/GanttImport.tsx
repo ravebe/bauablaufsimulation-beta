@@ -67,7 +67,7 @@ export default function GanttImport({ onImport, taskCount }: Props) {
   }
 
   function parseXlsx(buf: ArrayBuffer): Task[] {
-    const wb = XLSX.read(buf, { type: "array" });
+    const wb = XLSX.read(buf, { type: "array", cellFormula: false });
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
     return rows.map((row, i) => ({
@@ -78,11 +78,11 @@ export default function GanttImport({ onImport, taskCount }: Props) {
       typ: parseTyp(findCol(row, ["Typ", "typ", "Type", "type", "Kategorie"])),
       objektGuids: [],
       extraSpalten: extraSpalten(row),
-    })).filter(t => t.name.trim() !== "" && t.name !== "Task 1" || t.start);
+    })).filter(t => t.name.trim() !== "");
   }
 
   function parseCsv(text: string): Task[] {
-    const wb = XLSX.read(text, { type: "string" });
+    const wb = XLSX.read(text, { type: "string", cellFormula: false });
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
     return rows.map((row, i) => ({
