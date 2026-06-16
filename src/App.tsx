@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useApi } from "./hooks/useApi";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useApi, cloudSave, cloudLoad } from "./hooks/useApi";
 import type { SimProjekt } from "./types";
 import { SIMS_KEY, AKTIV_KEY } from "./types";
 import TabProjekte from "./components/TabProjekte";
@@ -15,8 +15,11 @@ export default function App() {
   const [aktTab, setAktTab] = useState<Tab>("projekte");
   const [sims, setSims] = useState<SimProjekt[]>([]);
   const [aktivId, setAktivId] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const cloudInitDone = useRef(false);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // localStorage laden
+  // 1. localStorage laden (sofort)
   useEffect(() => {
     try {
       const raw = localStorage.getItem(SIMS_KEY);
@@ -26,14 +29,47 @@ export default function App() {
     } catch { /* ignore */ }
   }, []);
 
-  // localStorage speichern
+  // 2. Cloud laden (wenn API ready)
   useEffect(() => {
-    localStorage.setItem(SIMS_KEY, JSON.stringify(sims));
-  }, [sims]);
+    if (!api || cloudInitDone.current) return;
+    cloudInitDone.current = true;
+    (async () => {
+      try {
+        const data = await cloudLoad(api);
+        if (data && Array.isArray(data.sims) && data.sims.length > 0) {
+          const cloudSims = data.sims as SimProjekt[];
+          // Merge: Cloud-Daten mit lokalen mergen (Cloud gewinnt bei gleichem ID)
+          setSims(prev => {
+            const merged = new Map<string, SimProjekt>();
+            for (const s of prev) merged.set(s.id, s);
+            for (const s of cloudSims) merged.set(s.id, s); // Cloud überschreibt lokal
+            return [...merged.values()];
+          });
+          if (data.aktivId) setAktivId(data.aktivId as string);
+          console.log("[CloudSync] Cloud-Daten geladen:", cloudSims.length, "Simulationen");
+        }
+      } catch (e) { console.warn("[CloudSync] Cloud-Load Fehler:", e); }
+    })();
+  }, [api]);
+
+  // 3. localStorage + Cloud speichern (debounced)
+  const saveToCloud = useCallback(async (simsData: SimProjekt[], aid: string | null) => {
+    localStorage.setItem(SIMS_KEY, JSON.stringify(simsData));
+    if (aid) localStorage.setItem(AKTIV_KEY, aid);
+    if (!api) return;
+    setSyncStatus("saving");
+    try {
+      const ok = await cloudSave(api, { sims: simsData, aktivId: aid });
+      setSyncStatus(ok ? "saved" : "error");
+      if (ok) setTimeout(() => setSyncStatus("idle"), 2000);
+    } catch { setSyncStatus("error"); }
+  }, [api]);
 
   useEffect(() => {
-    if (aktivId) localStorage.setItem(AKTIV_KEY, aktivId);
-  }, [aktivId]);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => saveToCloud(sims, aktivId), 1500);
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
+  }, [sims, aktivId, saveToCloud]);
 
   const aktiveSim = sims.find(s => s.id === aktivId) ?? null;
 
@@ -112,6 +148,11 @@ export default function App() {
                 </svg>
               </button>
             </div>
+            {/* Sync Status */}
+            <span title={syncStatus === "saved" ? "Cloud gespeichert" : syncStatus === "saving" ? "Speichern…" : syncStatus === "error" ? "Sync-Fehler" : ""}
+              style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+                background: syncStatus === "saved" ? "#6cc07a" : syncStatus === "saving" ? "#edb94c" : syncStatus === "error" ? "#ff6b6b" : "transparent",
+                transition: "background 0.3s" }} />
           </div>
         </div>
       </div>

@@ -13,7 +13,6 @@ export interface ApiInstance {
     convertToObjectIds: (modelId: string, ids: number[]) => Promise<string[]>;
     convertToObjectRuntimeIds: (modelId: string, externalIds: string[]) => Promise<number[]>;
     setSelection: (ids: number[]) => Promise<void>;
-    // Korrekte TC API Methoden laut Dokumentation:
     setObjectState: (
       entities: { modelId: string; objectRuntimeIds?: number[] }[],
       state: { visible?: boolean; color?: { r: number; g: number; b: number; a: number } | null }
@@ -28,7 +27,11 @@ export interface ApiInstance {
       removeListener: (cb: (event: TcSelectionEvent) => void) => void;
     };
   };
-  extension: { requestPermission: (type: string) => Promise<string>; };
+  extension: {
+    requestPermission: (type: string) => Promise<string>;
+    getSettings?: () => Promise<Record<string, unknown>>;
+    setSettings?: (settings: Record<string, unknown>) => Promise<void>;
+  };
   project: { getProject: () => Promise<{ id: string; name: string }>; };
 }
 
@@ -55,7 +58,6 @@ export function useApi(): UseApiReturn {
 
     async function init() {
       try {
-        // TC API via CDN Script in index.html
         let wapi = (window as any).TrimbleConnectWorkspace;
         if (!wapi) {
           await new Promise(r => setTimeout(r, 1500));
@@ -69,7 +71,6 @@ export function useApi(): UseApiReturn {
         apiInst = (await wapi.connect(window.parent, () => {})) as ApiInstance;
         setApi(apiInst);
 
-        // Modelle beim Start laden
         const ladeModelle = async () => {
           for (let i = 0; i < 8; i++) {
             try {
@@ -102,7 +103,6 @@ export function useApi(): UseApiReturn {
         };
         ladeModelle();
 
-        // onModelStateChanged → aktivesModellId aktualisieren wenn Modell geladen wird
         try {
           (apiInst.viewer as any).onModelStateChanged?.addListener((event: any) => {
             const data = event?.data;
@@ -112,14 +112,12 @@ export function useApi(): UseApiReturn {
           });
         } catch { /* ignore */ }
 
-        // Selection Listener — modelId aus Klick extrahieren + robuste ID-Erkennung
         const cb = (event: TcSelectionEvent) => {
           const ids: number[] = [];
           const data = (event as any)?.data;
           if (Array.isArray(data)) {
             for (const item of data) {
               if (!item) continue;
-              // modelId aus Klick → aktivesModellId aktualisieren (100% sichtbares Modell!)
               if (item.modelId) setAktivesModellId(item.modelId);
               const rIds = item.objectRuntimeIds ?? item.runtimeIds ?? item.ids ?? item.objectIds;
               if (Array.isArray(rIds)) {
@@ -159,6 +157,53 @@ export function useApi(): UseApiReturn {
   return { api, ready, fehler, selektion, aktivesModellId, geladeneModelle };
 }
 
+// --- Cloud Sync Helpers ---
+export async function cloudSave(api: ApiInstance, data: Record<string, unknown>): Promise<boolean> {
+  try {
+    // Versuch 1: extension.setSettings (TC Workspace API)
+    if (typeof (api.extension as any).setSettings === "function") {
+      await (api.extension as any).setSettings(data);
+      console.log("[CloudSync] Gespeichert via extension.setSettings");
+      return true;
+    }
+    // Versuch 2: postMessage an Parent
+    if (typeof (api as any).setExtensionSettings === "function") {
+      await (api as any).setExtensionSettings(data);
+      console.log("[CloudSync] Gespeichert via setExtensionSettings");
+      return true;
+    }
+    console.warn("[CloudSync] Keine Cloud-Save Methode gefunden");
+    return false;
+  } catch (e) {
+    console.warn("[CloudSync] Speichern fehlgeschlagen:", e);
+    return false;
+  }
+}
+
+export async function cloudLoad(api: ApiInstance): Promise<Record<string, unknown> | null> {
+  try {
+    if (typeof (api.extension as any).getSettings === "function") {
+      const data = await (api.extension as any).getSettings();
+      if (data && typeof data === "object") {
+        console.log("[CloudSync] Geladen via extension.getSettings");
+        return data as Record<string, unknown>;
+      }
+    }
+    if (typeof (api as any).getExtensionSettings === "function") {
+      const data = await (api as any).getExtensionSettings();
+      if (data && typeof data === "object") {
+        console.log("[CloudSync] Geladen via getExtensionSettings");
+        return data as Record<string, unknown>;
+      }
+    }
+    console.warn("[CloudSync] Keine Cloud-Load Methode gefunden");
+    return null;
+  } catch (e) {
+    console.warn("[CloudSync] Laden fehlgeschlagen:", e);
+    return null;
+  }
+}
+
 export async function batchGetProperties(
   api: ApiInstance,
   modelId: string,
@@ -172,7 +217,6 @@ export async function batchGetProperties(
       const res = await api.viewer.getObjectProperties(modelId, slice);
       if (Array.isArray(res)) results.push(...res);
     } catch {
-      // Batch fehlgeschlagen → einzeln nachladen (verhindert Datenverlust bei TypeError)
       for (const id of slice) {
         try {
           const r = await api.viewer.getObjectProperties(modelId, [id]);
@@ -184,5 +228,4 @@ export async function batchGetProperties(
   return results;
 }
 
-// parseObjectIds re-export für useApi interne Nutzung
 export { parseObjectIds };
