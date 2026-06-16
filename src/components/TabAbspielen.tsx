@@ -138,11 +138,17 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     setStatus("✓ Bereit");
   }
 
-  // --- Zustand bei Tag aufbauen (Slider/Klick) ---
+  // --- Zustand bei Tag aufbauen (Slider/Klick) — BATCHED ---
   async function zustandBeiTag(tag: number) {
     if (!api || !aktiveSim || !minDate) return;
-    const alleSel: string[] = [];
     const alleTasks = aktiveSim.tasks;
+
+    // Sammle alle Guids in Kategorien (ein Durchlauf, kein API-Call)
+    const showGuids: string[] = [];
+    const hideGuids: string[] = [];
+    const colorBestand: string[] = [];
+    const colorAbbruch: string[] = [];
+    const selGuidsLocal: string[] = [];
 
     for (const t of alleTasks) {
       if (t.objektGuids.length === 0) continue;
@@ -150,19 +156,25 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
       const e = t.end ? tagVonDatum(t.end, minDate) : s;
 
       if (t.typ === "neubau") {
-        if (tag >= s) { await setzeZustand(t.objektGuids, { visible: true }); if (tag <= e) alleSel.push(...t.objektGuids); }
-        else await setzeZustand(t.objektGuids, { visible: false });
+        if (tag >= s) { showGuids.push(...t.objektGuids); if (tag <= e) selGuidsLocal.push(...t.objektGuids); }
+        else hideGuids.push(...t.objektGuids);
       } else if (t.typ === "bestand") {
-        await setzeZustand(t.objektGuids, { visible: true, color: FARBEN.bestand });
+        showGuids.push(...t.objektGuids); colorBestand.push(...t.objektGuids);
       } else if (t.typ === "abbruch") {
-        if (tag > e) await setzeZustand(t.objektGuids, { visible: false });
-        else { await setzeZustand(t.objektGuids, { visible: true }); if (tag >= s) await setzeZustand(t.objektGuids, { color: FARBEN.abbruch }); }
+        if (tag > e) hideGuids.push(...t.objektGuids);
+        else { showGuids.push(...t.objektGuids); if (tag >= s) colorAbbruch.push(...t.objektGuids); }
       } else if (t.typ === "temporaer") {
-        if (tag > e) await setzeZustand(t.objektGuids, { visible: false });
-        else await setzeZustand(t.objektGuids, { visible: true });
+        if (tag > e) hideGuids.push(...t.objektGuids);
+        else showGuids.push(...t.objektGuids);
       }
     }
-    if (alleSel.length > 0) await selektieren(alleSel);
+
+    // Max 5 gebatchte API-Calls statt 610+
+    if (hideGuids.length > 0) await setzeZustand(hideGuids, { visible: false });
+    if (showGuids.length > 0) await setzeZustand(showGuids, { visible: true });
+    if (colorBestand.length > 0) setzeZustandAsync(colorBestand, { color: FARBEN.bestand });
+    if (colorAbbruch.length > 0) setzeZustandAsync(colorAbbruch, { color: FARBEN.abbruch });
+    if (selGuidsLocal.length > 0) await selektieren(selGuidsLocal);
 
     const aktive = alleTasks.filter(t => t.objektGuids.length > 0 && istAktiv(t, tag));
     if (aktive.length > 0) setStatus(aktive.map(t => `${t.typ === "neubau" ? "🟢" : t.typ === "abbruch" ? "🟡" : t.typ === "temporaer" ? "🟤" : "⚫"} ${t.name}`).join(", "));
@@ -300,12 +312,18 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId }: Props)
     }
   }
 
+  const sliderDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   async function sliderChange(tag: number) {
     if (laeuft) return;
     setCurrentTag(tag); currentTagRef.current = tag;
-    gestartet.current.clear(); beendet.current.clear();
-    tasks.forEach(t => { const s = tagVonDatum(t.start, minDate!); const e = t.end ? tagVonDatum(t.end, minDate!) : s; if (tag >= s) gestartet.current.add(t.id); if (tag > e) beendet.current.add(t.id); });
-    await zustandBeiTag(tag);
+    // Debounce: nur letzten Wert ausführen
+    if (sliderDebounceRef.current) clearTimeout(sliderDebounceRef.current);
+    sliderDebounceRef.current = setTimeout(async () => {
+      gestartet.current.clear(); beendet.current.clear();
+      tasks.forEach(t => { const s = tagVonDatum(t.start, minDate!); const e = t.end ? tagVonDatum(t.end, minDate!) : s; if (tag >= s) gestartet.current.add(t.id); if (tag > e) beendet.current.add(t.id); });
+      await zustandBeiTag(tag);
+    }, 150);
   }
 
   async function zuTask(idx: number) {
