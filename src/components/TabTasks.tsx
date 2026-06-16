@@ -164,7 +164,11 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
       typ: "neubau",
       objektGuids: [],
     };
-    updateSim({ ...aktiveSim, tasks: [...aktiveSim.tasks, neuerTask] });
+    const tasks = [...aktiveSim.tasks];
+    const idx = aktivTaskId ? tasks.findIndex(t => t.id === aktivTaskId) : -1;
+    if (idx >= 0) tasks.splice(idx + 1, 0, neuerTask);
+    else tasks.unshift(neuerTask);
+    updateSim({ ...aktiveSim, tasks });
     setNeuTaskName("");
     setZeigeNeuTask(false);
   }
@@ -348,7 +352,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                   <div style={{ display: "flex", gap: 4 }}>
                     <button className="tc-btn-primary" style={{ flex: 1, fontSize: 10, padding: "2px 6px" }}
                       onClick={() => datumSpeichern(task.id)}>✓ Speichern</button>
-                    <button className="tc-btn-ghost" style={{ fontSize: 10, padding: "2px 6px", color: "#d44" }}
+                    <button className="tc-btn-ghost" style={{ fontSize: 10, padding: "2px 6px", color: "#333" }}
                       onClick={e => { e.stopPropagation(); if (confirm(`Task „${task.name}" löschen?`)) taskLoeschen(task.id); }}>🗑</button>
                     <button className="tc-btn-ghost" style={{ fontSize: 10, padding: "2px 6px" }}
                       onClick={() => setEditDatumId(null)}>✕</button>
@@ -379,7 +383,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
             <span style={{ fontSize: 9, color: "var(--tc-blue)", fontWeight: 500 }}>
               {totalObjekte != null ? `⬡ ${aktivTask.objektGuids.length} / ${totalObjekte}` : `⬡ ${aktivTask.objektGuids.length}`}
             </span>
-            <button className="tc-btn-ghost" style={{ color: "#d44", fontSize: 12, padding: "0 4px", marginLeft: "auto" }}
+            <button className="tc-btn-ghost" style={{ color: "#333", fontSize: 12, padding: "0 4px", marginLeft: "auto" }}
               title="Task löschen"
               onClick={e => { e.stopPropagation(); if (confirm(`Task „${aktivTask.name}" löschen?`)) taskLoeschen(aktivTask.id); }}>🗑</button>
           </div>
@@ -388,11 +392,21 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
           <div className="detail-block">
             <div className="detail-block-title">Task-Typ</div>
             <div className="typ-btns">
-              {(["neubau", "bestand", "abbruch", "temporaer"] as TaskTyp[]).map(typ => (
-                <button key={typ} className={`typ-btn ${aktivTask.typ === typ ? `aktiv-${typ}` : ""}`} onClick={() => typAendern(aktivTask.id, typ)}>
-                  {typ === "neubau" ? "🟢" : typ === "bestand" ? "⚫" : typ === "abbruch" ? "🟡" : "🟤"} {typ}
-                </button>
-              ))}
+              {(["neubau", "bestand", "abbruch", "temporaer"] as TaskTyp[]).map(typ => {
+                const farbe = typ === "neubau" ? "#6cc07a" : typ === "bestand" ? "#888" : typ === "abbruch" ? "#edb94c" : "#a0522d";
+                const istAktiv = aktivTask.typ === typ;
+                return (
+                  <button key={typ} onClick={() => typAendern(aktivTask.id, typ)}
+                    style={{
+                      padding: "4px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer",
+                      borderRadius: 4, border: istAktiv ? `2px solid ${farbe}` : "1px solid #d4dce4",
+                      background: istAktiv ? farbe : "#fff",
+                      color: istAktiv ? "#fff" : "#555", fontFamily: "inherit",
+                    }}>
+                    {typ}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -406,7 +420,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                 {aktivTask.objektGuids.length > 0 && (
                   <>
                     <button className="tc-btn-primary" title="Nur diese anzeigen" style={{ fontSize: 10, padding: "3px 8px" }} onClick={() => nurAnzeigen(aktivTask.objektGuids)}>👁 Nur diese</button>
-                    <button className="tc-btn-ghost" style={{ color: "var(--tc-red)" }} onClick={() => setLoeschenBestaetigen(true)}>🗑</button>
+                    <button className="tc-btn-ghost" style={{ color: "#333" }} onClick={() => setLoeschenBestaetigen(true)}>🗑</button>
                   </>
                 )}
                 <button className="tc-btn-ghost" title="Anzeige-Einstellungen" style={{ fontSize: 12 }}
