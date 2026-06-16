@@ -334,43 +334,24 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
     await sliderChange(tag);
   }
 
-  async function reset() {
-    if (!api) return; stoppen();
-    setCurrentTag(0); currentTagRef.current = 0;
-    gestartet.current.clear(); beendet.current.clear();
-    try { await api.viewer.reset(); } catch {}
-    try { await (api.viewer as any).setSelection({ modelObjectIds: [] }, "set"); } catch {}
-    setStatus("↺ Reset");
-  }
-
   if (!aktiveSim) return <div className="tc-empty"><div className="tc-empty-icon">▶</div><div className="tc-empty-title">Keine aktive Simulation</div></div>;
 
-  const fortschritt = totalTage > 0 ? Math.round((currentTag / totalTage) * 100) : 0;
   const aktuellesDatum = minDate ? datumBeiTag(minDate, currentTag) : "";
   const dot = (typ: string) => ({ width: 8, height: 8, borderRadius: "50%" as const, display: "inline-block" as const, marginRight: 6, flexShrink: 0 as const,
     background: typ === "neubau" ? FARBEN.neubau : typ === "abbruch" ? FARBEN.abbruch : typ === "temporaer" ? FARBEN.temporaer : FARBEN.bestand });
 
   return (
     <div className="tc-setup-content">
-      <div className="player-card">
-        <div className="detail-block-title">Einstellungen</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
-          <span style={{ flex: 1, color: "var(--tc-text-2)" }}>Sekunden pro Tag</span>
-          <input type="number" min={0.1} max={10} step={0.1} value={sekProTag}
-            onChange={e => setSekProTag(Number(e.target.value))} disabled={laeuft} className="player-sek-input" />
-        </div>
-        <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 3 }}>
-          Gesamtdauer: ~{totalTage > 0 ? Math.round(totalTage * sekProTag) : 0}s für {totalTage} Tage
-        </div>
-      </div>
-
-      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+      <div style={{ display: "flex", gap: 6 }}>
         {!laeuft ? (
           <button className="tc-btn-green" style={{ flex: 1 }} disabled={!api || tasks.length === 0} onClick={starten}>▶ Starten</button>
         ) : (
           <button className="tc-btn-danger" style={{ flex: 1 }} onClick={stoppen}>■ Stoppen</button>
         )}
-        <button className="tc-btn-secondary" disabled={laeuft || !api} onClick={reset}>↺</button>
+        <input type="number" min={0.1} max={10} step={0.1} value={sekProTag}
+          onChange={e => setSekProTag(Number(e.target.value))} disabled={laeuft}
+          title="Sekunden pro Tag"
+          style={{ width: 38, height: 38, textAlign: "center", border: "1px solid #d4dce4", fontSize: 12, fontFamily: "inherit", padding: 0 }} />
       </div>
 
       {totalTage > 0 && minDate && maxDate && (
@@ -382,12 +363,6 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
             <span>{formatDatum(minDate.toISOString().slice(0, 10))}</span>
             <span>{formatDatum(maxDate.toISOString().slice(0, 10))}</span>
           </div>
-        </div>
-      )}
-
-      {(laeuft || currentTag > 0) && (
-        <div className="player-card" style={{ marginTop: 6 }}>
-          <div className="player-progress"><div className="player-progress-fill" style={{ width: `${fortschritt}%`, transition: laeuft ? "none" : "width 0.3s" }} /></div>
         </div>
       )}
 
