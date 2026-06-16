@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import type { SimProjekt, Task } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { formatDatum, parseDateUniversal } from "../types";
+import GanttChart from "./GanttChart";
 
 interface Props { api: ApiInstance | null; aktiveSim: SimProjekt | null; aktivesModellId: string | null; taskSort?: "gantt" | "datum" | "aktiv"; }
 
@@ -27,6 +28,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
   const animRef = useRef<number | null>(null);
   const lastTimeRef = useRef(0);
   const currentTagRef = useRef(0);
+  const [ganttOffen, setGanttOffen] = useState(false);
   // Tracking: welche Tasks bereits gestartet/beendet wurden
   const gestartet = useRef(new Set<string>());
   const beendet = useRef(new Set<string>());
@@ -389,7 +391,25 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
         </div>
       )}
 
-      <div className="detail-block-title" style={{ marginTop: 8, marginBottom: 4 }}>Timeline ({tasks.length} Tasks)</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, marginBottom: 4 }}>
+        <div className="detail-block-title" style={{ margin: 0 }}>
+          {ganttOffen ? "Gantt-Chart" : "Timeline"} ({tasks.length} Tasks)
+        </div>
+        <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "2px 8px" }}
+          onClick={() => setGanttOffen(g => !g)}>
+          {ganttOffen ? "☰ Liste" : "▤ Gantt"}
+        </button>
+      </div>
+
+      {ganttOffen ? (
+        <GanttChart
+          tasks={tasks}
+          currentTag={currentTag}
+          totalTage={totalTage}
+          minDate={minDate}
+          laeuft={laeuft}
+        />
+      ) : (
       <div className="player-card" style={{ padding: 0, overflow: "hidden", maxHeight: 400, overflowY: "auto" }}>
         {tasks.length === 0 ? (
           <div style={{ padding: 10, fontSize: 11, color: "var(--tc-text-3)", textAlign: "center" }}>Keine Tasks mit Bauteilen</div>
@@ -437,6 +457,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
         });
         })()}
       </div>
+      )}
 
       <div style={{ padding: "8px 0", fontSize: 10, color: "var(--tc-text-3)", display: "flex", gap: 10, flexWrap: "wrap" }}>
         <span><span style={{ ...dot("neubau"), width: 6, height: 6, marginRight: 3 }} />Neubau</span>
