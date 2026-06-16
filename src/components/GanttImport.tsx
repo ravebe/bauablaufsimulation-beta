@@ -67,18 +67,70 @@ export default function GanttImport({ onImport, taskCount }: Props) {
   }
 
   function parseXlsx(buf: ArrayBuffer): Task[] {
-    const wb = XLSX.read(buf, { type: "array", cellFormula: false });
+    const wb = XLSX.read(buf, { type: "array" });
     const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
-    return rows.map((row, i) => ({
-      id: crypto.randomUUID(),
-      name: String(findCol(row, ["Name", "name", "Vorgangsname", "Vorgang", "Task", "Bezeichnung"]) ?? `Task ${i + 1}`),
-      start: parseDatum(findCol(row, ["Start", "start", "Startdatum", "startdatum", "Anfang", "Begin", "Von"])),
-      end: parseDatum(findCol(row, ["Ende", "end", "Enddatum", "enddatum", "Finish", "Fertig", "Bis", "End"])),
-      typ: parseTyp(findCol(row, ["Typ", "typ", "Type", "type", "Kategorie"])),
-      objektGuids: [],
-      extraSpalten: extraSpalten(row),
-    })).filter(t => t.name.trim() !== "");
+
+    // Cached Werte aus Formelzellen lesen
+    function getCachedValue(ws: any, col: string, row: number): string {
+      const cell = ws[col + row];
+      if (!cell) return "";
+      // cell.v = cached value (auch bei Formeln), cell.w = formatted text
+      if (cell.v != null) return String(cell.v);
+      if (cell.w != null) return String(cell.w);
+      return "";
+    }
+
+    // Header-Zeile lesen um Spalten-Mapping zu bauen
+    const range = XLSX.utils.decode_range(ws["!ref"] || "A1");
+    const headers: { col: string; name: string }[] = [];
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const colLetter = XLSX.utils.encode_col(c);
+      const headerCell = ws[colLetter + "1"];
+      if (headerCell) headers.push({ col: colLetter, name: String(headerCell.v ?? headerCell.w ?? "") });
+    }
+
+    function findHeader(namen: string[]): string | null {
+      for (const n of namen) {
+        const h = headers.find(h => h.name.toLowerCase() === n.toLowerCase());
+        if (h) return h.col;
+      }
+      return null;
+    }
+
+    const nameCol = findHeader(["Name", "Vorgangsname", "Vorgang", "Task", "Bezeichnung"]);
+    const startCol = findHeader(["Start", "Startdatum", "Anfang", "Begin", "Von"]);
+    const endCol = findHeader(["Ende", "Enddatum", "End", "Finish", "Fertig", "Bis"]);
+    const typCol = findHeader(["Typ", "Type", "Kategorie"]);
+
+    const tasks: Task[] = [];
+    for (let r = 2; r <= range.e.r + 1; r++) {
+      const name = nameCol ? getCachedValue(ws, nameCol, r) : "";
+      if (!name.trim()) continue;
+
+      const startRaw = startCol ? getCachedValue(ws, startCol, r) : "";
+      const endRaw = endCol ? getCachedValue(ws, endCol, r) : "";
+      // Excel Seriennummer oder Text
+      const startCell = startCol ? ws[startCol + r] : null;
+      const endCell = endCol ? ws[endCol + r] : null;
+
+      const extra: Record<string, string> = {};
+      for (const h of headers) {
+        if (STANDARD.has(h.name.toLowerCase())) continue;
+        const v = getCachedValue(ws, h.col, r);
+        if (v && v !== "null" && v !== "undefined") extra[h.name] = v;
+      }
+
+      tasks.push({
+        id: crypto.randomUUID(),
+        name,
+        start: parseDatum(startCell?.v ?? startRaw),
+        end: parseDatum(endCell?.v ?? endRaw),
+        typ: parseTyp(typCol ? getCachedValue(ws, typCol, r) : "neubau"),
+        objektGuids: [],
+        extraSpalten: Object.keys(extra).length > 0 ? extra : undefined,
+      });
+    }
+    return tasks;
   }
 
   function parseCsv(text: string): Task[] {
