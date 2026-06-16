@@ -29,6 +29,8 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
   const lastTimeRef = useRef(0);
   const currentTagRef = useRef(0);
   const [ganttOffen, setGanttOffen] = useState(false);
+  const [taskListHeight, setTaskListHeight] = useState(350);
+  const resizingRef = useRef(false);
   // Tracking: welche Tasks bereits gestartet/beendet wurden
   const gestartet = useRef(new Set<string>());
   const beendet = useRef(new Set<string>());
@@ -377,15 +379,17 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
       </div>
 
       {ganttOffen ? (
-        <GanttChart
-          tasks={tasks}
-          currentTag={currentTag}
-          totalTage={totalTage}
-          minDate={minDate}
-          laeuft={laeuft}
-        />
+        <div style={{ maxHeight: taskListHeight, overflow: "auto" }}>
+          <GanttChart
+            tasks={tasks}
+            currentTag={currentTag}
+            totalTage={totalTage}
+            minDate={minDate}
+            laeuft={laeuft}
+          />
+        </div>
       ) : (
-      <div className="player-card" style={{ padding: 0, overflow: "hidden", flex: 1, overflowY: "auto" }}>
+      <div className="player-card" style={{ padding: 0, overflow: "hidden", maxHeight: taskListHeight, overflowY: "auto" }}>
         {tasks.length === 0 ? (
           <div style={{ padding: 10, fontSize: 11, color: "var(--tc-text-3)", textAlign: "center" }}>Keine Tasks mit Bauteilen</div>
         ) : (() => {
@@ -434,7 +438,27 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
       </div>
       )}
 
-      <div style={{ padding: "8px 0", fontSize: 10, color: "var(--tc-text-3)", display: "flex", gap: 10, flexWrap: "wrap" }}>
+      {/* Resize Handle */}
+      <div
+        style={{ height: 8, cursor: "ns-resize", display: "flex", alignItems: "center", justifyContent: "center", userSelect: "none" }}
+        onMouseDown={e => {
+          e.preventDefault();
+          resizingRef.current = true;
+          const startY = e.clientY;
+          const startH = taskListHeight;
+          const onMove = (ev: MouseEvent) => {
+            if (!resizingRef.current) return;
+            setTaskListHeight(Math.max(150, Math.min(800, startH + ev.clientY - startY)));
+          };
+          const onUp = () => { resizingRef.current = false; document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+          document.addEventListener("mousemove", onMove);
+          document.addEventListener("mouseup", onUp);
+        }}
+      >
+        <div style={{ width: 40, height: 3, background: "#ccc", borderRadius: 2 }} />
+      </div>
+
+      <div style={{ padding: "4px 0", fontSize: 10, color: "var(--tc-text-3)", display: "flex", gap: 10, flexWrap: "wrap" }}>
         <span><span style={{ ...dot("neubau"), width: 6, height: 6, marginRight: 3 }} />Neubau</span>
         <span><span style={{ ...dot("bestand"), width: 6, height: 6, marginRight: 3 }} />Bestand</span>
         <span><span style={{ ...dot("abbruch"), width: 6, height: 6, marginRight: 3 }} />Abbruch</span>

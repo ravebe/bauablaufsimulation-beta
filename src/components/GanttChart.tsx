@@ -166,7 +166,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate }: Pr
   }
 
   return (
-    <div ref={scrollRef} style={{ overflowX: "auto", overflowY: "auto", flex: 1, border: "1px solid #d4dce4", background: "#fff" }}>
+    <div ref={scrollRef} style={{ overflowX: "auto", overflowY: "auto", border: "1px solid #d4dce4", background: "#fff" }}>
       <canvas ref={canvasRef} />
     </div>
   );

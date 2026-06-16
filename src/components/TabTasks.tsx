@@ -1,5 +1,5 @@
 // TabTasks.tsx — Task-Liste + Task-Detail + Visibility-Buttons + Guid-Liste
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { SimProjekt, Task, TaskTyp } from "../types";
 import { formatDatum, normalizeDatum, parseDateUniversal } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
@@ -49,6 +49,8 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
   // Task hinzufügen
   const [zeigeNeuTask, setZeigeNeuTask] = useState(false);
   const [neuTaskName, setNeuTaskName] = useState("");
+  const [bauteilListHeight, setBauteilListHeight] = useState(350);
+  const resizingRef = useRef(false);
 
   // Display-Config neu laden wenn Sim wechselt
   useEffect(() => {
@@ -277,7 +279,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
           </div>
         )}
 
-        <div style={{ minHeight: 220, maxHeight: 450, overflowY: "auto" }}>
+        <div style={{ maxHeight: bauteilListHeight, overflowY: "auto" }}>
         {aktiveSim.tasks.length === 0 ? (
           <div style={{ padding: 10, fontSize: 11, color: "#8a9baa", textAlign: "center" }}>
             Noch keine Tasks — „+" oder Gantt importieren
@@ -393,6 +395,26 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
           </div>
         )}
         </div>
+      </div>
+
+      {/* Resize Handle */}
+      <div
+        style={{ height: 8, cursor: "ns-resize", display: "flex", alignItems: "center", justifyContent: "center", userSelect: "none" }}
+        onMouseDown={e => {
+          e.preventDefault();
+          resizingRef.current = true;
+          const startY = e.clientY;
+          const startH = bauteilListHeight;
+          const onMove = (ev: MouseEvent) => {
+            if (!resizingRef.current) return;
+            setBauteilListHeight(Math.max(150, Math.min(800, startH + ev.clientY - startY)));
+          };
+          const onUp = () => { resizingRef.current = false; document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+          document.addEventListener("mousemove", onMove);
+          document.addEventListener("mouseup", onUp);
+        }}
+      >
+        <div style={{ width: 40, height: 3, background: "#ccc", borderRadius: 2 }} />
       </div>
 
       {/* Task-Detail */}
