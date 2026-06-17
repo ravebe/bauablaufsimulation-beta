@@ -157,23 +157,12 @@ export function useApi(): UseApiReturn {
   return { api, ready, fehler, selektion, aktivesModellId, geladeneModelle };
 }
 
-// --- Cloud Sync Helpers ---
+// --- Cloud Sync via api.viewer.setSettings/getSettings ---
 export async function cloudSave(api: ApiInstance, data: Record<string, unknown>): Promise<boolean> {
   try {
-    // Versuch 1: extension.setSettings (TC Workspace API)
-    if (typeof (api.extension as any).setSettings === "function") {
-      await (api.extension as any).setSettings(data);
-      console.log("[CloudSync] Gespeichert via extension.setSettings");
-      return true;
-    }
-    // Versuch 2: postMessage an Parent
-    if (typeof (api as any).setExtensionSettings === "function") {
-      await (api as any).setExtensionSettings(data);
-      console.log("[CloudSync] Gespeichert via setExtensionSettings");
-      return true;
-    }
-    console.warn("[CloudSync] Keine Cloud-Save Methode gefunden");
-    return false;
+    await (api.viewer as any).setSettings(data);
+    console.log("[CloudSync] ✓ Gespeichert via viewer.setSettings");
+    return true;
   } catch (e) {
     console.warn("[CloudSync] Speichern fehlgeschlagen:", e);
     return false;
@@ -181,34 +170,13 @@ export async function cloudSave(api: ApiInstance, data: Record<string, unknown>)
 }
 
 export async function cloudLoad(api: ApiInstance): Promise<Record<string, unknown> | null> {
-  // Debug: alle verfügbaren Methoden auflisten
   try {
-    const apiAny = api as any;
-    for (const key of Object.keys(apiAny)) {
-      const val = apiAny[key];
-      if (val && typeof val === "object") {
-        const methods = Object.keys(val);
-        console.log(`[CloudSync] api.${key}:`, methods.join(", "));
-      }
+    const data = await (api.viewer as any).getSettings();
+    if (data && typeof data === "object" && (data as any).sims) {
+      console.log("[CloudSync] ✓ Geladen via viewer.getSettings");
+      return data as Record<string, unknown>;
     }
-  } catch (e) { console.warn("[CloudSync] Debug-Fehler:", e); }
-
-  try {
-    if (typeof (api.extension as any).getSettings === "function") {
-      const data = await (api.extension as any).getSettings();
-      if (data && typeof data === "object") {
-        console.log("[CloudSync] Geladen via extension.getSettings");
-        return data as Record<string, unknown>;
-      }
-    }
-    if (typeof (api as any).getExtensionSettings === "function") {
-      const data = await (api as any).getExtensionSettings();
-      if (data && typeof data === "object") {
-        console.log("[CloudSync] Geladen via getExtensionSettings");
-        return data as Record<string, unknown>;
-      }
-    }
-    console.warn("[CloudSync] Keine Cloud-Load Methode gefunden");
+    console.log("[CloudSync] Keine Cloud-Daten vorhanden");
     return null;
   } catch (e) {
     console.warn("[CloudSync] Laden fehlgeschlagen:", e);
