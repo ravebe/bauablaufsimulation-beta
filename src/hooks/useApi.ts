@@ -181,6 +181,27 @@ export async function cloudSave(api: ApiInstance, data: Record<string, unknown>)
 }
 
 export async function cloudLoad(api: ApiInstance): Promise<Record<string, unknown> | null> {
+  // Debug: alle verfügbaren Methoden auflisten
+  try {
+    const apiAny = api as any;
+    console.log("[CloudSync] API keys:", Object.keys(apiAny));
+    console.log("[CloudSync] extension keys:", Object.keys(apiAny.extension || {}));
+    console.log("[CloudSync] project keys:", Object.keys(apiAny.project || {}));
+    if (apiAny.storage) console.log("[CloudSync] storage keys:", Object.keys(apiAny.storage));
+    if (apiAny.data) console.log("[CloudSync] data keys:", Object.keys(apiAny.data));
+    if (apiAny.file) console.log("[CloudSync] file keys:", Object.keys(apiAny.file));
+    if (apiAny.files) console.log("[CloudSync] files keys:", Object.keys(apiAny.files));
+    if (apiAny.pset) console.log("[CloudSync] pset keys:", Object.keys(apiAny.pset));
+
+    // Alle Top-Level Methoden/Properties durchsuchen
+    for (const key of Object.keys(apiAny)) {
+      const val = apiAny[key];
+      if (val && typeof val === "object") {
+        console.log(`[CloudSync] api.${key}:`, Object.keys(val));
+      }
+    }
+  } catch (e) { console.warn("[CloudSync] Debug-Fehler:", e); }
+
   try {
     if (typeof (api.extension as any).getSettings === "function") {
       const data = await (api.extension as any).getSettings();
