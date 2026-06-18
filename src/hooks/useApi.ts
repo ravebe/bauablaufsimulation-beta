@@ -157,11 +157,25 @@ export function useApi(): UseApiReturn {
   return { api, ready, fehler, selektion, aktivesModellId, geladeneModelle };
 }
 
-// --- Cloud Sync via api.viewer.setSettings/getSettings ---
+// --- Cloud Sync via Vercel API + Upstash Redis ---
+async function getProjectId(api: ApiInstance): Promise<string | null> {
+  try {
+    const proj = await api.project.getProject();
+    return proj?.id || null;
+  } catch { return null; }
+}
+
 export async function cloudSave(api: ApiInstance, data: Record<string, unknown>): Promise<boolean> {
   try {
-    await (api.viewer as any).setSettings(data);
-    console.log("[CloudSync] ✓ Gespeichert via viewer.setSettings");
+    const projectId = await getProjectId(api);
+    if (!projectId) { console.warn("[CloudSync] Keine Projekt-ID"); return false; }
+    const res = await fetch(`/api/sync?projectId=${projectId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId, data }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    console.log("[CloudSync] ✓ Gespeichert in Cloud (Projekt:", projectId + ")");
     return true;
   } catch (e) {
     console.warn("[CloudSync] Speichern fehlgeschlagen:", e);
@@ -171,12 +185,16 @@ export async function cloudSave(api: ApiInstance, data: Record<string, unknown>)
 
 export async function cloudLoad(api: ApiInstance): Promise<Record<string, unknown> | null> {
   try {
-    const data = await (api.viewer as any).getSettings();
-    if (data && typeof data === "object" && (data as any).sims) {
-      console.log("[CloudSync] ✓ Geladen via viewer.getSettings");
-      return data as Record<string, unknown>;
+    const projectId = await getProjectId(api);
+    if (!projectId) { console.warn("[CloudSync] Keine Projekt-ID"); return null; }
+    const res = await fetch(`/api/sync?projectId=${projectId}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (json.data && json.data.sims) {
+      console.log("[CloudSync] ✓ Geladen aus Cloud:", json.data.sims.length, "Simulationen (Projekt:", projectId + ")");
+      return json.data;
     }
-    console.log("[CloudSync] Keine Cloud-Daten vorhanden");
+    console.log("[CloudSync] Keine Cloud-Daten für Projekt", projectId);
     return null;
   } catch (e) {
     console.warn("[CloudSync] Laden fehlgeschlagen:", e);
