@@ -29,6 +29,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
   const lastTimeRef = useRef(0);
   const currentTagRef = useRef(0);
   const [ganttOffen, setGanttOffen] = useState(false);
+  const [selTaskId, setSelTaskId] = useState<string | null>(null);
   const [taskListHeight, setTaskListHeight] = useState(() => {
     try { return Number(localStorage.getItem("4d-list-height-abspielen")) || 350; } catch { return 350; }
   });
@@ -336,6 +337,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
 
   async function zuTask(idx: number) {
     if (laeuft || idx < 0 || idx >= tasks.length || !minDate) return;
+    setSelTaskId(tasks[idx].id);
     const tag = tagVonDatum(tasks[idx].start, minDate);
     await sliderChange(tag);
   }
@@ -390,6 +392,8 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
             totalTage={totalTage}
             minDate={minDate}
             laeuft={laeuft}
+            onTaskClick={idx => zuTask(idx)}
+            selTaskId={selTaskId}
           />
         </div>
       ) : (
@@ -418,20 +422,23 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
           const aktiv = minDate ? istAktiv(task, currentTag) : false;
           const vorbei = minDate ? istVorbei(task, currentTag) : false;
           const hatSel = selGuids.size > 0 && task.objektGuids.some(g => selGuids.has(g));
-          const selAnz = hatSel ? task.objektGuids.filter(g => selGuids.has(g)).length : 0;
+          const sd = parseDateUniversal(task.start);
+          const ed = parseDateUniversal(task.end);
+          const dauer = sd && ed ? Math.max(1, Math.round((ed.getTime() - sd.getTime()) / 86400000)) : 1;
+          const istSelTask = selTaskId === task.id;
           return (
             <div key={task.id} style={{
               display: "flex", alignItems: "center", padding: "5px 8px", gap: 6,
               borderBottom: "1px solid #eef1f4", cursor: laeuft ? "default" : "pointer",
-              background: hatSel ? "#f0f0f0" : aktiv ? "#edf7ed" : "transparent",
-              opacity: vorbei ? 0.5 : 1, fontWeight: aktiv || hatSel ? 600 : 400,
+              background: istSelTask ? "#e8f0fe" : hatSel ? "#f0f0f0" : aktiv ? "#edf7ed" : "transparent",
+              opacity: vorbei ? 0.5 : 1, fontWeight: aktiv || hatSel || istSelTask ? 600 : 400,
             }} onClick={() => zuTask(origIdx)}>
               {aktiv && <span style={{ fontSize: 8, color: "#6cc07a" }}>▶</span>}
               <span style={dot(task.typ)} />
               <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12 }}>{task.name}</span>
               <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, lineHeight: 1.2 }}>
-                <span style={{ fontSize: 10, color: hatSel ? "#2d7dbd" : "#8a9baa" }}>
-                  {hatSel ? `${selAnz}/${task.objektGuids.length}` : `⬡ ${task.objektGuids.length}`}
+                <span style={{ fontSize: 10, color: istSelTask ? "#2d7dbd" : "#8a9baa" }}>
+                  {dauer}d
                 </span>
                 <span style={{ fontSize: 8, color: "#b0bec5" }}>{formatDatum(task.start)} – {formatDatum(task.end)}</span>
               </span>
