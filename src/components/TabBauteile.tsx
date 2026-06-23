@@ -14,9 +14,10 @@ interface Props {
   selektion: number[];
   aktivesModellId: string | null;
   taskSort?: "gantt" | "datum" | "aktiv";
+  readOnly?: boolean;
 }
 
-export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId, taskSort }: Props) {
+export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId, taskSort, readOnly }: Props) {
   const [aktivTaskId, setAktivTaskId] = useState<string | null>(null);
   const [totalObjekte, setTotalObjekte] = useState<number | null>(null);
   const [resetSignal, setResetSignal] = useState(0);
@@ -90,8 +91,9 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
         onTaskClick={taskAnklicken}
         selGuids={selGuids}
         taskSort={taskSort}
+        readOnly={readOnly}
       />
-      {aktivTask && (
+      {aktivTask && !readOnly && (
         <>
           <AttributeFilter
             api={api}

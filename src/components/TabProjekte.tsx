@@ -14,9 +14,10 @@ interface Props {
   aktivId: string | null;
   setAktivId: (id: string) => void;
   geladeneModelle: { id: string; name: string }[];
+  userId?: string | null;
 }
 
-export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId }: Props) {
+export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, userId }: Props) {
   const [aufgeklappt, setAufgeklappt] = useState<string | null>(aktivId);
   const [neuName, setNeuName] = useState("");
   const [zeigeNeu, setZeigeNeu] = useState(false);
@@ -65,6 +66,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId }:
       id: crypto.randomUUID(),
       name: neuName.trim(),
       erstelltAm: new Date().toISOString(),
+      erstellerId: userId || undefined,
       tasks: [],
       modelle: [],
     };
@@ -218,20 +220,30 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId }:
                       {([
                         { key: "edit", label: "Zugriff bearbeiten", icon: "✏", desc: "Inhalt hinzufügen, bearbeiten" },
                         { key: "read", label: "Schreibgeschützt", icon: "👁", desc: "Nur Anzeigen von Inhalt" },
-                        { key: "none", label: "Kein Zugriff", icon: "🚫", desc: "" },
-                      ] as const).map(opt => (
+                        { key: "none", label: "Kein Zugriff", icon: "🚫", desc: "Projekt wird ausgeblendet" },
+                      ] as const).map(opt => {
+                        const istAktiv = userId ? (sim.zugriff?.[userId] ?? (sim.erstellerId === userId ? "edit" : "read")) === opt.key : false;
+                        return (
                         <button key={opt.key}
-                          style={{ display: "block", width: "100%", padding: "6px 14px", background: "none", border: "none", textAlign: "left", fontSize: 11, cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
-                          onClick={() => { setMenuOffen(null); /* TODO: Zugriffskontrolle speichern */ }}
+                          style={{ display: "block", width: "100%", padding: "6px 14px", background: istAktiv ? "#f0f7ff" : "none", border: "none", textAlign: "left", fontSize: 11, cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
+                          onClick={() => {
+                            if (userId && sim.erstellerId === userId) {
+                              // Ersteller kann nur andere User Rechte ändern — hier TODO: User-Picker
+                            }
+                            setMenuOffen(null);
+                          }}
                         >
-                          <div style={{ fontWeight: 500 }}>{opt.icon} {opt.label}</div>
+                          <div style={{ fontWeight: 500 }}>{opt.icon} {opt.label} {istAktiv && "✓"}</div>
                           {opt.desc && <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>{opt.desc}</div>}
                         </button>
-                      ))}
+                        );
+                      })}
+                      {(!sim.erstellerId || sim.erstellerId === userId) && (
                       <button
                         style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", fontSize: 11, color: "var(--tc-red)", cursor: "pointer" }}
                         onClick={() => loeschen(sim.id)}
                       >🗑 Simulation löschen</button>
+                      )}
                     </div>
                   )}
                 </div>

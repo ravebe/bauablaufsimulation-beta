@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useApi, cloudSave, cloudLoad } from "./hooks/useApi";
-import type { SimProjekt } from "./types";
+import type { SimProjekt, Zugriff } from "./types";
 import { SIMS_KEY, AKTIV_KEY } from "./types";
 import TabProjekte from "./components/TabProjekte";
 import TabBauteile from "./components/TabBauteile";
@@ -16,8 +16,20 @@ export default function App() {
   const [sims, setSims] = useState<SimProjekt[]>([]);
   const [aktivId, setAktivId] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [userId, setUserId] = useState<string | null>(null);
   const cloudInitDone = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // User ID laden
+  useEffect(() => {
+    if (!api) return;
+    (async () => {
+      try {
+        const user = await (api as any).user.getUser();
+        if (user?.id) { setUserId(user.id); console.log("[Auth] User:", user.id); }
+      } catch { /* ignore */ }
+    })();
+  }, [api]);
 
   // 1. localStorage laden (sofort)
   useEffect(() => {
@@ -72,6 +84,23 @@ export default function App() {
   }, [sims, aktivId, saveToCloud]);
 
   const aktiveSim = sims.find(s => s.id === aktivId) ?? null;
+
+  // Zugriffskontrolle: Ersteller hat immer "edit", andere default "read"
+  function getZugriff(sim: SimProjekt | null): Zugriff {
+    if (!sim) return "read";
+    if (!userId) return "read";
+    if (sim.erstellerId === userId) return "edit";
+    return sim.zugriff?.[userId] ?? "read";
+  }
+  const aktZugriff = getZugriff(aktiveSim);
+  const readOnly = aktZugriff !== "edit";
+
+  // Nur Sims anzeigen die nicht "none" sind
+  const sichtbareSims = sims.filter(s => {
+    if (!userId) return true;
+    if (s.erstellerId === userId) return true;
+    return (s.zugriff?.[userId] ?? "read") !== "none";
+  });
 
   function updateSim(updated: SimProjekt) {
     setSims(prev => prev.map(s => s.id === updated.id ? updated : s));
@@ -196,11 +225,12 @@ export default function App() {
           <TabProjekte
             api={api}
             ready={ready}
-            sims={sims}
+            sims={sichtbareSims}
             setSims={setSims}
             aktivId={aktivId}
             setAktivId={setAktivId}
             geladeneModelle={geladeneModelle}
+            userId={userId}
           />
         )}
         {aktTab === "bauteile" && (
@@ -211,6 +241,7 @@ export default function App() {
             selektion={selektion}
             aktivesModellId={aktivesModellId}
             taskSort={taskSort}
+            readOnly={readOnly}
           />
         )}
         {aktTab === "abspielen" && (

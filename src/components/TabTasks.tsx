@@ -17,6 +17,7 @@ interface Props {
   onTaskClick: (id: string) => void;
   selGuids: Set<string>;
   taskSort?: "gantt" | "datum" | "aktiv";
+  readOnly?: boolean;
 }
 
 const STORAGE_PREFIX = "4d-guid-display-";
@@ -29,7 +30,7 @@ function ladeDisplayConfig(simId: string): { zeile1: string; zeile2: string } {
   return { zeile1: "Layer||Layer", zeile2: "Reference Object||Common Type" };
 }
 
-export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, totalObjekte, updateSim, onTaskClick, selGuids, taskSort = "gantt" }: Props) {
+export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, totalObjekte, updateSim, onTaskClick, selGuids, taskSort = "gantt", readOnly = false }: Props) {
   const [guidWerte, setGuidWerte] = useState<Map<string, ObjWerte>>(new Map());
   const [verfuegbareAttrs, setVerfuegbareAttrs] = useState<string[]>([]);
   const [displayConfig, setDisplayConfig] = useState(() => ladeDisplayConfig(aktiveSim.id));
@@ -268,13 +269,13 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
               );
             })()}
             <button style={{ fontSize: 11, color: "#2d7dbd", fontWeight: 600, background: "none", border: "1px solid #2d7dbd",
-              padding: "1px 6px", cursor: "pointer", fontFamily: "inherit" }}
+              padding: "1px 6px", cursor: "pointer", fontFamily: "inherit", display: readOnly ? "none" : "inline-flex" }}
               onClick={() => setZeigeNeuTask(z => !z)}>+</button>
           </div>
         </div>
 
         {/* Neuen Task hinzufügen */}
-        {zeigeNeuTask && (
+        {!readOnly && zeigeNeuTask && (
           <div style={{ padding: "6px 10px", borderBottom: "1px solid #eef1f4", display: "flex", gap: 4 }}>
             <input className="ac-input" style={{ flex: 1, fontSize: 11 }} placeholder="Task-Name…" value={neuTaskName}
               onChange={e => setNeuTaskName(e.target.value)} onKeyDown={e => e.key === "Enter" && taskHinzufuegen()} autoFocus />
@@ -341,7 +342,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                 </span>
 
                 {/* Rechts: Count oder Drag-Handle */}
-                {istHover && !dragIdx ? (
+                {!readOnly && istHover && !dragIdx ? (
                   <span
                     draggable
                     onDragStart={e => { setDragIdx(idx); e.dataTransfer.effectAllowed = "move"; }}
@@ -362,7 +363,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
               </div>
 
               {/* Datum bearbeiten Dialog */}
-              {editDatumId === task.id && (
+              {!readOnly && editDatumId === task.id && (
                 <div style={{ padding: "6px 10px", background: "#f8fafc", borderBottom: "1px solid #eef1f4", fontSize: 11 }}
                   onClick={e => e.stopPropagation()}>
                   <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
@@ -430,12 +431,13 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
             <span style={{ fontSize: 9, color: "var(--tc-blue)", fontWeight: 500 }}>
               {totalObjekte != null ? `⬡ ${aktivTask.objektGuids.length} / ${totalObjekte}` : `⬡ ${aktivTask.objektGuids.length}`}
             </span>
-            <button className="tc-btn-ghost" style={{ color: "#333", fontSize: 12, padding: "0 4px", marginLeft: "auto" }}
+            {!readOnly && <button className="tc-btn-ghost" style={{ color: "#333", fontSize: 12, padding: "0 4px", marginLeft: "auto" }}
               title="Task löschen"
-              onClick={e => { e.stopPropagation(); if (confirm(`Task „${aktivTask.name}" löschen?`)) taskLoeschen(aktivTask.id); }}>🗑</button>
+              onClick={e => { e.stopPropagation(); if (confirm(`Task „${aktivTask.name}" löschen?`)) taskLoeschen(aktivTask.id); }}>🗑</button>}
           </div>
 
           {/* Task-Typ */}
+          {!readOnly && (
           <div className="detail-block">
             <div className="detail-block-title">Task-Typ</div>
             <div className="typ-btns">
@@ -456,6 +458,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
               })}
             </div>
           </div>
+          )}
 
           {/* Zugewiesene Bauteile */}
           <div className="detail-block">

@@ -16,10 +16,14 @@ export interface SimModell {
   ifcGuidLayerMap?: Record<string, string>; // GUID → Layer-Name (aus IFC-Parsing)
 }
 
+export type Zugriff = "edit" | "read" | "none";
+
 export interface SimProjekt {
   id: string;
   name: string;
   erstelltAm: string; // ISO string
+  erstellerId?: string; // TC User ID des Erstellers
+  zugriff?: Record<string, Zugriff>; // userId → Zugriff (default: "read")
   tasks: Task[];
   modelle: SimModell[];
 }
