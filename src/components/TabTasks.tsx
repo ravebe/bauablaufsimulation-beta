@@ -470,7 +470,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                 {aktivTask.objektGuids.length > 0 && (
                   <>
                     <button className="tc-btn-primary" title="Nur diese anzeigen" style={{ fontSize: 10, padding: "3px 8px" }} onClick={() => nurAnzeigen(aktivTask.objektGuids)}>👁 Nur diese</button>
-                    <button className="tc-btn-ghost" style={{ color: "#333" }} onClick={() => setLoeschenBestaetigen(true)}>🗑</button>
+                    {!readOnly && <button className="tc-btn-ghost" style={{ color: "#333" }} onClick={() => setLoeschenBestaetigen(true)}>🗑</button>}
                   </>
                 )}
                 <button className="tc-btn-ghost" title="Anzeige-Einstellungen" style={{ fontSize: 12 }}
@@ -569,7 +569,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                         {val1 || `Objekt ${g.split(":::")[1] ?? i}`}
                         {val2 && <span style={{ fontSize: 9, opacity: 0.5, marginLeft: 6 }}>{val2}</span>}
                       </div>
-                      <button className="guid-row-x" style={{ fontSize: 12 }} onClick={e => { e.stopPropagation(); guidEntfernen(aktivTask.id, g); }}>✕</button>
+                      {!readOnly && <button className="guid-row-x" style={{ fontSize: 12 }} onClick={e => { e.stopPropagation(); guidEntfernen(aktivTask.id, g); }}>✕</button>}
                     </div>
                   );
                 })}

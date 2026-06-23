@@ -214,6 +214,8 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                       border: "0.5px solid var(--tc-border)", borderRadius: 5,
                       boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, minWidth: 200,
                     }}>
+                      {(!sim.erstellerId || sim.erstellerId === userId) && (
+                      <>
                       <div style={{ padding: "6px 14px", fontSize: 10, color: "var(--tc-text-3)", fontWeight: 600, borderBottom: "1px solid #eef1f4" }}>
                         Zugriffskontrolle
                       </div>
@@ -238,6 +240,8 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                         </button>
                         );
                       })}
+                      </>
+                      )}
                       {(!sim.erstellerId || sim.erstellerId === userId) && (
                       <button
                         style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", fontSize: 11, color: "var(--tc-red)", cursor: "pointer" }}
@@ -252,7 +256,9 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
             </div>
 
             {/* Sim Body */}
-            {offen && (
+            {offen && (() => {
+              const istErsteller = !sim.erstellerId || sim.erstellerId === userId;
+              return (
               <div className="sim-card-body">
                 {!istAktiv && (
                   <button className="tc-btn-primary" style={{ width: "100%", marginBottom: 8 }}
@@ -265,12 +271,10 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                         if (valid.length === 0) return;
                         setModellMsg({ simId: sim.id, typ: "ok", text: "⟳ Modelle werden umgeschaltet…" });
 
-                        // Aktuell geladene Modelle holen
                         const simIds = new Set(valid.map(m => m.id));
                         try {
                           const alle = await api.viewer.getModels() as any[];
                           const geladen = alle.filter((m: any) => m.state === 'loaded');
-                          // Nicht-Sim-Modelle entladen
                           for (const m of geladen) {
                             const mid = m.id || m.modelId;
                             if (mid && !simIds.has(mid)) {
@@ -281,7 +285,6 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                           }
                         } catch { /* ignore */ }
 
-                        // Sim-Modelle laden
                         let loaded = 0;
                         for (const m of valid) {
                           try {
@@ -296,7 +299,9 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                   </button>
                 )}
 
-                {/* Gantt */}
+                {/* Gantt — nur Ersteller kann importieren */}
+                {istErsteller && (
+                <>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                   <span className="tc-section-label">Gantt</span>
                   <div style={{ display: "flex", gap: 4 }}>
@@ -322,8 +327,10 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                 )}
 
                 <div className="tc-divider" />
+                </>
+                )}
 
-                {/* Modelle */}
+                {/* Modelle — Liste immer sichtbar, Auswahl nur für Ersteller */}
                 <div className="tc-section-label" style={{ marginBottom: 6 }}>
                   Modelle{sim.modelle.length > 0 ? ` (${sim.modelle.length})` : ""}
                 </div>
@@ -342,6 +349,8 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                   </div>
                 )}
 
+                {istErsteller && (
+                <>
                 <button
                   className="tc-btn-secondary"
                   style={{ width: "100%" }}
@@ -351,7 +360,6 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                   {modellLaden ? "⟳ Lade…" : "⟳ Modelle auswählen…"}
                 </button>
 
-                {/* Checkbox Picker */}
                 {modellPicker?.simId === sim.id && (
                   <div style={{ marginTop: 8, border: "1px solid var(--tc-border)", borderRadius: 6, overflow: "hidden" }} onClick={e => e.stopPropagation()}>
                     <div style={{ padding: "6px 8px", background: "var(--tc-bg-2)", borderBottom: "1px solid var(--tc-border)", fontSize: 10, fontWeight: 600, display: "flex", justifyContent: "space-between" }}>
@@ -377,6 +385,8 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                     </div>
                   </div>
                 )}
+                </>
+                )}
 
                 {modellMsg?.simId === sim.id && (
                   <div className={`alert ${modellMsg.typ}`} style={{ marginTop: 6 }}>
@@ -384,7 +394,8 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                   </div>
                 )}
               </div>
-            )}
+              );
+            })()}
           </div>
         );
       })}
