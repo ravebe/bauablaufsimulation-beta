@@ -217,21 +217,23 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                       {(!sim.erstellerId || sim.erstellerId === userId) && (
                       <>
                       <div style={{ padding: "6px 14px", fontSize: 10, color: "var(--tc-text-3)", fontWeight: 600, borderBottom: "1px solid #eef1f4" }}>
-                        Zugriffskontrolle
+                        Zugriff für Projektmitglieder
                       </div>
                       {([
                         { key: "edit", label: "Zugriff bearbeiten", icon: "✏", desc: "Inhalt hinzufügen, bearbeiten" },
                         { key: "read", label: "Schreibgeschützt", icon: "👁", desc: "Nur Anzeigen von Inhalt" },
                         { key: "none", label: "Kein Zugriff", icon: "🚫", desc: "Projekt wird ausgeblendet" },
                       ] as const).map(opt => {
-                        const istAktiv = userId ? (sim.zugriff?.[userId] ?? (sim.erstellerId === userId ? "edit" : "read")) === opt.key : false;
+                        const aktDefault = sim.zugriff?.["__default__"] ?? "read";
+                        const istAktiv = aktDefault === opt.key;
                         return (
                         <button key={opt.key}
                           style={{ display: "block", width: "100%", padding: "6px 14px", background: istAktiv ? "#f0f7ff" : "none", border: "none", textAlign: "left", fontSize: 11, cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
                           onClick={() => {
-                            if (userId && sim.erstellerId === userId) {
-                              // Ersteller kann nur andere User Rechte ändern — hier TODO: User-Picker
-                            }
+                            setSims(prev => prev.map(s => s.id === sim.id ? {
+                              ...s,
+                              zugriff: { ...(s.zugriff || {}), __default__: opt.key }
+                            } : s));
                             setMenuOffen(null);
                           }}
                         >

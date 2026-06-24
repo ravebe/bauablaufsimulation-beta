@@ -86,20 +86,29 @@ export default function App() {
   const aktiveSim = sims.find(s => s.id === aktivId) ?? null;
 
   // Zugriffskontrolle: Ersteller hat immer "edit", andere default "read"
+  function istErsteller(sim: SimProjekt | null): boolean {
+    if (!sim) return false;
+    if (!sim.erstellerId) return true; // Alte Sims ohne erstellerId → aktueller User ist Ersteller
+    if (!userId) return false;
+    return sim.erstellerId === userId;
+  }
+
   function getZugriff(sim: SimProjekt | null): Zugriff {
     if (!sim) return "read";
+    if (istErsteller(sim)) return "edit";
     if (!userId) return "read";
-    if (sim.erstellerId === userId) return "edit";
-    return sim.zugriff?.[userId] ?? "read";
+    // Erst user-spezifisch, dann default, dann "read"
+    return sim.zugriff?.[userId] ?? sim.zugriff?.["__default__"] ?? "read";
   }
   const aktZugriff = getZugriff(aktiveSim);
   const readOnly = aktZugriff !== "edit";
 
   // Nur Sims anzeigen die nicht "none" sind
   const sichtbareSims = sims.filter(s => {
+    if (istErsteller(s)) return true;
     if (!userId) return true;
-    if (s.erstellerId === userId) return true;
-    return (s.zugriff?.[userId] ?? "read") !== "none";
+    const z = s.zugriff?.[userId] ?? s.zugriff?.["__default__"] ?? "read";
+    return z !== "none";
   });
 
   function updateSim(updated: SimProjekt) {
