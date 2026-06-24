@@ -376,12 +376,17 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, marginBottom: 4 }}>
         <div className="detail-block-title" style={{ margin: 0 }}>
-          {ganttOffen ? "Gantt-Chart" : "Timeline"} ({tasks.length} Tasks)
+          {ganttOffen ? "Gantt-Chart" : "Timeline"} ({tasks.length})
         </div>
-        <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "2px 8px" }}
-          onClick={() => setGanttOffen(g => !g)}>
-          {ganttOffen ? "☰ Liste" : "▤ Gantt"}
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {currentTag > 0 && aktuellesDatum && (
+            <span style={{ fontSize: 10, color: "#e63946", fontWeight: 600 }}>● {aktuellesDatum}</span>
+          )}
+          <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "2px 8px" }}
+            onClick={() => setGanttOffen(g => !g)}>
+            {ganttOffen ? "☰ Liste" : "▤ Gantt"}
+          </button>
+        </div>
       </div>
 
       {ganttOffen ? (
@@ -393,7 +398,9 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
             minDate={minDate}
             laeuft={laeuft}
             onTaskClick={idx => zuTask(idx)}
+            onSliderChange={tag => sliderChange(tag)}
             selTaskId={selTaskId}
+            selGuids={selGuids}
           />
         </div>
       ) : (
