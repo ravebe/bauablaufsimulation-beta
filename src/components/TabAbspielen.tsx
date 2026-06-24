@@ -378,19 +378,14 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
         <div className="detail-block-title" style={{ margin: 0 }}>
           {ganttOffen ? "Gantt-Chart" : "Timeline"} ({tasks.length})
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {currentTag > 0 && aktuellesDatum && (
-            <span style={{ fontSize: 10, color: "#e63946", fontWeight: 600 }}>● {aktuellesDatum}</span>
-          )}
-          <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "2px 8px" }}
-            onClick={() => setGanttOffen(g => !g)}>
-            {ganttOffen ? "☰ Liste" : "▤ Gantt"}
-          </button>
-        </div>
+        <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "2px 8px" }}
+          onClick={() => setGanttOffen(g => !g)}>
+          {ganttOffen ? "☰ Liste" : "▤ Gantt"}
+        </button>
       </div>
 
       {ganttOffen ? (
-        <div style={{ maxHeight: taskListHeight, overflow: "auto" }}>
+        <div style={{ maxHeight: taskListHeight, overflow: "hidden" }}>
           <GanttChart
             tasks={tasks}
             currentTag={currentTag}
@@ -401,6 +396,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
             onSliderChange={tag => sliderChange(tag)}
             selTaskId={selTaskId}
             selGuids={selGuids}
+            taskSort={taskSort}
           />
         </div>
       ) : (
