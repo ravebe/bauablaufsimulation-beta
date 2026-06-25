@@ -85,10 +85,20 @@ export default function App() {
 
   const aktiveSim = sims.find(s => s.id === aktivId) ?? null;
 
-  // Zugriffskontrolle: Ersteller hat immer "edit", andere default "read"
+  // Auto-Migration: Alte Sims ohne erstellerId → aktueller User wird Ersteller
+  useEffect(() => {
+    if (!userId) return;
+    let changed = false;
+    const updated = sims.map(s => {
+      if (!s.erstellerId) { changed = true; return { ...s, erstellerId: userId }; }
+      return s;
+    });
+    if (changed) setSims(updated);
+  }, [userId, sims.length]);
+
+  // Zugriffskontrolle
   function istErsteller(sim: SimProjekt | null): boolean {
     if (!sim) return false;
-    if (!sim.erstellerId) return true; // Alte Sims ohne erstellerId → aktueller User ist Ersteller
     if (!userId) return false;
     return sim.erstellerId === userId;
   }

@@ -214,7 +214,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                       border: "0.5px solid var(--tc-border)", borderRadius: 5,
                       boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, minWidth: 200,
                     }}>
-                      {(!sim.erstellerId || sim.erstellerId === userId) && (
+                      {(!!userId && sim.erstellerId === userId) && (
                       <>
                       <div style={{ padding: "6px 14px", fontSize: 10, color: "var(--tc-text-3)", fontWeight: 600, borderBottom: "1px solid #eef1f4" }}>
                         Zugriff für Projektmitglieder
@@ -244,7 +244,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                       })}
                       </>
                       )}
-                      {(!sim.erstellerId || sim.erstellerId === userId) && (
+                      {(!!userId && sim.erstellerId === userId) && (
                       <button
                         style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", fontSize: 11, color: "var(--tc-red)", cursor: "pointer" }}
                         onClick={() => loeschen(sim.id)}
@@ -259,7 +259,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
 
             {/* Sim Body */}
             {offen && (() => {
-              const istErsteller = !sim.erstellerId || sim.erstellerId === userId;
+              const istErsteller = !!userId && sim.erstellerId === userId;
               return (
               <div className="sim-card-body">
                 {!istAktiv && (
