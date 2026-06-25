@@ -24,6 +24,7 @@ export interface SimProjekt {
   erstelltAm: string; // ISO string
   erstellerId?: string; // TC User ID des Erstellers
   zugriff?: Record<string, Zugriff>; // userId → Zugriff (default: "read")
+  autoVerknuepft?: boolean; // true wenn Auto-Verknüpfung durchgeführt
   tasks: Task[];
   modelle: SimModell[];
 }

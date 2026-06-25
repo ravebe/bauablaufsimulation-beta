@@ -33,32 +33,40 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
   const [labelW, setLabelW] = useState(() => {
     try { return Number(localStorage.getItem(LS_LABEL_W)) || 140; } catch { return 140; }
   });
-  const [zoomMode, setZoomMode] = useState(true); // true=zoom, false=scroll
   const needleDrag = useRef(false);
   const scrollLock = useRef(false);
 
   useEffect(() => { localStorage.setItem(LS_LABEL_W, String(labelW)); }, [labelW]);
 
-  // Initial zoom
   useEffect(() => {
     if (!bodyRef.current || totalTage <= 0) return;
     setPxProTag(Math.max(MIN_PX, Math.min(10, bodyRef.current.clientWidth / totalTage)));
   }, [totalTage]);
 
-  // Mausrad: Zoom ODER Scroll
+  // Mausrad im Gantt-Body = Zoom
   useEffect(() => {
     const el = bodyRef.current;
     if (!el) return;
     const handler = (e: WheelEvent) => {
-      if (zoomMode) {
-        e.preventDefault();
-        setPxProTag(prev => Math.max(MIN_PX, Math.min(MAX_PX, prev * (e.deltaY < 0 ? 1.15 : 0.87))));
-      }
-      // Scroll-Modus: Browser-Default (vertikal scrollen)
+      e.preventDefault();
+      setPxProTag(prev => Math.max(MIN_PX, Math.min(MAX_PX, prev * (e.deltaY < 0 ? 1.15 : 0.87))));
     };
-    el.addEventListener("wheel", handler, { passive: !zoomMode });
+    el.addEventListener("wheel", handler, { passive: false });
     return () => el.removeEventListener("wheel", handler);
-  }, [zoomMode]);
+  }, []);
+
+  // Mausrad in Label-Spalte = vertikal scrollen
+  useEffect(() => {
+    const el = labelRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      const body = bodyRef.current;
+      if (body) body.scrollTop += e.deltaY;
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, []);
 
   // Nadel zentrieren
   useEffect(() => {
@@ -70,14 +78,12 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
     if (headerRef.current) headerRef.current.scrollLeft = target;
   }, [currentTag, pxProTag, minDate, totalTage]);
 
-  // Sync scroll
   const syncScroll = useCallback(() => {
     const b = bodyRef.current, h = headerRef.current, l = labelRef.current;
     if (b && h) h.scrollLeft = b.scrollLeft;
     if (b && l) l.scrollTop = b.scrollTop;
   }, []);
 
-  // Nadel-Drag
   const startNeedleDrag = useCallback((e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
     needleDrag.current = true; scrollLock.current = true;
@@ -98,7 +104,6 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
     document.addEventListener("mouseup", onUp);
   }, [pxProTag, totalTage, onSliderChange]);
 
-  // Label-Resize
   const startResize = useCallback((e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
     const startX = e.clientX, startW = labelW;
@@ -108,23 +113,18 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
     document.addEventListener("mouseup", onUp);
   }, [labelW]);
 
-  if (!minDate || totalTage <= 0 || tasks.length === 0) {
-    return <div style={{ padding: 12, fontSize: 11, color: "#8a9baa", textAlign: "center" }}>Keine Tasks</div>;
-  }
+  if (!minDate || totalTage <= 0 || tasks.length === 0) return <div style={{ padding: 12, fontSize: 11, color: "#8a9baa", textAlign: "center" }}>Keine Tasks</div>;
 
-  // Sortierung
   const sorted = tasks.map((t, i) => ({ task: t, origIdx: i }));
   if (taskSort === "datum") {
     sorted.sort((a, b) => {
       const sa = parseDateUniversal(a.task.start)?.getTime() ?? 0, sb = parseDateUniversal(b.task.start)?.getTime() ?? 0;
-      if (sa !== sb) return sa - sb;
-      return (parseDateUniversal(a.task.end)?.getTime() ?? sa) - (parseDateUniversal(b.task.end)?.getTime() ?? sb);
+      return sa !== sb ? sa - sb : (parseDateUniversal(a.task.end)?.getTime() ?? sa) - (parseDateUniversal(b.task.end)?.getTime() ?? sb);
     });
   } else if (taskSort === "aktiv") {
     sorted.sort((a, b) => {
       const aH = selGuids?.size && a.task.objektGuids.some(g => selGuids.has(g)) ? 1 : 0;
-      const bH = selGuids?.size && b.task.objektGuids.some(g => selGuids.has(g)) ? 1 : 0;
-      return bH - aH;
+      return (selGuids?.size && b.task.objektGuids.some(g => selGuids.has(g)) ? 1 : 0) - aH ? -1 : aH ? 1 : 0;
     });
   }
 
@@ -139,6 +139,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
   }
   if (rawM.length === 0 || rawM[0].x > 20) rawM.unshift({ x: 0, m: minDate.getMonth(), y: minDate.getFullYear() });
 
+  // Immer mindestens 1 Label sichtbar
   let mode: "full" | "short" | "year" = "full";
   if (rawM.length > 1) {
     const avg = rawM.reduce((s, m, i) => i > 0 ? s + (m.x - rawM[i - 1].x) : s, 0) / (rawM.length - 1);
@@ -154,13 +155,18 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
   } else {
     hLabels = rawM.map(m => ({ x: m.x, label: `${MONAT_VOLL[m.m]} ${String(m.y).slice(2)}` }));
   }
+  // Mindestens 1 Label garantieren
+  if (hLabels.length === 0) {
+    hLabels.push({ x: 0, label: `${MONAT_VOLL[minDate.getMonth()]} ${String(minDate.getFullYear()).slice(2)}` });
+  }
+  if (hLabels.length === 0) hLabels.push({ x: 0, label: `${MONAT_VOLL[minDate.getMonth()]} ${String(minDate.getFullYear()).slice(2)}` });
 
-  // Tages-Marker (nur bei genug Zoom)
-  const tageMarkers: { x: number; label: string }[] = [];
+  // Tage bei Zoom
+  const tageM: { x: number; label: string }[] = [];
   if (pxProTag >= 15) {
     for (let d = 0; d <= totalTage; d++) {
       const dt = new Date(minDate.getTime() + d * 86400000);
-      if (dt.getDate() !== 1) tageMarkers.push({ x: d * pxProTag, label: `${dt.getDate()}` });
+      if (dt.getDate() !== 1) tageM.push({ x: d * pxProTag, label: `${dt.getDate()}` });
     }
   }
 
@@ -169,21 +175,14 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
 
   return (
     <div style={{ display: "flex", flexDirection: "column", border: "1px solid #d4dce4", background: "#fff", height: containerH, overflow: "hidden" }}>
-      {/* HEADER (fixiert) */}
+      {/* HEADER */}
       <div style={{ display: "flex", flexShrink: 0 }}>
-        {/* Header links */}
         <div style={{ width: labelW, flexShrink: 0, height: HEAD_H, background: "#f5f7f9", borderBottom: "1px solid #d4dce4", borderRight: "1px solid #d4dce4",
           display: "flex", alignItems: "center", padding: "0 6px", position: "relative" }}>
           <span style={{ fontSize: 11, fontWeight: 600, color: "#555" }}>Task</span>
-          <span style={{ marginLeft: "auto", fontSize: 10, color: "#8a9baa", display: "flex", alignItems: "center", gap: 4 }}>
-            <button onClick={() => setZoomMode(z => !z)} title={zoomMode ? "Modus: Zoom → Scroll" : "Modus: Scroll → Zoom"}
-              style={{ fontSize: 9, padding: "1px 4px", border: "1px solid #ccc", borderRadius: 3, background: zoomMode ? "#e8f0fe" : "#fff", cursor: "pointer", fontFamily: "inherit", color: "#555" }}>
-              {zoomMode ? "🔍" : "↕"}
-            </button>
-          </span>
+          <span style={{ marginLeft: "auto", fontSize: 10, color: "#8a9baa" }}>Tage</span>
           <div onMouseDown={startResize} style={{ position: "absolute", top: 0, right: -3, width: 6, height: "100%", cursor: "col-resize", zIndex: 5 }} />
         </div>
-        {/* Header rechts: Zeitachse */}
         <div ref={headerRef} style={{ flex: 1, height: HEAD_H, overflow: "hidden", background: "#f5f7f9", borderBottom: "1px solid #d4dce4" }}>
           <svg width={chartW} height={HEAD_H} style={{ display: "block" }}>
             {hLabels.map((m, i) => (
@@ -192,7 +191,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
                 <text x={m.x + 4} y={13} fontSize={10} fontWeight={600} fill="#555">{m.label}</text>
               </g>
             ))}
-            {tageMarkers.map((m, i) => (
+            {tageM.map((m, i) => (
               <text key={`t${i}`} x={m.x + 2} y={25} fontSize={8} fill="#999">{m.label}</text>
             ))}
             {currentTag >= 0 && <polygon points={`${nadelX - 5},${HEAD_H} ${nadelX + 5},${HEAD_H} ${nadelX},${HEAD_H - 6}`} fill="#e63946" />}
@@ -200,16 +199,14 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
         </div>
       </div>
 
-      {/* BODY (scrollbar) */}
+      {/* BODY */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        {/* Labels links (vertikal sync) */}
-        <div ref={labelRef} style={{ width: labelW, flexShrink: 0, overflowY: "hidden", overflowX: "hidden", borderRight: "1px solid #d4dce4", position: "relative" }}>
+        <div ref={labelRef} style={{ width: labelW, flexShrink: 0, overflowY: "hidden", borderRight: "1px solid #d4dce4", position: "relative" }}>
           <div style={{ height: bodyH }}>
             {sorted.map(({ task: t, origIdx }, i) => {
               const sd = parseDateUniversal(t.start), ed = parseDateUniversal(t.end);
               const dauer = sd && ed ? Math.max(1, Math.round((ed.getTime() - sd.getTime()) / 86400000)) : 1;
-              const isSel = selTaskId === t.id;
-              const hasSel = selGuids?.size ? t.objektGuids.some(g => selGuids!.has(g)) : false;
+              const isSel = selTaskId === t.id, hasSel = selGuids?.size ? t.objektGuids.some(g => selGuids!.has(g)) : false;
               const maxC = Math.max(4, Math.floor((labelW - 40) / 7));
               const lbl = t.name.length > maxC ? t.name.slice(0, maxC - 1) + "…" : t.name;
               return (
@@ -229,24 +226,17 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
           <div onMouseDown={startResize} style={{ position: "absolute", top: 0, right: -3, width: 6, height: "100%", cursor: "col-resize", zIndex: 5 }} />
         </div>
 
-        {/* Chart rechts (scrollbar H+V) */}
         <div ref={bodyRef} onScroll={syncScroll} style={{ flex: 1, overflow: "auto" }}>
           <svg width={chartW} height={bodyH} style={{ display: "block" }}>
-            {/* Monats-Linien */}
             {rawM.map((m, i) => <line key={`ml${i}`} x1={m.x} y1={0} x2={m.x} y2={bodyH} stroke="#d4dce4" strokeWidth={0.6} />)}
-            {/* Tages-Linien */}
-            {pxProTag >= 15 && tageMarkers.map((m, i) => <line key={`tl${i}`} x1={m.x} y1={0} x2={m.x} y2={bodyH} stroke="#f0f2f4" strokeWidth={0.3} />)}
-
-            {/* Balken */}
+            {pxProTag >= 15 && tageM.map((m, i) => <line key={`tl${i}`} x1={m.x} y1={0} x2={m.x} y2={bodyH} stroke="#f0f2f4" strokeWidth={0.3} />)}
             {sorted.map(({ task: t }, i) => {
-              const y = i * ROW_H;
-              const sd = parseDateUniversal(t.start), ed = parseDateUniversal(t.end);
+              const y = i * ROW_H, sd = parseDateUniversal(t.start), ed = parseDateUniversal(t.end);
               const sT = sd ? Math.max(0, (sd.getTime() - minDate.getTime()) / 86400000) : 0;
               const eT = ed ? (ed.getTime() - minDate.getTime()) / 86400000 : sT + 1;
               const dauer = Math.max(1, Math.round(eT - sT));
               const bX = sT * pxProTag, bW = Math.max((eT - sT) * pxProTag, 3);
-              const isSel = selTaskId === t.id;
-              const hasSel = selGuids?.size ? t.objektGuids.some(g => selGuids!.has(g)) : false;
+              const isSel = selTaskId === t.id, hasSel = selGuids?.size ? t.objektGuids.some(g => selGuids!.has(g)) : false;
               return (
                 <g key={t.id}>
                   <rect x={0} y={y} width={chartW} height={ROW_H} fill={isSel ? "#e8f0fe" : hasSel ? "#f0f0f0" : i % 2 === 0 ? "#fafbfc" : "#fff"} />
@@ -258,8 +248,6 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
                 </g>
               );
             })}
-
-            {/* Nadel */}
             {currentTag >= 0 && (
               <g style={{ cursor: "ew-resize" }} onMouseDown={startNeedleDrag as any}>
                 <rect x={nadelX - 10} y={0} width={20} height={bodyH} fill="transparent" />

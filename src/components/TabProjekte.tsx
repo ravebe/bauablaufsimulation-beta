@@ -313,7 +313,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                 </div>
                 <GanttImport
                   onImport={tasks => setSims(prev =>
-                    prev.map(s => s.id === sim.id ? { ...s, tasks } : s)
+                    prev.map(s => s.id === sim.id ? { ...s, tasks, autoVerknuepft: false } : s)
                   )}
                   taskCount={sim.tasks.length}
                 />
@@ -323,8 +323,9 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                     api={api}
                     sim={sim}
                     onUpdate={tasks => setSims(prev =>
-                      prev.map(s => s.id === sim.id ? { ...s, tasks } : s)
+                      prev.map(s => s.id === sim.id ? { ...s, tasks, autoVerknuepft: true } : s)
                     )}
+                    done={sim.autoVerknuepft}
                   />
                 )}
 
@@ -341,7 +342,10 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                   <div style={{ marginBottom: 6 }}>
                     {sim.modelle.map(m => (
                       <div key={m.id} className="modell-row">
-                        <span>🏗️</span>
+                        <svg viewBox="0 0 24 24" width="18" height="18" style={{ flexShrink: 0 }}>
+                          <path d="M12 2L2 7v10l10 5 10-5V7L12 2z" fill="none" stroke="#2d7dbd" strokeWidth="1.5"/>
+                          <path d="M12 22V12M2 7l10 5 10-5" fill="none" stroke="#2d7dbd" strokeWidth="1.2"/>
+                        </svg>
                         <div style={{ flex: 1 }}>
                           <div className="modell-name">{m.name}</div>
                           <div className="modell-id">{m.id}</div>

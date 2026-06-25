@@ -307,3 +307,7 @@
   overflow: hidden; text-overflow: ellipsis;
 }
 .modell-id { font-size: 11px; color: var(--tc-text-3); margin-top: 1px; }
+
+/* Spin Animation */
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.spin-icon { display: inline-block; animation: spin 1s linear infinite; }

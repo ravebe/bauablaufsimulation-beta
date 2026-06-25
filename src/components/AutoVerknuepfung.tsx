@@ -8,9 +8,10 @@ interface Props {
   api: ApiInstance | null;
   sim: SimProjekt;
   onUpdate: (tasks: Task[]) => void;
+  done?: boolean;
 }
 
-export default function AutoVerknuepfung({ api, sim, onUpdate }: Props) {
+export default function AutoVerknuepfung({ api, sim, onUpdate, done }: Props) {
   const [offen, setOffen] = useState(false);
   const [bestaetigen, setBestaetigen] = useState(false);
   const [gewaehlt, setGewaehlt] = useState<Set<string>>(new Set());
@@ -173,9 +174,18 @@ export default function AutoVerknuepfung({ api, sim, onUpdate }: Props) {
   return (
     <div style={{ marginTop: 6 }}>
       {!offen ? (
-        <button className="tc-btn-primary" style={{ width: "100%", fontSize: 11 }}
+        <button className={done ? "tc-btn-secondary" : "tc-btn-primary"}
+          style={{ width: "100%", fontSize: 11, opacity: done ? 0.7 : 1 }}
           onClick={() => setOffen(true)}>
-          🔗 Auto-Verknüpfung ({alleSpalten.length} Spalten verfügbar)
+          {laeuft ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span className="spin-icon">⟳</span> {fortschritt}
+            </span>
+          ) : done ? (
+            <>✓ Auto-Verknüpfung ({alleSpalten.length} Spalten)</>
+          ) : (
+            <>🔗 Auto-Verknüpfung ({alleSpalten.length} Spalten verfügbar)</>
+          )}
         </button>
       ) : (
         <div style={{ border: "1px solid var(--tc-border)", padding: 8, fontSize: 11 }}>
