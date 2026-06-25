@@ -43,6 +43,17 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
   const [hoverTaskId, setHoverTaskId] = useState<string | null>(null);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dropIdx, setDropIdx] = useState<number | null>(null);
+
+  // Safety: dragIdx zurücksetzen wenn Drag abbricht (z.B. Drop ausserhalb)
+  useEffect(() => {
+    if (dragIdx === null) return;
+    const reset = () => { setDragIdx(null); setDropIdx(null); };
+    window.addEventListener("dragend", reset);
+    window.addEventListener("mouseup", reset);
+    // Fallback: nach 5s automatisch reset
+    const timer = setTimeout(reset, 5000);
+    return () => { window.removeEventListener("dragend", reset); window.removeEventListener("mouseup", reset); clearTimeout(timer); };
+  }, [dragIdx]);
   // Datum bearbeiten
   const [editDatumId, setEditDatumId] = useState<string | null>(null);
   const [editStart, setEditStart] = useState("");
