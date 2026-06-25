@@ -385,7 +385,6 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
       </div>
 
       {ganttOffen ? (
-        <div style={{ maxHeight: taskListHeight, overflow: "hidden" }}>
           <GanttChart
             tasks={tasks}
             currentTag={currentTag}
@@ -397,8 +396,8 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
             selTaskId={selTaskId}
             selGuids={selGuids}
             taskSort={taskSort}
+            height={taskListHeight}
           />
-        </div>
       ) : (
       <div className="player-card" style={{ padding: 0, overflow: "hidden", maxHeight: taskListHeight, overflowY: "auto" }}>
         {tasks.length === 0 ? (
