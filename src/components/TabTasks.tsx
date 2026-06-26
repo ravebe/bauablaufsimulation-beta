@@ -336,8 +336,8 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                 <span style={{ width: 9, height: 9, borderRadius: "50%", flexShrink: 0, background: task.typ === "neubau" ? "#6cc07a" : task.typ === "abbruch" ? "#edb94c" : task.typ === "temporaer" ? "#a0522d" : "#888" }} />
                 <span className="task-row-name" style={{ fontSize: 13, flex: 1, color: task.id === aktivTaskId ? "#2d7dbd" : "#333", fontWeight: task.id === aktivTaskId || hatSelektierte ? 600 : 400 }}>{task.name}</span>
 
-                {/* Datum — blau, untereinander */}
-                <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.3, flexShrink: 0 }}
+                {/* Datum — blau, untereinander, fixe Breite */}
+                <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.3, flexShrink: 0, minWidth: 80 }}
                   onClick={e => e.stopPropagation()}>
                   {!readOnly ? (
                     <>
