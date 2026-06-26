@@ -25,8 +25,8 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
   const [resetSignal, setResetSignal] = useState(0);
   const [selGuids, setSelGuids] = useState<Set<string>>(new Set());
   const [ganttOffen, setGanttOffen] = useState(false);
-  const [listHeight] = useState(() => {
-    try { return Number(localStorage.getItem("4d-list-height-bauteile")) || 260; } catch { return 260; }
+  const [ganttH, setGanttH] = useState(() => {
+    try { return Number(localStorage.getItem("4d-gantt-height-bauteile")) || 260; } catch { return 260; }
   });
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -122,10 +122,25 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
             selTaskId={aktivTaskId}
             selGuids={selGuids}
             taskSort={taskSort}
-            height={listHeight}
+            height={ganttH}
             editable={!readOnly}
             onDateChange={ganttDateChange}
           />
+          {/* Resize Handle */}
+          <div onMouseDown={e => {
+            e.preventDefault();
+            const sy = e.clientY, sh = ganttH;
+            const onMove = (ev: MouseEvent) => {
+              const newH = Math.max(120, Math.min(600, sh + ev.clientY - sy));
+              setGanttH(newH);
+              localStorage.setItem("4d-gantt-height-bauteile", String(newH));
+            };
+            const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+            document.addEventListener("mousemove", onMove);
+            document.addEventListener("mouseup", onUp);
+          }} style={{ height: 6, cursor: "ns-resize", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ width: 40, height: 3, background: "#d4dce4", borderRadius: 2 }} />
+          </div>
         </>
       ) : (
         <TabTasks
