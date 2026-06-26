@@ -4,6 +4,7 @@ interface Props {
   value: string;
   onChange: (val: string) => void;
   readOnly?: boolean;
+  defaultOpen?: boolean;
 }
 
 const TAGE = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
@@ -21,8 +22,8 @@ function fmtDMY(d: Date): string {
 const CAL_W = 224;
 const CAL_H = 280;
 
-export default function DatePicker({ value, onChange, readOnly }: Props) {
-  const [offen, setOffen] = useState(false);
+export default function DatePicker({ value, onChange, readOnly, defaultOpen }: Props) {
+  const [offen, setOffen] = useState(!!defaultOpen);
   const parsed = parseDMY(value);
   const [monat, setMonat] = useState(parsed?.getMonth() ?? new Date().getMonth());
   const [jahr, setJahr] = useState(parsed?.getFullYear() ?? new Date().getFullYear());

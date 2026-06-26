@@ -298,7 +298,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
 
       {calEdit && onDateChange && (
         <div style={{ position: "fixed", left: calEdit.x, top: calEdit.y, zIndex: 300 }}>
-          <DatePicker value={calEdit.value} onChange={(val: string) => {
+          <DatePicker value={calEdit.value} defaultOpen onChange={(val: string) => {
             const t = sorted.find(s => s.task.id === calEdit.taskId)?.task;
             if (!t) return;
             const iso = val.split(".").reverse().join("-");
