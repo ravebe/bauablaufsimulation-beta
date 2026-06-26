@@ -252,7 +252,7 @@ export default function App() {
             userId={userId}
           />
         )}
-        {aktTab === "bauteile" && (
+        <div style={{ display: aktTab === "bauteile" ? "block" : "none" }}>
           <TabBauteile
             api={api}
             aktiveSim={aktiveSim}
@@ -262,15 +262,15 @@ export default function App() {
             taskSort={taskSort}
             readOnly={readOnly}
           />
-        )}
-        {aktTab === "abspielen" && (
+        </div>
+        <div style={{ display: aktTab === "abspielen" ? "block" : "none" }}>
           <TabAbspielen
             api={api}
             aktiveSim={aktiveSim}
             aktivesModellId={aktivesModellId}
             taskSort={taskSort}
           />
-        )}
+        </div>
       </div>
     </div>
   );

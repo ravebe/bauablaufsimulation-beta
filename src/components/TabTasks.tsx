@@ -336,25 +336,27 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                 <span style={{ width: 9, height: 9, borderRadius: "50%", flexShrink: 0, background: task.typ === "neubau" ? "#6cc07a" : task.typ === "abbruch" ? "#edb94c" : task.typ === "temporaer" ? "#a0522d" : "#888" }} />
                 <span className="task-row-name" style={{ fontSize: 13, flex: 1, color: task.id === aktivTaskId ? "#2d7dbd" : "#333", fontWeight: task.id === aktivTaskId || hatSelektierte ? 600 : 400 }}>{task.name}</span>
 
-                {/* Datum — mit Kalender-Icon */}
-                {!readOnly ? (
-                  <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.2 }}
-                    onClick={e => e.stopPropagation()}>
-                    <DatePicker value={formatDatum(task.start)} label="" onChange={(val: string) => {
-                      const norm = normalizeDatum(val);
-                      if (norm) { const t2 = { ...task, start: norm }; updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => t.id === task.id ? t2 : t) }); }
-                    }} />
-                    <DatePicker value={formatDatum(task.end)} label="" onChange={(val: string) => {
-                      const norm = normalizeDatum(val);
-                      if (norm) { const t2 = { ...task, end: norm }; updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => t.id === task.id ? t2 : t) }); }
-                    }} />
-                  </span>
-                ) : (
-                  <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.2 }}>
-                    <span style={{ fontSize: 10, color: "#8a9baa" }}>{formatDatum(task.start)}</span>
-                    {task.end && <span style={{ fontSize: 9, color: "#b0bec5" }}>{formatDatum(task.end)}</span>}
-                  </span>
-                )}
+                {/* Datum — blau, untereinander */}
+                <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.3, flexShrink: 0 }}
+                  onClick={e => e.stopPropagation()}>
+                  {!readOnly ? (
+                    <>
+                      <DatePicker value={formatDatum(task.start)} onChange={(val: string) => {
+                        const norm = normalizeDatum(val);
+                        if (norm) updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => t.id === task.id ? { ...t, start: norm } : t) });
+                      }} />
+                      <DatePicker value={formatDatum(task.end)} onChange={(val: string) => {
+                        const norm = normalizeDatum(val);
+                        if (norm) updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => t.id === task.id ? { ...t, end: norm } : t) });
+                      }} />
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ fontSize: 11, color: "#2d7dbd" }}>{formatDatum(task.start)}</span>
+                      <span style={{ fontSize: 11, color: "#2d7dbd" }}>{formatDatum(task.end)}</span>
+                    </>
+                  )}
+                </span>
 
                 {/* Rechts: Count oder Drag-Handle */}
                 {!readOnly && istHover && !dragIdx ? (

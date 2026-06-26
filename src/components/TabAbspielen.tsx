@@ -438,12 +438,11 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
               {aktiv && <span style={{ fontSize: 8, color: "#6cc07a" }}>▶</span>}
               <span style={dot(task.typ)} />
               <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12 }}>{task.name}</span>
-              <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, lineHeight: 1.2 }}>
-                <span style={{ fontSize: 12, color: istSelTask ? "#2d7dbd" : "#8a9baa" }}>
-                  {dauer}d
-                </span>
-                <span style={{ fontSize: 9, color: "#b0bec5" }}>{formatDatum(task.start)} – {formatDatum(task.end)}</span>
+              <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, lineHeight: 1.3 }}>
+                <span style={{ fontSize: 11, color: "#2d7dbd" }}>{formatDatum(task.start)}</span>
+                <span style={{ fontSize: 11, color: "#2d7dbd" }}>{formatDatum(task.end)}</span>
               </span>
+              <span style={{ fontSize: 12, color: "#8a9baa", flexShrink: 0, minWidth: 28, textAlign: "right" }}>{dauer}d</span>
             </div>
           );
         });

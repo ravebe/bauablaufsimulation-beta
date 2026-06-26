@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from "react";
 interface Props {
   value: string;
   onChange: (val: string) => void;
-  label?: string;
+  readOnly?: boolean;
 }
 
 const TAGE = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
@@ -21,14 +21,14 @@ function fmtDMY(d: Date): string {
 const CAL_W = 224;
 const CAL_H = 280;
 
-export default function DatePicker({ value, onChange }: Props) {
+export default function DatePicker({ value, onChange, readOnly }: Props) {
   const [offen, setOffen] = useState(false);
   const parsed = parseDMY(value);
   const [monat, setMonat] = useState(parsed?.getMonth() ?? new Date().getMonth());
   const [jahr, setJahr] = useState(parsed?.getFullYear() ?? new Date().getFullYear());
   const [pos, setPos] = useState<{ top?: number; bottom?: number; left?: number; right?: number }>({});
   const ref = useRef<HTMLDivElement>(null);
-  const btnRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     if (!offen) return;
@@ -39,13 +39,11 @@ export default function DatePicker({ value, onChange }: Props) {
 
   useEffect(() => {
     if (offen && parsed) { setMonat(parsed.getMonth()); setJahr(parsed.getFullYear()); }
-    if (offen && btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - r.bottom;
-      const spaceRight = window.innerWidth - r.left;
+    if (offen && triggerRef.current) {
+      const r = triggerRef.current.getBoundingClientRect();
       const p: typeof pos = {};
-      if (spaceBelow < CAL_H && r.top > CAL_H) p.bottom = r.height + 2; else p.top = r.height + 2;
-      if (spaceRight < CAL_W) p.right = 0; else p.left = 0;
+      if (window.innerHeight - r.bottom < CAL_H && r.top > CAL_H) p.bottom = r.height + 2; else p.top = r.height + 2;
+      if (window.innerWidth - r.left < CAL_W) p.right = 0; else p.left = 0;
       setPos(p);
     }
   }, [offen]);
@@ -62,16 +60,16 @@ export default function DatePicker({ value, onChange }: Props) {
   for (let i = 0; i < ersterTag; i++) zellen.push(null);
   for (let d = 1; d <= tageImMonat; d++) zellen.push(d);
 
+  if (readOnly) {
+    return <span style={{ fontSize: 11, color: "#2d7dbd" }}>{value || "—"}</span>;
+  }
+
   return (
     <div ref={ref} style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
-      <button ref={btnRef} onClick={e => { e.stopPropagation(); setOffen(o => !o); }}
-        style={{ background: "none", border: "none", cursor: "pointer", padding: "1px 2px", fontSize: 11, color: "#2d7dbd", display: "inline-flex", alignItems: "center", gap: 3 }}>
-        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="#2d7dbd" strokeWidth="1.3">
-          <rect x="1" y="3" width="14" height="12" rx="1.5" /><line x1="1" y1="7" x2="15" y2="7" />
-          <line x1="4.5" y1="1" x2="4.5" y2="5" /><line x1="11.5" y1="1" x2="11.5" y2="5" />
-        </svg>
-        <span>{value || "—"}</span>
-      </button>
+      <span ref={triggerRef} onClick={e => { e.stopPropagation(); setOffen(o => !o); }}
+        style={{ fontSize: 11, color: "#2d7dbd", cursor: "pointer" }}>
+        {value || "—"}
+      </span>
 
       {offen && (
         <div style={{
