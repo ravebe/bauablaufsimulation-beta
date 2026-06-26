@@ -14,6 +14,8 @@ interface Props {
   selGuids?: Set<string>;
   taskSort?: "gantt" | "datum" | "aktiv";
   height?: number;
+  editable?: boolean;
+  onDateChange?: (taskId: string, newStart: string, newEnd: string) => void;
 }
 
 const FARBEN: Record<string, string> = { neubau: "#6cc07a", bestand: "#999", abbruch: "#edb94c", temporaer: "#a0522d" };
@@ -25,7 +27,11 @@ const LS_LABEL_W = "4d-gantt-label-w";
 const MONAT_VOLL = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
 const MONAT_KURZ = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"];
 
-export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, selTaskId, selGuids, taskSort, height }: Props) {
+function fmtISO(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, selTaskId, selGuids, taskSort, height, editable, onDateChange }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
@@ -112,6 +118,36 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
   }, [labelW]);
+
+  // Bar-Drag (editable): links=Start, rechts=Ende, mitte=verschieben
+  const startBarDrag = useCallback((e: React.MouseEvent, taskId: string, mode: "start" | "end" | "move", origStart: Date, origEnd: Date) => {
+    if (!editable || !minDate || !onDateChange) return;
+    e.preventDefault(); e.stopPropagation();
+    scrollLock.current = true;
+    const startX = e.clientX;
+    const origSDays = (origStart.getTime() - minDate.getTime()) / 86400000;
+    const origEDays = (origEnd.getTime() - minDate.getTime()) / 86400000;
+    const dauer = origEDays - origSDays;
+
+    const onMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - startX;
+      const dDays = Math.round(dx / pxProTag);
+      let newS = origSDays, newE = origEDays;
+      if (mode === "start") { newS = Math.max(0, origSDays + dDays); if (newS >= newE) newS = newE - 1; }
+      else if (mode === "end") { newE = Math.max(newS + 1, origEDays + dDays); }
+      else { newS = Math.max(0, origSDays + dDays); newE = newS + dauer; }
+      const sDate = new Date(minDate.getTime() + newS * 86400000);
+      const eDate = new Date(minDate.getTime() + newE * 86400000);
+      onDateChange(taskId, fmtISO(sDate), fmtISO(eDate));
+    };
+    const onUp = () => {
+      setTimeout(() => { scrollLock.current = false; }, 200);
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [editable, minDate, pxProTag, onDateChange]);
 
   if (!minDate || totalTage <= 0 || tasks.length === 0) return <div style={{ padding: 12, fontSize: 11, color: "#8a9baa", textAlign: "center" }}>Keine Tasks</div>;
 
@@ -237,14 +273,26 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
               const dauer = Math.max(1, Math.round(eT - sT));
               const bX = sT * pxProTag, bW = Math.max((eT - sT) * pxProTag, 3);
               const isSel = selTaskId === t.id, hasSel = selGuids?.size ? t.objektGuids.some(g => selGuids!.has(g)) : false;
+              const handleW = Math.min(6, bW / 3);
               return (
                 <g key={t.id}>
                   <rect x={0} y={y} width={chartW} height={ROW_H} fill={isSel ? "#e8f0fe" : hasSel ? "#f0f0f0" : i % 2 === 0 ? "#fafbfc" : "#fff"} />
                   <line x1={0} y1={y + ROW_H} x2={chartW} y2={y + ROW_H} stroke="#eef1f4" strokeWidth={0.5} />
                   {sd && <rect x={bX} y={y + 5} width={bW} height={ROW_H - 10} rx={3}
                     fill={FARBEN[t.typ] || "#6cc07a"} opacity={isSel ? 1 : 0.85}
-                    stroke={isSel ? "#2d7dbd" : "none"} strokeWidth={isSel ? 1.5 : 0} />}
-                  {sd && bW > 28 && <text x={bX + 5} y={y + ROW_H - 9} fontSize={9} fill="rgba(255,255,255,.9)" fontWeight={600}>{dauer}d</text>}
+                    stroke={isSel ? "#2d7dbd" : "none"} strokeWidth={isSel ? 1.5 : 0}
+                    style={editable && sd && ed ? { cursor: "move" } : undefined}
+                    onMouseDown={editable && sd && ed ? (e) => startBarDrag(e, t.id, "move", sd, ed) : undefined} />}
+                  {sd && bW > 28 && <text x={bX + 5} y={y + ROW_H - 9} fontSize={9} fill="rgba(255,255,255,.9)" fontWeight={600} style={{ pointerEvents: "none" }}>{dauer}d</text>}
+                  {/* Drag-Handles links/rechts */}
+                  {editable && sd && ed && bW > 8 && (
+                    <>
+                      <rect x={bX} y={y + 3} width={handleW} height={ROW_H - 6} rx={1} fill="rgba(255,255,255,.3)" style={{ cursor: "ew-resize" }}
+                        onMouseDown={e => startBarDrag(e, t.id, "start", sd, ed)} />
+                      <rect x={bX + bW - handleW} y={y + 3} width={handleW} height={ROW_H - 6} rx={1} fill="rgba(255,255,255,.3)" style={{ cursor: "ew-resize" }}
+                        onMouseDown={e => startBarDrag(e, t.id, "end", sd, ed)} />
+                    </>
+                  )}
                 </g>
               );
             })}
