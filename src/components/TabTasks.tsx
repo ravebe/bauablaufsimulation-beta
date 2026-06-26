@@ -340,11 +340,11 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                 {!readOnly ? (
                   <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.2 }}
                     onClick={e => e.stopPropagation()}>
-                    <DatePicker value={formatDatum(task.start)} label="" onChange={val => {
+                    <DatePicker value={formatDatum(task.start)} label="" onChange={(val: string) => {
                       const norm = normalizeDatum(val);
                       if (norm) { const t2 = { ...task, start: norm }; updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => t.id === task.id ? t2 : t) }); }
                     }} />
-                    <DatePicker value={formatDatum(task.end)} label="" onChange={val => {
+                    <DatePicker value={formatDatum(task.end)} label="" onChange={(val: string) => {
                       const norm = normalizeDatum(val);
                       if (norm) { const t2 = { ...task, end: norm }; updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => t.id === task.id ? t2 : t) }); }
                     }} />
