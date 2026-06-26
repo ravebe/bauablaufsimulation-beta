@@ -51,6 +51,8 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
   const [labelW, setLabelW] = useState(() => { try { return Number(localStorage.getItem(LS_LABEL_W)) || 140; } catch { return 140; } });
   const needleDrag = useRef(false);
   const scrollLock = useRef(false);
+  const pxRef = useRef(pxProTag);
+  useEffect(() => { pxRef.current = pxProTag; }, [pxProTag]);
   const initDone = useRef(false);
   const [calEdit, setCalEdit] = useState<{ taskId: string; field: "start" | "end"; value: string; x: number; y: number } | null>(null);
 
@@ -71,18 +73,24 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
     const el = bodyRef.current; if (!el) return;
     const handler = (e: WheelEvent) => {
       e.preventDefault();
+      scrollLock.current = true;
       const rect = el.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
-      const dayAtCursor = (el.scrollLeft + mouseX) / pxProTag;
+      const curPx = pxRef.current;
+      const dayAtCursor = (el.scrollLeft + mouseX) / curPx;
       const factor = e.deltaY < 0 ? 1.15 : 0.87;
-      const newPx = Math.max(MIN_PX, Math.min(MAX_PX, pxProTag * factor));
+      const newPx = Math.max(MIN_PX, Math.min(MAX_PX, curPx * factor));
+      pxRef.current = newPx;
       setPxProTag(newPx);
-      el.scrollLeft = Math.max(0, dayAtCursor * newPx - mouseX);
-      if (headerRef.current) headerRef.current.scrollLeft = el.scrollLeft;
+      requestAnimationFrame(() => {
+        el.scrollLeft = Math.max(0, dayAtCursor * newPx - mouseX);
+        if (headerRef.current) headerRef.current.scrollLeft = el.scrollLeft;
+        setTimeout(() => { scrollLock.current = false; }, 100);
+      });
     };
     el.addEventListener("wheel", handler, { passive: false });
     return () => el.removeEventListener("wheel", handler);
-  }, [pxProTag]);
+  }, []);
 
   // Needle centering
   useEffect(() => {
