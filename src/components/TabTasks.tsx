@@ -336,8 +336,8 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                 <span style={{ width: 9, height: 9, borderRadius: "50%", flexShrink: 0, background: task.typ === "neubau" ? "#6cc07a" : task.typ === "abbruch" ? "#edb94c" : task.typ === "temporaer" ? "#a0522d" : "#888" }} />
                 <span className="task-row-name" style={{ fontSize: 13, flex: 1, color: task.id === aktivTaskId ? "#2d7dbd" : "#333", fontWeight: task.id === aktivTaskId || hatSelektierte ? 600 : 400 }}>{task.name}</span>
 
-                {/* Datum — blau, untereinander, fixe Breite, linksbündig */}
-                <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.3, flexShrink: 0, width: 82 }}
+                {/* Datum — blau, untereinander, rechtsbündig wie TabAbspielen */}
+                <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.3, flexShrink: 0 }}
                   onClick={e => e.stopPropagation()}>
                   {!readOnly ? (
                     <>
@@ -369,7 +369,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                     title="Ziehen zum Verschieben"
                   >☰</span>
                 ) : (
-                  <span className="task-row-count" style={{ fontSize: 12, marginLeft: 4, flexShrink: 0 }}>
+                  <span className="task-row-count" style={{ fontSize: 12, marginLeft: 4, flexShrink: 0, minWidth: 36, textAlign: "right" }}>
                     {hatSelektierte
                       ? <span style={{ color: "#2d7dbd", fontWeight: 600 }}>{selAnzahl}/{task.objektGuids.length}</span>
                       : task.objektGuids.length > 0
