@@ -66,13 +66,23 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
     setPxProTag(Math.max(MIN_PX, Math.min(10, bodyRef.current.clientWidth / totalTage)));
   }, [totalTage]);
 
-  // Wheel = zoom
+  // Wheel = zoom zum Mauszeiger (wie Google Maps)
   useEffect(() => {
     const el = bodyRef.current; if (!el) return;
-    const handler = (e: WheelEvent) => { e.preventDefault(); setPxProTag(prev => Math.max(MIN_PX, Math.min(MAX_PX, prev * (e.deltaY < 0 ? 1.15 : 0.87)))); };
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const dayAtCursor = (el.scrollLeft + mouseX) / pxProTag;
+      const factor = e.deltaY < 0 ? 1.15 : 0.87;
+      const newPx = Math.max(MIN_PX, Math.min(MAX_PX, pxProTag * factor));
+      setPxProTag(newPx);
+      el.scrollLeft = Math.max(0, dayAtCursor * newPx - mouseX);
+      if (headerRef.current) headerRef.current.scrollLeft = el.scrollLeft;
+    };
     el.addEventListener("wheel", handler, { passive: false });
     return () => el.removeEventListener("wheel", handler);
-  }, []);
+  }, [pxProTag]);
 
   // Needle centering
   useEffect(() => {
@@ -298,7 +308,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
 
       {calEdit && onDateChange && (
         <div style={{ position: "fixed", left: calEdit.x, top: calEdit.y, zIndex: 300 }}>
-          <DatePicker value={calEdit.value} defaultOpen onChange={(val: string) => {
+          <DatePicker value={calEdit.value} onChange={(val: string) => {
             const t = sorted.find(s => s.task.id === calEdit.taskId)?.task;
             if (!t) return;
             const iso = val.split(".").reverse().join("-");
