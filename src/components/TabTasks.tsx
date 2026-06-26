@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import type { SimProjekt, Task, TaskTyp } from "../types";
 import { formatDatum, normalizeDatum, parseDateUniversal } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
+import DatePicker from "./DatePicker";
 
 // Alle Werte eines Objekts flach sammeln
 interface ObjWerte { [key: string]: string; } // "PSet||PropName" → value
@@ -54,10 +55,6 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
     const timer = setTimeout(reset, 5000);
     return () => { window.removeEventListener("dragend", reset); window.removeEventListener("mouseup", reset); clearTimeout(timer); };
   }, [dragIdx]);
-  // Datum bearbeiten
-  const [editDatumId, setEditDatumId] = useState<string | null>(null);
-  const [editStart, setEditStart] = useState("");
-  const [editEnd, setEditEnd] = useState("");
   // Task hinzufügen
   const [zeigeNeuTask, setZeigeNeuTask] = useState(false);
   const [neuTaskName, setNeuTaskName] = useState("");
@@ -192,12 +189,6 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
     setZeigeNeuTask(false);
   }
 
-  function datumSpeichern(taskId: string) {
-    const start = normalizeDatum(editStart);
-    const end = normalizeDatum(editEnd);
-    updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => t.id === taskId ? { ...t, start, end } : t) });
-    setEditDatumId(null);
-  }
   function speichereGuids(taskId: string, guids: string[]) {
     updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => t.id === taskId ? { ...t, objektGuids: guids } : t) });
   }
@@ -345,12 +336,25 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                 <span style={{ width: 9, height: 9, borderRadius: "50%", flexShrink: 0, background: task.typ === "neubau" ? "#6cc07a" : task.typ === "abbruch" ? "#edb94c" : task.typ === "temporaer" ? "#a0522d" : "#888" }} />
                 <span className="task-row-name" style={{ fontSize: 13, flex: 1, color: task.id === aktivTaskId ? "#2d7dbd" : "#333", fontWeight: task.id === aktivTaskId || hatSelektierte ? 600 : 400 }}>{task.name}</span>
 
-                {/* Datum — klickbar zum Bearbeiten */}
-                <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.2, cursor: "pointer" }}
-                  onClick={e => { e.stopPropagation(); setEditDatumId(task.id); setEditStart(formatDatum(task.start)); setEditEnd(formatDatum(task.end)); }}>
-                  <span style={{ fontSize: 10, color: "#8a9baa" }}>{formatDatum(task.start)}</span>
-                  {task.end && <span style={{ fontSize: 9, color: "#b0bec5" }}>{formatDatum(task.end)}</span>}
-                </span>
+                {/* Datum — mit Kalender-Icon */}
+                {!readOnly ? (
+                  <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.2 }}
+                    onClick={e => e.stopPropagation()}>
+                    <DatePicker value={formatDatum(task.start)} label="" onChange={val => {
+                      const norm = normalizeDatum(val);
+                      if (norm) { const t2 = { ...task, start: norm }; updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => t.id === task.id ? t2 : t) }); }
+                    }} />
+                    <DatePicker value={formatDatum(task.end)} label="" onChange={val => {
+                      const norm = normalizeDatum(val);
+                      if (norm) { const t2 = { ...task, end: norm }; updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => t.id === task.id ? t2 : t) }); }
+                    }} />
+                  </span>
+                ) : (
+                  <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.2 }}>
+                    <span style={{ fontSize: 10, color: "#8a9baa" }}>{formatDatum(task.start)}</span>
+                    {task.end && <span style={{ fontSize: 9, color: "#b0bec5" }}>{formatDatum(task.end)}</span>}
+                  </span>
+                )}
 
                 {/* Rechts: Count oder Drag-Handle */}
                 {!readOnly && istHover && !dragIdx ? (
@@ -372,31 +376,6 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                   </span>
                 )}
               </div>
-
-              {/* Datum bearbeiten Dialog */}
-              {!readOnly && editDatumId === task.id && (
-                <div style={{ padding: "6px 10px", background: "#f8fafc", borderBottom: "1px solid #eef1f4", fontSize: 11 }}
-                  onClick={e => e.stopPropagation()}>
-                  <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
-                    <span style={{ color: "#8a9baa", width: 40 }}>Start:</span>
-                    <input className="ac-input" style={{ flex: 1, fontSize: 11, padding: "2px 6px" }} value={editStart}
-                      onChange={e => setEditStart(e.target.value)} placeholder="DD.MM.YYYY" />
-                  </div>
-                  <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
-                    <span style={{ color: "#8a9baa", width: 40 }}>Ende:</span>
-                    <input className="ac-input" style={{ flex: 1, fontSize: 11, padding: "2px 6px" }} value={editEnd}
-                      onChange={e => setEditEnd(e.target.value)} placeholder="DD.MM.YYYY" />
-                  </div>
-                  <div style={{ display: "flex", gap: 4 }}>
-                    <button className="tc-btn-primary" style={{ flex: 1, fontSize: 10, padding: "2px 6px" }}
-                      onClick={() => datumSpeichern(task.id)}>✓ Speichern</button>
-                    <button className="tc-btn-ghost" style={{ fontSize: 10, padding: "2px 6px", color: "#333" }}
-                      onClick={e => { e.stopPropagation(); if (confirm(`Task „${task.name}" löschen?`)) taskLoeschen(task.id); }}>🗑</button>
-                    <button className="tc-btn-ghost" style={{ fontSize: 10, padding: "2px 6px" }}
-                      onClick={() => setEditDatumId(null)}>✕</button>
-                  </div>
-                </div>
-              )}
             </div>
             );
           });

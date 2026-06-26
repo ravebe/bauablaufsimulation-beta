@@ -1,11 +1,13 @@
-// TabBauteile.tsx — Orchestrator mit Selektions-Tracking
+// TabBauteile.tsx — Orchestrator mit Selektions-Tracking + Gantt-Toggle
 import { useState, useEffect, useRef } from "react";
 import type { SimProjekt } from "../types";
+import { parseDateUniversal } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { getEchteBauteile, clearEchteBauteileCache } from "./modelHelpers";
 import TabTasks from "./TabTasks";
 import AttributeFilter from "./AttributeFilter";
 import SelectionTools from "./SelectionTools";
+import GanttChart from "./GanttChart";
 
 interface Props {
   api: ApiInstance | null;
@@ -22,6 +24,10 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
   const [totalObjekte, setTotalObjekte] = useState<number | null>(null);
   const [resetSignal, setResetSignal] = useState(0);
   const [selGuids, setSelGuids] = useState<Set<string>>(new Set());
+  const [ganttOffen, setGanttOffen] = useState(false);
+  const [listHeight] = useState(() => {
+    try { return Number(localStorage.getItem("4d-list-height-bauteile")) || 260; } catch { return 260; }
+  });
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const aktivTask = aktiveSim?.tasks.find(t => t.id === aktivTaskId) ?? null;
@@ -79,20 +85,62 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
     );
   }
 
+  // Gantt-Daten berechnen
+  const tasks = aktiveSim?.tasks ?? [];
+  const daten = tasks.map(t => parseDateUniversal(t.start)).filter(Boolean) as Date[];
+  const datenEnd = tasks.map(t => parseDateUniversal(t.end)).filter(Boolean) as Date[];
+  const minDate = daten.length ? new Date(Math.min(...daten.map(d => d.getTime()))) : null;
+  const maxDate = datenEnd.length ? new Date(Math.max(...datenEnd.map(d => d.getTime()))) : null;
+  const totalTage = minDate && maxDate ? Math.max(1, Math.ceil((maxDate.getTime() - minDate.getTime()) / 86400000)) : 0;
+
+  function ganttDateChange(taskId: string, newStart: string, newEnd: string) {
+    if (!aktiveSim) return;
+    updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t =>
+      t.id === taskId ? { ...t, start: newStart, end: newEnd } : t
+    )});
+  }
+
   return (
     <div className="tasklist-wrap">
-      <TabTasks
-        api={api}
-        aktiveSim={aktiveSim}
-        aktivTask={aktivTask}
-        aktivTaskId={aktivTaskId}
-        totalObjekte={totalObjekte}
-        updateSim={updateSim}
-        onTaskClick={taskAnklicken}
-        selGuids={selGuids}
-        taskSort={taskSort}
-        readOnly={readOnly}
-      />
+      {/* Toggle Liste/Gantt */}
+      <div style={{ display: "flex", justifyContent: "flex-end", padding: "4px 8px 0" }}>
+        <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "2px 8px" }}
+          onClick={() => setGanttOffen(g => !g)}>
+          {ganttOffen ? "☰ Liste" : "▤ Gantt"}
+        </button>
+      </div>
+
+      {ganttOffen ? (
+        <>
+          <GanttChart
+            tasks={tasks}
+            currentTag={0}
+            totalTage={totalTage}
+            minDate={minDate}
+            laeuft={false}
+            onTaskClick={idx => { if (tasks[idx]) taskAnklicken(tasks[idx].id); }}
+            selTaskId={aktivTaskId}
+            selGuids={selGuids}
+            taskSort={taskSort}
+            height={listHeight}
+            editable={!readOnly}
+            onDateChange={ganttDateChange}
+          />
+        </>
+      ) : (
+        <TabTasks
+          api={api}
+          aktiveSim={aktiveSim}
+          aktivTask={aktivTask}
+          aktivTaskId={aktivTaskId}
+          totalObjekte={totalObjekte}
+          updateSim={updateSim}
+          onTaskClick={taskAnklicken}
+          selGuids={selGuids}
+          taskSort={taskSort}
+          readOnly={readOnly}
+        />
+      )}
       {aktivTask && !readOnly && (
         <>
           <AttributeFilter
