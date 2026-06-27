@@ -11,6 +11,7 @@ interface Props {
   laeuft: boolean;
   onTaskClick?: (idx: number) => void;
   onSliderChange?: (tag: number) => void;
+  onNadelClick?: (tag: number) => void;
   selTaskId?: string | null;
   selGuids?: Set<string>;
   taskSort?: "gantt" | "datum" | "aktiv";
@@ -43,7 +44,7 @@ function getKW(d: Date): number {
   return Math.ceil(((t.getTime() - y.getTime()) / 86400000 + 1) / 7);
 }
 
-export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, selTaskId, selGuids, taskSort, height, editable, onDateChange }: Props) {
+export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTaskClick, onNadelClick, selTaskId, selGuids, taskSort, height, editable, onDateChange }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
@@ -106,15 +107,6 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
     if (b && l) l.scrollTop = b.scrollTop;
   }, []);
 
-  const startNeedleDrag = useCallback((e: React.MouseEvent) => {
-    e.preventDefault(); e.stopPropagation();
-    needleDrag.current = true; scrollLock.current = true;
-    const el = bodyRef.current; if (!el) return;
-    const onMove = (ev: MouseEvent) => { if (!needleDrag.current || !el) return; onSliderChange?.(Math.max(0, Math.min(totalTage, Math.round((ev.clientX - el.getBoundingClientRect().left + el.scrollLeft) / pxProTag)))); };
-    const onUp = () => { needleDrag.current = false; setTimeout(() => { scrollLock.current = false; }, 300); document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
-    document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp);
-  }, [pxProTag, totalTage, onSliderChange]);
-
   const startResize = useCallback((e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
     const sx = e.clientX, sw = labelW;
@@ -138,6 +130,35 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
     const onUp = () => { setTimeout(() => { scrollLock.current = false; }, 200); document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
     document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp);
   }, [editable, minDate, pxProTag, onDateChange]);
+
+  // Klick ins Leere → Nadel setzen + zentrieren
+  const handleChartClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    if (needleDrag.current) return;
+    const el = bodyRef.current; if (!el) return;
+    const x = e.clientX - el.getBoundingClientRect().left + el.scrollLeft;
+    const tag = Math.max(0, Math.min(totalTage, Math.round(x / pxRef.current)));
+    onNadelClick?.(tag);
+  }, [totalTage, onNadelClick]);
+
+  // Nadel-Drag → verschieben + Chart scrollt mit
+  const startNeedleDrag = useCallback((e: React.MouseEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    needleDrag.current = true; scrollLock.current = true;
+    const el = bodyRef.current; if (!el) return;
+    const onMove = (ev: MouseEvent) => {
+      if (!needleDrag.current || !el) return;
+      const tag = Math.max(0, Math.min(totalTage, Math.round((ev.clientX - el.getBoundingClientRect().left + el.scrollLeft) / pxRef.current)));
+      onNadelClick?.(tag);
+    };
+    const onUp = () => {
+      needleDrag.current = false;
+      setTimeout(() => { scrollLock.current = false; }, 300);
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [totalTage, onNadelClick]);
 
   if (!minDate || totalTage <= 0 || tasks.length === 0) return <div style={{ padding: 12, fontSize: 11, color: "#8a9baa", textAlign: "center" }}>Keine Tasks</div>;
 
@@ -260,7 +281,8 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
         </div>
 
         <div ref={bodyRef} onScroll={syncScroll} style={{ flex: 1, overflow: "auto", position: "relative" }}>
-          <svg width={chartW} height={bodyH} style={{ display: "block" }}>
+          <svg width={chartW} height={bodyH} style={{ display: "block" }}
+            onClick={handleChartClick}>
             {/* Wochenend-Bänder */}
             {weekendBands.map((b, i) => <rect key={`we${i}`} x={b.x} y={0} width={b.w} height={bodyH} fill={WE_BG} />)}
             {/* Monats-Linien */}
@@ -291,6 +313,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
                     fill={FARBEN[t.typ] || "#6cc07a"} opacity={isSel ? 1 : 0.85}
                     stroke={isSel ? "#2d7dbd" : "none"} strokeWidth={isSel ? 1.5 : 0}
                     style={editable && ed ? { cursor: "move" } : undefined}
+                    onClick={e => e.stopPropagation()}
                     onMouseDown={editable && ed ? (e) => startBarDrag(e, t.id, "move", sd, ed) : undefined} />}
                   {sd && bW > 28 && <text x={bX + bW / 2} y={y + ROW_H / 2 + 4} fontSize={12} fill="#333" fontWeight={600} textAnchor="middle" style={{ pointerEvents: "none" }}>{dauer}d</text>}
                   {showDates && <text x={bX + bW + 3} y={y + ROW_H / 2 + 4} fontSize={11} fill="#2d7dbd"
@@ -305,7 +328,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
               );
             })}
             {currentTag >= 0 && (
-              <g style={{ cursor: "ew-resize" }} onMouseDown={startNeedleDrag as any}>
+              <g style={{ cursor: "ew-resize" }} onMouseDown={startNeedleDrag as any} onClick={e => e.stopPropagation()}>
                 <rect x={nadelX - 10} y={0} width={20} height={bodyH} fill="transparent" />
                 <line x1={nadelX} y1={0} x2={nadelX} y2={bodyH} stroke="#e63946" strokeWidth={1.5} />
               </g>
