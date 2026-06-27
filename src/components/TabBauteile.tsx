@@ -26,6 +26,8 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
   const [selGuids, setSelGuids] = useState<Set<string>>(new Set());
   const [ganttOffen, setGanttOffen] = useState(false);
   const [nadelTag, setNadelTag] = useState(-1);
+  const [filterOffen, setFilterOffen] = useState(true);
+  const [selToolOffen, setSelToolOffen] = useState(true);
   const [ganttH, setGanttH] = useState(() => {
     try { return Number(localStorage.getItem("4d-gantt-height-bauteile")) || 260; } catch { return 260; }
   });
@@ -160,21 +162,39 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
       )}
       {aktivTask && !readOnly && (
         <>
-          <AttributeFilter
-            api={api}
-            aktiveSim={aktiveSim}
-            aktivTask={aktivTask}
-            aktivesModellId={aktivesModellId}
-            updateSim={updateSim}
-            resetSignal={resetSignal}
-          />
-          <SelectionTools
-            aktivTask={aktivTask}
-            aktiveSim={aktiveSim}
-            api={api}
-            updateSim={updateSim}
-            selGuids={selGuids}
-          />
+          <div className="detail-block">
+            <div className="detail-block-title" style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
+              onClick={() => setFilterOffen(o => !o)}>
+              <span style={{ display: "inline-block", transform: `scaleX(1.6) rotate(${filterOffen ? 0 : -90}deg)`, transition: "transform .15s", fontSize: 9 }}>▼</span>
+              IFC-Attribut Filter
+            </div>
+            {filterOffen && (
+              <AttributeFilter
+                api={api}
+                aktiveSim={aktiveSim}
+                aktivTask={aktivTask}
+                aktivesModellId={aktivesModellId}
+                updateSim={updateSim}
+                resetSignal={resetSignal}
+              />
+            )}
+          </div>
+          <div className="detail-block">
+            <div className="detail-block-title" style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
+              onClick={() => setSelToolOffen(o => !o)}>
+              <span style={{ display: "inline-block", transform: `scaleX(1.6) rotate(${selToolOffen ? 0 : -90}deg)`, transition: "transform .15s", fontSize: 9 }}>▼</span>
+              Mausklick Zuweisung
+            </div>
+            {selToolOffen && (
+              <SelectionTools
+                aktivTask={aktivTask}
+                aktiveSim={aktiveSim}
+                api={api}
+                updateSim={updateSim}
+                selGuids={selGuids}
+              />
+            )}
+          </div>
         </>
       )}
     </div>

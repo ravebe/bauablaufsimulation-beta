@@ -37,6 +37,8 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
   const [displayConfig, setDisplayConfig] = useState(() => ladeDisplayConfig(aktiveSim.id));
   const [settingsOffen, setSettingsOffen] = useState(false);
   const [loeschenBestaetigen, setLoeschenBestaetigen] = useState(false);
+  const [typOffen, setTypOffen] = useState(true);
+  const [bauteileOffen, setBauteileOffen] = useState(true);
   const [settingsQuery1, setSettingsQuery1] = useState("");
   const [settingsQuery2, setSettingsQuery2] = useState("");
   const [settingsFocus, setSettingsFocus] = useState<1 | 2 | null>(null);
@@ -336,7 +338,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                 <span style={{ width: 9, height: 9, borderRadius: "50%", flexShrink: 0, background: task.typ === "neubau" ? "#6cc07a" : task.typ === "abbruch" ? "#edb94c" : task.typ === "temporaer" ? "#a0522d" : "#888" }} />
                 <span className="task-row-name" style={{ fontSize: 13, flex: 1, color: task.id === aktivTaskId ? "#2d7dbd" : "#333", fontWeight: task.id === aktivTaskId || hatSelektierte ? 600 : 400 }}>{task.name}</span>
 
-                {/* Datum — blau, untereinander, rechtsbündig wie TabAbspielen */}
+                {/* Datum — blau, untereinander */}
                 <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.3, flexShrink: 0 }}
                   onClick={e => e.stopPropagation()}>
                   {!readOnly ? (
@@ -369,7 +371,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                     title="Ziehen zum Verschieben"
                   >☰</span>
                 ) : (
-                  <span className="task-row-count" style={{ fontSize: 12, marginLeft: 4, flexShrink: 0, minWidth: 36, textAlign: "right" }}>
+                  <span className="task-row-count" style={{ fontSize: 12, marginLeft: 4, flexShrink: 0 }}>
                     {hatSelektierte
                       ? <span style={{ color: "#2d7dbd", fontWeight: 600 }}>{selAnzahl}/{task.objektGuids.length}</span>
                       : task.objektGuids.length > 0
@@ -431,7 +433,12 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
           {/* Task-Typ */}
           {!readOnly && (
           <div className="detail-block">
-            <div className="detail-block-title">Task-Typ</div>
+            <div className="detail-block-title" style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
+              onClick={() => setTypOffen(o => !o)}>
+              <span style={{ display: "inline-block", transform: `scaleX(1.6) rotate(${typOffen ? 0 : -90}deg)`, transition: "transform .15s", fontSize: 9 }}>▼</span>
+              Task-Typ
+            </div>
+            {typOffen && (
             <div className="typ-btns">
               {(["neubau", "bestand", "abbruch", "temporaer"] as TaskTyp[]).map(typ => {
                 const farbe = typ === "neubau" ? "#6cc07a" : typ === "bestand" ? "#888" : typ === "abbruch" ? "#edb94c" : "#a0522d";
@@ -449,13 +456,16 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                 );
               })}
             </div>
+            )}
           </div>
           )}
 
           {/* Zugewiesene Bauteile */}
           <div className="detail-block">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-              <div className="detail-block-title" style={{ margin: 0 }}>
+              <div className="detail-block-title" style={{ margin: 0, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
+                onClick={() => setBauteileOffen(o => !o)}>
+                <span style={{ display: "inline-block", transform: `scaleX(1.6) rotate(${bauteileOffen ? 0 : -90}deg)`, transition: "transform .15s", fontSize: 9 }}>▼</span>
                 {aktivTask.objektGuids.length > 0 ? `${aktivTask.objektGuids.length} Bauteile zugewiesen` : "Noch keine Bauteile zugewiesen"}
               </div>
               <div style={{ display: "flex", gap: 4 }}>
@@ -470,6 +480,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
               </div>
             </div>
 
+            {bauteileOffen && (<>
             {/* Lösch-Bestätigung */}
             {loeschenBestaetigen && (
               <div style={{ background: "#FEF2F2", border: "1px solid #FCA5A5", padding: 8, marginBottom: 6, fontSize: 11 }}>
@@ -567,6 +578,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                 })}
               </div>
             )}
+            </>)}
           </div>
         </div>
       ) : (
