@@ -25,6 +25,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
   const [resetSignal, setResetSignal] = useState(0);
   const [selGuids, setSelGuids] = useState<Set<string>>(new Set());
   const [ganttOffen, setGanttOffen] = useState(false);
+  const [nadelTag, setNadelTag] = useState(-1);
   const [ganttH, setGanttH] = useState(() => {
     try { return Number(localStorage.getItem("4d-gantt-height-bauteile")) || 260; } catch { return 260; }
   });
@@ -114,11 +115,12 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
         <>
           <GanttChart
             tasks={tasks}
-            currentTag={0}
+            currentTag={nadelTag}
             totalTage={totalTage}
             minDate={minDate}
             laeuft={false}
             onTaskClick={idx => { if (tasks[idx]) taskAnklicken(tasks[idx].id); }}
+            onNadelClick={tag => setNadelTag(tag)}
             selTaskId={aktivTaskId}
             selGuids={selGuids}
             taskSort={taskSort}
