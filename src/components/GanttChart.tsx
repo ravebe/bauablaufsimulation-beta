@@ -44,7 +44,7 @@ function getKW(d: Date): number {
   return Math.ceil(((t.getTime() - y.getTime()) / 86400000 + 1) / 7);
 }
 
-export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTaskClick, onNadelClick, selTaskId, selGuids, taskSort, height, editable, onDateChange }: Props) {
+export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selTaskId, selGuids, taskSort, height, editable, onDateChange }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
@@ -138,7 +138,8 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
     const x = e.clientX - el.getBoundingClientRect().left + el.scrollLeft;
     const tag = Math.max(0, Math.min(totalTage, Math.round(x / pxRef.current)));
     onNadelClick?.(tag);
-  }, [totalTage, onNadelClick]);
+    onSliderChange?.(tag);
+  }, [totalTage, onNadelClick, onSliderChange]);
 
   // Nadel-Drag → verschieben + Chart scrollt mit
   const startNeedleDrag = useCallback((e: React.MouseEvent) => {
@@ -149,6 +150,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
       if (!needleDrag.current || !el) return;
       const tag = Math.max(0, Math.min(totalTage, Math.round((ev.clientX - el.getBoundingClientRect().left + el.scrollLeft) / pxRef.current)));
       onNadelClick?.(tag);
+      onSliderChange?.(tag);
     };
     const onUp = () => {
       needleDrag.current = false;
@@ -158,7 +160,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
-  }, [totalTage, onNadelClick]);
+  }, [totalTage, onNadelClick, onSliderChange]);
 
   if (!minDate || totalTage <= 0 || tasks.length === 0) return <div style={{ padding: 12, fontSize: 11, color: "#8a9baa", textAlign: "center" }}>Keine Tasks</div>;
 
