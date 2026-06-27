@@ -93,10 +93,11 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
     return () => el.removeEventListener("wheel", handler);
   }, []);
 
-  // Needle centering
+  // Needle centering — bei Änderung von currentTag
   useEffect(() => {
     if (scrollLock.current) return;
-    const el = bodyRef.current; if (!el || !minDate || totalTage <= 0 || currentTag <= 0) return;
+    const el = bodyRef.current; if (!el || !minDate || totalTage <= 0) return;
+    if (currentTag < 0) return;
     el.scrollLeft = Math.max(0, currentTag * pxProTag - el.clientWidth / 2);
     if (headerRef.current) headerRef.current.scrollLeft = el.scrollLeft;
   }, [currentTag, pxProTag, minDate, totalTage]);
