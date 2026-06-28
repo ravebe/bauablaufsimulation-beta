@@ -153,7 +153,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
           <button className="tc-btn-secondary" style={{ fontSize: 12, padding: "2px 6px" }}
             onClick={() => setSuchOffen(true)} title="Tasks suchen"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#333" strokeWidth="1.8"><circle cx="6.5" cy="6.5" r="5"/><line x1="10.2" y1="10.2" x2="14.5" y2="14.5"/></svg></button>
         )}
-        <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "2px 8px", marginLeft: "auto" }}
+        <button className="tc-btn-secondary" style={{ fontSize: 12, padding: "4px 12px", fontWeight: 600, marginLeft: "auto" }}
           onClick={() => {
             const willOpen = !ganttOffen;
             setGanttOffen(willOpen);

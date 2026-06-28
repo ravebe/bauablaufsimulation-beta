@@ -403,7 +403,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
             </div>
           </>
         )}
-        <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "2px 8px" }}
+        <button className="tc-btn-secondary" style={{ fontSize: 12, padding: "4px 12px", fontWeight: 600 }}
           onClick={() => setGanttOffen(g => !g)}>
           {ganttOffen ? "☰ Liste" : "▤ Gantt"}
         </button>
