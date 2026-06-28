@@ -18,9 +18,10 @@ interface Props {
   taskSort?: "gantt" | "datum" | "aktiv";
   readOnly?: boolean;
   sharedNadelTag?: React.MutableRefObject<number>;
+  sichtbar?: boolean;
 }
 
-export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId, taskSort, readOnly, sharedNadelTag }: Props) {
+export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId, taskSort, readOnly, sharedNadelTag, sichtbar }: Props) {
   const [aktivTaskId, setAktivTaskId] = useState<string | null>(null);
   const [totalObjekte, setTotalObjekte] = useState<number | null>(null);
   const [resetSignal, setResetSignal] = useState(0);
@@ -98,6 +99,19 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
   const maxDate = datenEnd.length ? new Date(Math.max(...datenEnd.map(d => d.getTime()))) : null;
   const totalTage = minDate && maxDate ? Math.max(1, Math.ceil((maxDate.getTime() - minDate.getTime()) / 86400000)) : 0;
 
+  // Shared Nadel lesen wenn Tab sichtbar wird
+  const prevSichtbar = useRef(false);
+  useEffect(() => {
+    if (sichtbar && !prevSichtbar.current && ganttOffen && sharedNadelTag && sharedNadelTag.current > 0 && minDate) {
+      const tag = Math.round((sharedNadelTag.current - minDate.getTime()) / 86400000);
+      if (tag >= 0 && tag <= totalTage) {
+        setGhostTag(tag);
+        setNadelTag(-1);
+      }
+    }
+    prevSichtbar.current = !!sichtbar;
+  }, [sichtbar]);
+
   function ganttDateChange(taskId: string, newStart: string, newEnd: string) {
     if (!aktiveSim) return;
     updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t =>
@@ -113,9 +127,12 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
           onClick={() => {
             const willOpen = !ganttOffen;
             setGanttOffen(willOpen);
-            if (willOpen && sharedNadelTag && sharedNadelTag.current >= 0) {
-              setGhostTag(sharedNadelTag.current);
-              setNadelTag(-1);
+            if (willOpen && sharedNadelTag && sharedNadelTag.current > 0 && minDate) {
+              const tag = Math.round((sharedNadelTag.current - minDate.getTime()) / 86400000);
+              if (tag >= 0 && tag <= totalTage) {
+                setGhostTag(tag);
+                setNadelTag(-1);
+              }
             }
           }}>
           {ganttOffen ? "☰ Liste" : "▤ Gantt"}

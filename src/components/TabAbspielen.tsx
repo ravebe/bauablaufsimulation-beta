@@ -62,7 +62,12 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
   })();
 
   useEffect(() => () => { if (animRef.current) cancelAnimationFrame(animRef.current); }, []);
-  useEffect(() => { currentTagRef.current = currentTag; if (sharedNadelTag) sharedNadelTag.current = currentTag; }, [currentTag]);
+  useEffect(() => {
+    currentTagRef.current = currentTag;
+    if (sharedNadelTag && minDate && currentTag >= 0) {
+      sharedNadelTag.current = minDate.getTime() + currentTag * 86400000;
+    }
+  }, [currentTag]);
 
   // Selection polling
   useEffect(() => {

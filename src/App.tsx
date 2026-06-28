@@ -19,7 +19,7 @@ export default function App() {
   const [userId, setUserId] = useState<string | null>(null);
   const cloudInitDone = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const sharedNadelTag = useRef(-1);
+  const sharedNadelTag = useRef<number>(-1); // stores timestamp (ms)
 
   // User ID laden
   useEffect(() => {
@@ -263,6 +263,7 @@ export default function App() {
             taskSort={taskSort}
             readOnly={readOnly}
             sharedNadelTag={sharedNadelTag}
+            sichtbar={aktTab === "bauteile"}
           />
         </div>
         <div style={{ display: aktTab === "abspielen" ? "block" : "none" }}>
