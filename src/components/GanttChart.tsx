@@ -290,6 +290,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
               const maxC = Math.max(4, Math.floor((labelW - 55) / 7));
               const lbl = t.name.length > maxC ? t.name.slice(0, maxC - 1) + "…" : t.name;
               const isDropTarget = dropIdx === origIdx;
+              const istHover = hoverIdx === i;
               return (
                 <div key={t.id}>
                   {isDropTarget && dragIdx !== null && dragIdx !== origIdx && (
@@ -306,14 +307,20 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
                       background: isEditing ? "#FFF8E1" : isSel ? "#e8f0fe" : hasSel ? "#f0f0f0" : i % 2 === 0 ? "#fafbfc" : "#fff",
                       opacity: dragIdx === origIdx ? 0.4 : 1,
                     }}>
-                    {editable && hoverIdx === i && dragIdx === null ? (
-                      <span draggable onDragStart={e => { setDragIdx(origIdx); e.dataTransfer.effectAllowed = "move"; }}
-                        style={{ cursor: "grab", fontSize: 11, color: "#aab8c4", flexShrink: 0, marginRight: 3, userSelect: "none" }}>☰</span>
-                    ) : (
-                      <span style={{ width: 6, height: 6, borderRadius: "50%", flexShrink: 0, marginRight: 5, background: isEditing ? "#FF9800" : FARBEN[t.typ] || "#6cc07a" }} />
-                    )}
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", flexShrink: 0, marginRight: 5, background: isEditing ? "#FF9800" : FARBEN[t.typ] || "#6cc07a" }} />
                     <span style={{ flex: 1, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: isEditing ? "#E65100" : isSel ? "#2d7dbd" : "#333", fontWeight: isEditing || isSel ? 600 : 400 }}>{lbl}</span>
-                    <span style={{ fontSize: 11, color: "#8a9baa", flexShrink: 0 }}>{dauer}d</span>
+                    {editable && istHover && dragIdx === null ? (
+                      <span
+                        draggable
+                        onDragStart={e => { setDragIdx(origIdx); e.dataTransfer.effectAllowed = "move"; }}
+                        onDragEnd={() => { setDragIdx(null); setDropIdx(null); }}
+                        onClick={e => e.stopPropagation()}
+                        style={{ cursor: "grab", color: "#8a9baa", fontSize: 14, padding: "0 2px", userSelect: "none", flexShrink: 0 }}
+                        title="Ziehen zum Verschieben"
+                      >☰</span>
+                    ) : (
+                      <span style={{ fontSize: 11, color: "#8a9baa", flexShrink: 0 }}>{dauer}d</span>
+                    )}
                   </div>
                 </div>
               );
