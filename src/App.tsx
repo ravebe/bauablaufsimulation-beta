@@ -155,7 +155,7 @@ export default function App() {
 
   const [headerDropdown, setHeaderDropdown] = useState(false);
   const [headerFilter, setHeaderFilter] = useState<"alle" | "meine" | "freigegeben">("alle");
-  const [taskSort, setTaskSort] = useState<"gantt" | "datum" | "aktiv">("gantt");
+  const [taskSort, setTaskSort] = useState<"gantt" | "datum" | "aktiv" | "name" | "nummer">("gantt");
   const [sortDropdown, setSortDropdown] = useState(false);
   const [, setUndoTick] = useState(0);
 
@@ -210,6 +210,8 @@ export default function App() {
                     { key: "gantt" as const, label: "Gantt-Reihenfolge", desc: "Wie importiert" },
                     { key: "datum" as const, label: "Nach Datum", desc: "Frühestes Ende zuerst" },
                     { key: "aktiv" as const, label: "Aktive zuerst", desc: "Markierte Objekte oben" },
+                    { key: "name" as const, label: "Nach Name", desc: "Alphabetisch A–Z" },
+                    { key: "nummer" as const, label: "Nach Nummer", desc: "Zahlen aufsteigend 1, 2 … 100" },
                   ]).map(opt => (
                     <div key={opt.key} className={`tc-header-dropdown-item ${taskSort === opt.key ? "active" : ""}`}
                       onClick={() => { setTaskSort(opt.key); setSortDropdown(false); }}>

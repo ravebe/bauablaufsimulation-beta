@@ -14,7 +14,7 @@ interface Props {
   onNadelClick?: (tag: number) => void;
   selTaskId?: string | null;
   selGuids?: Set<string>;
-  taskSort?: "gantt" | "datum" | "aktiv";
+  taskSort?: "gantt" | "datum" | "aktiv" | "name" | "nummer";
   height?: number;
   editable?: boolean;
   onDateChange?: (taskId: string, newStart: string, newEnd: string) => void;
@@ -189,6 +189,8 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
   const sorted = tasks.map((t, i) => ({ task: t, origIdx: i }));
   if (taskSort === "datum") sorted.sort((a, b) => { const sa = parseDateUniversal(a.task.start)?.getTime() ?? 0, sb = parseDateUniversal(b.task.start)?.getTime() ?? 0; return sa !== sb ? sa - sb : (parseDateUniversal(a.task.end)?.getTime() ?? sa) - (parseDateUniversal(b.task.end)?.getTime() ?? sb); });
   else if (taskSort === "aktiv") sorted.sort((a, b) => { const aH = selGuids?.size && a.task.objektGuids.some(g => selGuids.has(g)) ? 1 : 0; return (selGuids?.size && b.task.objektGuids.some(g => selGuids.has(g)) ? 1 : 0) - aH; });
+  else if (taskSort === "name") sorted.sort((a, b) => a.task.name.localeCompare(b.task.name, "de"));
+  else if (taskSort === "nummer") { const ex = (s: string) => { const m = s.match(/\d+/g); return m ? parseInt(m[m.length - 1], 10) : Infinity; }; sorted.sort((a, b) => { const na = ex(a.task.name), nb = ex(b.task.name); return na !== nb ? na - nb : a.task.name.localeCompare(b.task.name, "de"); }); }
 
   const chartW = Math.max(totalTage * pxProTag, 200);
   const bodyH = sorted.length * ROW_H;

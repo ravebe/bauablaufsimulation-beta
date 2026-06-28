@@ -15,7 +15,7 @@ interface Props {
   updateSim: (sim: SimProjekt) => void;
   selektion: number[];
   aktivesModellId: string | null;
-  taskSort?: "gantt" | "datum" | "aktiv";
+  taskSort?: "gantt" | "datum" | "aktiv" | "name" | "nummer";
   readOnly?: boolean;
   sharedNadelTag?: React.MutableRefObject<number>;
   sichtbar?: boolean;

@@ -17,7 +17,7 @@ interface Props {
   updateSim: (sim: SimProjekt) => void;
   onTaskClick: (id: string) => void;
   selGuids: Set<string>;
-  taskSort?: "gantt" | "datum" | "aktiv";
+  taskSort?: "gantt" | "datum" | "aktiv" | "name" | "nummer";
   readOnly?: boolean;
   detailOnly?: boolean;
   suchQuery?: string;
@@ -332,6 +332,18 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                 const aHat = selGuids.size > 0 && a.task.objektGuids.some(g => selGuids.has(g)) ? 1 : 0;
                 const bHat = selGuids.size > 0 && b.task.objektGuids.some(g => selGuids.has(g)) ? 1 : 0;
                 return bHat - aHat;
+              });
+            } else if (taskSort === "name") {
+              tasksWithIdx.sort((a, b) => a.task.name.localeCompare(b.task.name, "de"));
+            } else if (taskSort === "nummer") {
+              const extractNum = (s: string): number => {
+                const nums = s.match(/\d+/g);
+                return nums ? parseInt(nums[nums.length - 1], 10) : Infinity;
+              };
+              tasksWithIdx.sort((a, b) => {
+                const na = extractNum(a.task.name), nb = extractNum(b.task.name);
+                if (na !== nb) return na - nb;
+                return a.task.name.localeCompare(b.task.name, "de");
               });
             }
             return tasksWithIdx.map(({ task, idx }) => {
