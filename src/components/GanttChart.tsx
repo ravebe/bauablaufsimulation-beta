@@ -19,6 +19,7 @@ interface Props {
   editable?: boolean;
   onDateChange?: (taskId: string, newStart: string, newEnd: string) => void;
   onTaskReorder?: (fromIdx: number, toIdx: number) => void;
+  showObjektCount?: boolean;
   nadelStil?: "normal" | "ghost";
   dateColor?: string;
 }
@@ -47,7 +48,7 @@ function getKW(d: Date): number {
   return Math.ceil(((t.getTime() - y.getTime()) / 86400000 + 1) / 7);
 }
 
-export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selTaskId, selGuids, taskSort, height, editable, onDateChange, onTaskReorder, nadelStil = "normal", dateColor = "#2d7dbd" }: Props) {
+export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selTaskId, selGuids, taskSort, height, editable, onDateChange, onTaskReorder, showObjektCount, nadelStil = "normal", dateColor = "#2d7dbd" }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
@@ -321,7 +322,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
                         title="Ziehen zum Verschieben"
                       >☰</span>
                     ) : (
-                      <span style={{ fontSize: 11, color: "#8a9baa", flexShrink: 0 }}>{dauer}d</span>
+                      <span style={{ fontSize: 11, color: "#8a9baa", flexShrink: 0 }}>{showObjektCount ? (t.objektGuids.length > 0 ? `O ${t.objektGuids.length}` : "") : `${dauer}d`}</span>
                     )}
                   </div>
                 </div>
