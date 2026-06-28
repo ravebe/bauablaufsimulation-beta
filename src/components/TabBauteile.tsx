@@ -22,7 +22,7 @@ interface Props {
 }
 
 export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId, taskSort, readOnly, sharedNadelTag, sichtbar }: Props) {
-  const [aktivTaskId, setAktivTaskId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [totalObjekte, setTotalObjekte] = useState<number | null>(null);
   const [resetSignal, setResetSignal] = useState(0);
   const [selGuids, setSelGuids] = useState<Set<string>>(new Set());
@@ -37,8 +37,19 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
     try { return Number(localStorage.getItem("4d-gantt-height-bauteile")) || 260; } catch { return 260; }
   });
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastClickIdx = useRef<number>(-1);
 
+  const aktivTaskId = selectedIds.length > 0 ? selectedIds[selectedIds.length - 1] : null;
   const aktivTask = aktiveSim?.tasks.find(t => t.id === aktivTaskId) ?? null;
+  // Kombinierte Objekte aller ausgewählten Tasks
+  const selectedTasks = (aktiveSim?.tasks ?? []).filter(t => selectedIds.includes(t.id));
+  const combinedGuids = selectedTasks.flatMap(t => t.objektGuids);
+  // Virtueller kombinierter Task für Detail-Panel
+  const combinedTask = selectedTasks.length > 0 ? {
+    ...selectedTasks[0],
+    objektGuids: [...new Set(combinedGuids)],
+    name: selectedTasks.length === 1 ? selectedTasks[0].name : `${selectedTasks.length} Tasks ausgewählt`,
+  } : null;
 
   // Shared Nadel: minDate hier berechnen (vor early return)
   const allStarts = (aktiveSim?.tasks ?? []).map(t => parseDateUniversal(t.start)).filter(Boolean) as Date[];
@@ -60,9 +71,23 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
     prevSichtbar.current = !!sichtbar;
   }, [sichtbar]);
 
-  function taskAnklicken(taskId: string) {
-    const istGleich = taskId === aktivTaskId;
-    setAktivTaskId(istGleich ? null : taskId);
+  function taskAnklicken(taskId: string, event?: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }) {
+    const tasks = aktiveSim?.tasks ?? [];
+    const idx = tasks.findIndex(t => t.id === taskId);
+    if (event?.shiftKey && lastClickIdx.current >= 0) {
+      // Shift: Bereich auswählen
+      const from = Math.min(lastClickIdx.current, idx);
+      const to = Math.max(lastClickIdx.current, idx);
+      const rangeIds = tasks.slice(from, to + 1).map(t => t.id);
+      setSelectedIds(rangeIds);
+    } else if (event?.ctrlKey || event?.metaKey) {
+      // Ctrl/Cmd: einzeln umschalten
+      setSelectedIds(prev => prev.includes(taskId) ? prev.filter(id => id !== taskId) : [...prev, taskId]);
+    } else {
+      // Normal: nur diesen Task
+      setSelectedIds(prev => prev.length === 1 && prev[0] === taskId ? [] : [taskId]);
+    }
+    lastClickIdx.current = idx;
     setResetSignal(s => s + 1);
     if (suchQuery) { setSuchOffen(false); setSuchQuery(""); }
   }
@@ -126,10 +151,23 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
 
   function ganttTaskReorder(fromIdx: number, toIdx: number) {
     if (!aktiveSim || fromIdx === toIdx) return;
-    const tasks = [...aktiveSim.tasks];
-    const [moved] = tasks.splice(fromIdx, 1);
-    tasks.splice(toIdx > fromIdx ? toIdx - 1 : toIdx, 0, moved);
-    updateSim({ ...aktiveSim, tasks });
+    if (selectedIds.length > 1) {
+      // Multi-drag: alle ausgewählten Tasks verschieben
+      const tasks = [...aktiveSim.tasks];
+      const selSet = new Set(selectedIds);
+      const moving = tasks.filter(t => selSet.has(t.id));
+      const remaining = tasks.filter(t => !selSet.has(t.id));
+      // Zielposition in remaining berechnen
+      let insertAt = remaining.findIndex(t => t.id === aktiveSim.tasks[toIdx]?.id);
+      if (insertAt < 0) insertAt = remaining.length;
+      remaining.splice(insertAt, 0, ...moving);
+      updateSim({ ...aktiveSim, tasks: remaining });
+    } else {
+      const tasks = [...aktiveSim.tasks];
+      const [moved] = tasks.splice(fromIdx, 1);
+      tasks.splice(toIdx > fromIdx ? toIdx - 1 : toIdx, 0, moved);
+      updateSim({ ...aktiveSim, tasks });
+    }
   }
 
   return (
@@ -177,9 +215,10 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
             totalTage={totalTage}
             minDate={minDate}
             laeuft={false}
-            onTaskClick={idx => { if (tasks[idx]) taskAnklicken(tasks[idx].id); }}
+            onTaskClick={(idx, e) => { if (tasks[idx]) taskAnklicken(tasks[idx].id, e); }}
             onNadelClick={tag => { setGhostTag(-1); setNadelTag(tag); }}
             selTaskId={aktivTaskId}
+            selectedIds={selectedIds}
             selGuids={selGuids}
             taskSort={taskSort}
             height={ganttH}
@@ -207,8 +246,9 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
           <TabTasks
             api={api}
             aktiveSim={aktiveSim}
-            aktivTask={aktivTask}
+            aktivTask={combinedTask}
             aktivTaskId={aktivTaskId}
+            selectedIds={selectedIds}
             totalObjekte={totalObjekte}
             updateSim={updateSim}
             onTaskClick={taskAnklicken}
@@ -222,8 +262,9 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
         <TabTasks
           api={api}
           aktiveSim={aktiveSim}
-          aktivTask={aktivTask}
+          aktivTask={combinedTask}
           aktivTaskId={aktivTaskId}
+          selectedIds={selectedIds}
           totalObjekte={totalObjekte}
           updateSim={updateSim}
           onTaskClick={taskAnklicken}
@@ -233,7 +274,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
           suchQuery={suchQuery}
         />
       )}
-      {aktivTask && !readOnly && (
+      {combinedTask && !readOnly && (
         <>
           <div className="detail-block">
             <div className="detail-block-title" style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}

@@ -13,9 +13,10 @@ interface Props {
   aktiveSim: SimProjekt;
   aktivTask: Task | null;
   aktivTaskId: string | null;
+  selectedIds?: string[];
   totalObjekte: number | null;
   updateSim: (sim: SimProjekt) => void;
-  onTaskClick: (id: string) => void;
+  onTaskClick: (id: string, event?: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }) => void;
   selGuids: Set<string>;
   taskSort?: "gantt" | "datum" | "aktiv" | "name" | "nummer";
   readOnly?: boolean;
@@ -33,7 +34,7 @@ function ladeDisplayConfig(simId: string): { zeile1: string; zeile2: string } {
   return { zeile1: "Layer||Layer", zeile2: "Reference Object||Common Type" };
 }
 
-export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, totalObjekte, updateSim, onTaskClick, selGuids, taskSort = "gantt", readOnly = false, detailOnly = false, suchQuery = "" }: Props) {
+export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selectedIds = [], totalObjekte, updateSim, onTaskClick, selGuids, taskSort = "gantt", readOnly = false, detailOnly = false, suchQuery = "" }: Props) {
   const [guidWerte, setGuidWerte] = useState<Map<string, ObjWerte>>(new Map());
   const [verfuegbareAttrs, setVerfuegbareAttrs] = useState<string[]>([]);
   const [displayConfig, setDisplayConfig] = useState(() => ladeDisplayConfig(aktiveSim.id));
@@ -166,7 +167,8 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
   }
 
   function typAendern(taskId: string, typ: TaskTyp) {
-    updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => t.id === taskId ? { ...t, typ } : t) });
+    const idsToChange = selectedIds.length > 1 ? new Set(selectedIds) : new Set([taskId]);
+    updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => idsToChange.has(t.id) ? { ...t, typ } : t) });
   }
 
   function taskVerschieben(fromIdx: number, toIdx: number) {
@@ -359,18 +361,18 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
               )}
               <div
                 data-taskid={task.id}
-                className={`task-row ${task.id === aktivTaskId ? "active" : ""}`}
+                className={`task-row ${selectedIds.includes(task.id) ? "active" : ""}`}
                 style={{ borderBottom: "1px solid #eef1f4", padding: "6px 10px", gap: 7,
-                  background: task.id === aktivTaskId ? "#e8f2fa" : hatSelektierte ? "#f0f0f0" : undefined,
+                  background: selectedIds.includes(task.id) ? "#e8f2fa" : hatSelektierte ? "#f0f0f0" : undefined,
                   opacity: dragIdx === idx ? 0.4 : 1 }}
-                onClick={() => onTaskClick(task.id)}
+                onClick={(e) => onTaskClick(task.id, { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey })}
                 onMouseEnter={() => setHoverTaskId(task.id)}
                 onMouseLeave={() => setHoverTaskId(null)}
                 onDragOver={e => { e.preventDefault(); setDropIdx(idx); }}
                 onDrop={e => { e.preventDefault(); if (dragIdx !== null) taskVerschieben(dragIdx, idx); setDragIdx(null); setDropIdx(null); }}
               >
                 <span style={{ width: 9, height: 9, borderRadius: "50%", flexShrink: 0, background: task.typ === "neubau" ? "#6cc07a" : task.typ === "abbruch" ? "#edb94c" : task.typ === "temporaer" ? "#a0522d" : "#888" }} />
-                <span className="task-row-name" style={{ fontSize: 13, flex: 1, color: task.id === aktivTaskId ? "#2d7dbd" : "#333", fontWeight: task.id === aktivTaskId || hatSelektierte ? 600 : 400 }}>{task.name}</span>
+                <span className="task-row-name" style={{ fontSize: 13, flex: 1, color: selectedIds.includes(task.id) ? "#2d7dbd" : "#333", fontWeight: selectedIds.includes(task.id) || hatSelektierte ? 600 : 400 }}>{task.name}</span>
 
                 {/* Datum — blau, untereinander */}
                 <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.3, flexShrink: 0 }}
@@ -395,7 +397,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                 </span>
 
                 {/* Rechts: Count oder Drag-Handle */}
-                {!readOnly && taskSort === "gantt" && istHover && !dragIdx ? (
+                {!readOnly && (taskSort === "gantt" || taskSort === "aktiv") && istHover && !dragIdx ? (
                   <span
                     draggable
                     onDragStart={e => { setDragIdx(idx); e.dataTransfer.effectAllowed = "move"; }}
