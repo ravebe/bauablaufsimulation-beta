@@ -9,10 +9,11 @@ interface Props {
   totalTage: number;
   minDate: Date | null;
   laeuft: boolean;
-  onTaskClick?: (idx: number) => void;
+  onTaskClick?: (idx: number, event?: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }) => void;
   onSliderChange?: (tag: number) => void;
   onNadelClick?: (tag: number) => void;
   selTaskId?: string | null;
+  selectedIds?: string[];
   selGuids?: Set<string>;
   taskSort?: "gantt" | "datum" | "aktiv" | "name" | "nummer";
   height?: number;
@@ -49,7 +50,7 @@ function getKW(d: Date): number {
   return Math.ceil(((t.getTime() - y.getTime()) / 86400000 + 1) / 7);
 }
 
-export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selTaskId, selGuids, taskSort, height, editable, onDateChange, onTaskReorder, showObjektCount, suchQuery = "", nadelStil = "normal", dateColor = "#2d7dbd" }: Props) {
+export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selectedIds = [], selGuids, taskSort, height, editable, onDateChange, onTaskReorder, showObjektCount, suchQuery = "", nadelStil = "normal", dateColor = "#2d7dbd" }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
@@ -311,21 +312,24 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
             {sorted.map(({ task: t, origIdx }, i) => {
               const sd = parseDateUniversal(t.start), ed = parseDateUniversal(t.end);
               const dauer = sd && ed ? Math.max(1, Math.round((ed.getTime() - sd.getTime()) / 86400000)) : 1;
-              const isSel = selTaskId === t.id, hasSel = selGuids?.size ? t.objektGuids.some(g => selGuids!.has(g)) : false;
+              const isSel = selectedIds.includes(t.id);
+              const hasSel = selGuids?.size ? t.objektGuids.some(g => selGuids!.has(g)) : false;
               const isEditing = editingTaskId === t.id || calEdit?.taskId === t.id;
               const maxC = Math.max(4, Math.floor((labelW - 55) / 7));
               const lbl = t.name.length > maxC ? t.name.slice(0, maxC - 1) + "…" : t.name;
               const isDropTarget = dropIdx === origIdx;
               const istHover = hoverIdx === i;
-              const canDrag = editable && taskSort === "gantt";
+              const canDrag = editable && (taskSort === "gantt" || taskSort === "aktiv");
+              // Kein Drop zwischen benachbarten ausgewählten Tasks
+              const prevSelected = i > 0 && selectedIds.includes(sorted[i - 1]?.task.id);
+              const showDropLine = isDropTarget && dragIdx !== null && dragIdx !== origIdx && !(isSel && prevSelected);
               return (
                 <div key={t.id}>
-                  {isDropTarget && dragIdx !== null && dragIdx !== origIdx && (
+                  {showDropLine && (
                     <div style={{ height: 2, background: "#2d7dbd", margin: "0 4px" }} />
                   )}
                   <div
-                    onClick={() => onTaskClick?.(origIdx)}
-                    onMouseEnter={() => setHoverIdx(i)}
+                    onClick={(e) => onTaskClick?.(origIdx, { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey })}                    onMouseEnter={() => setHoverIdx(i)}
                     onMouseLeave={() => setHoverIdx(null)}
                     style={{
                       height: ROW_H, display: "flex", alignItems: "center", padding: "0 4px", cursor: "pointer", borderBottom: "1px solid #eef1f4",
@@ -372,7 +376,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
               const eT = ed ? (ed.getTime() - minDate.getTime()) / 86400000 : sT + 1;
               const dauer = Math.max(1, Math.round(eT - sT));
               const bX = sT * pxProTag, bW = Math.max((eT - sT) * pxProTag, 3);
-              const isSel = selTaskId === t.id, hasSel = selGuids?.size ? t.objektGuids.some(g => selGuids!.has(g)) : false;
+              const isSel = selectedIds.includes(t.id), hasSel = selGuids?.size ? t.objektGuids.some(g => selGuids!.has(g)) : false;
               const isEditing = editingTaskId === t.id || calEdit?.taskId === t.id;
               const handleW = Math.min(6, bW / 3);
               const showDates = sd && ed && pxProTag >= 2;
