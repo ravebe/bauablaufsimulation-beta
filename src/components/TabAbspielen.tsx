@@ -328,6 +328,19 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
     }
   }
 
+  // Leertaste = Play/Stop
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.code !== "Space") return;
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "BUTTON") return;
+      e.preventDefault();
+      if (laeuft) stoppen(); else starten();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [laeuft, starten]);
+
   const sliderDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   async function sliderChange(tag: number) {
