@@ -402,6 +402,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
             selGuids={selGuids}
             taskSort={taskSort}
             height={taskListHeight}
+            dateColor="#333"
           />
       ) : (
       <div className="player-card" style={{ padding: 0, overflow: "hidden", maxHeight: taskListHeight, overflowY: "auto" }}>
@@ -444,8 +445,8 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
               <span style={dot(task.typ)} />
               <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12 }}>{task.name}</span>
               <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, lineHeight: 1.3 }}>
-                <span style={{ fontSize: 11, color: "#2d7dbd" }}>{formatDatum(task.start)}</span>
-                <span style={{ fontSize: 11, color: "#2d7dbd" }}>{formatDatum(task.end)}</span>
+                <span style={{ fontSize: 11, color: "#333" }}>{formatDatum(task.start)}</span>
+                <span style={{ fontSize: 11, color: "#333" }}>{formatDatum(task.end)}</span>
               </span>
               <span style={{ fontSize: 12, color: "#8a9baa", flexShrink: 0, minWidth: 28, textAlign: "right" }}>{dauer}d</span>
             </div>

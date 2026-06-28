@@ -19,6 +19,7 @@ interface Props {
   editable?: boolean;
   onDateChange?: (taskId: string, newStart: string, newEnd: string) => void;
   nadelStil?: "normal" | "ghost";
+  dateColor?: string;
 }
 
 const FARBEN: Record<string, string> = { neubau: "#6cc07a", bestand: "#999", abbruch: "#edb94c", temporaer: "#a0522d" };
@@ -45,7 +46,7 @@ function getKW(d: Date): number {
   return Math.ceil(((t.getTime() - y.getTime()) / 86400000 + 1) / 7);
 }
 
-export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selTaskId, selGuids, taskSort, height, editable, onDateChange, nadelStil = "normal" }: Props) {
+export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selTaskId, selGuids, taskSort, height, editable, onDateChange, nadelStil = "normal", dateColor = "#2d7dbd" }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
@@ -272,15 +273,16 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
               const sd = parseDateUniversal(t.start), ed = parseDateUniversal(t.end);
               const dauer = sd && ed ? Math.max(1, Math.round((ed.getTime() - sd.getTime()) / 86400000)) : 1;
               const isSel = selTaskId === t.id, hasSel = selGuids?.size ? t.objektGuids.some(g => selGuids!.has(g)) : false;
+              const isEditing = editingTaskId === t.id || calEdit?.taskId === t.id;
               const maxC = Math.max(4, Math.floor((labelW - 40) / 7));
               const lbl = t.name.length > maxC ? t.name.slice(0, maxC - 1) + "…" : t.name;
               return (
                 <div key={t.id} onClick={() => onTaskClick?.(origIdx)} style={{
                   height: ROW_H, display: "flex", alignItems: "center", padding: "0 6px", cursor: "pointer", borderBottom: "1px solid #eef1f4",
-                  background: isSel ? "#e8f0fe" : hasSel ? "#f0f0f0" : i % 2 === 0 ? "#fafbfc" : "#fff",
+                  background: isEditing ? "#FFF8E1" : isSel ? "#e8f0fe" : hasSel ? "#f0f0f0" : i % 2 === 0 ? "#fafbfc" : "#fff",
                 }}>
-                  <span style={{ width: 6, height: 6, borderRadius: "50%", flexShrink: 0, marginRight: 5, background: FARBEN[t.typ] || "#6cc07a" }} />
-                  <span style={{ flex: 1, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: isSel ? "#2d7dbd" : "#333", fontWeight: isSel ? 600 : 400 }}>{lbl}</span>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", flexShrink: 0, marginRight: 5, background: isEditing ? "#FF9800" : FARBEN[t.typ] || "#6cc07a" }} />
+                  <span style={{ flex: 1, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: isEditing ? "#E65100" : isSel ? "#2d7dbd" : "#333", fontWeight: isEditing || isSel ? 600 : 400 }}>{lbl}</span>
                   <span style={{ fontSize: 11, color: "#8a9baa", flexShrink: 0 }}>{dauer}d</span>
                 </div>
               );
@@ -318,7 +320,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
                 <g key={t.id}>
                   <rect x={0} y={y} width={chartW} height={ROW_H} fill={isEditing ? "#FFF8E1" : isSel ? "#e8f0fe" : hasSel ? "#f0f0f0" : "transparent"} />
                   <line x1={0} y1={y + ROW_H} x2={chartW} y2={y + ROW_H} stroke="#eef1f4" strokeWidth={0.5} />
-                  {showDates && <text x={bX - 3} y={y + ROW_H / 2 + 4} fontSize={11} fill="#2d7dbd" textAnchor="end"
+                  {showDates && <text x={bX - 3} y={y + ROW_H / 2 + 4} fontSize={11} fill={dateColor} textAnchor="end"
                     style={{ cursor: editable ? "pointer" : "default" }}
                     onClick={editable ? (e) => { e.stopPropagation(); setEditingTaskId(t.id); const r = (e.target as SVGElement).getBoundingClientRect(); setCalEdit({ taskId: t.id, field: "start", value: fmtDMY(sd!), x: r.left, y: r.bottom }); } : undefined}
                   >{fmtDatum(sd!, longDates)}</text>}
@@ -329,7 +331,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
                     onClick={e => e.stopPropagation()}
                     onMouseDown={editable && ed ? (e) => startBarDrag(e, t.id, "move", sd, ed) : undefined} />}
                   {sd && bW > 28 && <text x={bX + bW / 2} y={y + ROW_H / 2 + 4} fontSize={12} fill="#333" fontWeight={600} textAnchor="middle" style={{ pointerEvents: "none" }}>{dauer}d</text>}
-                  {showDates && <text x={bX + bW + 3} y={y + ROW_H / 2 + 4} fontSize={11} fill="#2d7dbd"
+                  {showDates && <text x={bX + bW + 3} y={y + ROW_H / 2 + 4} fontSize={11} fill={dateColor}
                     style={{ cursor: editable ? "pointer" : "default" }}
                     onClick={editable ? (e) => { e.stopPropagation(); setEditingTaskId(t.id); const r = (e.target as SVGElement).getBoundingClientRect(); setCalEdit({ taskId: t.id, field: "end", value: fmtDMY(ed!), x: r.left, y: r.bottom }); } : undefined}
                   >{fmtDatum(ed!, longDates)}</text>}
@@ -352,7 +354,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
 
       {calEdit && onDateChange && (
         <div style={{ position: "fixed", left: calEdit.x, top: calEdit.y, zIndex: 300 }}>
-          <DatePicker value={calEdit.value} onChange={(val: string) => {
+          <DatePicker value={calEdit.value} defaultOpen onChange={(val: string) => {
             const t = sorted.find(s => s.task.id === calEdit.taskId)?.task;
             if (!t) return;
             const iso = val.split(".").reverse().join("-");
