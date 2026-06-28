@@ -75,8 +75,8 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
     if (dragIdx === null) return;
     const reset = () => { setDragIdx(null); setDropIdx(null); };
     window.addEventListener("dragend", reset);
-    const timer = setTimeout(reset, 5000);
-    return () => { window.removeEventListener("dragend", reset); clearTimeout(timer); };
+    window.addEventListener("mouseup", reset);
+    return () => { window.removeEventListener("dragend", reset); window.removeEventListener("mouseup", reset); };
   }, [dragIdx]);
 
   // Initial zoom nur wenn kein gespeicherter Wert

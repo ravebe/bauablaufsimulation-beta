@@ -56,9 +56,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
     const reset = () => { setDragIdx(null); setDropIdx(null); };
     window.addEventListener("dragend", reset);
     window.addEventListener("mouseup", reset);
-    // Fallback: nach 5s automatisch reset
-    const timer = setTimeout(reset, 5000);
-    return () => { window.removeEventListener("dragend", reset); window.removeEventListener("mouseup", reset); clearTimeout(timer); };
+    return () => { window.removeEventListener("dragend", reset); window.removeEventListener("mouseup", reset); };
   }, [dragIdx]);
   // Task hinzufügen
   const [zeigeNeuTask, setZeigeNeuTask] = useState(false);
