@@ -4,7 +4,7 @@ import type { ApiInstance } from "../hooks/useApi";
 import { formatDatum, parseDateUniversal } from "../types";
 import GanttChart from "./GanttChart";
 
-interface Props { api: ApiInstance | null; aktiveSim: SimProjekt | null; aktivesModellId: string | null; taskSort?: "gantt" | "datum" | "aktiv"; sharedNadelTag?: React.MutableRefObject<number>; }
+interface Props { api: ApiInstance | null; aktiveSim: SimProjekt | null; aktivesModellId: string | null; taskSort?: "gantt" | "datum" | "aktiv" | "name" | "nummer"; sharedNadelTag?: React.MutableRefObject<number>; }
 
 const FARBEN = { neubau: "#6cc07a", bestand: "#999999", abbruch: "#edb94c", temporaer: "#a0522d" };
 
