@@ -450,7 +450,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
             </span>
             {!readOnly && <button className="tc-btn-ghost" style={{ color: "#333", fontSize: 12, padding: "0 4px", marginLeft: "auto" }}
               title="Task löschen"
-              onClick={e => { e.stopPropagation(); if (confirm(`Task „${aktivTask.name}" löschen?`)) taskLoeschen(aktivTask.id); }}>🗑</button>}
+              onClick={e => { e.stopPropagation(); if (confirm(`Task „${aktivTask.name}" löschen?`)) taskLoeschen(aktivTask.id); }}><svg width="12" height="12" viewBox="0 0 16 16" fill="#333" stroke="none"><path d="M5 1h6v1H5zM2 3h12v1H2zm1.5 1l.8 11h7.4l.8-11h-9zm2.5 2h1v7H6zm3 0h1v7H9z"/></svg></button>}
           </div>
 
           {/* Task-Typ */}
@@ -495,7 +495,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                 {aktivTask.objektGuids.length > 0 && (
                   <>
                     <button className="tc-btn-primary" title="Nur diese anzeigen" style={{ fontSize: 10, padding: "3px 8px" }} onClick={() => nurAnzeigen(aktivTask.objektGuids)}>👁 Nur diese</button>
-                    {!readOnly && <button className="tc-btn-ghost" style={{ color: "#333" }} onClick={() => setLoeschenBestaetigen(true)}>🗑</button>}
+                    {!readOnly && <button className="tc-btn-ghost" style={{ color: "#333" }} onClick={() => setLoeschenBestaetigen(true)}><svg width="12" height="12" viewBox="0 0 16 16" fill="#333" stroke="none"><path d="M5 1h6v1H5zM2 3h12v1H2zm1.5 1l.8 11h7.4l.8-11h-9zm2.5 2h1v7H6zm3 0h1v7H9z"/></svg></button>}
                   </>
                 )}
                 <button className="tc-btn-ghost" title="Anzeige-Einstellungen" style={{ fontSize: 12 }}
