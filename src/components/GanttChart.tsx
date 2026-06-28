@@ -18,6 +18,7 @@ interface Props {
   height?: number;
   editable?: boolean;
   onDateChange?: (taskId: string, newStart: string, newEnd: string) => void;
+  onTaskReorder?: (fromIdx: number, toIdx: number) => void;
   nadelStil?: "normal" | "ghost";
   dateColor?: string;
 }
@@ -46,7 +47,7 @@ function getKW(d: Date): number {
   return Math.ceil(((t.getTime() - y.getTime()) / 86400000 + 1) / 7);
 }
 
-export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selTaskId, selGuids, taskSort, height, editable, onDateChange, nadelStil = "normal", dateColor = "#2d7dbd" }: Props) {
+export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selTaskId, selGuids, taskSort, height, editable, onDateChange, onTaskReorder, nadelStil = "normal", dateColor = "#2d7dbd" }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
@@ -59,9 +60,21 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
   const initDone = useRef(false);
   const [calEdit, setCalEdit] = useState<{ taskId: string; field: "start" | "end"; value: string; x: number; y: number } | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dropIdx, setDropIdx] = useState<number | null>(null);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
 
   useEffect(() => { localStorage.setItem(LS_LABEL_W, String(labelW)); }, [labelW]);
   useEffect(() => { localStorage.setItem(LS_ZOOM, String(pxProTag)); }, [pxProTag]);
+
+  // Drag safety: reset wenn abgebrochen
+  useEffect(() => {
+    if (dragIdx === null) return;
+    const reset = () => { setDragIdx(null); setDropIdx(null); };
+    window.addEventListener("dragend", reset);
+    const timer = setTimeout(reset, 5000);
+    return () => { window.removeEventListener("dragend", reset); clearTimeout(timer); };
+  }, [dragIdx]);
 
   // Initial zoom nur wenn kein gespeicherter Wert
   useEffect(() => {
@@ -274,16 +287,34 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
               const dauer = sd && ed ? Math.max(1, Math.round((ed.getTime() - sd.getTime()) / 86400000)) : 1;
               const isSel = selTaskId === t.id, hasSel = selGuids?.size ? t.objektGuids.some(g => selGuids!.has(g)) : false;
               const isEditing = editingTaskId === t.id || calEdit?.taskId === t.id;
-              const maxC = Math.max(4, Math.floor((labelW - 40) / 7));
+              const maxC = Math.max(4, Math.floor((labelW - 55) / 7));
               const lbl = t.name.length > maxC ? t.name.slice(0, maxC - 1) + "…" : t.name;
+              const isDropTarget = dropIdx === origIdx;
               return (
-                <div key={t.id} onClick={() => onTaskClick?.(origIdx)} style={{
-                  height: ROW_H, display: "flex", alignItems: "center", padding: "0 6px", cursor: "pointer", borderBottom: "1px solid #eef1f4",
-                  background: isEditing ? "#FFF8E1" : isSel ? "#e8f0fe" : hasSel ? "#f0f0f0" : i % 2 === 0 ? "#fafbfc" : "#fff",
-                }}>
-                  <span style={{ width: 6, height: 6, borderRadius: "50%", flexShrink: 0, marginRight: 5, background: isEditing ? "#FF9800" : FARBEN[t.typ] || "#6cc07a" }} />
-                  <span style={{ flex: 1, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: isEditing ? "#E65100" : isSel ? "#2d7dbd" : "#333", fontWeight: isEditing || isSel ? 600 : 400 }}>{lbl}</span>
-                  <span style={{ fontSize: 11, color: "#8a9baa", flexShrink: 0 }}>{dauer}d</span>
+                <div key={t.id}>
+                  {isDropTarget && dragIdx !== null && dragIdx !== origIdx && (
+                    <div style={{ height: 2, background: "#2d7dbd", margin: "0 4px" }} />
+                  )}
+                  <div
+                    onClick={() => onTaskClick?.(origIdx)}
+                    onMouseEnter={() => setHoverIdx(i)}
+                    onMouseLeave={() => setHoverIdx(null)}
+                    onDragOver={e => { e.preventDefault(); setDropIdx(origIdx); }}
+                    onDrop={e => { e.preventDefault(); if (dragIdx !== null && onTaskReorder) onTaskReorder(dragIdx, origIdx); setDragIdx(null); setDropIdx(null); }}
+                    style={{
+                      height: ROW_H, display: "flex", alignItems: "center", padding: "0 4px", cursor: "pointer", borderBottom: "1px solid #eef1f4",
+                      background: isEditing ? "#FFF8E1" : isSel ? "#e8f0fe" : hasSel ? "#f0f0f0" : i % 2 === 0 ? "#fafbfc" : "#fff",
+                      opacity: dragIdx === origIdx ? 0.4 : 1,
+                    }}>
+                    {editable && hoverIdx === i && dragIdx === null ? (
+                      <span draggable onDragStart={e => { setDragIdx(origIdx); e.dataTransfer.effectAllowed = "move"; }}
+                        style={{ cursor: "grab", fontSize: 11, color: "#aab8c4", flexShrink: 0, marginRight: 3, userSelect: "none" }}>☰</span>
+                    ) : (
+                      <span style={{ width: 6, height: 6, borderRadius: "50%", flexShrink: 0, marginRight: 5, background: isEditing ? "#FF9800" : FARBEN[t.typ] || "#6cc07a" }} />
+                    )}
+                    <span style={{ flex: 1, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: isEditing ? "#E65100" : isSel ? "#2d7dbd" : "#333", fontWeight: isEditing || isSel ? 600 : 400 }}>{lbl}</span>
+                    <span style={{ fontSize: 11, color: "#8a9baa", flexShrink: 0 }}>{dauer}d</span>
+                  </div>
                 </div>
               );
             })}

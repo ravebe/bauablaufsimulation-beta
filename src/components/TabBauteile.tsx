@@ -124,6 +124,14 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
     )});
   }
 
+  function ganttTaskReorder(fromIdx: number, toIdx: number) {
+    if (!aktiveSim || fromIdx === toIdx) return;
+    const tasks = [...aktiveSim.tasks];
+    const [moved] = tasks.splice(fromIdx, 1);
+    tasks.splice(toIdx > fromIdx ? toIdx - 1 : toIdx, 0, moved);
+    updateSim({ ...aktiveSim, tasks });
+  }
+
   return (
     <div className="tasklist-wrap">
       {/* Suche + Toggle */}
@@ -177,6 +185,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
             height={ganttH}
             editable={!readOnly}
             onDateChange={ganttDateChange}
+            onTaskReorder={ganttTaskReorder}
             nadelStil={ghostTag >= 0 ? "ghost" : "normal"}
           />
           <div onMouseDown={e => {

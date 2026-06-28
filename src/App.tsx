@@ -19,7 +19,9 @@ export default function App() {
   const [userId, setUserId] = useState<string | null>(null);
   const cloudInitDone = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const sharedNadelTag = useRef<number>(-1); // stores timestamp (ms)
+  const sharedNadelTag = useRef<number>(-1);
+  const undoStack = useRef<SimProjekt[]>([]);
+  const redoStack = useRef<SimProjekt[]>([]); // stores timestamp (ms)
 
   // User ID laden
   useEffect(() => {
@@ -123,13 +125,39 @@ export default function App() {
   });
 
   function updateSim(updated: SimProjekt) {
+    // Undo: aktuellen Stand speichern bevor Änderung
+    const current = sims.find(s => s.id === updated.id);
+    if (current) {
+      undoStack.current = [...undoStack.current.slice(-14), current];
+      redoStack.current = [];
+      setUndoTick(t => t + 1);
+    }
     setSims(prev => prev.map(s => s.id === updated.id ? updated : s));
+  }
+
+  function undo() {
+    if (undoStack.current.length === 0 || !aktivId) return;
+    const prev = undoStack.current.pop()!;
+    const current = sims.find(s => s.id === aktivId);
+    if (current) redoStack.current.push(current);
+    setSims(s => s.map(sim => sim.id === prev.id ? prev : sim));
+    setUndoTick(t => t + 1);
+  }
+
+  function redo() {
+    if (redoStack.current.length === 0 || !aktivId) return;
+    const next = redoStack.current.pop()!;
+    const current = sims.find(s => s.id === aktivId);
+    if (current) undoStack.current.push(current);
+    setSims(s => s.map(sim => sim.id === next.id ? next : sim));
+    setUndoTick(t => t + 1);
   }
 
   const [headerDropdown, setHeaderDropdown] = useState(false);
   const [headerFilter, setHeaderFilter] = useState<"alle" | "meine" | "freigegeben">("alle");
   const [taskSort, setTaskSort] = useState<"gantt" | "datum" | "aktiv">("gantt");
   const [sortDropdown, setSortDropdown] = useState(false);
+  const [, setUndoTick] = useState(0);
 
   return (
     <div className="tc-app" onClick={() => { setHeaderDropdown(false); setSortDropdown(false); }}>
@@ -157,11 +185,16 @@ export default function App() {
             )}
           </div>
           <div className="tc-header-org-actions">
-            <button className="tc-header-icon-btn" title="Neue Simulation"
-              onClick={() => setAktTab("projekte")}>
-              <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.4">
-                <rect x="2" y="4" width="16" height="13" rx="1.5"/><path d="M2 7h16"/><path d="M6 4V2"/><path d="M14 4V2"/>
-                <circle cx="14" cy="11" r="3.5" fill="#2d7dbd" stroke="#2d7dbd"/><path d="M14 9.5v3M12.5 11h3" stroke="#fff" strokeWidth="1.5"/>
+            <button className="tc-header-icon-btn" title="Rückgängig" disabled={undoStack.current.length === 0}
+              onClick={undo} style={{ opacity: undoStack.current.length === 0 ? 0.3 : 1 }}>
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M4 10l4-4M4 10l4 4M5 10h9a3 3 0 0 1 0 6H12"/>
+              </svg>
+            </button>
+            <button className="tc-header-icon-btn" title="Wiederherstellen" disabled={redoStack.current.length === 0}
+              onClick={redo} style={{ opacity: redoStack.current.length === 0 ? 0.3 : 1 }}>
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M16 10l-4-4M16 10l-4 4M15 10H6a3 3 0 0 0 0 6h3"/>
               </svg>
             </button>
             <div style={{ position: "relative" }}>
