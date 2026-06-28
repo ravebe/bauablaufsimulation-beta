@@ -18,6 +18,7 @@ interface Props {
   height?: number;
   editable?: boolean;
   onDateChange?: (taskId: string, newStart: string, newEnd: string) => void;
+  nadelStil?: "normal" | "ghost";
 }
 
 const FARBEN: Record<string, string> = { neubau: "#6cc07a", bestand: "#999", abbruch: "#edb94c", temporaer: "#a0522d" };
@@ -44,7 +45,7 @@ function getKW(d: Date): number {
   return Math.ceil(((t.getTime() - y.getTime()) / 86400000 + 1) / 7);
 }
 
-export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selTaskId, selGuids, taskSort, height, editable, onDateChange }: Props) {
+export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selTaskId, selGuids, taskSort, height, editable, onDateChange, nadelStil = "normal" }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
@@ -255,7 +256,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
             {/* Tages-Nummern */}
             {dayNums.map((m, i) => <text key={`dn${i}`} x={m.x + pxProTag/2} y={28} fontSize={10} fill="#888" textAnchor="middle">{m.label}</text>)}
             {/* Nadel-Dreieck */}
-            {currentTag >= 0 && <polygon points={`${nadelX-5},${HEAD_H} ${nadelX+5},${HEAD_H} ${nadelX},${HEAD_H-6}`} fill="#e63946" />}
+            {currentTag >= 0 && <polygon points={`${nadelX-5},${HEAD_H} ${nadelX+5},${HEAD_H} ${nadelX},${HEAD_H-6}`} fill={nadelStil === "ghost" ? "#EAB308" : "#e63946"} />}
           </svg>
         </div>
       </div>
@@ -336,7 +337,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
             {currentTag >= 0 && (
               <g style={{ cursor: "ew-resize" }} onMouseDown={startNeedleDrag as any} onClick={e => e.stopPropagation()}>
                 <rect x={nadelX - 10} y={0} width={20} height={bodyH} fill="transparent" />
-                <line x1={nadelX} y1={0} x2={nadelX} y2={bodyH} stroke="#e63946" strokeWidth={1.5} />
+                <line x1={nadelX} y1={0} x2={nadelX} y2={bodyH} stroke={nadelStil === "ghost" ? "#EAB308" : "#e63946"} strokeWidth={1.5} strokeDasharray={nadelStil === "ghost" ? "6 3" : "none"} />
               </g>
             )}
           </svg>

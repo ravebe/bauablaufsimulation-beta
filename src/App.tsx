@@ -19,6 +19,7 @@ export default function App() {
   const [userId, setUserId] = useState<string | null>(null);
   const cloudInitDone = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sharedNadelTag = useRef(-1);
 
   // User ID laden
   useEffect(() => {
@@ -261,6 +262,7 @@ export default function App() {
             aktivesModellId={aktivesModellId}
             taskSort={taskSort}
             readOnly={readOnly}
+            sharedNadelTag={sharedNadelTag}
           />
         </div>
         <div style={{ display: aktTab === "abspielen" ? "block" : "none" }}>
@@ -269,6 +271,7 @@ export default function App() {
             aktiveSim={aktiveSim}
             aktivesModellId={aktivesModellId}
             taskSort={taskSort}
+            sharedNadelTag={sharedNadelTag}
           />
         </div>
       </div>

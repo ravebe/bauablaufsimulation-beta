@@ -4,7 +4,7 @@ import type { ApiInstance } from "../hooks/useApi";
 import { formatDatum, parseDateUniversal } from "../types";
 import GanttChart from "./GanttChart";
 
-interface Props { api: ApiInstance | null; aktiveSim: SimProjekt | null; aktivesModellId: string | null; taskSort?: "gantt" | "datum" | "aktiv"; }
+interface Props { api: ApiInstance | null; aktiveSim: SimProjekt | null; aktivesModellId: string | null; taskSort?: "gantt" | "datum" | "aktiv"; sharedNadelTag?: React.MutableRefObject<number>; }
 
 const FARBEN = { neubau: "#6cc07a", bestand: "#999999", abbruch: "#edb94c", temporaer: "#a0522d" };
 
@@ -19,7 +19,7 @@ function datumBeiTag(min: Date, tag: number): string {
   return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
-export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort = "gantt" }: Props) {
+export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort = "gantt", sharedNadelTag }: Props) {
   const [sekProTag, setSekProTag] = useState(0.5);
   const [laeuft, setLaeuft] = useState(false);
   const [currentTag, setCurrentTag] = useState(0);
@@ -62,7 +62,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
   })();
 
   useEffect(() => () => { if (animRef.current) cancelAnimationFrame(animRef.current); }, []);
-  useEffect(() => { currentTagRef.current = currentTag; }, [currentTag]);
+  useEffect(() => { currentTagRef.current = currentTag; if (sharedNadelTag) sharedNadelTag.current = currentTag; }, [currentTag]);
 
   // Selection polling
   useEffect(() => {

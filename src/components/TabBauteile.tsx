@@ -17,15 +17,17 @@ interface Props {
   aktivesModellId: string | null;
   taskSort?: "gantt" | "datum" | "aktiv";
   readOnly?: boolean;
+  sharedNadelTag?: React.MutableRefObject<number>;
 }
 
-export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId, taskSort, readOnly }: Props) {
+export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId, taskSort, readOnly, sharedNadelTag }: Props) {
   const [aktivTaskId, setAktivTaskId] = useState<string | null>(null);
   const [totalObjekte, setTotalObjekte] = useState<number | null>(null);
   const [resetSignal, setResetSignal] = useState(0);
   const [selGuids, setSelGuids] = useState<Set<string>>(new Set());
   const [ganttOffen, setGanttOffen] = useState(false);
   const [nadelTag, setNadelTag] = useState(-1);
+  const [ghostTag, setGhostTag] = useState(-1);
   const [filterOffen, setFilterOffen] = useState(true);
   const [selToolOffen, setSelToolOffen] = useState(true);
   const [ganttH, setGanttH] = useState(() => {
@@ -108,7 +110,14 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
       {/* Toggle Liste/Gantt */}
       <div style={{ display: "flex", justifyContent: "flex-end", padding: "4px 8px 0" }}>
         <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "2px 8px" }}
-          onClick={() => setGanttOffen(g => !g)}>
+          onClick={() => {
+            const willOpen = !ganttOffen;
+            setGanttOffen(willOpen);
+            if (willOpen && sharedNadelTag && sharedNadelTag.current >= 0) {
+              setGhostTag(sharedNadelTag.current);
+              setNadelTag(-1);
+            }
+          }}>
           {ganttOffen ? "☰ Liste" : "▤ Gantt"}
         </button>
       </div>
@@ -117,18 +126,19 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
         <>
           <GanttChart
             tasks={tasks}
-            currentTag={nadelTag}
+            currentTag={ghostTag >= 0 ? ghostTag : nadelTag}
             totalTage={totalTage}
             minDate={minDate}
             laeuft={false}
             onTaskClick={idx => { if (tasks[idx]) taskAnklicken(tasks[idx].id); }}
-            onNadelClick={tag => setNadelTag(tag)}
+            onNadelClick={tag => { setGhostTag(-1); setNadelTag(tag); }}
             selTaskId={aktivTaskId}
             selGuids={selGuids}
             taskSort={taskSort}
             height={ganttH}
             editable={!readOnly}
             onDateChange={ganttDateChange}
+            nadelStil={ghostTag >= 0 ? "ghost" : "normal"}
           />
           <div onMouseDown={e => {
             e.preventDefault();
