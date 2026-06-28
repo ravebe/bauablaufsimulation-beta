@@ -19,6 +19,7 @@ interface Props {
   selGuids: Set<string>;
   taskSort?: "gantt" | "datum" | "aktiv";
   readOnly?: boolean;
+  detailOnly?: boolean;
 }
 
 const STORAGE_PREFIX = "4d-guid-display-";
@@ -31,7 +32,7 @@ function ladeDisplayConfig(simId: string): { zeile1: string; zeile2: string } {
   return { zeile1: "Layer||Layer", zeile2: "Reference Object||Common Type" };
 }
 
-export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, totalObjekte, updateSim, onTaskClick, selGuids, taskSort = "gantt", readOnly = false }: Props) {
+export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, totalObjekte, updateSim, onTaskClick, selGuids, taskSort = "gantt", readOnly = false, detailOnly = false }: Props) {
   const [guidWerte, setGuidWerte] = useState<Map<string, ObjWerte>>(new Map());
   const [verfuegbareAttrs, setVerfuegbareAttrs] = useState<string[]>([]);
   const [displayConfig, setDisplayConfig] = useState(() => ladeDisplayConfig(aktiveSim.id));
@@ -254,7 +255,8 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
 
   return (
     <>
-      {/* Task-Liste */}
+      {/* Task-Liste — nur wenn nicht detailOnly */}
+      {!detailOnly && (<>
       <div className="gantt-section">
         <div className="gantt-section-header" style={{ letterSpacing: ".8px", color: "#8a9baa", fontWeight: 600 }}>
           <span>GANTT · {aktiveSim.tasks.length} TASKS</span>
@@ -371,7 +373,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                     title="Ziehen zum Verschieben"
                   >☰</span>
                 ) : (
-                  <span className="task-row-count" style={{ fontSize: 12, marginLeft: 4, flexShrink: 0 }}>
+                  <span className="task-row-count" style={{ fontSize: 12, marginLeft: 4, flexShrink: 0, minWidth: 36, textAlign: "right" }}>
                     {hatSelektierte
                       ? <span style={{ color: "#2d7dbd", fontWeight: 600 }}>{selAnzahl}/{task.objektGuids.length}</span>
                       : task.objektGuids.length > 0
@@ -415,6 +417,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
       >
         <div style={{ width: 40, height: 3, background: "#ccc", borderRadius: 2 }} />
       </div>
+      </>)}
 
       {/* Task-Detail */}
       {aktivTask ? (
