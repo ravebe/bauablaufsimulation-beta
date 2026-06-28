@@ -30,6 +30,8 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
   const currentTagRef = useRef(0);
   const [ganttOffen, setGanttOffen] = useState(false);
   const [selTaskId, setSelTaskId] = useState<string | null>(null);
+  const [suchOffen, setSuchOffen] = useState(false);
+  const [suchQuery, setSuchQuery] = useState("");
   const [taskListHeight, setTaskListHeight] = useState(() => {
     try { return Number(localStorage.getItem("4d-list-height-abspielen")) || 350; } catch { return 350; }
   });
@@ -345,6 +347,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
     setSelTaskId(tasks[idx].id);
     const tag = tagVonDatum(tasks[idx].start, minDate);
     await sliderChange(tag);
+    if (suchQuery) { setSuchOffen(false); setSuchQuery(""); }
   }
 
   if (!aktiveSim) return <div className="tc-empty"><div className="tc-empty-icon">▶</div><div className="tc-empty-title">Keine aktive Simulation</div></div>;
@@ -379,10 +382,27 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
         </div>
       )}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, marginBottom: 4 }}>
-        <div className="detail-block-title" style={{ margin: 0 }}>
-          {ganttOffen ? "Gantt-Chart" : "Timeline"} ({tasks.length})
-        </div>
+      <div style={{ display: "flex", alignItems: "center", marginTop: 8, marginBottom: 4, gap: 4 }}>
+        {suchOffen ? (
+          <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ fontSize: 13, color: "#8a9baa", flexShrink: 0, cursor: "pointer" }}
+              onClick={() => { setSuchOffen(false); setSuchQuery(""); }}>✕</span>
+            <input autoFocus placeholder="Task suchen…" value={suchQuery}
+              onChange={e => setSuchQuery(e.target.value)}
+              style={{ flex: 1, padding: "3px 6px", fontSize: 11, border: "1px solid #d4dce4", fontFamily: "inherit", outline: "none" }}
+              onKeyDown={e => { if (e.key === "Escape") { setSuchOffen(false); setSuchQuery(""); } }} />
+          </div>
+        ) : (
+          <>
+            <button className="tc-btn-secondary" style={{ fontSize: 12, padding: "2px 6px" }}
+              onClick={() => setSuchOffen(true)} title="Tasks suchen">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#333" strokeWidth="1.8"><circle cx="6.5" cy="6.5" r="5"/><line x1="10.2" y1="10.2" x2="14.5" y2="14.5"/></svg>
+            </button>
+            <div className="detail-block-title" style={{ margin: 0, flex: 1 }}>
+              {ganttOffen ? "Gantt-Chart" : "Timeline"} ({tasks.length})
+            </div>
+          </>
+        )}
         <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "2px 8px" }}
           onClick={() => setGanttOffen(g => !g)}>
           {ganttOffen ? "☰ Liste" : "▤ Gantt"}
@@ -410,7 +430,14 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
           <div style={{ padding: 10, fontSize: 11, color: "var(--tc-text-3)", textAlign: "center" }}>Keine Tasks mit Bauteilen</div>
         ) : (() => {
           const sorted = [...tasks].map((t, i) => ({ task: t, origIdx: i }));
-          if (taskSort === "datum") {
+          if (suchQuery.trim()) {
+            const woerter = suchQuery.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+            sorted.sort((a, b) => {
+              const textA = [a.task.name, ...Object.values(a.task.extraSpalten || {})].join(" ").toLowerCase();
+              const textB = [b.task.name, ...Object.values(b.task.extraSpalten || {})].join(" ").toLowerCase();
+              return woerter.filter(w => textB.includes(w)).length - woerter.filter(w => textA.includes(w)).length;
+            });
+          } else if (taskSort === "datum") {
             sorted.sort((a, b) => {
               const sa = parseDateUniversal(a.task.start)?.getTime() ?? 0;
               const sb = parseDateUniversal(b.task.start)?.getTime() ?? 0;
@@ -425,6 +452,11 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
               const bHat = selGuids.size > 0 && b.task.objektGuids.some(g => selGuids.has(g)) ? 1 : 0;
               return bHat - aHat;
             });
+          } else if (taskSort === "name") {
+            sorted.sort((a, b) => a.task.name.localeCompare(b.task.name, "de"));
+          } else if (taskSort === "nummer") {
+            const ex = (s: string) => { const m = s.match(/\d+/g); return m ? parseInt(m[m.length - 1], 10) : Infinity; };
+            sorted.sort((a, b) => { const na = ex(a.task.name), nb = ex(b.task.name); return na !== nb ? na - nb : a.task.name.localeCompare(b.task.name, "de"); });
           }
           return sorted.map(({ task, origIdx }) => {
           const aktiv = minDate ? istAktiv(task, currentTag) : false;

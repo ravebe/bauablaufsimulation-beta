@@ -283,7 +283,22 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
       {/* BODY */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <div ref={labelRef} style={{ width: labelW, flexShrink: 0, overflowY: "auto", overflowX: "hidden", borderRight: "1px solid #d4dce4", position: "relative" }}
-          onScroll={() => { const l = labelRef.current, b = bodyRef.current; if (l && b) b.scrollTop = l.scrollTop; }}>
+          onScroll={() => { const l = labelRef.current, b = bodyRef.current; if (l && b) b.scrollTop = l.scrollTop; }}
+          onDragOver={e => {
+            if (dragIdx === null) return;
+            e.preventDefault();
+            const rect = labelRef.current?.getBoundingClientRect();
+            if (!rect) return;
+            const y = e.clientY - rect.top + (labelRef.current?.scrollTop ?? 0);
+            const rowIdx = Math.min(sorted.length, Math.max(0, Math.round(y / ROW_H)));
+            const origI = rowIdx < sorted.length ? sorted[rowIdx].origIdx : tasks.length;
+            setDropIdx(origI);
+          }}
+          onDrop={e => {
+            e.preventDefault();
+            if (dragIdx !== null && dropIdx !== null && onTaskReorder) onTaskReorder(dragIdx, dropIdx);
+            setDragIdx(null); setDropIdx(null);
+          }}>
           <div style={{ height: bodyH }}>
             {sorted.map(({ task: t, origIdx }, i) => {
               const sd = parseDateUniversal(t.start), ed = parseDateUniversal(t.end);
@@ -294,6 +309,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
               const lbl = t.name.length > maxC ? t.name.slice(0, maxC - 1) + "…" : t.name;
               const isDropTarget = dropIdx === origIdx;
               const istHover = hoverIdx === i;
+              const canDrag = editable && taskSort === "gantt";
               return (
                 <div key={t.id}>
                   {isDropTarget && dragIdx !== null && dragIdx !== origIdx && (
@@ -303,8 +319,6 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
                     onClick={() => onTaskClick?.(origIdx)}
                     onMouseEnter={() => setHoverIdx(i)}
                     onMouseLeave={() => setHoverIdx(null)}
-                    onDragOver={e => { e.preventDefault(); setDropIdx(origIdx); }}
-                    onDrop={e => { e.preventDefault(); if (dragIdx !== null && onTaskReorder) onTaskReorder(dragIdx, origIdx); setDragIdx(null); setDropIdx(null); }}
                     style={{
                       height: ROW_H, display: "flex", alignItems: "center", padding: "0 4px", cursor: "pointer", borderBottom: "1px solid #eef1f4",
                       background: isEditing ? "#FFF8E1" : isSel ? "#e8f0fe" : hasSel ? "#f0f0f0" : i % 2 === 0 ? "#fafbfc" : "#fff",
@@ -312,7 +326,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
                     }}>
                     <span style={{ width: 6, height: 6, borderRadius: "50%", flexShrink: 0, marginRight: 5, background: isEditing ? "#FF9800" : FARBEN[t.typ] || "#6cc07a" }} />
                     <span style={{ flex: 1, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: isEditing ? "#E65100" : isSel ? "#2d7dbd" : "#333", fontWeight: isEditing || isSel ? 600 : 400 }}>{lbl}</span>
-                    {editable && istHover && dragIdx === null ? (
+                    {canDrag && istHover && dragIdx === null ? (
                       <span
                         draggable
                         onDragStart={e => { setDragIdx(origIdx); e.dataTransfer.effectAllowed = "move"; }}
