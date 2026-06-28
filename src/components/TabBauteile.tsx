@@ -38,6 +38,26 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
 
   const aktivTask = aktiveSim?.tasks.find(t => t.id === aktivTaskId) ?? null;
 
+  // Shared Nadel: minDate hier berechnen (vor early return)
+  const allStarts = (aktiveSim?.tasks ?? []).map(t => parseDateUniversal(t.start)).filter(Boolean) as Date[];
+  const allEnds = (aktiveSim?.tasks ?? []).map(t => parseDateUniversal(t.end)).filter(Boolean) as Date[];
+  const minDate = allStarts.length ? new Date(Math.min(...allStarts.map(d => d.getTime()))) : null;
+  const maxDate = allEnds.length ? new Date(Math.max(...allEnds.map(d => d.getTime()))) : null;
+  const totalTage = minDate && maxDate ? Math.max(1, Math.ceil((maxDate.getTime() - minDate.getTime()) / 86400000)) : 0;
+
+  // Shared Nadel lesen wenn Tab sichtbar wird
+  const prevSichtbar = useRef(false);
+  useEffect(() => {
+    if (sichtbar && !prevSichtbar.current && ganttOffen && sharedNadelTag && sharedNadelTag.current > 0 && minDate) {
+      const tag = Math.round((sharedNadelTag.current - minDate.getTime()) / 86400000);
+      if (tag >= 0 && tag <= totalTage) {
+        setGhostTag(tag);
+        setNadelTag(-1);
+      }
+    }
+    prevSichtbar.current = !!sichtbar;
+  }, [sichtbar]);
+
   function taskAnklicken(taskId: string) {
     const istGleich = taskId === aktivTaskId;
     setAktivTaskId(istGleich ? null : taskId);
@@ -91,26 +111,8 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
     );
   }
 
-  // Gantt-Daten berechnen
+  // Gantt-Daten (bereits oben berechnet)
   const tasks = aktiveSim?.tasks ?? [];
-  const daten = tasks.map(t => parseDateUniversal(t.start)).filter(Boolean) as Date[];
-  const datenEnd = tasks.map(t => parseDateUniversal(t.end)).filter(Boolean) as Date[];
-  const minDate = daten.length ? new Date(Math.min(...daten.map(d => d.getTime()))) : null;
-  const maxDate = datenEnd.length ? new Date(Math.max(...datenEnd.map(d => d.getTime()))) : null;
-  const totalTage = minDate && maxDate ? Math.max(1, Math.ceil((maxDate.getTime() - minDate.getTime()) / 86400000)) : 0;
-
-  // Shared Nadel lesen wenn Tab sichtbar wird
-  const prevSichtbar = useRef(false);
-  useEffect(() => {
-    if (sichtbar && !prevSichtbar.current && ganttOffen && sharedNadelTag && sharedNadelTag.current > 0 && minDate) {
-      const tag = Math.round((sharedNadelTag.current - minDate.getTime()) / 86400000);
-      if (tag >= 0 && tag <= totalTage) {
-        setGhostTag(tag);
-        setNadelTag(-1);
-      }
-    }
-    prevSichtbar.current = !!sichtbar;
-  }, [sichtbar]);
 
   function ganttDateChange(taskId: string, newStart: string, newEnd: string) {
     if (!aktiveSim) return;
