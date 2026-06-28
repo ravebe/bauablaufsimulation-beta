@@ -20,6 +20,7 @@ interface Props {
   taskSort?: "gantt" | "datum" | "aktiv";
   readOnly?: boolean;
   detailOnly?: boolean;
+  suchQuery?: string;
 }
 
 const STORAGE_PREFIX = "4d-guid-display-";
@@ -32,7 +33,7 @@ function ladeDisplayConfig(simId: string): { zeile1: string; zeile2: string } {
   return { zeile1: "Layer||Layer", zeile2: "Reference Object||Common Type" };
 }
 
-export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, totalObjekte, updateSim, onTaskClick, selGuids, taskSort = "gantt", readOnly = false, detailOnly = false }: Props) {
+export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, totalObjekte, updateSim, onTaskClick, selGuids, taskSort = "gantt", readOnly = false, detailOnly = false, suchQuery = "" }: Props) {
   const [guidWerte, setGuidWerte] = useState<Map<string, ObjWerte>>(new Map());
   const [verfuegbareAttrs, setVerfuegbareAttrs] = useState<string[]>([]);
   const [displayConfig, setDisplayConfig] = useState(() => ladeDisplayConfig(aktiveSim.id));
@@ -65,6 +66,14 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
     try { return Number(localStorage.getItem("4d-list-height-bauteile")) || 350; } catch { return 350; }
   });
   const resizingRef = useRef(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Scroll zum aktiven Task wenn er sich ändert (z.B. nach Suche)
+  useEffect(() => {
+    if (!aktivTaskId || !scrollRef.current) return;
+    const el = scrollRef.current.querySelector(`[data-taskid="${aktivTaskId}"]`) as HTMLElement;
+    if (el) el.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [aktivTaskId]);
 
   useEffect(() => { localStorage.setItem("4d-list-height-bauteile", String(bauteilListHeight)); }, [bauteilListHeight]);
 
@@ -290,7 +299,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
           </div>
         )}
 
-        <div style={{ maxHeight: bauteilListHeight, overflowY: "auto" }}>
+        <div ref={scrollRef} style={{ maxHeight: bauteilListHeight, overflowY: "auto" }}>
         {aktiveSim.tasks.length === 0 ? (
           <div style={{ padding: 10, fontSize: 11, color: "#8a9baa", textAlign: "center" }}>
             Noch keine Tasks — „+" oder Gantt importieren
@@ -299,7 +308,17 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
           (() => {
             // Sortierte Anzeige basierend auf taskSort
             const tasksWithIdx = aktiveSim.tasks.map((task, idx) => ({ task, idx }));
-            if (taskSort === "datum") {
+            if (suchQuery.trim()) {
+              // Suche: Relevanz-Sortierung (Anzahl Treffer-Wörter)
+              const woerter = suchQuery.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+              tasksWithIdx.sort((a, b) => {
+                const textA = [a.task.name, ...Object.values(a.task.extraSpalten || {})].join(" ").toLowerCase();
+                const textB = [b.task.name, ...Object.values(b.task.extraSpalten || {})].join(" ").toLowerCase();
+                const scoreA = woerter.filter(w => textA.includes(w)).length;
+                const scoreB = woerter.filter(w => textB.includes(w)).length;
+                return scoreB - scoreA;
+              });
+            } else if (taskSort === "datum") {
               tasksWithIdx.sort((a, b) => {
                 const sa = parseDateUniversal(a.task.start)?.getTime() ?? 0;
                 const sb = parseDateUniversal(b.task.start)?.getTime() ?? 0;
@@ -327,6 +346,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                 <div style={{ height: 2, background: "#2d7dbd", margin: "0 10px" }} />
               )}
               <div
+                data-taskid={task.id}
                 className={`task-row ${task.id === aktivTaskId ? "active" : ""}`}
                 style={{ borderBottom: "1px solid #eef1f4", padding: "6px 10px", gap: 7,
                   background: task.id === aktivTaskId ? "#e8f2fa" : hatSelektierte ? "#f0f0f0" : undefined,

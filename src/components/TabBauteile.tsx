@@ -31,6 +31,8 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
   const [ghostTag, setGhostTag] = useState(-1);
   const [filterOffen, setFilterOffen] = useState(true);
   const [selToolOffen, setSelToolOffen] = useState(true);
+  const [suchOffen, setSuchOffen] = useState(false);
+  const [suchQuery, setSuchQuery] = useState("");
   const [ganttH, setGanttH] = useState(() => {
     try { return Number(localStorage.getItem("4d-gantt-height-bauteile")) || 260; } catch { return 260; }
   });
@@ -62,6 +64,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
     const istGleich = taskId === aktivTaskId;
     setAktivTaskId(istGleich ? null : taskId);
     setResetSignal(s => s + 1);
+    if (suchQuery) { setSuchOffen(false); setSuchQuery(""); }
   }
 
   // Gesamtzählung
@@ -123,9 +126,26 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
 
   return (
     <div className="tasklist-wrap">
-      {/* Toggle Liste/Gantt */}
-      <div style={{ display: "flex", justifyContent: "flex-end", padding: "4px 8px 0" }}>
-        <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "2px 8px" }}
+      {/* Suche + Toggle */}
+      <div style={{ display: "flex", alignItems: "center", padding: "4px 8px 0", gap: 4 }}>
+        {suchOffen ? (
+          <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ fontSize: 13, color: "#8a9baa", flexShrink: 0, cursor: "pointer" }}
+              onClick={() => { setSuchOffen(false); setSuchQuery(""); }}>✕</span>
+            <input
+              autoFocus
+              placeholder="Task suchen…"
+              value={suchQuery}
+              onChange={e => setSuchQuery(e.target.value)}
+              style={{ flex: 1, padding: "3px 6px", fontSize: 11, border: "1px solid #d4dce4", fontFamily: "inherit", outline: "none" }}
+              onKeyDown={e => { if (e.key === "Escape") { setSuchOffen(false); setSuchQuery(""); } }}
+            />
+          </div>
+        ) : (
+          <button className="tc-btn-secondary" style={{ fontSize: 12, padding: "2px 6px" }}
+            onClick={() => setSuchOffen(true)} title="Tasks suchen">🔍</button>
+        )}
+        <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "2px 8px", marginLeft: "auto" }}
           onClick={() => {
             const willOpen = !ganttOffen;
             setGanttOffen(willOpen);
@@ -199,6 +219,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
           selGuids={selGuids}
           taskSort={taskSort}
           readOnly={readOnly}
+          suchQuery={suchQuery}
         />
       )}
       {aktivTask && !readOnly && (
