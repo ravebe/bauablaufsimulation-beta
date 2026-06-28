@@ -57,6 +57,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
   useEffect(() => { pxRef.current = pxProTag; }, [pxProTag]);
   const initDone = useRef(false);
   const [calEdit, setCalEdit] = useState<{ taskId: string; field: "start" | "end"; value: string; x: number; y: number } | null>(null);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
 
   useEffect(() => { localStorage.setItem(LS_LABEL_W, String(labelW)); }, [labelW]);
   useEffect(() => { localStorage.setItem(LS_ZOOM, String(pxProTag)); }, [pxProTag]);
@@ -123,6 +124,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
   const startBarDrag = useCallback((e: React.MouseEvent, taskId: string, mode: "start" | "end" | "move", origStart: Date, origEnd: Date) => {
     if (!editable || !minDate || !onDateChange) return;
     e.preventDefault(); e.stopPropagation(); scrollLock.current = true;
+    setEditingTaskId(taskId);
     const sx = e.clientX, oS = (origStart.getTime() - minDate.getTime()) / 86400000, oE = (origEnd.getTime() - minDate.getTime()) / 86400000, dur = oE - oS;
     const onMove = (ev: MouseEvent) => {
       const dd = Math.round((ev.clientX - sx) / pxProTag);
@@ -132,7 +134,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
       else { nS = Math.max(0, oS + dd); nE = nS + dur; }
       onDateChange(taskId, fmtISO(new Date(minDate.getTime() + nS * 86400000)), fmtISO(new Date(minDate.getTime() + nE * 86400000)));
     };
-    const onUp = () => { setTimeout(() => { scrollLock.current = false; }, 200); document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+    const onUp = () => { setEditingTaskId(null); setTimeout(() => { scrollLock.current = false; }, 200); document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
     document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp);
   }, [editable, minDate, pxProTag, onDateChange]);
 
@@ -306,26 +308,30 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
               const dauer = Math.max(1, Math.round(eT - sT));
               const bX = sT * pxProTag, bW = Math.max((eT - sT) * pxProTag, 3);
               const isSel = selTaskId === t.id, hasSel = selGuids?.size ? t.objektGuids.some(g => selGuids!.has(g)) : false;
+              const isEditing = editingTaskId === t.id || calEdit?.taskId === t.id;
               const handleW = Math.min(6, bW / 3);
               const showDates = sd && ed && pxProTag >= 2;
+              const barFill = isEditing ? "#FFE0B2" : (FARBEN[t.typ] || "#6cc07a");
+              const barStroke = isEditing ? "#FF9800" : (isSel ? "#2d7dbd" : "none");
+              const barStrokeW = isEditing ? 2 : (isSel ? 1.5 : 0);
               return (
                 <g key={t.id}>
-                  <rect x={0} y={y} width={chartW} height={ROW_H} fill={isSel ? "#e8f0fe" : hasSel ? "#f0f0f0" : "transparent"} />
+                  <rect x={0} y={y} width={chartW} height={ROW_H} fill={isEditing ? "#FFF8E1" : isSel ? "#e8f0fe" : hasSel ? "#f0f0f0" : "transparent"} />
                   <line x1={0} y1={y + ROW_H} x2={chartW} y2={y + ROW_H} stroke="#eef1f4" strokeWidth={0.5} />
                   {showDates && <text x={bX - 3} y={y + ROW_H / 2 + 4} fontSize={11} fill="#2d7dbd" textAnchor="end"
                     style={{ cursor: editable ? "pointer" : "default" }}
-                    onClick={editable ? (e) => { e.stopPropagation(); const r = (e.target as SVGElement).getBoundingClientRect(); setCalEdit({ taskId: t.id, field: "start", value: fmtDMY(sd!), x: r.left, y: r.bottom }); } : undefined}
+                    onClick={editable ? (e) => { e.stopPropagation(); setEditingTaskId(t.id); const r = (e.target as SVGElement).getBoundingClientRect(); setCalEdit({ taskId: t.id, field: "start", value: fmtDMY(sd!), x: r.left, y: r.bottom }); } : undefined}
                   >{fmtDatum(sd!, longDates)}</text>}
                   {sd && <rect x={bX} y={y + 5} width={bW} height={ROW_H - 10} rx={3}
-                    fill={FARBEN[t.typ] || "#6cc07a"} opacity={isSel ? 1 : 0.85}
-                    stroke={isSel ? "#2d7dbd" : "none"} strokeWidth={isSel ? 1.5 : 0}
+                    fill={barFill} opacity={isEditing ? 1 : isSel ? 1 : 0.85}
+                    stroke={barStroke} strokeWidth={barStrokeW}
                     style={editable && ed ? { cursor: "move" } : undefined}
                     onClick={e => e.stopPropagation()}
                     onMouseDown={editable && ed ? (e) => startBarDrag(e, t.id, "move", sd, ed) : undefined} />}
                   {sd && bW > 28 && <text x={bX + bW / 2} y={y + ROW_H / 2 + 4} fontSize={12} fill="#333" fontWeight={600} textAnchor="middle" style={{ pointerEvents: "none" }}>{dauer}d</text>}
                   {showDates && <text x={bX + bW + 3} y={y + ROW_H / 2 + 4} fontSize={11} fill="#2d7dbd"
                     style={{ cursor: editable ? "pointer" : "default" }}
-                    onClick={editable ? (e) => { e.stopPropagation(); const r = (e.target as SVGElement).getBoundingClientRect(); setCalEdit({ taskId: t.id, field: "end", value: fmtDMY(ed!), x: r.left, y: r.bottom }); } : undefined}
+                    onClick={editable ? (e) => { e.stopPropagation(); setEditingTaskId(t.id); const r = (e.target as SVGElement).getBoundingClientRect(); setCalEdit({ taskId: t.id, field: "end", value: fmtDMY(ed!), x: r.left, y: r.bottom }); } : undefined}
                   >{fmtDatum(ed!, longDates)}</text>}
                   {editable && sd && ed && bW > 8 && (<>
                     <rect x={bX} y={y + 3} width={handleW} height={ROW_H - 6} rx={1} fill="rgba(255,255,255,.3)" style={{ cursor: "ew-resize" }} onMouseDown={e => startBarDrag(e, t.id, "start", sd, ed)} />
@@ -353,8 +359,9 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
             if (calEdit.field === "start") onDateChange(t.id, iso, t.end);
             else onDateChange(t.id, t.start, iso);
             setCalEdit(null);
+            setEditingTaskId(null);
           }} />
-          <div style={{ position: "fixed", inset: 0, zIndex: -1 }} onClick={() => setCalEdit(null)} />
+          <div style={{ position: "fixed", inset: 0, zIndex: -1 }} onClick={() => { setCalEdit(null); setEditingTaskId(null); }} />
         </div>
       )}
     </div>
