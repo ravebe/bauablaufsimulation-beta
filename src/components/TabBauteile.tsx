@@ -130,7 +130,6 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
             editable={!readOnly}
             onDateChange={ganttDateChange}
           />
-          {/* Resize Handle */}
           <div onMouseDown={e => {
             e.preventDefault();
             const sy = e.clientY, sh = ganttH;
@@ -145,6 +144,19 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
           }} style={{ height: 6, cursor: "ns-resize", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <div style={{ width: 40, height: 3, background: "#d4dce4", borderRadius: 2 }} />
           </div>
+          <TabTasks
+            api={api}
+            aktiveSim={aktiveSim}
+            aktivTask={aktivTask}
+            aktivTaskId={aktivTaskId}
+            totalObjekte={totalObjekte}
+            updateSim={updateSim}
+            onTaskClick={taskAnklicken}
+            selGuids={selGuids}
+            taskSort={taskSort}
+            readOnly={readOnly}
+            detailOnly
+          />
         </>
       ) : (
         <TabTasks
@@ -168,33 +180,33 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
               <span style={{ display: "inline-block", transform: `scaleX(1.6) rotate(${filterOffen ? 0 : -90}deg)`, transition: "transform .15s", fontSize: 9 }}>▼</span>
               IFC-Attribut Filter
             </div>
-            {filterOffen && (
-              <AttributeFilter
-                api={api}
-                aktiveSim={aktiveSim}
-                aktivTask={aktivTask}
-                aktivesModellId={aktivesModellId}
-                updateSim={updateSim}
-                resetSignal={resetSignal}
-              />
-            )}
           </div>
+          {filterOffen && (
+            <AttributeFilter
+              api={api}
+              aktiveSim={aktiveSim}
+              aktivTask={aktivTask}
+              aktivesModellId={aktivesModellId}
+              updateSim={updateSim}
+              resetSignal={resetSignal}
+            />
+          )}
           <div className="detail-block">
             <div className="detail-block-title" style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
               onClick={() => setSelToolOffen(o => !o)}>
               <span style={{ display: "inline-block", transform: `scaleX(1.6) rotate(${selToolOffen ? 0 : -90}deg)`, transition: "transform .15s", fontSize: 9 }}>▼</span>
               Mausklick Zuweisung
             </div>
-            {selToolOffen && (
-              <SelectionTools
-                aktivTask={aktivTask}
-                aktiveSim={aktiveSim}
-                api={api}
-                updateSim={updateSim}
-                selGuids={selGuids}
-              />
-            )}
           </div>
+          {selToolOffen && (
+            <SelectionTools
+              aktivTask={aktivTask}
+              aktiveSim={aktiveSim}
+              api={api}
+              updateSim={updateSim}
+              selGuids={selGuids}
+            />
+          )}
         </>
       )}
     </div>

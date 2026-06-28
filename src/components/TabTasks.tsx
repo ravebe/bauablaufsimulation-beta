@@ -373,7 +373,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                     title="Ziehen zum Verschieben"
                   >☰</span>
                 ) : (
-                  <span className="task-row-count" style={{ fontSize: 12, marginLeft: 4, flexShrink: 0, minWidth: 36, textAlign: "right" }}>
+                  <span className="task-row-count" style={{ fontSize: 12, marginLeft: 4, flexShrink: 0, minWidth: 33, textAlign: "right" }}>
                     {hatSelektierte
                       ? <span style={{ color: "#2d7dbd", fontWeight: 600 }}>{selAnzahl}/{task.objektGuids.length}</span>
                       : task.objektGuids.length > 0

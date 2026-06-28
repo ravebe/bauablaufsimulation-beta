@@ -92,7 +92,6 @@ export default function SelectionTools({ aktivTask, aktiveSim, api, updateSim, s
 
   return (
     <div className="detail-block">
-      <div className="detail-block-title">Mausklick Zuweisung</div>
 
       {entfernenBestaetigen ? (
         <div style={{ background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: 0, padding: 8, fontSize: 11 }}>

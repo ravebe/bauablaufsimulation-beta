@@ -219,13 +219,12 @@ export default function AttributeFilter({ api, aktiveSim, aktivTask, aktivesMode
 
   return (
     <div className="detail-block" ref={acRef}>
-      {/* Titel — klickbar zum Auf-/Zuklappen */}
+      {/* Klickbar zum Auf-/Zuklappen */}
       <div style={{ display: "flex", alignItems: "center", cursor: "pointer", marginBottom: collapsed ? 0 : 6 }}
         onClick={() => { setCollapsed(c => !c); if (collapsed && !allAttrs.length && modellId) ladeAttr(); }}>
-        <div className="detail-block-title" style={{ margin: 0, flex: 1 }}>
-          IFC-Attribut Filter
-          {attrLaedt && <span style={{ fontWeight: 400, marginLeft: 6 }}>⟳</span>}
-          {!attrLaedt && allAttrs.length > 0 && <span style={{ fontWeight: 400, marginLeft: 6 }}>{allAttrs.length} Attribute</span>}
+        <div style={{ margin: 0, flex: 1, fontSize: 11, color: "#8a9baa" }}>
+          {attrLaedt && <span>⟳ Attribute laden…</span>}
+          {!attrLaedt && allAttrs.length > 0 && <span>{allAttrs.length} Attribute</span>}
         </div>
         <span style={{ fontSize: 10, color: "#8a9baa", marginRight: 4 }}>{collapsed ? "▸" : "▾"}</span>
         {!collapsed && filters.length < 4 && (
