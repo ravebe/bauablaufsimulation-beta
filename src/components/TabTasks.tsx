@@ -395,7 +395,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, total
                 </span>
 
                 {/* Rechts: Count oder Drag-Handle */}
-                {!readOnly && istHover && !dragIdx ? (
+                {!readOnly && taskSort === "gantt" && istHover && !dragIdx ? (
                   <span
                     draggable
                     onDragStart={e => { setDragIdx(idx); e.dataTransfer.effectAllowed = "move"; }}

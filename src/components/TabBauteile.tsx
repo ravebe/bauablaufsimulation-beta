@@ -187,6 +187,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
             onDateChange={ganttDateChange}
             onTaskReorder={ganttTaskReorder}
             showObjektCount
+            suchQuery={suchQuery}
             nadelStil={ghostTag >= 0 ? "ghost" : "normal"}
           />
           <div onMouseDown={e => {

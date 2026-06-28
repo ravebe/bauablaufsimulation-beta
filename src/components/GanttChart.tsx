@@ -20,6 +20,7 @@ interface Props {
   onDateChange?: (taskId: string, newStart: string, newEnd: string) => void;
   onTaskReorder?: (fromIdx: number, toIdx: number) => void;
   showObjektCount?: boolean;
+  suchQuery?: string;
   nadelStil?: "normal" | "ghost";
   dateColor?: string;
 }
@@ -48,7 +49,7 @@ function getKW(d: Date): number {
   return Math.ceil(((t.getTime() - y.getTime()) / 86400000 + 1) / 7);
 }
 
-export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selTaskId, selGuids, taskSort, height, editable, onDateChange, onTaskReorder, showObjektCount, nadelStil = "normal", dateColor = "#2d7dbd" }: Props) {
+export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selTaskId, selGuids, taskSort, height, editable, onDateChange, onTaskReorder, showObjektCount, suchQuery = "", nadelStil = "normal", dateColor = "#2d7dbd" }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
@@ -188,7 +189,14 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
 
   // Sortierung
   const sorted = tasks.map((t, i) => ({ task: t, origIdx: i }));
-  if (taskSort === "datum") sorted.sort((a, b) => { const sa = parseDateUniversal(a.task.start)?.getTime() ?? 0, sb = parseDateUniversal(b.task.start)?.getTime() ?? 0; return sa !== sb ? sa - sb : (parseDateUniversal(a.task.end)?.getTime() ?? sa) - (parseDateUniversal(b.task.end)?.getTime() ?? sb); });
+  if (suchQuery.trim()) {
+    const woerter = suchQuery.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+    sorted.sort((a, b) => {
+      const textA = [a.task.name, ...Object.values(a.task.extraSpalten || {})].join(" ").toLowerCase();
+      const textB = [b.task.name, ...Object.values(b.task.extraSpalten || {})].join(" ").toLowerCase();
+      return woerter.filter(w => textB.includes(w)).length - woerter.filter(w => textA.includes(w)).length;
+    });
+  } else if (taskSort === "datum") sorted.sort((a, b) => { const sa = parseDateUniversal(a.task.start)?.getTime() ?? 0, sb = parseDateUniversal(b.task.start)?.getTime() ?? 0; return sa !== sb ? sa - sb : (parseDateUniversal(a.task.end)?.getTime() ?? sa) - (parseDateUniversal(b.task.end)?.getTime() ?? sb); });
   else if (taskSort === "aktiv") sorted.sort((a, b) => { const aH = selGuids?.size && a.task.objektGuids.some(g => selGuids.has(g)) ? 1 : 0; return (selGuids?.size && b.task.objektGuids.some(g => selGuids.has(g)) ? 1 : 0) - aH; });
   else if (taskSort === "name") sorted.sort((a, b) => a.task.name.localeCompare(b.task.name, "de"));
   else if (taskSort === "nummer") { const ex = (s: string) => { const m = s.match(/\d+/g); return m ? parseInt(m[m.length - 1], 10) : Infinity; }; sorted.sort((a, b) => { const na = ex(a.task.name), nb = ex(b.task.name); return na !== nb ? na - nb : a.task.name.localeCompare(b.task.name, "de"); }); }

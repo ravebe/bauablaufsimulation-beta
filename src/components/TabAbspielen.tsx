@@ -423,6 +423,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
             taskSort={taskSort}
             height={taskListHeight}
             dateColor="#333"
+            suchQuery={suchQuery}
           />
       ) : (
       <div className="player-card" style={{ padding: 0, overflow: "hidden", maxHeight: taskListHeight, overflowY: "auto" }}>
