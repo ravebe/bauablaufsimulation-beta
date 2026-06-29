@@ -175,8 +175,19 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
   function taskVerschieben(fromIdx: number, toIdx: number) {
     if (fromIdx === toIdx) return;
     const tasks = [...aktiveSim.tasks];
+    const target = tasks[toIdx];
     const [moved] = tasks.splice(fromIdx, 1);
-    tasks.splice(toIdx > fromIdx ? toIdx - 1 : toIdx, 0, moved);
+    const insertAt = toIdx > fromIdx ? toIdx - 1 : toIdx;
+    // Wenn Ziel eine Gruppe ist → Kind-Level setzen
+    if (target && (target.isGroup || istGruppe(aktiveSim.tasks, toIdx))) {
+      moved.outlineLevel = getOutlineLevel(target) + 1;
+      // Nach dem Gruppentitel einfügen (nicht davor)
+      tasks.splice(insertAt + 1, 0, moved);
+    } else {
+      // Gleiches Level wie Nachbar
+      if (target) moved.outlineLevel = getOutlineLevel(target);
+      tasks.splice(insertAt, 0, moved);
+    }
     updateSim({ ...aktiveSim, tasks });
   }
 
@@ -201,6 +212,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
       typ: "neubau",
       objektGuids: [],
       outlineLevel: neuTyp === "gruppe" ? refLevel : (refLevel + (istGruppe(aktiveSim.tasks, idx) ? 1 : 0)),
+      isGroup: neuTyp === "gruppe" ? true : undefined,
     };
     const tasks = [...aktiveSim.tasks];
     if (neuTyp === "gruppe") {
@@ -511,18 +523,19 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
       {aktivTask ? (
         <div className="detail-section">
           <div className="detail-header">
-            <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: aktivTask.typ === "neubau" ? "#22C55E" : aktivTask.typ === "abbruch" ? "#EAB308" : aktivTask.typ === "temporaer" ? "#a0522d" : "#999" }} />
+            {!aktivTask.isGroup && <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: aktivTask.typ === "neubau" ? "#22C55E" : aktivTask.typ === "abbruch" ? "#EAB308" : aktivTask.typ === "temporaer" ? "#a0522d" : "#999" }} />}
+            {aktivTask.isGroup && <span style={{ fontSize: 11, color: "#555", marginRight: 2 }}>📁</span>}
             <span className="detail-task-name">{aktivTask.name}</span>
-            <span style={{ fontSize: 9, color: "var(--tc-blue)", fontWeight: 500 }}>
+            {!aktivTask.isGroup && <span style={{ fontSize: 9, color: "var(--tc-blue)", fontWeight: 500 }}>
               {totalObjekte != null ? `⬡ ${aktivTask.objektGuids.length} / ${totalObjekte}` : `⬡ ${aktivTask.objektGuids.length}`}
-            </span>
+            </span>}
             {!readOnly && <button className="tc-btn-ghost" style={{ color: "#333", fontSize: 12, padding: "0 4px", marginLeft: "auto" }}
-              title="Task löschen"
-              onClick={e => { e.stopPropagation(); if (confirm(`Task „${aktivTask.name}" löschen?`)) taskLoeschen(aktivTask.id); }}><svg width="12" height="12" viewBox="0 0 16 16" fill="#333" stroke="none"><path d="M5 1h6v1H5zM2 3h12v1H2zm1.5 1l.8 11h7.4l.8-11h-9zm2.5 2h1v7H6zm3 0h1v7H9z"/></svg></button>}
+              title="Löschen"
+              onClick={e => { e.stopPropagation(); if (confirm(`„${aktivTask.name}" löschen?`)) taskLoeschen(aktivTask.id); }}><svg width="12" height="12" viewBox="0 0 16 16" fill="#333" stroke="none"><path d="M5 1h6v1H5zM2 3h12v1H2zm1.5 1l.8 11h7.4l.8-11h-9zm2.5 2h1v7H6zm3 0h1v7H9z"/></svg></button>}
           </div>
 
-          {/* Task-Typ */}
-          {!readOnly && (
+          {/* Task-Typ — nur für Tasks, nicht Gruppen */}
+          {!readOnly && !aktivTask.isGroup && (
           <div className="detail-block">
             <div className="detail-block-title" style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
               onClick={() => setTypOffen(o => !o)}>
@@ -551,7 +564,8 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
           </div>
           )}
 
-          {/* Zugewiesene Bauteile */}
+          {/* Zugewiesene Bauteile — nur für Tasks */}
+          {!aktivTask.isGroup && (
           <div className="detail-block">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
               <div className="detail-block-title" style={{ margin: 0, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
@@ -671,6 +685,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
             )}
             </>)}
           </div>
+          )}
         </div>
       ) : (
         <div className="detail-empty">↑ Task anklicken</div>

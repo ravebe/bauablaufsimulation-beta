@@ -9,6 +9,7 @@ export interface Task {
   objektGuids: string[]; // Runtime IDs als strings
   extraSpalten?: Record<string, string>; // Zusätzliche Gantt-Spalten für Auto-Verknüpfung
   outlineLevel?: number; // 1 = Hauptebene, 2+ = Kind (MSP-kompatibel)
+  isGroup?: boolean; // true = Gruppentitel (keine Bauteile, kein Typ)
 }
 
 export interface SimModell {
@@ -239,9 +240,10 @@ export function normalizeDatum(s: string): string {
 /** outlineLevel mit Default 1 */
 export function getOutlineLevel(t: Task): number { return t.outlineLevel ?? 1; }
 
-/** Ist dieser Task eine Gruppe? (nächster Task hat höheres Level) */
+/** Ist dieser Task eine Gruppe? (explizites Flag ODER nächster Task hat höheres Level) */
 export function istGruppe(tasks: Task[], idx: number): boolean {
   if (idx < 0 || idx >= tasks.length) return false;
+  if (tasks[idx].isGroup) return true;
   const myLevel = getOutlineLevel(tasks[idx]);
   return idx + 1 < tasks.length && getOutlineLevel(tasks[idx + 1]) > myLevel;
 }

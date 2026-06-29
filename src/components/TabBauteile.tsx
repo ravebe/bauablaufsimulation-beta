@@ -1,7 +1,7 @@
 // TabBauteile.tsx — Orchestrator mit Selektions-Tracking + Gantt-Toggle
 import { useState, useEffect, useRef } from "react";
 import type { SimProjekt } from "../types";
-import { parseDateUniversal } from "../types";
+import { parseDateUniversal, istGruppe, getOutlineLevel } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { getEchteBauteile, clearEchteBauteileCache } from "./modelHelpers";
 import TabTasks from "./TabTasks";
@@ -152,20 +152,34 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
   function ganttTaskReorder(fromIdx: number, toIdx: number) {
     if (!aktiveSim || fromIdx === toIdx) return;
     if (selectedIds.length > 1) {
-      // Multi-drag: alle ausgewählten Tasks verschieben
       const tasks = [...aktiveSim.tasks];
       const selSet = new Set(selectedIds);
       const moving = tasks.filter(t => selSet.has(t.id));
       const remaining = tasks.filter(t => !selSet.has(t.id));
-      // Zielposition in remaining berechnen
       let insertAt = remaining.findIndex(t => t.id === aktiveSim.tasks[toIdx]?.id);
       if (insertAt < 0) insertAt = remaining.length;
-      remaining.splice(insertAt, 0, ...moving);
+      const target = remaining[insertAt];
+      if (target && (target.isGroup || istGruppe(remaining, insertAt))) {
+        const gl = getOutlineLevel(target) + 1;
+        moving.forEach(m => { if (!m.isGroup) m.outlineLevel = gl; });
+        remaining.splice(insertAt + 1, 0, ...moving);
+      } else {
+        if (target) moving.forEach(m => { if (!m.isGroup) m.outlineLevel = getOutlineLevel(target); });
+        remaining.splice(insertAt, 0, ...moving);
+      }
       updateSim({ ...aktiveSim, tasks: remaining });
     } else {
       const tasks = [...aktiveSim.tasks];
+      const target = tasks[toIdx];
       const [moved] = tasks.splice(fromIdx, 1);
-      tasks.splice(toIdx > fromIdx ? toIdx - 1 : toIdx, 0, moved);
+      const insertAt = toIdx > fromIdx ? toIdx - 1 : toIdx;
+      if (target && (target.isGroup || istGruppe(aktiveSim.tasks, toIdx))) {
+        moved.outlineLevel = getOutlineLevel(target) + 1;
+        tasks.splice(insertAt + 1, 0, moved);
+      } else {
+        if (target) moved.outlineLevel = getOutlineLevel(target);
+        tasks.splice(insertAt, 0, moved);
+      }
       updateSim({ ...aktiveSim, tasks });
     }
   }
@@ -274,7 +288,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
           suchQuery={suchQuery}
         />
       )}
-      {combinedTask && !readOnly && (
+      {combinedTask && !readOnly && !combinedTask.isGroup && (
         <>
           <div className="detail-block">
             <div className="detail-block-title" style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
