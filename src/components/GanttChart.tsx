@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import type { Task } from "../types";
-import { parseDateUniversal } from "../types";
+import { parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten } from "../types";
 import DatePicker from "./DatePicker";
 
 interface Props {
@@ -66,6 +66,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dropIdx, setDropIdx] = useState<number | null>(null);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const [ganttCollapsed, setGanttCollapsed] = useState<Set<string>>(new Set());
 
   useEffect(() => { localStorage.setItem(LS_LABEL_W, String(labelW)); }, [labelW]);
   useEffect(() => { localStorage.setItem(LS_ZOOM, String(pxProTag)); }, [pxProTag]);
@@ -189,18 +190,29 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
   if (!minDate || totalTage <= 0 || tasks.length === 0) return <div style={{ padding: 12, fontSize: 11, color: "#8a9baa", textAlign: "center" }}>Keine Tasks</div>;
 
   // Sortierung
-  const sorted = tasks.map((t, i) => ({ task: t, origIdx: i }));
+  const allSorted = tasks.map((t, i) => ({ task: t, origIdx: i }));
   if (suchQuery.trim()) {
     const woerter = suchQuery.toLowerCase().split(/\s+/).filter(w => w.length > 0);
-    sorted.sort((a, b) => {
+    allSorted.sort((a, b) => {
       const textA = [a.task.name, ...Object.values(a.task.extraSpalten || {})].join(" ").toLowerCase();
       const textB = [b.task.name, ...Object.values(b.task.extraSpalten || {})].join(" ").toLowerCase();
       return woerter.filter(w => textB.includes(w)).length - woerter.filter(w => textA.includes(w)).length;
     });
-  } else if (taskSort === "datum") sorted.sort((a, b) => { const sa = parseDateUniversal(a.task.start)?.getTime() ?? 0, sb = parseDateUniversal(b.task.start)?.getTime() ?? 0; return sa !== sb ? sa - sb : (parseDateUniversal(a.task.end)?.getTime() ?? sa) - (parseDateUniversal(b.task.end)?.getTime() ?? sb); });
-  else if (taskSort === "aktiv") sorted.sort((a, b) => { const aH = selGuids?.size && a.task.objektGuids.some(g => selGuids.has(g)) ? 1 : 0; return (selGuids?.size && b.task.objektGuids.some(g => selGuids.has(g)) ? 1 : 0) - aH; });
-  else if (taskSort === "name") sorted.sort((a, b) => a.task.name.localeCompare(b.task.name, "de"));
-  else if (taskSort === "nummer") { const ex = (s: string) => { const m = s.match(/\d+/g); return m ? parseInt(m[m.length - 1], 10) : Infinity; }; sorted.sort((a, b) => { const na = ex(a.task.name), nb = ex(b.task.name); return na !== nb ? na - nb : a.task.name.localeCompare(b.task.name, "de"); }); }
+  } else if (taskSort === "datum") allSorted.sort((a, b) => { const sa = parseDateUniversal(a.task.start)?.getTime() ?? 0, sb = parseDateUniversal(b.task.start)?.getTime() ?? 0; return sa !== sb ? sa - sb : (parseDateUniversal(a.task.end)?.getTime() ?? sa) - (parseDateUniversal(b.task.end)?.getTime() ?? sb); });
+  else if (taskSort === "aktiv") allSorted.sort((a, b) => { const aH = selGuids?.size && a.task.objektGuids.some(g => selGuids.has(g)) ? 1 : 0; return (selGuids?.size && b.task.objektGuids.some(g => selGuids.has(g)) ? 1 : 0) - aH; });
+  else if (taskSort === "name") allSorted.sort((a, b) => a.task.name.localeCompare(b.task.name, "de"));
+  else if (taskSort === "nummer") { const ex = (s: string) => { const m = s.match(/\d+/g); return m ? parseInt(m[m.length - 1], 10) : Infinity; }; allSorted.sort((a, b) => { const na = ex(a.task.name), nb = ex(b.task.name); return na !== nb ? na - nb : a.task.name.localeCompare(b.task.name, "de"); }); }
+
+  // Collapse-Filter: Kinder eingeklappter Gruppen ausblenden
+  const sorted = allSorted.filter(({ origIdx }) => {
+    const level = getOutlineLevel(tasks[origIdx]);
+    for (let p = origIdx - 1; p >= 0; p--) {
+      const pLevel = getOutlineLevel(tasks[p]);
+      if (pLevel < level && ganttCollapsed.has(tasks[p].id)) return false;
+      if (pLevel < level) break;
+    }
+    return true;
+  });
 
   const chartW = Math.max(totalTage * pxProTag, 200);
   const bodyH = sorted.length * ROW_H;
@@ -315,12 +327,15 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
               const isSel = selectedIds.includes(t.id);
               const hasSel = selGuids?.size ? t.objektGuids.some(g => selGuids!.has(g)) : false;
               const isEditing = editingTaskId === t.id || calEdit?.taskId === t.id;
-              const maxC = Math.max(4, Math.floor((labelW - 55) / 7));
+              const isGrp = istGruppe(tasks, origIdx);
+              const level = getOutlineLevel(t);
+              const indent = (level - 1) * 12;
+              const maxC = Math.max(4, Math.floor((labelW - 55 - indent) / 7));
               const lbl = t.name.length > maxC ? t.name.slice(0, maxC - 1) + "…" : t.name;
               const isDropTarget = dropIdx === origIdx;
               const istHover = hoverIdx === i;
               const canDrag = editable && (taskSort === "gantt" || taskSort === "aktiv");
-              // Kein Drop zwischen benachbarten ausgewählten Tasks
+              const collapsed = ganttCollapsed.has(t.id);
               const prevSelected = i > 0 && selectedIds.includes(sorted[i - 1]?.task.id);
               const showDropLine = isDropTarget && dragIdx !== null && dragIdx !== origIdx && !(isSel && prevSelected);
               return (
@@ -329,15 +344,21 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
                     <div style={{ height: 2, background: "#2d7dbd", margin: "0 4px" }} />
                   )}
                   <div
-                    onClick={(e) => onTaskClick?.(origIdx, { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey })}                    onMouseEnter={() => setHoverIdx(i)}
+                    onClick={(e) => onTaskClick?.(origIdx, { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey })}
+                    onMouseEnter={() => setHoverIdx(i)}
                     onMouseLeave={() => setHoverIdx(null)}
                     style={{
-                      height: ROW_H, display: "flex", alignItems: "center", padding: "0 4px", cursor: "pointer", borderBottom: "1px solid #eef1f4",
+                      height: ROW_H, display: "flex", alignItems: "center", padding: "0 4px", paddingLeft: 4 + indent, cursor: "pointer", borderBottom: "1px solid #eef1f4",
                       background: isEditing ? "#FFF8E1" : isSel ? "#e8f0fe" : hasSel ? "#f0f0f0" : i % 2 === 0 ? "#fafbfc" : "#fff",
                       opacity: dragIdx === origIdx ? 0.4 : 1,
                     }}>
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", flexShrink: 0, marginRight: 5, background: isEditing ? "#FF9800" : FARBEN[t.typ] || "#6cc07a" }} />
-                    <span style={{ flex: 1, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: isEditing ? "#E65100" : isSel ? "#2d7dbd" : "#333", fontWeight: isEditing || isSel ? 600 : 400 }}>{lbl}</span>
+                    {isGrp ? (
+                      <span onClick={e => { e.stopPropagation(); setGanttCollapsed(s => { const n = new Set(s); if (n.has(t.id)) n.delete(t.id); else n.add(t.id); return n; }); }}
+                        style={{ display: "inline-block", transform: `scaleX(1.6) rotate(${collapsed ? -90 : 0}deg)`, transition: "transform .15s", fontSize: 9, cursor: "pointer", flexShrink: 0, marginRight: 4, color: "#555" }}>▼</span>
+                    ) : (
+                      <span style={{ width: 6, height: 6, borderRadius: "50%", flexShrink: 0, marginRight: 5, background: isEditing ? "#FF9800" : FARBEN[t.typ] || "#6cc07a" }} />
+                    )}
+                    <span style={{ flex: 1, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: isEditing ? "#E65100" : isSel ? "#2d7dbd" : "#333", fontWeight: isEditing || isSel || isGrp ? 600 : 400 }}>{lbl}</span>
                     {canDrag && istHover && dragIdx === null ? (
                       <span
                         draggable
@@ -370,8 +391,12 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
             {/* Tages-Trennlinien */}
             {dayLines.map((x, i) => <line key={`dl${i}`} x1={x} y1={0} x2={x} y2={bodyH} stroke="#f0f2f4" strokeWidth={0.3} />)}
 
-            {sorted.map(({ task: t }, i) => {
-              const y = i * ROW_H, sd = parseDateUniversal(t.start), ed = parseDateUniversal(t.end);
+            {sorted.map(({ task: t, origIdx }, i) => {
+              const isGrp = istGruppe(tasks, origIdx);
+              const gDaten = isGrp ? gruppenDaten(tasks, origIdx) : null;
+              const effStart = isGrp && gDaten ? gDaten.start : t.start;
+              const effEnd = isGrp && gDaten ? gDaten.end : t.end;
+              const y = i * ROW_H, sd = parseDateUniversal(effStart), ed = parseDateUniversal(effEnd);
               const sT = sd ? Math.max(0, (sd.getTime() - minDate.getTime()) / 86400000) : 0;
               const eT = ed ? (ed.getTime() - minDate.getTime()) / 86400000 : sT + 1;
               const dauer = Math.max(1, Math.round(eT - sT));
@@ -383,6 +408,31 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
               const barFill = isEditing ? "#FFE0B2" : (FARBEN[t.typ] || "#6cc07a");
               const barStroke = isEditing ? "#FF9800" : (isSel ? "#2d7dbd" : "none");
               const barStrokeW = isEditing ? 2 : (isSel ? 1.5 : 0);
+
+              if (isGrp) {
+                // Gruppe: Klammer nach unten (MSP-Stil)
+                const bracketY = y + ROW_H / 2 - 2;
+                const bracketH = 6;
+                const tickH = 4;
+                return (
+                  <g key={t.id}>
+                    <rect x={0} y={y} width={chartW} height={ROW_H} fill={isSel ? "#e8f0fe" : "transparent"} />
+                    <line x1={0} y1={y + ROW_H} x2={chartW} y2={y + ROW_H} stroke="#eef1f4" strokeWidth={0.5} />
+                    {sd && <>
+                      {/* Horizontale Linie */}
+                      <rect x={bX} y={bracketY} width={bW} height={bracketH} rx={1} fill="#555" opacity={0.8} />
+                      {/* Linker Tick */}
+                      <polygon points={`${bX},${bracketY + bracketH} ${bX + tickH},${bracketY + bracketH} ${bX},${bracketY + bracketH + tickH}`} fill="#555" />
+                      {/* Rechter Tick */}
+                      <polygon points={`${bX + bW},${bracketY + bracketH} ${bX + bW - tickH},${bracketY + bracketH} ${bX + bW},${bracketY + bracketH + tickH}`} fill="#555" />
+                    </>}
+                    {showDates && <text x={bX - 3} y={y + ROW_H / 2 + 4} fontSize={11} fill="#888" textAnchor="end">{fmtDatum(sd!, longDates)}</text>}
+                    {sd && bW > 40 && <text x={bX + bW / 2} y={y + ROW_H / 2 + 4} fontSize={11} fill="#555" fontWeight={600} textAnchor="middle" style={{ pointerEvents: "none" }}>{dauer}d</text>}
+                    {showDates && <text x={bX + bW + 3} y={y + ROW_H / 2 + 4} fontSize={11} fill="#888">{fmtDatum(ed!, longDates)}</text>}
+                  </g>
+                );
+              }
+
               return (
                 <g key={t.id}>
                   <rect x={0} y={y} width={chartW} height={ROW_H} fill={isEditing ? "#FFF8E1" : isSel ? "#e8f0fe" : hasSel ? "#f0f0f0" : "transparent"} />

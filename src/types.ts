@@ -8,6 +8,7 @@ export interface Task {
   typ: TaskTyp;
   objektGuids: string[]; // Runtime IDs als strings
   extraSpalten?: Record<string, string>; // Zusätzliche Gantt-Spalten für Auto-Verknüpfung
+  outlineLevel?: number; // 1 = Hauptebene, 2+ = Kind (MSP-kompatibel)
 }
 
 export interface SimModell {
@@ -231,4 +232,46 @@ export function normalizeDatum(s: string): string {
   const d = parseDateUniversal(s);
   if (!d) return s;
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// === Gruppen-Hilfsfunktionen (MSP OutlineLevel) ===
+
+/** outlineLevel mit Default 1 */
+export function getOutlineLevel(t: Task): number { return t.outlineLevel ?? 1; }
+
+/** Ist dieser Task eine Gruppe? (nächster Task hat höheres Level) */
+export function istGruppe(tasks: Task[], idx: number): boolean {
+  if (idx < 0 || idx >= tasks.length) return false;
+  const myLevel = getOutlineLevel(tasks[idx]);
+  return idx + 1 < tasks.length && getOutlineLevel(tasks[idx + 1]) > myLevel;
+}
+
+/** Finde alle Kind-Indizes einer Gruppe (direkt + verschachtelt) */
+export function getKinder(tasks: Task[], groupIdx: number): number[] {
+  const myLevel = getOutlineLevel(tasks[groupIdx]);
+  const children: number[] = [];
+  for (let i = groupIdx + 1; i < tasks.length; i++) {
+    if (getOutlineLevel(tasks[i]) <= myLevel) break;
+    children.push(i);
+  }
+  return children;
+}
+
+/** Berechne Start/Ende einer Gruppe aus ihren Kindern */
+export function gruppenDaten(tasks: Task[], groupIdx: number): { start: string; end: string; tage: number } {
+  const children = getKinder(tasks, groupIdx);
+  if (children.length === 0) return { start: tasks[groupIdx].start, end: tasks[groupIdx].end, tage: 0 };
+  let minStart = Infinity, maxEnd = -Infinity;
+  for (const ci of children) {
+    const s = parseDateUniversal(tasks[ci].start);
+    const e = parseDateUniversal(tasks[ci].end);
+    if (s) minStart = Math.min(minStart, s.getTime());
+    if (e) maxEnd = Math.max(maxEnd, e.getTime());
+  }
+  if (minStart === Infinity || maxEnd === -Infinity) return { start: "", end: "", tage: 0 };
+  const startD = new Date(minStart);
+  const endD = new Date(maxEnd);
+  const start = `${startD.getFullYear()}-${String(startD.getMonth()+1).padStart(2,"0")}-${String(startD.getDate()).padStart(2,"0")}`;
+  const end = `${endD.getFullYear()}-${String(endD.getMonth()+1).padStart(2,"0")}-${String(endD.getDate()).padStart(2,"0")}`;
+  return { start, end, tage: Math.max(1, Math.ceil((maxEnd - minStart) / 86400000)) };
 }
