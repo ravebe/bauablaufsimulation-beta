@@ -1,7 +1,7 @@
 // TabTasks.tsx — Task-Liste + Task-Detail + Visibility-Buttons + Guid-Liste
 import { useState, useEffect, useRef } from "react";
 import type { SimProjekt, Task, TaskTyp } from "../types";
-import { formatDatum, normalizeDatum, parseDateUniversal } from "../types";
+import { formatDatum, normalizeDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import DatePicker from "./DatePicker";
 
@@ -42,6 +42,9 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
   const [loeschenBestaetigen, setLoeschenBestaetigen] = useState(false);
   const [typOffen, setTypOffen] = useState(true);
   const [bauteileOffen, setBauteileOffen] = useState(true);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [plusMenu, setPlusMenu] = useState(false);
+  const [neuTyp, setNeuTyp] = useState<"task" | "gruppe">("task");
   const [settingsQuery1, setSettingsQuery1] = useState("");
   const [settingsQuery2, setSettingsQuery2] = useState("");
   const [settingsFocus, setSettingsFocus] = useState<1 | 2 | null>(null);
@@ -182,23 +185,31 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
     if (aktivTaskId === taskId) onTaskClick(taskId); // deselect
   }
 
+
   function taskHinzufuegen() {
     if (!neuTaskName.trim()) return;
+    const heute = new Date().toISOString().slice(0, 10);
+    const idx = aktivTaskId ? aktiveSim.tasks.findIndex(t => t.id === aktivTaskId) : aktiveSim.tasks.length;
+    const refTask = idx >= 0 ? aktiveSim.tasks[idx] : null;
+    const refLevel = refTask ? getOutlineLevel(refTask) : 1;
+
     const neuerTask: Task = {
       id: crypto.randomUUID(),
       name: neuTaskName.trim(),
-      start: new Date().toISOString().slice(0, 10),
-      end: new Date().toISOString().slice(0, 10),
+      start: heute,
+      end: heute,
       typ: "neubau",
       objektGuids: [],
+      outlineLevel: neuTyp === "gruppe" ? refLevel : (refLevel + (istGruppe(aktiveSim.tasks, idx) ? 1 : 0)),
     };
     const tasks = [...aktiveSim.tasks];
-    const idx = aktivTaskId ? tasks.findIndex(t => t.id === aktivTaskId) : -1;
-    if (idx >= 0) tasks.splice(idx + 1, 0, neuerTask);
-    else tasks.unshift(neuerTask);
+    if (neuTyp === "gruppe") {
+      tasks.splice(Math.max(0, idx), 0, neuerTask);
+    } else {
+      tasks.splice(idx >= 0 ? idx + 1 : tasks.length, 0, neuerTask);
+    }
     updateSim({ ...aktiveSim, tasks });
-    setNeuTaskName("");
-    setZeigeNeuTask(false);
+    setNeuTaskName(""); setZeigeNeuTask(false); setPlusMenu(false);
   }
 
   function speichereGuids(taskId: string, guids: string[]) {
@@ -283,9 +294,27 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
                 <span style={{ fontSize: 11, color: "#2d7dbd", fontWeight: 600 }}>✓ VERTEILT</span>
               );
             })()}
-            <button style={{ fontSize: 11, color: "#2d7dbd", fontWeight: 600, background: "none", border: "1px solid #2d7dbd",
-              padding: "1px 6px", cursor: "pointer", fontFamily: "inherit", display: readOnly ? "none" : "inline-flex" }}
-              onClick={() => setZeigeNeuTask(z => !z)}>+</button>
+            <div style={{ position: "relative", display: readOnly ? "none" : "inline-flex" }}>
+              <button style={{ fontSize: 11, color: "#2d7dbd", fontWeight: 600, background: "none", border: "1px solid #2d7dbd",
+                padding: "1px 6px", cursor: "pointer", fontFamily: "inherit" }}
+                onClick={() => setPlusMenu(m => !m)}>+</button>
+              {plusMenu && (
+                <div style={{ position: "absolute", right: 0, top: "100%", marginTop: 2, background: "#fff", border: "1px solid #d4dce4", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, minWidth: 120, fontSize: 11 }}>
+                  <div style={{ padding: "6px 10px", cursor: "pointer", borderBottom: "1px solid #eef1f4" }}
+                    onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")}
+                    onMouseLeave={e => (e.currentTarget.style.background = "")}
+                    onClick={() => { setNeuTyp("task"); setPlusMenu(false); setZeigeNeuTask(true); }}>
+                    + Neuer Task
+                  </div>
+                  <div style={{ padding: "6px 10px", cursor: "pointer" }}
+                    onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")}
+                    onMouseLeave={e => (e.currentTarget.style.background = "")}
+                    onClick={() => { setNeuTyp("gruppe"); setPlusMenu(false); setZeigeNeuTask(true); }}>
+                    📁 Neue Gruppe
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -346,36 +375,61 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
                 return a.task.name.localeCompare(b.task.name, "de");
               });
             }
-            return tasksWithIdx.map(({ task, idx }) => {
+            // Gruppen: eingeklappte Kinder ausblenden
+            const sichtbar = tasksWithIdx.filter(({ idx }) => {
+              const level = getOutlineLevel(aktiveSim.tasks[idx]);
+              // Prüfen ob ein Eltern-Gruppe zugeklappt ist
+              for (let p = idx - 1; p >= 0; p--) {
+                const pLevel = getOutlineLevel(aktiveSim.tasks[p]);
+                if (pLevel < level && collapsedGroups.has(aktiveSim.tasks[p].id)) return false;
+                if (pLevel < level) break;
+              }
+              return true;
+            });
+            return sichtbar.map(({ task, idx }) => {
             const hatSelektierte = selGuids.size > 0 && task.objektGuids.some(g => selGuids.has(g));
             const selAnzahl = hatSelektierte ? task.objektGuids.filter(g => selGuids.has(g)).length : 0;
             const istHover = hoverTaskId === task.id;
             const istDropTarget = dropIdx === idx;
+            const isGroup = istGruppe(aktiveSim.tasks, idx);
+            const level = getOutlineLevel(task);
+            const indent = level * 16;
+            const gDaten = isGroup ? gruppenDaten(aktiveSim.tasks, idx) : null;
+            const collapsed = collapsedGroups.has(task.id);
             return (
             <div key={task.id}>
-              {/* Drop-Indikator oben */}
               {istDropTarget && dragIdx !== null && dragIdx !== idx && (
                 <div style={{ height: 2, background: "#2d7dbd", margin: "0 10px" }} />
               )}
               <div
                 data-taskid={task.id}
                 className={`task-row ${selectedIds.includes(task.id) ? "active" : ""}`}
-                style={{ borderBottom: "1px solid #eef1f4", padding: "6px 10px", gap: 7,
+                style={{ borderBottom: "1px solid #eef1f4", padding: "6px 10px", paddingLeft: 10 + indent, gap: 7,
                   background: selectedIds.includes(task.id) ? "#e8f2fa" : hatSelektierte ? "#f0f0f0" : undefined,
-                  opacity: dragIdx === idx ? 0.4 : 1 }}
+                  opacity: dragIdx === idx ? 0.4 : 1, fontWeight: isGroup ? 700 : undefined }}
                 onClick={(e) => onTaskClick(task.id, { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey })}
                 onMouseEnter={() => setHoverTaskId(task.id)}
                 onMouseLeave={() => setHoverTaskId(null)}
                 onDragOver={e => { e.preventDefault(); setDropIdx(idx); }}
                 onDrop={e => { e.preventDefault(); if (dragIdx !== null) taskVerschieben(dragIdx, idx); setDragIdx(null); setDropIdx(null); }}
               >
-                <span style={{ width: 9, height: 9, borderRadius: "50%", flexShrink: 0, background: task.typ === "neubau" ? "#6cc07a" : task.typ === "abbruch" ? "#edb94c" : task.typ === "temporaer" ? "#a0522d" : "#888" }} />
-                <span className="task-row-name" style={{ fontSize: 13, flex: 1, color: selectedIds.includes(task.id) ? "#2d7dbd" : "#333", fontWeight: selectedIds.includes(task.id) || hatSelektierte ? 600 : 400 }}>{task.name}</span>
+                {isGroup ? (
+                  <span onClick={e => { e.stopPropagation(); setCollapsedGroups(s => { const n = new Set(s); if (n.has(task.id)) n.delete(task.id); else n.add(task.id); return n; }); }}
+                    style={{ display: "inline-block", transform: `scaleX(1.6) rotate(${collapsed ? -90 : 0}deg)`, transition: "transform .15s", fontSize: 9, cursor: "pointer", flexShrink: 0, marginRight: 4, color: "#555" }}>▼</span>
+                ) : (
+                  <span style={{ width: 9, height: 9, borderRadius: "50%", flexShrink: 0, background: task.typ === "neubau" ? "#6cc07a" : task.typ === "abbruch" ? "#edb94c" : task.typ === "temporaer" ? "#a0522d" : "#888" }} />
+                )}
+                <span className="task-row-name" style={{ fontSize: 13, flex: 1, color: selectedIds.includes(task.id) ? "#2d7dbd" : isGroup ? "#333" : "#333", fontWeight: selectedIds.includes(task.id) || hatSelektierte || isGroup ? 600 : 400 }}>{task.name}</span>
 
                 {/* Datum — blau, untereinander */}
                 <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.3, flexShrink: 0 }}
                   onClick={e => e.stopPropagation()}>
-                  {!readOnly ? (
+                  {isGroup && gDaten ? (
+                    <>
+                      <span style={{ fontSize: 11, color: "#888" }}>{formatDatum(gDaten.start)}</span>
+                      <span style={{ fontSize: 11, color: "#888" }}>{formatDatum(gDaten.end)}</span>
+                    </>
+                  ) : !readOnly ? (
                     <>
                       <DatePicker value={formatDatum(task.start)} onChange={(val: string) => {
                         const norm = normalizeDatum(val);
@@ -394,7 +448,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
                   )}
                 </span>
 
-                {/* Rechts: Count oder Drag-Handle */}
+                {/* Rechts: Count/Tage oder Drag-Handle */}
                 {!readOnly && (taskSort === "gantt" || taskSort === "aktiv") && istHover && !dragIdx ? (
                   <span
                     draggable
@@ -406,7 +460,9 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
                   >☰</span>
                 ) : (
                   <span className="task-row-count" style={{ fontSize: 12, marginLeft: 4, flexShrink: 0, minWidth: 33, textAlign: "right" }}>
-                    {hatSelektierte
+                    {isGroup && gDaten
+                      ? <span style={{ color: "#888" }}>{gDaten.tage}d</span>
+                      : hatSelektierte
                       ? <span style={{ color: "#2d7dbd", fontWeight: 600 }}>{selAnzahl}/{task.objektGuids.length}</span>
                       : task.objektGuids.length > 0
                         ? <span style={{ color: "#8a9baa" }}>O {task.objektGuids.length}</span>
