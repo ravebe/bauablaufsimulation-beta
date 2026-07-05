@@ -20,6 +20,7 @@ interface Props {
   editable?: boolean;
   onDateChange?: (taskId: string, newStart: string, newEnd: string) => void;
   onTaskReorder?: (fromIdx: number, toIdx: number) => void;
+  onTaskRename?: (taskId: string, newName: string) => void;
   showObjektCount?: boolean;
   suchQuery?: string;
   nadelStil?: "normal" | "ghost";
@@ -50,7 +51,7 @@ function getKW(d: Date): number {
   return Math.ceil(((t.getTime() - y.getTime()) / 86400000 + 1) / 7);
 }
 
-export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selectedIds = [], selGuids, taskSort, height, editable, onDateChange, onTaskReorder, showObjektCount, suchQuery = "", nadelStil = "normal", dateColor = "#2d7dbd" }: Props) {
+export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selectedIds = [], selGuids, taskSort, height, editable, onDateChange, onTaskReorder, onTaskRename, showObjektCount, suchQuery = "", nadelStil = "normal", dateColor = "#2d7dbd" }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
@@ -67,6 +68,8 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
   const [dropIdx, setDropIdx] = useState<number | null>(null);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [ganttCollapsed, setGanttCollapsed] = useState<Set<string>>(new Set());
+  const [renameId, setRenameId] = useState<string | null>(null);
+  const [renameVal, setRenameVal] = useState("");
 
   useEffect(() => { localStorage.setItem(LS_LABEL_W, String(labelW)); }, [labelW]);
   useEffect(() => { localStorage.setItem(LS_ZOOM, String(pxProTag)); }, [pxProTag]);
@@ -359,7 +362,18 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
                     ) : (
                       <span style={{ width: 6, height: 6, borderRadius: "50%", flexShrink: 0, marginRight: 5, background: isEditing ? "#FF9800" : FARBEN[t.typ] || "#6cc07a" }} />
                     )}
-                    <span style={{ flex: 1, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: isEditing ? "#E65100" : isSel ? "#2d7dbd" : "#333", fontWeight: isEditing || isSel || isGrp ? 600 : 400 }}>{lbl}</span>
+                    {editable && renameId === t.id ? (
+                      <input autoFocus value={renameVal}
+                        onChange={e => setRenameVal(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter" && renameVal.trim()) { onTaskRename?.(t.id, renameVal.trim()); setRenameId(null); } if (e.key === "Escape") setRenameId(null); }}
+                        onBlur={() => { if (renameVal.trim()) onTaskRename?.(t.id, renameVal.trim()); setRenameId(null); }}
+                        onClick={e => e.stopPropagation()}
+                        style={{ flex: 1, fontSize: 11, padding: "0 2px", border: "1px solid #2d7dbd", outline: "none", fontFamily: "inherit", minWidth: 0, fontWeight: isGrp ? 700 : 400 }} />
+                    ) : (
+                      <span
+                        onDoubleClick={editable ? (e) => { e.stopPropagation(); setRenameId(t.id); setRenameVal(t.name); } : undefined}
+                        style={{ flex: 1, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: editable ? "text" : "default", color: isEditing ? "#E65100" : isSel ? "#2d7dbd" : "#333", fontWeight: isEditing || isSel || isGrp ? 600 : 400 }}>{lbl}</span>
+                    )}
                     {canDrag && istHover && dragIdx === null ? (
                       <span
                         draggable

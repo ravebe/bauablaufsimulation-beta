@@ -43,6 +43,8 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
   const [typOffen, setTypOffen] = useState(true);
   const [bauteileOffen, setBauteileOffen] = useState(true);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [editingNameId, setEditingNameId] = useState<string | null>(null);
+  const [editingNameVal, setEditingNameVal] = useState("");
   const [settingsQuery1, setSettingsQuery1] = useState("");
   const [settingsQuery2, setSettingsQuery2] = useState("");
   const [settingsFocus, setSettingsFocus] = useState<1 | 2 | null>(null);
@@ -204,6 +206,12 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
   function taskLoeschen(taskId: string) {
     updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.filter(t => t.id !== taskId) });
     if (aktivTaskId === taskId) onTaskClick(taskId); // deselect
+  }
+
+  function taskUmbenennen(taskId: string, neuerName: string) {
+    if (!neuerName.trim()) { setEditingNameId(null); return; }
+    updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => t.id === taskId ? { ...t, name: neuerName.trim() } : t) });
+    setEditingNameId(null);
   }
 
 
@@ -383,7 +391,18 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
                 ) : (
                   <span style={{ width: 9, height: 9, borderRadius: "50%", flexShrink: 0, background: task.typ === "neubau" ? "#6cc07a" : task.typ === "abbruch" ? "#edb94c" : task.typ === "temporaer" ? "#a0522d" : "#888" }} />
                 )}
-                <span className="task-row-name" style={{ fontSize: 13, flex: 1, color: selectedIds.includes(task.id) ? "#2d7dbd" : isGroup ? "#333" : "#333", fontWeight: selectedIds.includes(task.id) || hatSelektierte || isGroup ? 600 : 400 }}>{task.name}</span>
+                {!readOnly && editingNameId === task.id ? (
+                  <input autoFocus value={editingNameVal}
+                    onChange={e => setEditingNameVal(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") taskUmbenennen(task.id, editingNameVal); if (e.key === "Escape") setEditingNameId(null); }}
+                    onBlur={() => taskUmbenennen(task.id, editingNameVal)}
+                    onClick={e => e.stopPropagation()}
+                    style={{ flex: 1, fontSize: 13, padding: "1px 4px", border: "1px solid #2d7dbd", outline: "none", fontFamily: "inherit", fontWeight: isGroup ? 700 : 400 }} />
+                ) : (
+                  <span className="task-row-name"
+                    onDoubleClick={!readOnly ? (e) => { e.stopPropagation(); setEditingNameId(task.id); setEditingNameVal(task.name); } : undefined}
+                    style={{ fontSize: 13, flex: 1, cursor: !readOnly ? "text" : "default", color: selectedIds.includes(task.id) ? "#2d7dbd" : "#333", fontWeight: selectedIds.includes(task.id) || hatSelektierte || isGroup ? 600 : 400 }}>{task.name}</span>
+                )}
 
                 {/* Datum — blau, untereinander */}
                 <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.3, flexShrink: 0 }}

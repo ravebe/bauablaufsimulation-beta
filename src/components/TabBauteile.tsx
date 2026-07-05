@@ -294,6 +294,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
             editable={!readOnly}
             onDateChange={ganttDateChange}
             onTaskReorder={ganttTaskReorder}
+            onTaskRename={(id, name) => { if (aktiveSim) updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => t.id === id ? { ...t, name } : t) }); }}
             showObjektCount
             suchQuery={suchQuery}
             nadelStil={ghostTag >= 0 ? "ghost" : "normal"}
