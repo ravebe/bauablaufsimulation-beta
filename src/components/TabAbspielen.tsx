@@ -362,10 +362,15 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
     const task = tasks[idx];
     setSelTaskId(task.id);
 
-    // Gruppe: alle Kind-Objekte selektieren
-    const isGrp = task.isGroup || istGruppe(allTasks, allTasks.indexOf(task));
-    if (isGrp && api) {
-      const allIdx = allTasks.indexOf(task);
+    const allIdx = allTasks.findIndex(t => t.id === task.id);
+    const isGrp = task.isGroup || (allIdx >= 0 && istGruppe(allTasks, allIdx));
+    const gDaten = isGrp && allIdx >= 0 ? gruppenDaten(allTasks, allIdx) : null;
+    const startDatum = isGrp && gDaten ? gDaten.start : task.start;
+    const tag = tagVonDatum(startDatum, minDate);
+    await sliderChange(tag);
+
+    // Gruppe: nach Timeline-Update alle Kind-Objekte selektieren
+    if (isGrp && api && allIdx >= 0) {
       const kinderGuids: string[] = [];
       const myLevel = getOutlineLevel(task);
       for (let k = allIdx + 1; k < allTasks.length; k++) {
@@ -373,14 +378,10 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
         kinderGuids.push(...allTasks[k].objektGuids);
       }
       if (kinderGuids.length > 0) {
-        try { await selektieren(kinderGuids); } catch {}
+        try { await selektieren([...new Set(kinderGuids)]); } catch {}
       }
     }
 
-    const gDaten = isGrp ? gruppenDaten(allTasks, allTasks.indexOf(task)) : null;
-    const startDatum = isGrp && gDaten ? gDaten.start : task.start;
-    const tag = tagVonDatum(startDatum, minDate);
-    await sliderChange(tag);
     if (suchQuery) { setSuchOffen(false); setSuchQuery(""); }
   }
 
