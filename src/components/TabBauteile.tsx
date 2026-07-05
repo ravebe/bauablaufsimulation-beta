@@ -1,6 +1,6 @@
 // TabBauteile.tsx — Orchestrator mit Selektions-Tracking + Gantt-Toggle
 import { useState, useEffect, useRef } from "react";
-import type { SimProjekt } from "../types";
+import type { SimProjekt, Task } from "../types";
 import { parseDateUniversal, istGruppe, getOutlineLevel } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { getEchteBauteile, clearEchteBauteileCache } from "./modelHelpers";
@@ -33,6 +33,10 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
   const [selToolOffen, setSelToolOffen] = useState(true);
   const [suchOffen, setSuchOffen] = useState(false);
   const [suchQuery, setSuchQuery] = useState("");
+  const [plusMenuOffen, setPlusMenuOffen] = useState(false);
+  const [neuInputOffen, setNeuInputOffen] = useState(false);
+  const [neuTaskInput, setNeuTaskInput] = useState("");
+  const [neuTyp, setNeuTyp] = useState<"task" | "gruppe">("task");
   const [ganttH, setGanttH] = useState(() => {
     try { return Number(localStorage.getItem("4d-gantt-height-bauteile")) || 260; } catch { return 260; }
   });
@@ -149,6 +153,25 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
     )});
   }
 
+  function neuErstellen() {
+    if (!aktiveSim || !neuTaskInput.trim()) return;
+    const heute = new Date().toISOString().slice(0, 10);
+    const idx = aktivTaskId ? aktiveSim.tasks.findIndex(t => t.id === aktivTaskId) : aktiveSim.tasks.length;
+    const refTask = idx >= 0 ? aktiveSim.tasks[idx] : null;
+    const refLevel = refTask ? getOutlineLevel(refTask) : 1;
+    const neuerTask: Task = {
+      id: crypto.randomUUID(), name: neuTaskInput.trim(), start: heute, end: heute,
+      typ: "neubau", objektGuids: [],
+      outlineLevel: neuTyp === "gruppe" ? refLevel : (refLevel + (refTask && istGruppe(aktiveSim.tasks, idx) ? 1 : 0)),
+      isGroup: neuTyp === "gruppe" ? true : undefined,
+    };
+    const tasks = [...aktiveSim.tasks];
+    if (neuTyp === "gruppe") tasks.splice(Math.max(0, idx), 0, neuerTask);
+    else tasks.splice(idx >= 0 ? idx + 1 : tasks.length, 0, neuerTask);
+    updateSim({ ...aktiveSim, tasks });
+    setNeuTaskInput(""); setPlusMenuOffen(false); setNeuInputOffen(false);
+  }
+
   function ganttTaskReorder(fromIdx: number, toIdx: number) {
     if (!aktiveSim || fromIdx === toIdx) return;
     if (selectedIds.length > 1) {
@@ -192,19 +215,39 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
           <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 4 }}>
             <span style={{ fontSize: 13, color: "#8a9baa", flexShrink: 0, cursor: "pointer" }}
               onClick={() => { setSuchOffen(false); setSuchQuery(""); }}>✕</span>
-            <input
-              autoFocus
-              placeholder="Task suchen…"
-              value={suchQuery}
+            <input autoFocus placeholder="Task suchen…" value={suchQuery}
               onChange={e => setSuchQuery(e.target.value)}
               style={{ flex: 1, padding: "3px 6px", fontSize: 11, border: "1px solid #d4dce4", fontFamily: "inherit", outline: "none" }}
-              onKeyDown={e => { if (e.key === "Escape") { setSuchOffen(false); setSuchQuery(""); } }}
-            />
+              onKeyDown={e => { if (e.key === "Escape") { setSuchOffen(false); setSuchQuery(""); } }} />
           </div>
-        ) : (
+        ) : (<>
           <button className="tc-btn-secondary" style={{ fontSize: 12, padding: "2px 6px" }}
-            onClick={() => setSuchOffen(true)} title="Tasks suchen"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#333" strokeWidth="1.8"><circle cx="6.5" cy="6.5" r="5"/><line x1="10.2" y1="10.2" x2="14.5" y2="14.5"/></svg></button>
-        )}
+            onClick={() => setSuchOffen(true)} title="Tasks suchen">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#333" strokeWidth="1.8"><circle cx="6.5" cy="6.5" r="5"/><line x1="10.2" y1="10.2" x2="14.5" y2="14.5"/></svg>
+          </button>
+          {!readOnly && (
+            <div style={{ position: "relative", display: "inline-flex" }}>
+              <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "2px 6px", fontWeight: 600, color: "#2d7dbd" }}
+                onClick={() => setPlusMenuOffen(m => !m)}>+</button>
+              {plusMenuOffen && (
+                <div style={{ position: "absolute", left: 0, top: "100%", marginTop: 2, background: "#fff", border: "1px solid #d4dce4", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, minWidth: 140, fontSize: 11 }}>
+                  <div style={{ padding: "6px 10px", cursor: "pointer", borderBottom: "1px solid #eef1f4" }}
+                    onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")}
+                    onMouseLeave={e => (e.currentTarget.style.background = "")}
+                    onClick={() => { setNeuTyp("task"); setPlusMenuOffen(false); setNeuInputOffen(true); }}>
+                    + Neuer Task
+                  </div>
+                  <div style={{ padding: "6px 10px", cursor: "pointer" }}
+                    onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")}
+                    onMouseLeave={e => (e.currentTarget.style.background = "")}
+                    onClick={() => { setNeuTyp("gruppe"); setPlusMenuOffen(false); setNeuInputOffen(true); }}>
+                    📁 Neue Gruppe
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </>)}
         <button className="tc-btn-secondary" style={{ fontSize: 12, padding: "4px 12px", fontWeight: 600, marginLeft: "auto" }}
           onClick={() => {
             const willOpen = !ganttOffen;
@@ -220,6 +263,18 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
           {ganttOffen ? "☰ Liste" : "▤ Gantt"}
         </button>
       </div>
+
+      {neuInputOffen && (
+        <div style={{ display: "flex", gap: 4, padding: "4px 8px", alignItems: "center" }}>
+          <span style={{ fontSize: 10, color: "#8a9baa", flexShrink: 0 }}>{neuTyp === "gruppe" ? "📁" : "+"}</span>
+          <input autoFocus placeholder={neuTyp === "gruppe" ? "Gruppenname…" : "Task-Name…"}
+            value={neuTaskInput} onChange={e => setNeuTaskInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") neuErstellen(); if (e.key === "Escape") { setNeuInputOffen(false); setNeuTaskInput(""); } }}
+            style={{ flex: 1, padding: "3px 6px", fontSize: 11, border: "1px solid #d4dce4", fontFamily: "inherit", outline: "none" }} />
+          <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "2px 6px" }}
+            onClick={() => { setNeuInputOffen(false); setNeuTaskInput(""); }}>✕</button>
+        </div>
+      )}
 
       {ganttOffen ? (
         <>
