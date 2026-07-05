@@ -359,8 +359,27 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
 
   async function zuTask(idx: number) {
     if (laeuft || idx < 0 || idx >= tasks.length || !minDate) return;
-    setSelTaskId(tasks[idx].id);
-    const tag = tagVonDatum(tasks[idx].start, minDate);
+    const task = tasks[idx];
+    setSelTaskId(task.id);
+
+    // Gruppe: alle Kind-Objekte selektieren
+    const isGrp = task.isGroup || istGruppe(allTasks, allTasks.indexOf(task));
+    if (isGrp && api) {
+      const allIdx = allTasks.indexOf(task);
+      const kinderGuids: string[] = [];
+      const myLevel = getOutlineLevel(task);
+      for (let k = allIdx + 1; k < allTasks.length; k++) {
+        if (getOutlineLevel(allTasks[k]) <= myLevel) break;
+        kinderGuids.push(...allTasks[k].objektGuids);
+      }
+      if (kinderGuids.length > 0) {
+        try { await selektieren(kinderGuids); } catch {}
+      }
+    }
+
+    const gDaten = isGrp ? gruppenDaten(allTasks, allTasks.indexOf(task)) : null;
+    const startDatum = isGrp && gDaten ? gDaten.start : task.start;
+    const tag = tagVonDatum(startDatum, minDate);
     await sliderChange(tag);
     if (suchQuery) { setSuchOffen(false); setSuchQuery(""); }
   }
