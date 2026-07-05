@@ -43,8 +43,6 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
   const [typOffen, setTypOffen] = useState(true);
   const [bauteileOffen, setBauteileOffen] = useState(true);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-  const [plusMenu, setPlusMenu] = useState(false);
-  const [neuTyp, setNeuTyp] = useState<"task" | "gruppe">("task");
   const [settingsQuery1, setSettingsQuery1] = useState("");
   const [settingsQuery2, setSettingsQuery2] = useState("");
   const [settingsFocus, setSettingsFocus] = useState<1 | 2 | null>(null);
@@ -62,8 +60,6 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
     return () => { window.removeEventListener("dragend", reset); window.removeEventListener("mouseup", reset); };
   }, [dragIdx]);
   // Task hinzufügen
-  const [zeigeNeuTask, setZeigeNeuTask] = useState(false);
-  const [neuTaskName, setNeuTaskName] = useState("");
   const [bauteilListHeight, setBauteilListHeight] = useState(() => {
     try { return Number(localStorage.getItem("4d-list-height-bauteile")) || 350; } catch { return 350; }
   });
@@ -176,19 +172,33 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
     if (fromIdx === toIdx) return;
     const tasks = [...aktiveSim.tasks];
     const target = tasks[toIdx];
-    const [moved] = tasks.splice(fromIdx, 1);
-    const insertAt = toIdx > fromIdx ? toIdx - 1 : toIdx;
-    // Wenn Ziel eine Gruppe ist → Kind-Level setzen
-    if (target && (target.isGroup || istGruppe(aktiveSim.tasks, toIdx))) {
-      moved.outlineLevel = getOutlineLevel(target) + 1;
-      // Nach dem Gruppentitel einfügen (nicht davor)
-      tasks.splice(insertAt + 1, 0, moved);
+    const isTargetGroup = target && (target.isGroup || istGruppe(aktiveSim.tasks, toIdx));
+
+    if (selectedIds.length > 1) {
+      // Multi-drag: alle ausgewählten Tasks verschieben
+      const selSet = new Set(selectedIds);
+      const moving = tasks.filter(t => selSet.has(t.id));
+      const remaining = tasks.filter(t => !selSet.has(t.id));
+      let insertAt = remaining.findIndex(t => t.id === target?.id);
+      if (insertAt < 0) insertAt = remaining.length;
+      if (isTargetGroup) {
+        moving.forEach(m => { m.outlineLevel = getOutlineLevel(target) + 1; });
+        insertAt += 1;
+      }
+      remaining.splice(insertAt, 0, ...moving);
+      updateSim({ ...aktiveSim, tasks: remaining });
     } else {
-      // Gleiches Level wie Nachbar
-      if (target) moved.outlineLevel = getOutlineLevel(target);
-      tasks.splice(insertAt, 0, moved);
+      const [moved] = tasks.splice(fromIdx, 1);
+      const insertAt = toIdx > fromIdx ? toIdx - 1 : toIdx;
+      if (isTargetGroup) {
+        moved.outlineLevel = getOutlineLevel(target) + 1;
+        tasks.splice(insertAt + 1, 0, moved);
+      } else {
+        if (target) moved.outlineLevel = getOutlineLevel(target);
+        tasks.splice(insertAt, 0, moved);
+      }
+      updateSim({ ...aktiveSim, tasks });
     }
-    updateSim({ ...aktiveSim, tasks });
   }
 
   function taskLoeschen(taskId: string) {
@@ -196,33 +206,6 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
     if (aktivTaskId === taskId) onTaskClick(taskId); // deselect
   }
 
-
-  function taskHinzufuegen() {
-    if (!neuTaskName.trim()) return;
-    const heute = new Date().toISOString().slice(0, 10);
-    const idx = aktivTaskId ? aktiveSim.tasks.findIndex(t => t.id === aktivTaskId) : aktiveSim.tasks.length;
-    const refTask = idx >= 0 ? aktiveSim.tasks[idx] : null;
-    const refLevel = refTask ? getOutlineLevel(refTask) : 1;
-
-    const neuerTask: Task = {
-      id: crypto.randomUUID(),
-      name: neuTaskName.trim(),
-      start: heute,
-      end: heute,
-      typ: "neubau",
-      objektGuids: [],
-      outlineLevel: neuTyp === "gruppe" ? refLevel : (refLevel + (istGruppe(aktiveSim.tasks, idx) ? 1 : 0)),
-      isGroup: neuTyp === "gruppe" ? true : undefined,
-    };
-    const tasks = [...aktiveSim.tasks];
-    if (neuTyp === "gruppe") {
-      tasks.splice(Math.max(0, idx), 0, neuerTask);
-    } else {
-      tasks.splice(idx >= 0 ? idx + 1 : tasks.length, 0, neuerTask);
-    }
-    updateSim({ ...aktiveSim, tasks });
-    setNeuTaskName(""); setZeigeNeuTask(false); setPlusMenu(false);
-  }
 
   function speichereGuids(taskId: string, guids: string[]) {
     updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => t.id === taskId ? { ...t, objektGuids: guids } : t) });
@@ -306,39 +289,8 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
                 <span style={{ fontSize: 11, color: "#2d7dbd", fontWeight: 600 }}>✓ VERTEILT</span>
               );
             })()}
-            <div style={{ position: "relative", display: readOnly ? "none" : "inline-flex" }}>
-              <button style={{ fontSize: 11, color: "#2d7dbd", fontWeight: 600, background: "none", border: "1px solid #2d7dbd",
-                padding: "1px 6px", cursor: "pointer", fontFamily: "inherit" }}
-                onClick={() => setPlusMenu(m => !m)}>+</button>
-              {plusMenu && (
-                <div style={{ position: "absolute", right: 0, top: "100%", marginTop: 2, background: "#fff", border: "1px solid #d4dce4", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, minWidth: 120, fontSize: 11 }}>
-                  <div style={{ padding: "6px 10px", cursor: "pointer", borderBottom: "1px solid #eef1f4" }}
-                    onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")}
-                    onMouseLeave={e => (e.currentTarget.style.background = "")}
-                    onClick={() => { setNeuTyp("task"); setPlusMenu(false); setZeigeNeuTask(true); }}>
-                    + Neuer Task
-                  </div>
-                  <div style={{ padding: "6px 10px", cursor: "pointer" }}
-                    onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")}
-                    onMouseLeave={e => (e.currentTarget.style.background = "")}
-                    onClick={() => { setNeuTyp("gruppe"); setPlusMenu(false); setZeigeNeuTask(true); }}>
-                    📁 Neue Gruppe
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
         </div>
-
-        {/* Neuen Task hinzufügen */}
-        {!readOnly && zeigeNeuTask && (
-          <div style={{ padding: "6px 10px", borderBottom: "1px solid #eef1f4", display: "flex", gap: 4 }}>
-            <input className="ac-input" style={{ flex: 1, fontSize: 11 }} placeholder="Task-Name…" value={neuTaskName}
-              onChange={e => setNeuTaskName(e.target.value)} onKeyDown={e => e.key === "Enter" && taskHinzufuegen()} autoFocus />
-            <button className="tc-btn-primary" style={{ fontSize: 10, padding: "2px 8px" }} onClick={taskHinzufuegen}>✓</button>
-            <button className="tc-btn-ghost" style={{ fontSize: 10, padding: "2px 6px" }} onClick={() => { setZeigeNeuTask(false); setNeuTaskName(""); }}>✕</button>
-          </div>
-        )}
 
         <div ref={scrollRef} style={{ maxHeight: bauteilListHeight, overflowY: "auto" }}>
         {aktiveSim.tasks.length === 0 ? (
@@ -403,7 +355,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
             const selAnzahl = hatSelektierte ? task.objektGuids.filter(g => selGuids.has(g)).length : 0;
             const istHover = hoverTaskId === task.id;
             const istDropTarget = dropIdx === idx;
-            const isGroup = istGruppe(aktiveSim.tasks, idx);
+            const isGroup = task.isGroup || istGruppe(aktiveSim.tasks, idx);
             const level = getOutlineLevel(task);
             const indent = level * 16;
             const gDaten = isGroup ? gruppenDaten(aktiveSim.tasks, idx) : null;
@@ -417,8 +369,8 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
                 data-taskid={task.id}
                 className={`task-row ${selectedIds.includes(task.id) ? "active" : ""}`}
                 style={{ borderBottom: "1px solid #eef1f4", padding: "6px 10px", paddingLeft: 10 + indent, gap: 7,
-                  background: selectedIds.includes(task.id) ? "#e8f2fa" : hatSelektierte ? "#f0f0f0" : undefined,
-                  opacity: dragIdx === idx ? 0.4 : 1, fontWeight: isGroup ? 700 : undefined }}
+                  background: isGroup && istDropTarget && dragIdx !== null ? "#dbeafe" : selectedIds.includes(task.id) ? "#e8f2fa" : hatSelektierte ? "#f0f0f0" : undefined,
+                  opacity: dragIdx !== null && selectedIds.includes(task.id) ? 0.4 : 1, fontWeight: isGroup ? 700 : undefined }}
                 onClick={(e) => onTaskClick(task.id, { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey })}
                 onMouseEnter={() => setHoverTaskId(task.id)}
                 onMouseLeave={() => setHoverTaskId(null)}
@@ -473,7 +425,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
                 ) : (
                   <span className="task-row-count" style={{ fontSize: 12, marginLeft: 4, flexShrink: 0, minWidth: 33, textAlign: "right" }}>
                     {isGroup && gDaten
-                      ? <span style={{ color: "#888" }}>{gDaten.tage}d</span>
+                      ? (() => { const childIds = []; for (let ci = idx + 1; ci < aktiveSim.tasks.length; ci++) { if (getOutlineLevel(aktiveSim.tasks[ci]) <= getOutlineLevel(task)) break; childIds.push(...aktiveSim.tasks[ci].objektGuids); } const cnt = new Set(childIds).size; return cnt > 0 ? <span style={{ color: "#888" }}>O {cnt}</span> : <span style={{ color: "#d4dce4" }}>∅</span>; })()
                       : hatSelektierte
                       ? <span style={{ color: "#2d7dbd", fontWeight: 600 }}>{selAnzahl}/{task.objektGuids.length}</span>
                       : task.objektGuids.length > 0
@@ -482,6 +434,9 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
                   </span>
                 )}
               </div>
+              {isGroup && istDropTarget && dragIdx !== null && dragIdx !== idx && (
+                <div style={{ height: 2, background: "#2d7dbd", margin: "0 10px" }} />
+              )}
             </div>
             );
           });

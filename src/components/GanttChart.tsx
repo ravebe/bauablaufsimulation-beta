@@ -327,7 +327,8 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
               const isSel = selectedIds.includes(t.id);
               const hasSel = selGuids?.size ? t.objektGuids.some(g => selGuids!.has(g)) : false;
               const isEditing = editingTaskId === t.id || calEdit?.taskId === t.id;
-              const isGrp = istGruppe(tasks, origIdx);
+              const isGrp = t.isGroup || istGruppe(tasks, origIdx);
+              const gDaten = isGrp ? gruppenDaten(tasks, origIdx) : null;
               const level = getOutlineLevel(t);
               const indent = (level - 1) * 12;
               const maxC = Math.max(4, Math.floor((labelW - 55 - indent) / 7));
@@ -349,8 +350,8 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
                     onMouseLeave={() => setHoverIdx(null)}
                     style={{
                       height: ROW_H, display: "flex", alignItems: "center", padding: "0 4px", paddingLeft: 4 + indent, cursor: "pointer", borderBottom: "1px solid #eef1f4",
-                      background: isEditing ? "#FFF8E1" : isSel ? "#e8f0fe" : hasSel ? "#f0f0f0" : i % 2 === 0 ? "#fafbfc" : "#fff",
-                      opacity: dragIdx === origIdx ? 0.4 : 1,
+                      background: isGrp && isDropTarget && dragIdx !== null ? "#dbeafe" : isEditing ? "#FFF8E1" : isSel ? "#e8f0fe" : hasSel ? "#f0f0f0" : i % 2 === 0 ? "#fafbfc" : "#fff",
+                      opacity: dragIdx !== null && selectedIds.includes(t.id) ? 0.4 : 1,
                     }}>
                     {isGrp ? (
                       <span onClick={e => { e.stopPropagation(); setGanttCollapsed(s => { const n = new Set(s); if (n.has(t.id)) n.delete(t.id); else n.add(t.id); return n; }); }}
@@ -369,9 +370,18 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
                         title="Ziehen zum Verschieben"
                       >☰</span>
                     ) : (
-                      <span style={{ fontSize: 11, color: "#8a9baa", flexShrink: 0 }}>{showObjektCount ? (t.objektGuids.length > 0 ? `O ${t.objektGuids.length}` : "") : `${dauer}d`}</span>
+                      <span style={{ fontSize: 11, color: "#8a9baa", flexShrink: 0 }}>{
+                        isGrp && showObjektCount
+                          ? (() => { const ids: string[] = []; for (let ci = origIdx + 1; ci < tasks.length; ci++) { if (getOutlineLevel(tasks[ci]) <= getOutlineLevel(t)) break; ids.push(...tasks[ci].objektGuids); } const cnt = new Set(ids).size; return cnt > 0 ? `O ${cnt}` : ""; })()
+                          : isGrp && gDaten ? `${gDaten.tage}d`
+                          : showObjektCount ? (t.objektGuids.length > 0 ? `O ${t.objektGuids.length}` : "")
+                          : `${dauer}d`
+                      }</span>
                     )}
                   </div>
+                  {isGrp && showDropLine && (
+                    <div style={{ height: 2, background: "#2d7dbd", margin: "0 4px" }} />
+                  )}
                 </div>
               );
             })}
@@ -392,7 +402,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
             {dayLines.map((x, i) => <line key={`dl${i}`} x1={x} y1={0} x2={x} y2={bodyH} stroke="#f0f2f4" strokeWidth={0.3} />)}
 
             {sorted.map(({ task: t, origIdx }, i) => {
-              const isGrp = istGruppe(tasks, origIdx);
+              const isGrp = t.isGroup || istGruppe(tasks, origIdx);
               const gDaten = isGrp ? gruppenDaten(tasks, origIdx) : null;
               const effStart = isGrp && gDaten ? gDaten.start : t.start;
               const effEnd = isGrp && gDaten ? gDaten.end : t.end;
