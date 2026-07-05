@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { SimProjekt, Task } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
-import { formatDatum, parseDateUniversal } from "../types";
+import { formatDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten } from "../types";
 import GanttChart from "./GanttChart";
 
 interface Props { api: ApiInstance | null; aktiveSim: SimProjekt | null; aktivesModellId: string | null; taskSort?: "gantt" | "datum" | "aktiv" | "name" | "nummer"; sharedNadelTag?: React.MutableRefObject<number>; }
@@ -32,6 +32,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
   const [selTaskId, setSelTaskId] = useState<string | null>(null);
   const [suchOffen, setSuchOffen] = useState(false);
   const [suchQuery, setSuchQuery] = useState("");
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [taskListHeight, setTaskListHeight] = useState(() => {
     try { return Number(localStorage.getItem("4d-list-height-abspielen")) || 350; } catch { return 350; }
   });
@@ -48,7 +49,8 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
   const modellIds = [...new Set([...(aktiveSim?.modelle.map(m => m.id) ?? []), ...(aktivesModellId ? [aktivesModellId] : [])])].filter(Boolean);
 
   // Alle Tasks mit gültigem Startdatum (aus ALLEN Modellen)
-  const tasks = (aktiveSim?.tasks ?? []).filter(t => t.start && parseDateUniversal(t.start));
+  const allTasks = aktiveSim?.tasks ?? [];
+  const tasks = allTasks.filter(t => t.start && parseDateUniversal(t.start));
 
   const { minDate, maxDate, totalTage } = (() => {
     if (tasks.length === 0) return { minDate: null, maxDate: null, totalTage: 0 };
@@ -431,7 +433,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
             laeuft={laeuft}
             onTaskClick={idx => zuTask(idx)}
             onSliderChange={tag => sliderChange(tag)}
-            selTaskId={selTaskId}
+            selectedIds={selTaskId ? [selTaskId] : []}
             selGuids={selGuids}
             taskSort={taskSort}
             height={taskListHeight}
@@ -443,7 +445,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
         {tasks.length === 0 ? (
           <div style={{ padding: 10, fontSize: 11, color: "var(--tc-text-3)", textAlign: "center" }}>Keine Tasks mit Bauteilen</div>
         ) : (() => {
-          const sorted = [...tasks].map((t, i) => ({ task: t, origIdx: i }));
+          const sorted = [...tasks].map((t, i) => ({ task: t, origIdx: i, allIdx: allTasks.indexOf(t) }));
           if (suchQuery.trim()) {
             const woerter = suchQuery.toLowerCase().split(/\s+/).filter(w => w.length > 0);
             sorted.sort((a, b) => {
@@ -472,27 +474,46 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
             const ex = (s: string) => { const m = s.match(/\d+/g); return m ? parseInt(m[m.length - 1], 10) : Infinity; };
             sorted.sort((a, b) => { const na = ex(a.task.name), nb = ex(b.task.name); return na !== nb ? na - nb : a.task.name.localeCompare(b.task.name, "de"); });
           }
-          return sorted.map(({ task, origIdx }) => {
+          return sorted.filter(({ task, allIdx }) => {
+            // Collapse-Filter
+            const level = getOutlineLevel(task);
+            for (let p = allIdx - 1; p >= 0; p--) {
+              const pLevel = getOutlineLevel(allTasks[p]);
+              if (pLevel < level && collapsedGroups.has(allTasks[p].id)) return false;
+              if (pLevel < level) break;
+            }
+            return true;
+          }).map(({ task, origIdx, allIdx }) => {
           const aktiv = minDate ? istAktiv(task, currentTag) : false;
           const vorbei = minDate ? istVorbei(task, currentTag) : false;
           const hatSel = selGuids.size > 0 && task.objektGuids.some(g => selGuids.has(g));
-          const sd = parseDateUniversal(task.start);
-          const ed = parseDateUniversal(task.end);
-          const dauer = sd && ed ? Math.max(1, Math.round((ed.getTime() - sd.getTime()) / 86400000)) : 1;
+          const isGrp = task.isGroup || istGruppe(allTasks, allIdx);
+          const gDaten = isGrp ? gruppenDaten(allTasks, allIdx) : null;
+          const sd = parseDateUniversal(isGrp && gDaten ? gDaten.start : task.start);
+          const ed = parseDateUniversal(isGrp && gDaten ? gDaten.end : task.end);
+          const dauer = isGrp && gDaten ? gDaten.tage : (sd && ed ? Math.max(1, Math.round((ed.getTime() - sd.getTime()) / 86400000)) : 1);
           const istSelTask = selTaskId === task.id;
+          const level = getOutlineLevel(task);
+          const indent = (level - 1) * 12;
+          const collapsed = collapsedGroups.has(task.id);
           return (
             <div key={task.id} style={{
-              display: "flex", alignItems: "center", padding: "5px 8px", gap: 6,
+              display: "flex", alignItems: "center", padding: "5px 8px", paddingLeft: 8 + indent, gap: 6,
               borderBottom: "1px solid #eef1f4", cursor: laeuft ? "default" : "pointer",
               background: istSelTask ? "#e8f0fe" : hatSel ? "#f0f0f0" : aktiv ? "#edf7ed" : "transparent",
-              opacity: vorbei ? 0.5 : 1, fontWeight: aktiv || hatSel || istSelTask ? 600 : 400,
+              opacity: vorbei ? 0.5 : 1, fontWeight: aktiv || hatSel || istSelTask || isGrp ? 600 : 400,
             }} onClick={() => zuTask(origIdx)}>
-              {aktiv && <span style={{ fontSize: 8, color: "#6cc07a" }}>▶</span>}
-              <span style={dot(task.typ)} />
+              {isGrp ? (
+                <span onClick={e => { e.stopPropagation(); setCollapsedGroups(s => { const n = new Set(s); if (n.has(task.id)) n.delete(task.id); else n.add(task.id); return n; }); }}
+                  style={{ display: "inline-block", transform: `scaleX(1.6) rotate(${collapsed ? -90 : 0}deg)`, transition: "transform .15s", fontSize: 9, cursor: "pointer", flexShrink: 0, marginRight: 4, color: "#555" }}>▼</span>
+              ) : (<>
+                {aktiv && <span style={{ fontSize: 8, color: "#6cc07a" }}>▶</span>}
+                <span style={dot(task.typ)} />
+              </>)}
               <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12 }}>{task.name}</span>
               <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, lineHeight: 1.3 }}>
-                <span style={{ fontSize: 11, color: "#333" }}>{formatDatum(task.start)}</span>
-                <span style={{ fontSize: 11, color: "#333" }}>{formatDatum(task.end)}</span>
+                <span style={{ fontSize: 11, color: isGrp ? "#888" : "#333" }}>{sd ? formatDatum(isGrp && gDaten ? gDaten.start : task.start) : ""}</span>
+                <span style={{ fontSize: 11, color: isGrp ? "#888" : "#333" }}>{ed ? formatDatum(isGrp && gDaten ? gDaten.end : task.end) : ""}</span>
               </span>
               <span style={{ fontSize: 12, color: "#8a9baa", flexShrink: 0, minWidth: 28, textAlign: "right" }}>{dauer}d</span>
             </div>

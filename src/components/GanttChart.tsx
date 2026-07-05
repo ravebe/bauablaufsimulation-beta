@@ -389,7 +389,23 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
           <div onMouseDown={startResize} style={{ position: "absolute", top: 0, right: -3, width: 6, height: "100%", cursor: "col-resize", zIndex: 5 }} />
         </div>
 
-        <div ref={bodyRef} onScroll={syncScroll} style={{ flex: 1, overflow: "auto", position: "relative" }}>
+        <div ref={bodyRef} onScroll={syncScroll}
+          onDragOver={e => {
+            if (dragIdx === null) return;
+            e.preventDefault();
+            const rect = bodyRef.current?.getBoundingClientRect();
+            if (!rect) return;
+            const y = e.clientY - rect.top + (bodyRef.current?.scrollTop ?? 0);
+            const rowIdx = Math.min(sorted.length, Math.max(0, Math.round(y / ROW_H)));
+            const origI = rowIdx < sorted.length ? sorted[rowIdx].origIdx : tasks.length;
+            setDropIdx(origI);
+          }}
+          onDrop={e => {
+            e.preventDefault();
+            if (dragIdx !== null && dropIdx !== null && onTaskReorder) onTaskReorder(dragIdx, dropIdx);
+            setDragIdx(null); setDropIdx(null);
+          }}
+          style={{ flex: 1, overflow: "auto", position: "relative" }}>
           <svg width={chartW} height={bodyH} style={{ display: "block" }}
             onClick={handleChartClick}>
             {/* Wochenend-Bänder */}
