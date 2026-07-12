@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import type { Task } from "../types";
-import { parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern } from "../types";
+import { parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger } from "../types";
 import DatePicker from "./DatePicker";
 
 interface Props {
@@ -21,6 +22,7 @@ interface Props {
   onDateChange?: (taskId: string, newStart: string, newEnd: string) => void;
   onTaskReorder?: (fromIdx: number, toIdx: number) => void;
   onTaskRename?: (taskId: string, newName: string) => void;
+  onSetPredecessor?: (taskId: string, predId: string | null, lagDays: number) => void;
   showObjektCount?: boolean;
   suchQuery?: string;
   nadelStil?: "normal" | "ghost";
@@ -51,7 +53,7 @@ function getKW(d: Date): number {
   return Math.ceil(((t.getTime() - y.getTime()) / 86400000 + 1) / 7);
 }
 
-export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selectedIds = [], selGuids, taskSort, height, editable, onDateChange, onTaskReorder, onTaskRename, showObjektCount, suchQuery = "", nadelStil = "normal", dateColor = "#2d7dbd" }: Props) {
+export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selectedIds = [], selGuids, taskSort, height, editable, onDateChange, onTaskReorder, onTaskRename, onSetPredecessor, showObjektCount, suchQuery = "", nadelStil = "normal", dateColor = "#2d7dbd" }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
@@ -70,6 +72,30 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
   const [ganttCollapsed, setGanttCollapsed] = useState<Set<string>>(new Set());
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameVal, setRenameVal] = useState("");
+  // Vorgänger-Auswahl (Popover per Portal)
+  const [predPickerTaskId, setPredPickerTaskId] = useState<string | null>(null);
+  const [predPos, setPredPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const [predInput, setPredInput] = useState("");
+  const [lagInput, setLagInput] = useState("0");
+  const predPopoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!predPickerTaskId) return;
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (predPopoverRef.current && !predPopoverRef.current.contains(e.target as Node)) setPredPickerTaskId(null);
+    };
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [predPickerTaskId]);
+
+  function oeffnePredPicker(t: Task, e: React.MouseEvent) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const POPOVER_W = 190;
+    setPredPos({ top: r.bottom + 2, left: Math.min(r.right - POPOVER_W, window.innerWidth - POPOVER_W - 4) });
+    setPredPickerTaskId(t.id);
+    setPredInput(t.predecessorId ? nummern.get(t.predecessorId) ?? "" : "");
+    setLagInput(String(t.lagDays ?? 0));
+  }
 
   useEffect(() => { localStorage.setItem(LS_LABEL_W, String(labelW)); }, [labelW]);
   useEffect(() => { localStorage.setItem(LS_ZOOM, String(pxProTag)); }, [pxProTag]);
@@ -375,6 +401,61 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
                         onDoubleClick={editable ? (e) => { e.stopPropagation(); setRenameId(t.id); setRenameVal(t.name); } : undefined}
                         style={{ flex: 1, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: editable ? "text" : "default", color: isEditing ? "#E65100" : isSel ? "#2d7dbd" : "#333", fontWeight: isEditing || isSel || isGrp ? 600 : 400 }}>{lbl}</span>
                     )}
+                    <span style={{ flexShrink: 0, fontSize: 10, marginRight: 5 }} onClick={e => e.stopPropagation()}>
+                      <span
+                        onClick={editable ? (e) => oeffnePredPicker(t, e) : undefined}
+                        style={{ cursor: editable ? "pointer" : "default", fontWeight: 500, color: "#666" }}
+                        title="Vorgänger festlegen">
+                        {nummern.get(t.id) ?? ""}
+                      </span>
+                      {t.predecessorId && (
+                        <span style={{ color: "#999", fontStyle: "italic" }}> | {nummern.get(t.predecessorId) ?? "?"}</span>
+                      )}
+                      {predPickerTaskId === t.id && createPortal(
+                        <div ref={predPopoverRef}
+                          style={{ position: "fixed", top: predPos.top, left: predPos.left, zIndex: 1000, background: "#fff",
+                            border: "1px solid #d4dce4", boxShadow: "0 2px 8px rgba(0,0,0,.12)", padding: 8, width: 190, fontWeight: 400, fontSize: 11 }}
+                          onClick={e => e.stopPropagation()}>
+                          <div style={{ position: "relative" }}>
+                            <div style={{ fontSize: 9, color: "#8a9baa", marginBottom: 2 }}>Vorgänger (Nummer)</div>
+                            <input className="ac-input" autoFocus style={{ fontSize: 11, padding: "3px 6px", width: "100%" }}
+                              placeholder="— kein Vorgänger —"
+                              value={predInput}
+                              onChange={e => setPredInput(e.target.value)} />
+                            <div className="ac-dropdown" style={{ maxHeight: 120 }}>
+                              {gueltigeVorgaenger(tasks, t.id)
+                                .filter(c => {
+                                  const lbl = nummern.get(c.id) ?? "";
+                                  return !predInput || lbl.toLowerCase().startsWith(predInput.trim().toLowerCase()) || c.name.toLowerCase().includes(predInput.trim().toLowerCase());
+                                })
+                                .slice(0, 20)
+                                .map(c => (
+                                  <div key={c.id} className="ac-item" style={{ fontSize: 11, padding: "3px 6px" }}
+                                    onMouseDown={() => { onSetPredecessor?.(t.id, c.id, Number(lagInput) || 0); setPredPickerTaskId(null); }}>
+                                    <span style={{ fontWeight: 600 }}>{nummern.get(c.id)}</span> — {c.name}
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 9, color: "#8a9baa", marginTop: 6 }}>Wartetage nach Vorgänger-Ende</div>
+                          <input type="number" className="ac-input" style={{ fontSize: 11, padding: "3px 6px", width: "100%", marginTop: 2 }}
+                            value={lagInput}
+                            onChange={e => setLagInput(e.target.value)} />
+                          <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
+                            <button className="tc-btn-ghost" style={{ flex: 1, fontSize: 10 }}
+                              onClick={() => { onSetPredecessor?.(t.id, null, 0); setPredPickerTaskId(null); }}>Entfernen</button>
+                            <button className="tc-btn-primary" style={{ flex: 1, fontSize: 10 }}
+                              onClick={() => {
+                                const treffer = gueltigeVorgaenger(tasks, t.id)
+                                  .find(c => (nummern.get(c.id) ?? "").toLowerCase() === predInput.trim().toLowerCase());
+                                if (treffer) onSetPredecessor?.(t.id, treffer.id, Number(lagInput) || 0);
+                                setPredPickerTaskId(null);
+                              }}>Übernehmen</button>
+                          </div>
+                        </div>,
+                        document.body
+                      )}
+                    </span>
                     {canDrag && istHover && dragIdx === null ? (
                       <span
                         draggable
@@ -455,8 +536,6 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
                 const bracketY = y + ROW_H / 2 - 2;
                 const bracketH = 6;
                 const tickH = 4;
-                const myNr = nummern.get(t.id) ?? "";
-                const predNr = t.predecessorId ? nummern.get(t.predecessorId) ?? "" : "";
                 return (
                   <g key={t.id}>
                     <rect x={0} y={y} width={chartW} height={ROW_H} fill={isSel ? "#e8f0fe" : "transparent"} />
@@ -466,12 +545,6 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
                       <polygon points={`${bX},${bracketY + bracketH} ${bX + tickH},${bracketY + bracketH} ${bX},${bracketY + bracketH + tickH}`} fill="#555" />
                       <polygon points={`${bX + bW},${bracketY + bracketH} ${bX + bW - tickH},${bracketY + bracketH} ${bX + bW},${bracketY + bracketH + tickH}`} fill="#555" />
                     </>}
-                    {showDates && (
-                      <text x={bX - (longDates ? 75 : 48)} y={y + ROW_H / 2 + 4} fontSize={10} fill="#666" textAnchor="end" fontWeight={500}>{myNr}{predNr ? " |" : ""}</text>
-                    )}
-                    {showDates && predNr && (
-                      <text x={bX - (longDates ? 62 : 38)} y={y + ROW_H / 2 + 4} fontSize={10} fill="#999" textAnchor="end" fontStyle="italic">{predNr}</text>
-                    )}
                     {showDates && <text x={bX - 3} y={y + ROW_H / 2 + 4} fontSize={11} fill="#888" textAnchor="end">{fmtDatum(sd!, longDates)}</text>}
                     {sd && bW > 40 && <text x={bX + bW / 2} y={y + ROW_H / 2 + 4} fontSize={11} fill="#555" fontWeight={600} textAnchor="middle" style={{ pointerEvents: "none" }}>{dauer}d</text>}
                     {showDates && <text x={bX + bW + 3} y={y + ROW_H / 2 + 4} fontSize={11} fill="#888">{fmtDatum(ed!, longDates)}</text>}
@@ -479,19 +552,10 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
                 );
               }
 
-              const myNr = nummern.get(t.id) ?? "";
-              const predNr = t.predecessorId ? nummern.get(t.predecessorId) ?? "" : "";
-
               return (
                 <g key={t.id}>
                   <rect x={0} y={y} width={chartW} height={ROW_H} fill={isEditing ? "#FFF8E1" : isSel ? "#e8f0fe" : hasSel ? "#f0f0f0" : "transparent"} />
                   <line x1={0} y1={y + ROW_H} x2={chartW} y2={y + ROW_H} stroke="#eef1f4" strokeWidth={0.5} />
-                  {showDates && (
-                    <text x={bX - (longDates ? 75 : 48)} y={y + ROW_H / 2 + 4} fontSize={10} fill="#666" textAnchor="end" fontWeight={500}>{myNr}{predNr ? " |" : ""}</text>
-                  )}
-                  {showDates && predNr && (
-                    <text x={bX - (longDates ? 62 : 38)} y={y + ROW_H / 2 + 4} fontSize={10} fill="#999" textAnchor="end" fontStyle="italic">{predNr}</text>
-                  )}
                   {showDates && <text x={bX - 3} y={y + ROW_H / 2 + 4} fontSize={11} fill={dateColor} textAnchor="end"
                     style={{ cursor: editable ? "pointer" : "default" }}
                     onClick={editable ? (e) => { e.stopPropagation(); setEditingTaskId(t.id); const r = (e.target as SVGElement).getBoundingClientRect(); setCalEdit({ taskId: t.id, field: "start", value: fmtDMY(sd!), x: r.left, y: r.bottom }); } : undefined}

@@ -446,7 +446,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
                 )}
 
                 {/* Nummer | Vorgänger — Klick öffnet Vorgänger-Auswahl */}
-                <span style={{ flexShrink: 0, fontSize: 11 }} onClick={e => e.stopPropagation()}>
+                <span style={{ flexShrink: 0, fontSize: 11, marginRight: 6 }} onClick={e => e.stopPropagation()}>
                   <span
                     onClick={!readOnly ? (e) => oeffnePredPicker(task, e) : undefined}
                     style={{ cursor: !readOnly ? "pointer" : "default", fontWeight: 500, color: "#666" }}

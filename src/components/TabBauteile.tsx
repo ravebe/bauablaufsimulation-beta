@@ -1,7 +1,7 @@
 // TabBauteile.tsx — Orchestrator mit Selektions-Tracking + Gantt-Toggle
 import { useState, useEffect, useRef } from "react";
 import type { SimProjekt, Task } from "../types";
-import { parseDateUniversal, istGruppe, getOutlineLevel, kaskadiereNachfolger } from "../types";
+import { parseDateUniversal, istGruppe, getOutlineLevel, kaskadiereNachfolger, verschiebeAufStart, gruppenDaten, datumPlusTage } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { getEchteBauteile, clearEchteBauteileCache } from "./modelHelpers";
 import TabTasks from "./TabTasks";
@@ -155,6 +155,19 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
     updateSim({ ...aktiveSim, tasks });
   }
 
+  function ganttSetPredecessor(taskId: string, predId: string | null, lagDays: number) {
+    if (!aktiveSim) return;
+    let tasks = aktiveSim.tasks.map(t => t.id === taskId ? { ...t, predecessorId: predId ?? undefined, lagDays } : t);
+    if (predId) {
+      const predIdx = tasks.findIndex(t => t.id === predId);
+      const pred = tasks[predIdx];
+      const predEnd = pred?.isGroup ? gruppenDaten(tasks, predIdx).end : pred?.end;
+      if (predEnd) tasks = verschiebeAufStart(tasks, taskId, datumPlusTage(predEnd, lagDays));
+    }
+    tasks = kaskadiereNachfolger(tasks, taskId);
+    updateSim({ ...aktiveSim, tasks });
+  }
+
   function neuErstellen() {
     if (!aktiveSim || !neuTaskInput.trim()) return;
     const heute = new Date().toISOString().slice(0, 10);
@@ -296,6 +309,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
             editable={!readOnly}
             onDateChange={ganttDateChange}
             onTaskReorder={ganttTaskReorder}
+            onSetPredecessor={ganttSetPredecessor}
             onTaskRename={(id, name) => { if (aktiveSim) updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => t.id === id ? { ...t, name } : t) }); }}
             showObjektCount
             suchQuery={suchQuery}
