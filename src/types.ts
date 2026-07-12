@@ -323,27 +323,56 @@ export function datumPlusTage(datum: string, tage: number): string {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
 
+/** Verschiebt einen Task auf ein neues Startdatum (Dauer bleibt erhalten). Bei Gruppen werden alle Kinder um dasselbe Delta mitverschoben. */
+export function verschiebeAufStart(tasks: Task[], taskId: string, neuerStart: string): Task[] {
+  const idx = tasks.findIndex(t => t.id === taskId);
+  if (idx < 0) return tasks;
+  const t = tasks[idx];
+  if (t.isGroup) {
+    const { start: altStart } = gruppenDaten(tasks, idx);
+    const altD = parseDateUniversal(altStart), neuD = parseDateUniversal(neuerStart);
+    if (!altD || !neuD) return tasks;
+    const deltaTage = Math.round((neuD.getTime() - altD.getTime()) / 86400000);
+    if (deltaTage === 0) return tasks;
+    const kinder = new Set(getKinder(tasks, idx));
+    return tasks.map((x, i) => (i === idx || kinder.has(i))
+      ? { ...x, start: datumPlusTage(x.start, deltaTage), end: datumPlusTage(x.end, deltaTage) }
+      : x);
+  }
+  const altStart = parseDateUniversal(t.start);
+  const altEnd = parseDateUniversal(t.end);
+  const dauer = altStart && altEnd ? Math.max(1, Math.round((altEnd.getTime() - altStart.getTime()) / 86400000)) : 1;
+  return tasks.map((x, i) => i === idx ? { ...x, start: neuerStart, end: datumPlusTage(neuerStart, dauer) } : x);
+}
+
+/** Gültige Vorgänger-Kandidaten für einen Task: kein Zyklus, Gruppen nur als Vorgänger von Gruppen */
+export function gueltigeVorgaenger(tasks: Task[], taskId: string): Task[] {
+  const task = tasks.find(t => t.id === taskId);
+  if (!task) return [];
+  return tasks.filter(t =>
+    t.id !== taskId &&
+    !(t.isGroup && !task.isGroup) &&
+    !istZirkular(tasks, taskId, t.id)
+  );
+}
+
 /** Kaskade: Nachfolger zeitlich verschieben wenn Vorgänger sich ändert */
 export function kaskadiereNachfolger(tasks: Task[], geaenderteId: string): Task[] {
-  const result = [...tasks.map(t => ({ ...t }))];
+  let result = tasks.map(t => ({ ...t }));
   const queue = [geaenderteId];
   const processed = new Set<string>();
   while (queue.length > 0) {
     const predId = queue.shift()!;
     if (processed.has(predId)) continue;
     processed.add(predId);
-    const pred = result.find(t => t.id === predId);
-    if (!pred) continue;
+    const predIdx = result.findIndex(t => t.id === predId);
+    if (predIdx < 0) continue;
+    const pred = result[predIdx];
+    const predEnd = pred.isGroup ? gruppenDaten(result, predIdx).end : pred.end;
     for (const t of result) {
       if (t.predecessorId === predId) {
-        const predEnd = pred.isGroup ? gruppenDaten(result, result.indexOf(pred)).end : pred.end;
-        const lag = t.lagDays ?? 0;
-        const neuerStart = datumPlusTage(predEnd, lag);
-        const altStart = parseDateUniversal(t.start);
-        const altEnd = parseDateUniversal(t.end);
-        const dauer = altStart && altEnd ? Math.max(1, Math.round((altEnd.getTime() - altStart.getTime()) / 86400000)) : 1;
-        t.start = neuerStart;
-        t.end = datumPlusTage(neuerStart, dauer);
+        const neuerStart = datumPlusTage(predEnd, t.lagDays ?? 0);
+        result = verschiebeAufStart(result, t.id, neuerStart);
         queue.push(t.id);
       }
     }

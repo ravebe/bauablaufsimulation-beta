@@ -1,7 +1,7 @@
 // TabBauteile.tsx — Orchestrator mit Selektions-Tracking + Gantt-Toggle
 import { useState, useEffect, useRef } from "react";
 import type { SimProjekt, Task } from "../types";
-import { parseDateUniversal, istGruppe, getOutlineLevel } from "../types";
+import { parseDateUniversal, istGruppe, getOutlineLevel, kaskadiereNachfolger } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { getEchteBauteile, clearEchteBauteileCache } from "./modelHelpers";
 import TabTasks from "./TabTasks";
@@ -148,9 +148,11 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
 
   function ganttDateChange(taskId: string, newStart: string, newEnd: string) {
     if (!aktiveSim) return;
-    updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t =>
-      t.id === taskId ? { ...t, start: newStart, end: newEnd } : t
-    )});
+    const tasks = kaskadiereNachfolger(
+      aktiveSim.tasks.map(t => t.id === taskId ? { ...t, start: newStart, end: newEnd } : t),
+      taskId
+    );
+    updateSim({ ...aktiveSim, tasks });
   }
 
   function neuErstellen() {

@@ -466,11 +466,11 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
                       <polygon points={`${bX},${bracketY + bracketH} ${bX + tickH},${bracketY + bracketH} ${bX},${bracketY + bracketH + tickH}`} fill="#555" />
                       <polygon points={`${bX + bW},${bracketY + bracketH} ${bX + bW - tickH},${bracketY + bracketH} ${bX + bW},${bracketY + bracketH + tickH}`} fill="#555" />
                     </>}
-                    {showDates && predNr && (
-                      <text x={bX - (longDates ? 75 : 48)} y={y + ROW_H / 2 + 4} fontSize={10} fill="#999" textAnchor="end" fontStyle="italic">{predNr} |</text>
-                    )}
                     {showDates && (
-                      <text x={bX - (longDates ? 62 : 38)} y={y + ROW_H / 2 + 4} fontSize={10} fill="#666" textAnchor="end" fontWeight={500}>{myNr}</text>
+                      <text x={bX - (longDates ? 75 : 48)} y={y + ROW_H / 2 + 4} fontSize={10} fill="#666" textAnchor="end" fontWeight={500}>{myNr}{predNr ? " |" : ""}</text>
+                    )}
+                    {showDates && predNr && (
+                      <text x={bX - (longDates ? 62 : 38)} y={y + ROW_H / 2 + 4} fontSize={10} fill="#999" textAnchor="end" fontStyle="italic">{predNr}</text>
                     )}
                     {showDates && <text x={bX - 3} y={y + ROW_H / 2 + 4} fontSize={11} fill="#888" textAnchor="end">{fmtDatum(sd!, longDates)}</text>}
                     {sd && bW > 40 && <text x={bX + bW / 2} y={y + ROW_H / 2 + 4} fontSize={11} fill="#555" fontWeight={600} textAnchor="middle" style={{ pointerEvents: "none" }}>{dauer}d</text>}
@@ -486,12 +486,11 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
                 <g key={t.id}>
                   <rect x={0} y={y} width={chartW} height={ROW_H} fill={isEditing ? "#FFF8E1" : isSel ? "#e8f0fe" : hasSel ? "#f0f0f0" : "transparent"} />
                   <line x1={0} y1={y + ROW_H} x2={chartW} y2={y + ROW_H} stroke="#eef1f4" strokeWidth={0.5} />
-                  {showDates && predNr && (
-                    <text x={bX - (longDates ? 75 : 48)} y={y + ROW_H / 2 + 4} fontSize={10} fill="#999" textAnchor="end" fontStyle="italic">{predNr} |</text>
-                  )}
                   {showDates && (
-                    <text x={bX - (longDates ? 62 : 38)} y={y + ROW_H / 2 + 4} fontSize={10} fill="#666" textAnchor="end" fontWeight={500}
-                      style={{ cursor: editable ? "pointer" : "default" }}>{myNr}</text>
+                    <text x={bX - (longDates ? 75 : 48)} y={y + ROW_H / 2 + 4} fontSize={10} fill="#666" textAnchor="end" fontWeight={500}>{myNr}{predNr ? " |" : ""}</text>
+                  )}
+                  {showDates && predNr && (
+                    <text x={bX - (longDates ? 62 : 38)} y={y + ROW_H / 2 + 4} fontSize={10} fill="#999" textAnchor="end" fontStyle="italic">{predNr}</text>
                   )}
                   {showDates && <text x={bX - 3} y={y + ROW_H / 2 + 4} fontSize={11} fill={dateColor} textAnchor="end"
                     style={{ cursor: editable ? "pointer" : "default" }}

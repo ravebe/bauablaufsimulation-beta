@@ -1,7 +1,9 @@
 // TabTasks.tsx — Task-Liste + Task-Detail + Visibility-Buttons + Guid-Liste
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import type { SimProjekt, Task, TaskTyp } from "../types";
-import { formatDatum, normalizeDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten } from "../types";
+import { formatDatum, normalizeDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten,
+  berechneNummern, gueltigeVorgaenger, verschiebeAufStart, kaskadiereNachfolger, datumPlusTage } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import DatePicker from "./DatePicker";
 
@@ -52,6 +54,22 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
   const [hoverTaskId, setHoverTaskId] = useState<string | null>(null);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dropIdx, setDropIdx] = useState<number | null>(null);
+  // Vorgänger-Auswahl (Popover per Portal, damit es nicht vom Listen-Scrollcontainer abgeschnitten wird)
+  const [predPickerTaskId, setPredPickerTaskId] = useState<string | null>(null);
+  const [predPos, setPredPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const [predInput, setPredInput] = useState("");
+  const [lagInput, setLagInput] = useState("0");
+  const predPopoverRef = useRef<HTMLDivElement>(null);
+  const nummern = useMemo(() => berechneNummern(aktiveSim.tasks), [aktiveSim.tasks]);
+
+  useEffect(() => {
+    if (!predPickerTaskId) return;
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (predPopoverRef.current && !predPopoverRef.current.contains(e.target as Node)) setPredPickerTaskId(null);
+    };
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [predPickerTaskId]);
 
   // Safety: dragIdx zurücksetzen wenn Drag abbricht (z.B. Drop ausserhalb)
   useEffect(() => {
@@ -208,6 +226,28 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
     if (aktivTaskId === taskId) onTaskClick(taskId); // deselect
   }
 
+  function oeffnePredPicker(task: Task, e: React.MouseEvent) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const POPOVER_W = 190;
+    setPredPos({ top: r.bottom + 2, left: Math.min(r.right - POPOVER_W, window.innerWidth - POPOVER_W - 4) });
+    setPredPickerTaskId(task.id);
+    setPredInput(task.predecessorId ? nummern.get(task.predecessorId) ?? "" : "");
+    setLagInput(String(task.lagDays ?? 0));
+  }
+
+  function vorgängerSetzen(taskId: string, predId: string | null, lagDays: number) {
+    let tasks = aktiveSim.tasks.map(t => t.id === taskId ? { ...t, predecessorId: predId ?? undefined, lagDays } : t);
+    if (predId) {
+      const predIdx = tasks.findIndex(t => t.id === predId);
+      const pred = tasks[predIdx];
+      const predEnd = pred?.isGroup ? gruppenDaten(tasks, predIdx).end : pred?.end;
+      if (predEnd) tasks = verschiebeAufStart(tasks, taskId, datumPlusTage(predEnd, lagDays));
+    }
+    tasks = kaskadiereNachfolger(tasks, taskId);
+    updateSim({ ...aktiveSim, tasks });
+    setPredPickerTaskId(null);
+  }
+
   function taskUmbenennen(taskId: string, neuerName: string) {
     if (!neuerName.trim()) { setEditingNameId(null); return; }
     updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => t.id === taskId ? { ...t, name: neuerName.trim() } : t) });
@@ -300,7 +340,8 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
           </div>
         </div>
 
-        <div ref={scrollRef} style={{ maxHeight: bauteilListHeight, overflowY: "auto" }}>
+        <div ref={scrollRef} style={{ maxHeight: bauteilListHeight, overflowY: "auto" }}
+          onScroll={() => setPredPickerTaskId(null)}>
         {aktiveSim.tasks.length === 0 ? (
           <div style={{ padding: 10, fontSize: 11, color: "#8a9baa", textAlign: "center" }}>
             Noch keine Tasks — „+" oder Gantt importieren
@@ -404,6 +445,63 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
                     style={{ fontSize: 13, flex: 1, cursor: !readOnly ? "text" : "default", color: selectedIds.includes(task.id) ? "#2d7dbd" : "#333", fontWeight: selectedIds.includes(task.id) || hatSelektierte || isGroup ? 600 : 400 }}>{task.name}</span>
                 )}
 
+                {/* Nummer | Vorgänger — Klick öffnet Vorgänger-Auswahl */}
+                <span style={{ flexShrink: 0, fontSize: 11 }} onClick={e => e.stopPropagation()}>
+                  <span
+                    onClick={!readOnly ? (e) => oeffnePredPicker(task, e) : undefined}
+                    style={{ cursor: !readOnly ? "pointer" : "default", fontWeight: 500, color: "#666" }}
+                    title="Vorgänger festlegen">
+                    {nummern.get(task.id) ?? ""}
+                  </span>
+                  {task.predecessorId && (
+                    <span style={{ color: "#999", fontStyle: "italic" }}> | {nummern.get(task.predecessorId) ?? "?"}</span>
+                  )}
+                  {predPickerTaskId === task.id && createPortal(
+                    <div ref={predPopoverRef}
+                      style={{ position: "fixed", top: predPos.top, left: predPos.left, zIndex: 1000, background: "#fff",
+                        border: "1px solid #d4dce4", boxShadow: "0 2px 8px rgba(0,0,0,.12)", padding: 8, width: 190, fontWeight: 400, fontSize: 11 }}
+                      onClick={e => e.stopPropagation()}>
+                      <div style={{ position: "relative" }}>
+                        <div style={{ fontSize: 9, color: "#8a9baa", marginBottom: 2 }}>Vorgänger (Nummer)</div>
+                        <input className="ac-input" autoFocus style={{ fontSize: 11, padding: "3px 6px", width: "100%" }}
+                          placeholder="— kein Vorgänger —"
+                          value={predInput}
+                          onChange={e => setPredInput(e.target.value)} />
+                        <div className="ac-dropdown" style={{ maxHeight: 120 }}>
+                          {gueltigeVorgaenger(aktiveSim.tasks, task.id)
+                            .filter(c => {
+                              const lbl = nummern.get(c.id) ?? "";
+                              return !predInput || lbl.toLowerCase().startsWith(predInput.trim().toLowerCase()) || c.name.toLowerCase().includes(predInput.trim().toLowerCase());
+                            })
+                            .slice(0, 20)
+                            .map(c => (
+                              <div key={c.id} className="ac-item" style={{ fontSize: 11, padding: "3px 6px" }}
+                                onMouseDown={() => vorgängerSetzen(task.id, c.id, Number(lagInput) || 0)}>
+                                <span style={{ fontWeight: 600 }}>{nummern.get(c.id)}</span> — {c.name}
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 9, color: "#8a9baa", marginTop: 6 }}>Wartetage nach Vorgänger-Ende</div>
+                      <input type="number" className="ac-input" style={{ fontSize: 11, padding: "3px 6px", width: "100%", marginTop: 2 }}
+                        value={lagInput}
+                        onChange={e => setLagInput(e.target.value)} />
+                      <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
+                        <button className="tc-btn-ghost" style={{ flex: 1, fontSize: 10 }}
+                          onClick={() => vorgängerSetzen(task.id, null, 0)}>Entfernen</button>
+                        <button className="tc-btn-primary" style={{ flex: 1, fontSize: 10 }}
+                          onClick={() => {
+                            const treffer = gueltigeVorgaenger(aktiveSim.tasks, task.id)
+                              .find(c => (nummern.get(c.id) ?? "").toLowerCase() === predInput.trim().toLowerCase());
+                            if (treffer) vorgängerSetzen(task.id, treffer.id, Number(lagInput) || 0);
+                            else setPredPickerTaskId(null);
+                          }}>Übernehmen</button>
+                      </div>
+                    </div>,
+                    document.body
+                  )}
+                </span>
+
                 {/* Datum — blau, untereinander */}
                 <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.3, flexShrink: 0 }}
                   onClick={e => e.stopPropagation()}>
@@ -416,11 +514,11 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
                     <>
                       <DatePicker value={formatDatum(task.start)} onChange={(val: string) => {
                         const norm = normalizeDatum(val);
-                        if (norm) updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => t.id === task.id ? { ...t, start: norm } : t) });
+                        if (norm) updateSim({ ...aktiveSim, tasks: kaskadiereNachfolger(aktiveSim.tasks.map(t => t.id === task.id ? { ...t, start: norm } : t), task.id) });
                       }} />
                       <DatePicker value={formatDatum(task.end)} onChange={(val: string) => {
                         const norm = normalizeDatum(val);
-                        if (norm) updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => t.id === task.id ? { ...t, end: norm } : t) });
+                        if (norm) updateSim({ ...aktiveSim, tasks: kaskadiereNachfolger(aktiveSim.tasks.map(t => t.id === task.id ? { ...t, end: norm } : t), task.id) });
                       }} />
                     </>
                   ) : (
