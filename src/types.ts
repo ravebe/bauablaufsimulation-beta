@@ -10,6 +10,8 @@ export interface Task {
   extraSpalten?: Record<string, string>; // Zusätzliche Gantt-Spalten für Auto-Verknüpfung
   outlineLevel?: number; // 1 = Hauptebene, 2+ = Kind (MSP-kompatibel)
   isGroup?: boolean; // true = Gruppentitel (keine Bauteile, kein Typ)
+  predecessorId?: string; // ID des Vorgänger-Tasks
+  lagDays?: number; // Wartetage nach Vorgänger-Ende (default 0)
 }
 
 export interface SimModell {
@@ -276,4 +278,75 @@ export function gruppenDaten(tasks: Task[], groupIdx: number): { start: string; 
   const start = `${startD.getFullYear()}-${String(startD.getMonth()+1).padStart(2,"0")}-${String(startD.getDate()).padStart(2,"0")}`;
   const end = `${endD.getFullYear()}-${String(endD.getMonth()+1).padStart(2,"0")}-${String(endD.getDate()).padStart(2,"0")}`;
   return { start, end, tage: Math.max(1, Math.ceil((maxEnd - minStart) / 86400000)) };
+}
+
+// === Nummerierung & Vorgänger ===
+
+/** Berechne Nummern: Gruppen = A, B, C… / Tasks = 1, 2, 3… */
+export function berechneNummern(tasks: Task[]): Map<string, string> {
+  const map = new Map<string, string>();
+  let gruppeN = 0, taskN = 0;
+  for (const t of tasks) {
+    const isGrp = t.isGroup || false;
+    if (isGrp) {
+      gruppeN++;
+      let lbl = ""; let n = gruppeN;
+      while (n > 0) { lbl = String.fromCharCode(64 + ((n - 1) % 26) + 1) + lbl; n = Math.floor((n - 1) / 26); }
+      map.set(t.id, lbl);
+    } else {
+      taskN++;
+      map.set(t.id, String(taskN));
+    }
+  }
+  return map;
+}
+
+/** Prüfe ob Vorgänger-Kette zirkulär wäre */
+export function istZirkular(tasks: Task[], taskId: string, predId: string): boolean {
+  const visited = new Set<string>();
+  let current = predId;
+  while (current) {
+    if (current === taskId) return true;
+    if (visited.has(current)) return false;
+    visited.add(current);
+    const t = tasks.find(x => x.id === current);
+    current = t?.predecessorId ?? "";
+  }
+  return false;
+}
+
+/** Datum addieren (Tage) */
+export function datumPlusTage(datum: string, tage: number): string {
+  const d = parseDateUniversal(datum);
+  if (!d) return datum;
+  d.setDate(d.getDate() + tage);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+/** Kaskade: Nachfolger zeitlich verschieben wenn Vorgänger sich ändert */
+export function kaskadiereNachfolger(tasks: Task[], geaenderteId: string): Task[] {
+  const result = [...tasks.map(t => ({ ...t }))];
+  const queue = [geaenderteId];
+  const processed = new Set<string>();
+  while (queue.length > 0) {
+    const predId = queue.shift()!;
+    if (processed.has(predId)) continue;
+    processed.add(predId);
+    const pred = result.find(t => t.id === predId);
+    if (!pred) continue;
+    for (const t of result) {
+      if (t.predecessorId === predId) {
+        const predEnd = pred.isGroup ? gruppenDaten(result, result.indexOf(pred)).end : pred.end;
+        const lag = t.lagDays ?? 0;
+        const neuerStart = datumPlusTage(predEnd, lag);
+        const altStart = parseDateUniversal(t.start);
+        const altEnd = parseDateUniversal(t.end);
+        const dauer = altStart && altEnd ? Math.max(1, Math.round((altEnd.getTime() - altStart.getTime()) / 86400000)) : 1;
+        t.start = neuerStart;
+        t.end = datumPlusTage(neuerStart, dauer);
+        queue.push(t.id);
+      }
+    }
+  }
+  return result;
 }

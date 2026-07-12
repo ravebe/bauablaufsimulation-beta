@@ -1,6 +1,6 @@
-import { useRef, useState, useEffect, useCallback } from "react";
+import { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import type { Task } from "../types";
-import { parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten } from "../types";
+import { parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern } from "../types";
 import DatePicker from "./DatePicker";
 
 interface Props {
@@ -220,6 +220,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
   const chartW = Math.max(totalTage * pxProTag, 200);
   const bodyH = sorted.length * ROW_H;
   const longDates = pxProTag >= 8;
+  const nummern = useMemo(() => berechneNummern(tasks), [tasks]);
 
   // Zoom-Stufen: welche Details zeigen?
   const showWeekLines = pxProTag >= 1.5;    // Wochen-Trennlinien
@@ -454,18 +455,23 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
                 const bracketY = y + ROW_H / 2 - 2;
                 const bracketH = 6;
                 const tickH = 4;
+                const myNr = nummern.get(t.id) ?? "";
+                const predNr = t.predecessorId ? nummern.get(t.predecessorId) ?? "" : "";
                 return (
                   <g key={t.id}>
                     <rect x={0} y={y} width={chartW} height={ROW_H} fill={isSel ? "#e8f0fe" : "transparent"} />
                     <line x1={0} y1={y + ROW_H} x2={chartW} y2={y + ROW_H} stroke="#eef1f4" strokeWidth={0.5} />
                     {sd && <>
-                      {/* Horizontale Linie */}
                       <rect x={bX} y={bracketY} width={bW} height={bracketH} rx={1} fill="#555" opacity={0.8} />
-                      {/* Linker Tick */}
                       <polygon points={`${bX},${bracketY + bracketH} ${bX + tickH},${bracketY + bracketH} ${bX},${bracketY + bracketH + tickH}`} fill="#555" />
-                      {/* Rechter Tick */}
                       <polygon points={`${bX + bW},${bracketY + bracketH} ${bX + bW - tickH},${bracketY + bracketH} ${bX + bW},${bracketY + bracketH + tickH}`} fill="#555" />
                     </>}
+                    {showDates && predNr && (
+                      <text x={bX - (longDates ? 75 : 48)} y={y + ROW_H / 2 + 4} fontSize={10} fill="#999" textAnchor="end" fontStyle="italic">{predNr} |</text>
+                    )}
+                    {showDates && (
+                      <text x={bX - (longDates ? 62 : 38)} y={y + ROW_H / 2 + 4} fontSize={10} fill="#666" textAnchor="end" fontWeight={500}>{myNr}</text>
+                    )}
                     {showDates && <text x={bX - 3} y={y + ROW_H / 2 + 4} fontSize={11} fill="#888" textAnchor="end">{fmtDatum(sd!, longDates)}</text>}
                     {sd && bW > 40 && <text x={bX + bW / 2} y={y + ROW_H / 2 + 4} fontSize={11} fill="#555" fontWeight={600} textAnchor="middle" style={{ pointerEvents: "none" }}>{dauer}d</text>}
                     {showDates && <text x={bX + bW + 3} y={y + ROW_H / 2 + 4} fontSize={11} fill="#888">{fmtDatum(ed!, longDates)}</text>}
@@ -473,10 +479,20 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
                 );
               }
 
+              const myNr = nummern.get(t.id) ?? "";
+              const predNr = t.predecessorId ? nummern.get(t.predecessorId) ?? "" : "";
+
               return (
                 <g key={t.id}>
                   <rect x={0} y={y} width={chartW} height={ROW_H} fill={isEditing ? "#FFF8E1" : isSel ? "#e8f0fe" : hasSel ? "#f0f0f0" : "transparent"} />
                   <line x1={0} y1={y + ROW_H} x2={chartW} y2={y + ROW_H} stroke="#eef1f4" strokeWidth={0.5} />
+                  {showDates && predNr && (
+                    <text x={bX - (longDates ? 75 : 48)} y={y + ROW_H / 2 + 4} fontSize={10} fill="#999" textAnchor="end" fontStyle="italic">{predNr} |</text>
+                  )}
+                  {showDates && (
+                    <text x={bX - (longDates ? 62 : 38)} y={y + ROW_H / 2 + 4} fontSize={10} fill="#666" textAnchor="end" fontWeight={500}
+                      style={{ cursor: editable ? "pointer" : "default" }}>{myNr}</text>
+                  )}
                   {showDates && <text x={bX - 3} y={y + ROW_H / 2 + 4} fontSize={11} fill={dateColor} textAnchor="end"
                     style={{ cursor: editable ? "pointer" : "default" }}
                     onClick={editable ? (e) => { e.stopPropagation(); setEditingTaskId(t.id); const r = (e.target as SVGElement).getBoundingClientRect(); setCalEdit({ taskId: t.id, field: "start", value: fmtDMY(sd!), x: r.left, y: r.bottom }); } : undefined}
