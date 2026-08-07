@@ -2,5 +2,6 @@
   "title": "4D Bauablauf BETA",
   "url": "https://bauablaufsimulation-beta.vercel.app",
   "icon": "https://bauablaufsimulation-beta.vercel.app/icons.svg",
-  "description": "4D Bauablaufsimulation BETA"
+  "description": "4D Bauablaufsimulation BETA",
+  "infoUrl": "https://bauablaufsimulation-beta.vercel.app"
 }
