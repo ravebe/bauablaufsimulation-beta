@@ -2,6 +2,7 @@
 import { useState } from "react";
 import type { SimProjekt, Task } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
+import { batchGetProperties } from "../hooks/useApi";
 import { getModellObjekte } from "./modelHelpers";
 
 interface Props {
@@ -59,53 +60,52 @@ export default function AutoVerknuepfung({ api, sim, onUpdate, done }: Props) {
         const alleIds = await getModellObjekte(api, modell.id);
         if (alleIds.length === 0) continue;
 
-        // Properties für alle Objekte laden und cachen
+        // Properties für alle Objekte laden und cachen — gebatcht statt sequentiell pro Objekt
         setFortschritt(`⟳ ${alleIds.length} Objekte scannen…`);
         const objProps = new Map<number, Record<string, string>>(); // rId → { propKey: value }
+
+        // Layer nur einmal pro Modell laden (Ergebnis hängt nicht vom Objekt ab)
+        const layerByRId = new Map<number, string>();
+        try {
+          const layers = await api.viewer.getLayers(modell.id) as any[];
+          if (Array.isArray(layers)) {
+            for (const l of layers) { if (l?.name) for (const rId of l.objectRuntimeIds ?? []) layerByRId.set(rId, String(l.name)); }
+          }
+        } catch {}
+
+        const propsById = new Map<number, any>();
+        try { for (const entry of await batchGetProperties(api, modell.id, alleIds)) propsById.set(entry.id, entry); } catch {}
 
         for (let i = 0; i < alleIds.length; i++) {
           const rId = alleIds[i];
           if (i % 50 === 0) setFortschritt(`⟳ Objekte scannen… ${i}/${alleIds.length}`);
 
           const props: Record<string, string> = {};
-          try {
-            const res = await api.viewer.getObjectProperties(modell.id, [rId]);
-            if (Array.isArray(res) && res.length > 0) {
-              const obj = res[0];
-              // Flach alle Properties sammeln
-              const sammel = (g: any, pn: string) => {
-                for (const p of (g?.properties ?? (g as any)?.items ?? [])) {
-                  if (!p?.name) continue;
-                  const sub = (p as any).properties ?? (p as any).items;
-                  if (Array.isArray(sub) && sub.length > 0) { sammel(p, p.name); continue; }
-                  if (p.value != null) {
-                    const v = String(p.value).trim();
-                    if (v && v !== "null") {
-                      props[p.name.toLowerCase()] = v;
-                      props[`${pn}||${p.name}`.toLowerCase()] = v;
-                    }
+          const obj = propsById.get(rId);
+          if (obj) {
+            // Flach alle Properties sammeln
+            const sammel = (g: any, pn: string) => {
+              for (const p of (g?.properties ?? (g as any)?.items ?? [])) {
+                if (!p?.name) continue;
+                const sub = (p as any).properties ?? (p as any).items;
+                if (Array.isArray(sub) && sub.length > 0) { sammel(p, p.name); continue; }
+                if (p.value != null) {
+                  const v = String(p.value).trim();
+                  if (v && v !== "null") {
+                    props[p.name.toLowerCase()] = v;
+                    props[`${pn}||${p.name}`.toLowerCase()] = v;
                   }
                 }
-              };
-              for (const g of (obj?.properties ?? [])) sammel(g, g?.name || "");
-              if (obj?.product?.name) props["product name"] = String(obj.product.name);
-              if (obj?.product?.objectType) props["common type"] = String(obj.product.objectType);
-              if (obj?.product?.objectType) props["objecttype"] = String(obj.product.objectType);
-            }
-          } catch {}
-
-          // Layer
-          try {
-            const layers = await api.viewer.getLayers(modell.id) as any[];
-            if (Array.isArray(layers)) {
-              for (const l of layers) {
-                if (l?.name && (l.objectRuntimeIds ?? []).includes(rId)) {
-                  props["layer"] = String(l.name);
-                  break;
-                }
               }
-            }
-          } catch {}
+            };
+            for (const g of (obj?.properties ?? [])) sammel(g, g?.name || "");
+            if (obj?.product?.name) props["product name"] = String(obj.product.name);
+            if (obj?.product?.objectType) props["common type"] = String(obj.product.objectType);
+            if (obj?.product?.objectType) props["objecttype"] = String(obj.product.objectType);
+          }
+
+          const layer = layerByRId.get(rId);
+          if (layer) props["layer"] = layer;
 
           if (Object.keys(props).length > 0) objProps.set(rId, props);
         }

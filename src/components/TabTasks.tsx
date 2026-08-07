@@ -6,6 +6,7 @@ import { formatDatum, normalizeDatum, parseDateUniversal, getOutlineLevel, istGr
   berechneNummern, gueltigeVorgaenger, verschiebeAufStart, kaskadiereNachfolger, datumPlusTage,
   taskVerschieben as verschiebeTaskBlock } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
+import { batchGetProperties, batchConvertToObjectIds } from "../hooks/useApi";
 import DatePicker from "./DatePicker";
 import SelectionTools from "./SelectionTools";
 
@@ -112,44 +113,59 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
       const werte = new Map<string, ObjWerte>();
       const allKeys = new Set<string>();
 
+      function sammelWerte(obj: ObjWerte, pset: any, psetName: string) {
+        for (const p of pset?.properties ?? []) {
+          if (!p?.name) continue;
+          const sub = p?.properties ?? p?.items;
+          if (Array.isArray(sub) && sub.length > 0) {
+            sammelWerte(obj, p, p.name);
+          } else {
+            const v = String(p?.value ?? "").trim();
+            if (v && v !== "null" && v !== "undefined") {
+              const key = `${psetName}||${p.name}`;
+              obj[key] = v;
+              allKeys.add(key);
+            }
+          }
+        }
+      }
+
+      // Nach Modell gruppieren: getLayers/convertToObjectIds/getObjectProperties je Modell nur einmal
+      // (gebatcht statt bisher pro Objekt) statt sequentiell für jedes einzelne Objekt aufzurufen
+      const nachModell = new Map<string, { g: string; rId: number }[]>();
       for (const g of aktivTask.objektGuids) {
         if (!g.includes(":::")) continue;
         const sep = g.indexOf(":::");
         const mid = g.slice(0, sep); const rId = Number(g.slice(sep + 3));
-        const obj: ObjWerte = {};
+        if (!nachModell.has(mid)) nachModell.set(mid, []);
+        nachModell.get(mid)!.push({ g, rId });
+        werte.set(g, {});
+      }
 
-        // IFC GUID
+      for (const [mid, eintraege] of nachModell) {
+        const rIds = eintraege.map(e => e.rId);
+        const objByRId = new Map(eintraege.map(e => [e.rId, e.g]));
+
+        // IFC GUIDs gebatcht statt pro Objekt einzeln
+        const guidById = await batchConvertToObjectIds(api, mid, rIds);
+        for (const [rId, ifcGuid] of guidById) {
+          const g = objByRId.get(rId);
+          if (g) {
+            werte.get(g)!["Reference Object||GUID (IFC)"] = ifcGuid;
+            allKeys.add("Reference Object||GUID (IFC)");
+          }
+        }
+
+        // Properties gebatcht (Chunks von 10, mit Einzel-Fallback bei Chunk-Fehler)
         try {
-          const ids = await api.viewer.convertToObjectIds(mid, [rId]);
-          const ifcGuid = (ids as any)?.[0] ?? "";
-          if (ifcGuid) { obj["Reference Object||GUID (IFC)"] = ifcGuid; allKeys.add("Reference Object||GUID (IFC)"); }
-        } catch {}
-
-        // Properties durchsuchen
-        try {
-          const props: any[] = await api.viewer.getObjectProperties(mid, [rId]) as any;
-          const sammelWerte = (pset: any, psetName: string) => {
-            for (const p of pset?.properties ?? []) {
-              if (!p?.name) continue;
-              const sub = p?.properties ?? p?.items;
-              if (Array.isArray(sub) && sub.length > 0) {
-                sammelWerte(p, p.name);
-              } else {
-                const v = String(p?.value ?? "").trim();
-                if (v && v !== "null" && v !== "undefined") {
-                  const key = `${psetName}||${p.name}`;
-                  obj[key] = v;
-                  allKeys.add(key);
-                }
-              }
-            }
-          };
-          for (const pset of props ?? []) sammelWerte(pset, pset?.name || "Eigenschaften");
-
-          // Product-Felder
-          for (const pset of props ?? []) {
-            if (pset?.product) {
-              const p = pset.product;
+          const props = await batchGetProperties(api, mid, rIds);
+          for (const entry of props) {
+            const g = objByRId.get(entry.id);
+            if (!g) continue;
+            const obj = werte.get(g)!;
+            sammelWerte(obj, entry, (entry as any)?.name || "Eigenschaften");
+            if (entry.product) {
+              const p = entry.product;
               if (p.name) { obj["Product||Product Name"] = String(p.name); allKeys.add("Product||Product Name"); }
               if (p.objectType) { obj["Reference Object||Common Type"] = String(p.objectType); allKeys.add("Reference Object||Common Type"); }
               if (p.description) { obj["Product||Description"] = String(p.description); allKeys.add("Product||Description"); }
@@ -157,22 +173,20 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
           }
         } catch {}
 
-        // Layer über getLayers + convertToObjectIds
+        // Layer: pro Modell nur einmal laden (Ergebnis hängt nicht vom Objekt ab) statt pro Objekt neu
         try {
           const layers = await api.viewer.getLayers(mid) as any[];
           if (Array.isArray(layers)) {
             for (const l of layers) {
+              if (!l?.name) continue;
               const memberIds: number[] = l?.objectRuntimeIds ?? [];
-              if (memberIds.includes(rId) && l?.name) {
-                obj["Layer||Layer"] = String(l.name);
-                allKeys.add("Layer||Layer");
-                break;
+              for (const rId of memberIds) {
+                const g = objByRId.get(rId);
+                if (g) { werte.get(g)!["Layer||Layer"] = String(l.name); allKeys.add("Layer||Layer"); }
               }
             }
           }
         } catch {}
-
-        werte.set(g, obj);
       }
 
       setGuidWerte(werte);

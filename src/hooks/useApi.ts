@@ -226,4 +226,29 @@ export async function batchGetProperties(
   return results;
 }
 
+export async function batchConvertToObjectIds(
+  api: ApiInstance,
+  modelId: string,
+  ids: number[]
+): Promise<Map<number, string>> {
+  const BATCH = 10;
+  const result = new Map<number, string>();
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const slice = ids.slice(i, i + BATCH);
+    try {
+      const guids = await api.viewer.convertToObjectIds(modelId, slice);
+      slice.forEach((id, j) => { const g = (guids as any)?.[j]; if (g) result.set(id, g); });
+    } catch {
+      for (const id of slice) {
+        try {
+          const g = await api.viewer.convertToObjectIds(modelId, [id]);
+          const v = (g as any)?.[0];
+          if (v) result.set(id, v);
+        } catch { /* einzelnes Objekt überspringen */ }
+      }
+    }
+  }
+  return result;
+}
+
 export { parseObjectIds };

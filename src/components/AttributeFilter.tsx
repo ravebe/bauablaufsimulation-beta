@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import type { SimProjekt, Task } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
+import { batchGetProperties, batchConvertToObjectIds } from "../hooks/useApi";
 import { getModellObjekte } from "./modelHelpers";
 
 interface AttrItem { pset: string; name: string; key: string; }
@@ -133,10 +134,29 @@ export default function AttributeFilter({ api, aktiveSim, aktivTask, aktivesMode
     if (modelIds.length === 0) { setSuchStatus("Kein Modell"); setLaedt(false); return; }
 
     try {
+      const brauchtGuid = aktiveFilter.some(f => f.selectedAttr!.pset === "Reference Object" && f.selectedAttr!.name === "GUID (IFC)");
+      const brauchtLayer = aktiveFilter.some(f => f.selectedAttr!.pset === "Layer" && f.selectedAttr!.name === "Layer");
+      const brauchtProps = aktiveFilter.some(f => !(f.selectedAttr!.pset === "Reference Object" && f.selectedAttr!.name === "GUID (IFC)") && !(f.selectedAttr!.pset === "Layer" && f.selectedAttr!.name === "Layer"));
+
       const treffenByModel = new Map<string, number[]>();
       for (const mid of modelIds) {
         const allIds = await getModellObjekte(api, mid);
         if (allIds.length === 0) continue;
+
+        // Alle für die aktiven Filter benötigten Daten pro Modell EINMAL gebatcht laden statt pro Objekt/Filter einzeln
+        const guidById = brauchtGuid ? await batchConvertToObjectIds(api, mid, allIds) : new Map<number, string>();
+        const layerByRId = new Map<number, string>();
+        if (brauchtLayer) {
+          try {
+            const layers = await api.viewer.getLayers(mid) as any[];
+            if (Array.isArray(layers)) for (const l of layers) { if (l?.name) for (const rId of l.objectRuntimeIds ?? []) layerByRId.set(rId, String(l.name)); }
+          } catch {}
+        }
+        const propsById = new Map<number, any>();
+        if (brauchtProps) {
+          try { for (const entry of await batchGetProperties(api, mid, allIds)) propsById.set(entry.id, entry); } catch {}
+        }
+
         for (const rId of allIds) {
           let allePasst = true;
           for (const f of aktiveFilter) {
@@ -145,33 +165,29 @@ export default function AttributeFilter({ api, aktiveSim, aktivTask, aktivesMode
             let gefunden = false;
 
             if (attr.pset === "Reference Object" && attr.name === "GUID (IFC)") {
-              try { const ids = await api.viewer.convertToObjectIds(mid, [rId]); gefunden = Array.isArray(ids) && ids.some(g => wertPasst(g)); } catch {}
+              const g = guidById.get(rId);
+              gefunden = !!g && wertPasst(g);
             } else if (attr.pset === "Layer" && attr.name === "Layer") {
-              try {
-                const layers = await api.viewer.getLayers(mid) as any[];
-                if (Array.isArray(layers)) for (const l of layers) { if (l?.name && wertPasst(l.name) && (l.objectRuntimeIds ?? []).includes(rId)) { gefunden = true; break; } }
-              } catch {}
+              const l = layerByRId.get(rId);
+              gefunden = !!l && wertPasst(l);
             } else {
-              try {
-                const res = await api.viewer.getObjectProperties(mid, [rId]);
-                if (Array.isArray(res) && res.length > 0) {
-                  const obj = res[0];
-                  const sucheIn = (g: any, pn: string): boolean => {
-                    for (const p of (g?.properties ?? (g as any)?.items ?? [])) {
-                      if (!p?.name) continue;
-                      const sub = (p as any).properties ?? (p as any).items;
-                      if (Array.isArray(sub) && sub.length > 0) { if (sucheIn(p, p.name)) return true; }
-                      else if (pn === attr.pset && p.name === attr.name && wertPasst(p.value)) return true;
-                    }
-                    return false;
-                  };
-                  for (const g of (obj?.properties ?? [])) { if (sucheIn(g, g?.name || "")) { gefunden = true; break; } }
-                  if (!gefunden && obj?.product) {
-                    if (attr.pset === "Reference Object" && attr.name === "Common Type" && wertPasst(obj.product.objectType)) gefunden = true;
-                    if (attr.pset === "Product" && attr.name === "Product Name" && wertPasst(obj.product.name)) gefunden = true;
+              const obj = propsById.get(rId);
+              if (obj) {
+                const sucheIn = (g: any, pn: string): boolean => {
+                  for (const p of (g?.properties ?? (g as any)?.items ?? [])) {
+                    if (!p?.name) continue;
+                    const sub = (p as any).properties ?? (p as any).items;
+                    if (Array.isArray(sub) && sub.length > 0) { if (sucheIn(p, p.name)) return true; }
+                    else if (pn === attr.pset && p.name === attr.name && wertPasst(p.value)) return true;
                   }
+                  return false;
+                };
+                for (const g of (obj?.properties ?? [])) { if (sucheIn(g, g?.name || "")) { gefunden = true; break; } }
+                if (!gefunden && obj?.product) {
+                  if (attr.pset === "Reference Object" && attr.name === "Common Type" && wertPasst(obj.product.objectType)) gefunden = true;
+                  if (attr.pset === "Product" && attr.name === "Product Name" && wertPasst(obj.product.name)) gefunden = true;
                 }
-              } catch {}
+              }
             }
             if (!gefunden) { allePasst = false; break; }
           }
