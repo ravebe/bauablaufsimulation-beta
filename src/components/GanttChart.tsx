@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import type { Task } from "../types";
-import { parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger } from "../types";
+import { parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks } from "../types";
 import DatePicker from "./DatePicker";
 
 interface Props {
@@ -219,21 +219,18 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
   if (!minDate || totalTage <= 0 || tasks.length === 0) return <div style={{ padding: 12, fontSize: 11, color: "#8a9baa", textAlign: "center" }}>Keine Tasks</div>;
 
   // Sortierung
-  const allSorted = tasks.map((t, i) => ({ task: t, origIdx: i }));
-  if (suchQuery.trim()) {
-    const woerter = suchQuery.toLowerCase().split(/\s+/).filter(w => w.length > 0);
-    allSorted.sort((a, b) => {
-      const textA = [a.task.name, ...Object.values(a.task.extraSpalten || {})].join(" ").toLowerCase();
-      const textB = [b.task.name, ...Object.values(b.task.extraSpalten || {})].join(" ").toLowerCase();
-      return woerter.filter(w => textB.includes(w)).length - woerter.filter(w => textA.includes(w)).length;
-    });
+  let allSorted = tasks.map((t, i) => ({ task: t, origIdx: i }));
+  const istSuche = suchQuery.trim().length > 0;
+  if (istSuche) {
+    allSorted = sucheSortiereTasks(allSorted, e => e.task, suchQuery);
   } else if (taskSort === "datum") allSorted.sort((a, b) => { const sa = parseDateUniversal(a.task.start)?.getTime() ?? 0, sb = parseDateUniversal(b.task.start)?.getTime() ?? 0; return sa !== sb ? sa - sb : (parseDateUniversal(a.task.end)?.getTime() ?? sa) - (parseDateUniversal(b.task.end)?.getTime() ?? sb); });
   else if (taskSort === "aktiv") allSorted.sort((a, b) => { const aH = selGuids?.size && a.task.objektGuids.some(g => selGuids.has(g)) ? 1 : 0; return (selGuids?.size && b.task.objektGuids.some(g => selGuids.has(g)) ? 1 : 0) - aH; });
   else if (taskSort === "name") allSorted.sort((a, b) => a.task.name.localeCompare(b.task.name, "de"));
   else if (taskSort === "nummer") { const ex = (s: string) => { const m = s.match(/\d+/g); return m ? parseInt(m[m.length - 1], 10) : Infinity; }; allSorted.sort((a, b) => { const na = ex(a.task.name), nb = ex(b.task.name); return na !== nb ? na - nb : a.task.name.localeCompare(b.task.name, "de"); }); }
 
-  // Collapse-Filter: Kinder eingeklappter Gruppen ausblenden
-  const sorted = allSorted.filter(({ origIdx }) => {
+  // Collapse-Filter: Kinder eingeklappter Gruppen ausblenden — bei aktiver Suche übersprungen,
+  // damit Treffer aus eingeklappten Gruppen trotzdem angezeigt werden
+  const sorted = istSuche ? allSorted : allSorted.filter(({ origIdx }) => {
     const level = getOutlineLevel(tasks[origIdx]);
     for (let p = origIdx - 1; p >= 0; p--) {
       const pLevel = getOutlineLevel(tasks[p]);

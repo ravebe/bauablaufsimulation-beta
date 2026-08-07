@@ -320,6 +320,29 @@ export function taskVerschieben(tasks: Task[], fromIdx: number, toIdx: number, s
   return remaining;
 }
 
+/**
+ * Filtert Einträge auf Tasks, die ALLE Suchwörter enthalten (Name oder Zusatzspalten),
+ * am besten passende zuerst. Ein Treffer der gesamten Suchphrase im Namen (z.B. "et. 10"
+ * exakt so im Namen) rangiert vor Treffern, bei denen die Wörter nur verstreut vorkommen.
+ * Leere Suche liefert die Eingabe unverändert zurück.
+ */
+export function sucheSortiereTasks<T>(eintraege: T[], getTask: (e: T) => Task, suchQuery: string): T[] {
+  const q = suchQuery.trim().toLowerCase();
+  if (!q) return eintraege;
+  const woerter = q.split(/\s+/).filter(w => w.length > 0);
+  const bewertet: { e: T; rang: number }[] = [];
+  for (const e of eintraege) {
+    const task = getTask(e);
+    const name = task.name.toLowerCase();
+    const text = [name, ...Object.values(task.extraSpalten || {}).map(v => String(v).toLowerCase())].join(" ");
+    if (!woerter.every(w => text.includes(w))) continue;
+    const exaktePos = name.indexOf(q);
+    bewertet.push({ e, rang: exaktePos >= 0 ? exaktePos : 100000 + text.length });
+  }
+  bewertet.sort((a, b) => a.rang - b.rang);
+  return bewertet.map(b => b.e);
+}
+
 // === Nummerierung & Vorgänger ===
 
 /** Berechne Nummern: Gruppen = A, B, C… / Tasks = 1, 2, 3… */

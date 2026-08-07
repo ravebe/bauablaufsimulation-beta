@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import type { SimProjekt, Task, TaskTyp } from "../types";
 import { formatDatum, normalizeDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, getKinder,
   berechneNummern, gueltigeVorgaenger, verschiebeAufStart, kaskadiereNachfolger, datumPlusTage,
-  taskVerschieben as verschiebeTaskBlock } from "../types";
+  taskVerschieben as verschiebeTaskBlock, sucheSortiereTasks } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { batchGetProperties, batchConvertToObjectIds } from "../hooks/useApi";
 import DatePicker from "./DatePicker";
@@ -343,17 +343,11 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
         ) : (
           (() => {
             // Sortierte Anzeige basierend auf taskSort
-            const tasksWithIdx = aktiveSim.tasks.map((task, idx) => ({ task, idx }));
-            if (suchQuery.trim()) {
-              // Suche: Relevanz-Sortierung (Anzahl Treffer-Wörter)
-              const woerter = suchQuery.toLowerCase().split(/\s+/).filter(w => w.length > 0);
-              tasksWithIdx.sort((a, b) => {
-                const textA = [a.task.name, ...Object.values(a.task.extraSpalten || {})].join(" ").toLowerCase();
-                const textB = [b.task.name, ...Object.values(b.task.extraSpalten || {})].join(" ").toLowerCase();
-                const scoreA = woerter.filter(w => textA.includes(w)).length;
-                const scoreB = woerter.filter(w => textB.includes(w)).length;
-                return scoreB - scoreA;
-              });
+            let tasksWithIdx = aktiveSim.tasks.map((task, idx) => ({ task, idx }));
+            const istSuche = suchQuery.trim().length > 0;
+            if (istSuche) {
+              // Suche: nur Tasks bei denen ALLE Suchwörter vorkommen, beste Treffer zuerst
+              tasksWithIdx = sucheSortiereTasks(tasksWithIdx, e => e.task, suchQuery);
             } else if (taskSort === "datum") {
               tasksWithIdx.sort((a, b) => {
                 const sa = parseDateUniversal(a.task.start)?.getTime() ?? 0;
@@ -382,8 +376,9 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
                 return a.task.name.localeCompare(b.task.name, "de");
               });
             }
-            // Gruppen: eingeklappte Kinder ausblenden
-            const sichtbar = tasksWithIdx.filter(({ idx }) => {
+            // Gruppen: eingeklappte Kinder ausblenden — bei aktiver Suche übersprungen,
+            // damit Treffer aus eingeklappten Gruppen trotzdem angezeigt werden
+            const sichtbar = istSuche ? tasksWithIdx : tasksWithIdx.filter(({ idx }) => {
               const level = getOutlineLevel(aktiveSim.tasks[idx]);
               // Prüfen ob ein Eltern-Gruppe zugeklappt ist
               for (let p = idx - 1; p >= 0; p--) {
