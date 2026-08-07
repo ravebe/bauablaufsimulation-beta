@@ -347,11 +347,12 @@ export function verschiebeAufStart(tasks: Task[], taskId: string, neuerStart: st
 
 /** Gültige Vorgänger-Kandidaten für einen Task: kein Zyklus, Gruppen nur als Vorgänger von Gruppen */
 export function gueltigeVorgaenger(tasks: Task[], taskId: string): Task[] {
-  const task = tasks.find(t => t.id === taskId);
-  if (!task) return [];
-  return tasks.filter(t =>
+  const idx = tasks.findIndex(t => t.id === taskId);
+  if (idx < 0) return [];
+  const taskIstGruppe = istGruppe(tasks, idx);
+  return tasks.filter((t, i) =>
     t.id !== taskId &&
-    !(t.isGroup && !task.isGroup) &&
+    istGruppe(tasks, i) === taskIstGruppe &&
     !istZirkular(tasks, taskId, t.id)
   );
 }
