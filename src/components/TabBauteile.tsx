@@ -7,7 +7,6 @@ import type { ApiInstance } from "../hooks/useApi";
 import { getEchteBauteile, clearEchteBauteileCache } from "./modelHelpers";
 import TabTasks from "./TabTasks";
 import AttributeFilter from "./AttributeFilter";
-import SelectionTools from "./SelectionTools";
 import GanttChart from "./GanttChart";
 
 interface Props {
@@ -31,7 +30,6 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
   const [nadelTag, setNadelTag] = useState(-1);
   const [ghostTag, setGhostTag] = useState(-1);
   const [filterOffen, setFilterOffen] = useState(true);
-  const [selToolOffen, setSelToolOffen] = useState(true);
   const [suchOffen, setSuchOffen] = useState(false);
   const [suchQuery, setSuchQuery] = useState("");
   const [plusMenuOffen, setPlusMenuOffen] = useState(false);
@@ -213,7 +211,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
           </button>
           {!readOnly && (
             <div style={{ position: "relative", display: "inline-flex" }}>
-              <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "2px 6px", fontWeight: 600, color: "#2d7dbd" }}
+              <button className="tc-btn-primary" style={{ fontSize: 16, padding: "2px 10px", fontWeight: 700, lineHeight: 1 }}
                 onClick={() => setPlusMenuOffen(m => !m)}>+</button>
               {plusMenuOffen && (
                 <div style={{ position: "absolute", left: 0, top: "100%", marginTop: 2, background: "#fff", border: "1px solid #d4dce4", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, minWidth: 140, fontSize: 11 }}>
@@ -348,22 +346,6 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
               aktivesModellId={aktivesModellId}
               updateSim={updateSim}
               resetSignal={resetSignal}
-            />
-          )}
-          <div className="detail-block">
-            <div className="detail-block-title" style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
-              onClick={() => setSelToolOffen(o => !o)}>
-              <span style={{ display: "inline-block", transform: `scaleX(1.6) rotate(${selToolOffen ? 0 : -90}deg)`, transition: "transform .15s", fontSize: 9 }}>▼</span>
-              Mausklick Zuweisung
-            </div>
-          </div>
-          {selToolOffen && (
-            <SelectionTools
-              aktivTask={aktivTask}
-              aktiveSim={aktiveSim}
-              api={api}
-              updateSim={updateSim}
-              selGuids={selGuids}
             />
           )}
         </>

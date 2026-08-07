@@ -7,6 +7,7 @@ import { formatDatum, normalizeDatum, parseDateUniversal, getOutlineLevel, istGr
   taskVerschieben as verschiebeTaskBlock } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import DatePicker from "./DatePicker";
+import SelectionTools from "./SelectionTools";
 
 // Alle Werte eines Objekts flach sammeln
 interface ObjWerte { [key: string]: string; } // "PSet||PropName" → value
@@ -586,6 +587,11 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
               title="Löschen"
               onClick={e => { e.stopPropagation(); if (confirm(`„${aktivTask.name}" löschen?`)) taskLoeschen(aktivTask.id); }}><svg width="12" height="12" viewBox="0 0 16 16" fill="#333" stroke="none"><path d="M5 1h6v1H5zM2 3h12v1H2zm1.5 1l.8 11h7.4l.8-11h-9zm2.5 2h1v7H6zm3 0h1v7H9z"/></svg></button>}
           </div>
+
+          {/* Objekte hinzufügen — immer sichtbar, ohne Titel/Klappbereich */}
+          {!readOnly && !aktivTask.isGroup && (
+            <SelectionTools aktivTask={aktivTask} aktiveSim={aktiveSim} api={api} updateSim={updateSim} selGuids={selGuids} />
+          )}
 
           {/* Task-Typ — nur für Tasks, nicht Gruppen */}
           {!readOnly && !aktivTask.isGroup && (
