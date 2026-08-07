@@ -383,12 +383,24 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
                       background: isGrp && isDropTarget && dragIdx !== null ? "#dbeafe" : isEditing ? "#FFF8E1" : isSel ? "#e8f0fe" : hasSel ? "#f0f0f0" : istHover ? "var(--tc-bg-hover)" : i % 2 === 0 ? "#fafbfc" : "#fff",
                       opacity: dragIdx !== null && selectedIds.includes(t.id) ? 0.4 : 1,
                     }}>
-                    {isGrp ? (
-                      <span onClick={e => { e.stopPropagation(); setGanttCollapsed(s => { const n = new Set(s); if (n.has(t.id)) n.delete(t.id); else n.add(t.id); return n; }); }}
-                        style={{ display: "inline-block", transform: `scaleX(1.6) rotate(${collapsed ? -90 : 0}deg)`, transition: "transform .15s", fontSize: 9, cursor: "pointer", flexShrink: 0, marginRight: 4, color: "#555" }}>▼</span>
-                    ) : (
-                      <span style={{ width: 6, height: 6, borderRadius: "50%", flexShrink: 0, marginRight: 5, background: isEditing ? "#FF9800" : FARBEN[t.typ] || "#6cc07a" }} />
-                    )}
+                    {/* Typ-Punkt/Auf-Zuklapp-Dreieck — beim Hover bzw. während des Ziehens vom Drag-Handle überblendet */}
+                    <span style={{ width: 12, height: 12, flexShrink: 0, marginRight: 5, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {canDrag && (dragIdx === origIdx || (istHover && dragIdx === null)) ? (
+                        <span
+                          draggable
+                          onDragStart={e => { setDragIdx(origIdx); e.dataTransfer.effectAllowed = "move"; }}
+                          onDragEnd={() => { setDragIdx(null); setDropIdx(null); }}
+                          onClick={e => { e.stopPropagation(); if (isGrp) setGanttCollapsed(s => { const n = new Set(s); if (n.has(t.id)) n.delete(t.id); else n.add(t.id); return n; }); }}
+                          style={{ cursor: "grab", color: "#8a9baa", fontSize: 13, userSelect: "none" }}
+                          title="Ziehen zum Verschieben"
+                        >☰</span>
+                      ) : isGrp ? (
+                        <span onClick={e => { e.stopPropagation(); setGanttCollapsed(s => { const n = new Set(s); if (n.has(t.id)) n.delete(t.id); else n.add(t.id); return n; }); }}
+                          style={{ display: "inline-block", transform: `scaleX(1.6) rotate(${collapsed ? -90 : 0}deg)`, transition: "transform .15s", fontSize: 9, cursor: "pointer", color: "#555" }}>▼</span>
+                      ) : (
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: isEditing ? "#FF9800" : FARBEN[t.typ] || "#6cc07a" }} />
+                      )}
+                    </span>
                     {editable && renameId === t.id ? (
                       <input autoFocus value={renameVal}
                         onChange={e => setRenameVal(e.target.value)}
@@ -456,27 +468,13 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
                         document.body
                       )}
                     </span>
-                    {/* feste Breite, damit nichts beim Hover springt */}
-                    <span style={{ flexShrink: 0, minWidth: 30, display: "flex", justifyContent: "flex-end" }}>
-                      {canDrag && istHover && dragIdx === null ? (
-                        <span
-                          draggable
-                          onDragStart={e => { setDragIdx(origIdx); e.dataTransfer.effectAllowed = "move"; }}
-                          onDragEnd={() => { setDragIdx(null); setDropIdx(null); }}
-                          onClick={e => e.stopPropagation()}
-                          style={{ cursor: "grab", color: "#8a9baa", fontSize: 14, padding: "0 2px", userSelect: "none" }}
-                          title="Ziehen zum Verschieben"
-                        >☰</span>
-                      ) : (
-                        <span style={{ fontSize: 11, color: "#8a9baa" }}>{
-                          isGrp && showObjektCount
-                            ? (() => { const ids: string[] = []; for (let ci = origIdx + 1; ci < tasks.length; ci++) { if (getOutlineLevel(tasks[ci]) <= getOutlineLevel(t)) break; ids.push(...tasks[ci].objektGuids); } const cnt = new Set(ids).size; return cnt > 0 ? `O ${cnt}` : ""; })()
-                            : isGrp && gDaten ? `${gDaten.tage}d`
-                            : showObjektCount ? (t.objektGuids.length > 0 ? `O ${t.objektGuids.length}` : "")
-                            : `${dauer}d`
-                        }</span>
-                      )}
-                    </span>
+                    <span style={{ flexShrink: 0, fontSize: 11, color: "#8a9baa" }}>{
+                      isGrp && showObjektCount
+                        ? (() => { const ids: string[] = []; for (let ci = origIdx + 1; ci < tasks.length; ci++) { if (getOutlineLevel(tasks[ci]) <= getOutlineLevel(t)) break; ids.push(...tasks[ci].objektGuids); } const cnt = new Set(ids).size; return cnt > 0 ? `O ${cnt}` : ""; })()
+                        : isGrp && gDaten ? `${gDaten.tage}d`
+                        : showObjektCount ? (t.objektGuids.length > 0 ? `O ${t.objektGuids.length}` : "")
+                        : `${dauer}d`
+                    }</span>
                   </div>
                   {isGrp && showDropLine && (
                     <div style={{ height: 2, background: "#2d7dbd", margin: "0 4px" }} />

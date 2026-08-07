@@ -384,6 +384,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
             const istHover = hoverTaskId === task.id;
             const istDropTarget = dropIdx === idx;
             const isGroup = task.isGroup || istGruppe(aktiveSim.tasks, idx);
+            const canDrag = !readOnly && (taskSort === "gantt" || taskSort === "aktiv");
             const level = getOutlineLevel(task);
             const indent = level * 16;
             const gDaten = isGroup ? gruppenDaten(aktiveSim.tasks, idx) : null;
@@ -405,12 +406,24 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
                 onDragOver={e => { e.preventDefault(); setDropIdx(idx); }}
                 onDrop={e => { e.preventDefault(); if (dragIdx !== null) taskVerschieben(dragIdx, idx); setDragIdx(null); setDropIdx(null); }}
               >
-                {isGroup ? (
-                  <span onClick={e => { e.stopPropagation(); setCollapsedGroups(s => { const n = new Set(s); if (n.has(task.id)) n.delete(task.id); else n.add(task.id); return n; }); }}
-                    style={{ display: "inline-block", transform: `scaleX(1.6) rotate(${collapsed ? -90 : 0}deg)`, transition: "transform .15s", fontSize: 9, cursor: "pointer", flexShrink: 0, marginRight: 4, color: "#555" }}>▼</span>
-                ) : (
-                  <span style={{ width: 9, height: 9, borderRadius: "50%", flexShrink: 0, background: task.typ === "neubau" ? "#6cc07a" : task.typ === "abbruch" ? "#edb94c" : task.typ === "temporaer" ? "#a0522d" : "#888" }} />
-                )}
+                {/* Typ-Punkt/Auf-Zuklapp-Dreieck — beim Hover bzw. während des Ziehens vom Drag-Handle überblendet */}
+                <span style={{ width: 14, height: 14, flexShrink: 0, marginRight: 4, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {canDrag && (dragIdx === idx || (istHover && dragIdx === null)) ? (
+                    <span
+                      draggable
+                      onDragStart={e => { setDragIdx(idx); e.dataTransfer.effectAllowed = "move"; }}
+                      onDragEnd={() => { setDragIdx(null); setDropIdx(null); }}
+                      onClick={e => { e.stopPropagation(); if (isGroup) setCollapsedGroups(s => { const n = new Set(s); if (n.has(task.id)) n.delete(task.id); else n.add(task.id); return n; }); }}
+                      style={{ cursor: "grab", color: "#8a9baa", fontSize: 14, userSelect: "none" }}
+                      title="Ziehen zum Verschieben"
+                    >☰</span>
+                  ) : isGroup ? (
+                    <span onClick={e => { e.stopPropagation(); setCollapsedGroups(s => { const n = new Set(s); if (n.has(task.id)) n.delete(task.id); else n.add(task.id); return n; }); }}
+                      style={{ display: "inline-block", transform: `scaleX(1.6) rotate(${collapsed ? -90 : 0}deg)`, transition: "transform .15s", fontSize: 9, cursor: "pointer", color: "#555" }}>▼</span>
+                  ) : (
+                    <span style={{ width: 9, height: 9, borderRadius: "50%", background: task.typ === "neubau" ? "#6cc07a" : task.typ === "abbruch" ? "#edb94c" : task.typ === "temporaer" ? "#a0522d" : "#888" }} />
+                  )}
+                </span>
                 {!readOnly && editingNameId === task.id ? (
                   <input autoFocus value={editingNameVal}
                     onChange={e => setEditingNameVal(e.target.value)}
@@ -508,28 +521,15 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
                   )}
                 </span>
 
-                {/* Rechts: Count/Tage oder Drag-Handle — feste Breite, damit nichts beim Hover springt */}
-                <span style={{ flexShrink: 0, minWidth: 33, marginLeft: 4, display: "flex", justifyContent: "flex-end" }}>
-                  {!readOnly && (taskSort === "gantt" || taskSort === "aktiv") && istHover && !dragIdx ? (
-                    <span
-                      draggable
-                      onDragStart={e => { setDragIdx(idx); e.dataTransfer.effectAllowed = "move"; }}
-                      onDragEnd={() => { setDragIdx(null); setDropIdx(null); }}
-                      style={{ cursor: "grab", color: "#8a9baa", fontSize: 14, padding: "0 2px", userSelect: "none" }}
-                      onClick={e => e.stopPropagation()}
-                      title="Ziehen zum Verschieben"
-                    >☰</span>
-                  ) : (
-                    <span className="task-row-count" style={{ fontSize: 12, marginLeft: 0, textAlign: "right" }}>
-                      {isGroup && gDaten
-                        ? (() => { const childIds = []; for (let ci = idx + 1; ci < aktiveSim.tasks.length; ci++) { if (getOutlineLevel(aktiveSim.tasks[ci]) <= getOutlineLevel(task)) break; childIds.push(...aktiveSim.tasks[ci].objektGuids); } const cnt = new Set(childIds).size; return cnt > 0 ? <span style={{ color: "#888" }}>O {cnt}</span> : <span style={{ color: "#d4dce4" }}>∅</span>; })()
-                        : hatSelektierte
-                        ? <span style={{ color: "#2d7dbd", fontWeight: 600 }}>{selAnzahl}/{task.objektGuids.length}</span>
-                        : task.objektGuids.length > 0
-                          ? <span style={{ color: "#8a9baa" }}>O {task.objektGuids.length}</span>
-                          : <span style={{ color: "#d4dce4" }}>∅</span>}
-                    </span>
-                  )}
+                {/* Rechts: Count/Tage */}
+                <span className="task-row-count" style={{ fontSize: 12, marginLeft: 4, flexShrink: 0, minWidth: 33, textAlign: "right" }}>
+                  {isGroup && gDaten
+                    ? (() => { const childIds = []; for (let ci = idx + 1; ci < aktiveSim.tasks.length; ci++) { if (getOutlineLevel(aktiveSim.tasks[ci]) <= getOutlineLevel(task)) break; childIds.push(...aktiveSim.tasks[ci].objektGuids); } const cnt = new Set(childIds).size; return cnt > 0 ? <span style={{ color: "#888" }}>O {cnt}</span> : <span style={{ color: "#d4dce4" }}>∅</span>; })()
+                    : hatSelektierte
+                    ? <span style={{ color: "#2d7dbd", fontWeight: 600 }}>{selAnzahl}/{task.objektGuids.length}</span>
+                    : task.objektGuids.length > 0
+                      ? <span style={{ color: "#8a9baa" }}>O {task.objektGuids.length}</span>
+                      : <span style={{ color: "#d4dce4" }}>∅</span>}
                 </span>
               </div>
               {isGroup && istDropTarget && dragIdx !== null && dragIdx !== idx && (
