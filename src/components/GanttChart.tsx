@@ -380,7 +380,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
                     onMouseLeave={() => setHoverIdx(null)}
                     style={{
                       height: ROW_H, display: "flex", alignItems: "center", padding: "0 4px", paddingLeft: 4 + indent, cursor: "pointer", borderBottom: "1px solid #eef1f4",
-                      background: isGrp && isDropTarget && dragIdx !== null ? "#dbeafe" : isEditing ? "#FFF8E1" : isSel ? "#e8f0fe" : hasSel ? "#f0f0f0" : i % 2 === 0 ? "#fafbfc" : "#fff",
+                      background: isGrp && isDropTarget && dragIdx !== null ? "#dbeafe" : isEditing ? "#FFF8E1" : isSel ? "#e8f0fe" : hasSel ? "#f0f0f0" : istHover ? "var(--tc-bg-hover)" : i % 2 === 0 ? "#fafbfc" : "#fff",
                       opacity: dragIdx !== null && selectedIds.includes(t.id) ? 0.4 : 1,
                     }}>
                     {isGrp ? (
@@ -401,7 +401,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
                         onDoubleClick={editable ? (e) => { e.stopPropagation(); setRenameId(t.id); setRenameVal(t.name); } : undefined}
                         style={{ flex: 1, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: editable ? "text" : "default", color: isEditing ? "#E65100" : isSel ? "#2d7dbd" : "#333", fontWeight: isEditing || isSel || isGrp ? 600 : 400 }}>{lbl}</span>
                     )}
-                    <span style={{ flexShrink: 0, fontSize: 10, marginRight: 5 }} onClick={e => e.stopPropagation()}>
+                    <span style={{ flexShrink: 0, fontSize: 10, marginRight: 16 }} onClick={e => e.stopPropagation()}>
                       <span
                         onClick={editable ? (e) => oeffnePredPicker(t, e) : undefined}
                         style={{ cursor: editable ? "pointer" : "default", fontWeight: 500, color: "#666" }}
@@ -456,24 +456,27 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
                         document.body
                       )}
                     </span>
-                    {canDrag && istHover && dragIdx === null ? (
-                      <span
-                        draggable
-                        onDragStart={e => { setDragIdx(origIdx); e.dataTransfer.effectAllowed = "move"; }}
-                        onDragEnd={() => { setDragIdx(null); setDropIdx(null); }}
-                        onClick={e => e.stopPropagation()}
-                        style={{ cursor: "grab", color: "#8a9baa", fontSize: 14, padding: "0 2px", userSelect: "none", flexShrink: 0 }}
-                        title="Ziehen zum Verschieben"
-                      >☰</span>
-                    ) : (
-                      <span style={{ fontSize: 11, color: "#8a9baa", flexShrink: 0 }}>{
-                        isGrp && showObjektCount
-                          ? (() => { const ids: string[] = []; for (let ci = origIdx + 1; ci < tasks.length; ci++) { if (getOutlineLevel(tasks[ci]) <= getOutlineLevel(t)) break; ids.push(...tasks[ci].objektGuids); } const cnt = new Set(ids).size; return cnt > 0 ? `O ${cnt}` : ""; })()
-                          : isGrp && gDaten ? `${gDaten.tage}d`
-                          : showObjektCount ? (t.objektGuids.length > 0 ? `O ${t.objektGuids.length}` : "")
-                          : `${dauer}d`
-                      }</span>
-                    )}
+                    {/* feste Breite, damit nichts beim Hover springt */}
+                    <span style={{ flexShrink: 0, minWidth: 30, display: "flex", justifyContent: "flex-end" }}>
+                      {canDrag && istHover && dragIdx === null ? (
+                        <span
+                          draggable
+                          onDragStart={e => { setDragIdx(origIdx); e.dataTransfer.effectAllowed = "move"; }}
+                          onDragEnd={() => { setDragIdx(null); setDropIdx(null); }}
+                          onClick={e => e.stopPropagation()}
+                          style={{ cursor: "grab", color: "#8a9baa", fontSize: 14, padding: "0 2px", userSelect: "none" }}
+                          title="Ziehen zum Verschieben"
+                        >☰</span>
+                      ) : (
+                        <span style={{ fontSize: 11, color: "#8a9baa" }}>{
+                          isGrp && showObjektCount
+                            ? (() => { const ids: string[] = []; for (let ci = origIdx + 1; ci < tasks.length; ci++) { if (getOutlineLevel(tasks[ci]) <= getOutlineLevel(t)) break; ids.push(...tasks[ci].objektGuids); } const cnt = new Set(ids).size; return cnt > 0 ? `O ${cnt}` : ""; })()
+                            : isGrp && gDaten ? `${gDaten.tage}d`
+                            : showObjektCount ? (t.objektGuids.length > 0 ? `O ${t.objektGuids.length}` : "")
+                            : `${dauer}d`
+                        }</span>
+                      )}
+                    </span>
                   </div>
                   {isGrp && showDropLine && (
                     <div style={{ height: 2, background: "#2d7dbd", margin: "0 4px" }} />

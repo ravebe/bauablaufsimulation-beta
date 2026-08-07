@@ -1,7 +1,7 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import type { SimProjekt, Task } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
-import { formatDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten } from "../types";
+import { formatDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern } from "../types";
 import GanttChart from "./GanttChart";
 
 interface Props { api: ApiInstance | null; aktiveSim: SimProjekt | null; aktivesModellId: string | null; taskSort?: "gantt" | "datum" | "aktiv" | "name" | "nummer"; sharedNadelTag?: React.MutableRefObject<number>; }
@@ -44,6 +44,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
   const beendet = useRef(new Set<string>());
   // Selection polling
   const [selGuids, setSelGuids] = useState<Set<string>>(new Set());
+  const [hoverTaskId, setHoverTaskId] = useState<string | null>(null);
   const selRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const modellIds = [...new Set([...(aktiveSim?.modelle.map(m => m.id) ?? []), ...(aktivesModellId ? [aktivesModellId] : [])])].filter(Boolean);
@@ -51,6 +52,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
   // Alle Tasks mit gültigem Startdatum (aus ALLEN Modellen)
   const allTasks = aktiveSim?.tasks ?? [];
   const tasks = allTasks.filter(t => t.start && parseDateUniversal(t.start));
+  const nummern = useMemo(() => berechneNummern(tasks), [tasks]);
 
   const { minDate, maxDate, totalTage } = (() => {
     if (tasks.length === 0) return { minDate: null, maxDate: null, totalTage: 0 };
@@ -520,9 +522,11 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
             <div key={task.id} style={{
               display: "flex", alignItems: "center", padding: "5px 8px", paddingLeft: 8 + indent, gap: 6,
               borderBottom: "1px solid #eef1f4", cursor: laeuft ? "default" : "pointer",
-              background: istSelTask ? "#e8f0fe" : hatSel ? "#f0f0f0" : aktiv ? "#edf7ed" : "transparent",
+              background: istSelTask ? "#e8f0fe" : hatSel ? "#f0f0f0" : aktiv ? "#edf7ed" : hoverTaskId === task.id ? "var(--tc-bg-hover)" : "transparent",
               opacity: vorbei ? 0.5 : 1, fontWeight: aktiv || hatSel || istSelTask || isGrp ? 600 : 400,
-            }} onClick={() => zuTask(origIdx)}>
+            }} onClick={() => zuTask(origIdx)}
+              onMouseEnter={() => setHoverTaskId(task.id)}
+              onMouseLeave={() => setHoverTaskId(null)}>
               {isGrp ? (
                 <span onClick={e => { e.stopPropagation(); setCollapsedGroups(s => { const n = new Set(s); if (n.has(task.id)) n.delete(task.id); else n.add(task.id); return n; }); }}
                   style={{ display: "inline-block", transform: `scaleX(1.6) rotate(${collapsed ? -90 : 0}deg)`, transition: "transform .15s", fontSize: 9, cursor: "pointer", flexShrink: 0, marginRight: 4, color: "#555" }}>▼</span>
@@ -531,6 +535,12 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
                 <span style={dot(task.typ)} />
               </>)}
               <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12 }}>{task.name}</span>
+              <span style={{ flexShrink: 0, fontSize: 11, marginRight: 6 }}>
+                <span style={{ fontWeight: 500, color: "#666" }}>{nummern.get(task.id) ?? ""}</span>
+                {task.predecessorId && (
+                  <span style={{ color: "#999", fontStyle: "italic" }}> | {nummern.get(task.predecessorId) ?? "?"}</span>
+                )}
+              </span>
               <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, lineHeight: 1.3 }}>
                 <span style={{ fontSize: 11, color: isGrp ? "#888" : "#333" }}>{sd ? formatDatum(isGrp && gDaten ? gDaten.start : task.start) : ""}</span>
                 <span style={{ fontSize: 11, color: isGrp ? "#888" : "#333" }}>{ed ? formatDatum(isGrp && gDaten ? gDaten.end : task.end) : ""}</span>
