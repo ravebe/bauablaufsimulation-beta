@@ -280,6 +280,46 @@ export function gruppenDaten(tasks: Task[], groupIdx: number): { start: string; 
   return { start, end, tage: Math.max(1, Math.ceil((maxEnd - minStart) / 86400000)) };
 }
 
+/**
+ * Verschiebt per Drag&Drop einen Task (oder die aktuelle Mehrfachauswahl) an eine neue Position.
+ * Ist der verschobene Task eine Gruppe und es liegt keine explizite Mehrfachauswahl vor, wird der
+ * gesamte Block (Gruppe + alle Kinder) mitgenommen und relativ zueinander auf das neue Level verschoben
+ * — Kinder rutschen also z.B. beim Herausziehen aus einer Gruppe alle gemeinsam eine Ebene zurück.
+ */
+export function taskVerschieben(tasks: Task[], fromIdx: number, toIdx: number, selectedIds: string[]): Task[] {
+  if (fromIdx === toIdx || fromIdx < 0 || fromIdx >= tasks.length) return tasks;
+  const targetId = tasks[toIdx]?.id;
+
+  const istMultiDrag = selectedIds.length > 1;
+  const movingIds = new Set<string>(
+    istMultiDrag ? selectedIds : [tasks[fromIdx].id, ...getKinder(tasks, fromIdx).map(i => tasks[i].id)]
+  );
+  if (targetId && movingIds.has(targetId)) return tasks; // nicht in den eigenen Ast verschieben
+
+  const moving = tasks.filter(t => movingIds.has(t.id));
+  const remaining = tasks.filter(t => !movingIds.has(t.id));
+  let insertAt = remaining.findIndex(t => t.id === targetId);
+  if (insertAt < 0) insertAt = remaining.length;
+
+  const target = remaining[insertAt];
+  const targetIstGruppe = !!target && (target.isGroup || istGruppe(remaining, insertAt));
+  const neuesLevel = targetIstGruppe ? getOutlineLevel(target) + 1
+    : target ? getOutlineLevel(target)
+    : remaining[insertAt - 1] ? getOutlineLevel(remaining[insertAt - 1])
+    : 1;
+
+  if (istMultiDrag) {
+    moving.forEach(m => { if (!m.isGroup) m.outlineLevel = neuesLevel; });
+  } else {
+    const delta = neuesLevel - getOutlineLevel(moving[0]);
+    moving.forEach(m => { m.outlineLevel = Math.max(1, getOutlineLevel(m) + delta); });
+  }
+  if (targetIstGruppe) insertAt += 1;
+
+  remaining.splice(insertAt, 0, ...moving);
+  return remaining;
+}
+
 // === Nummerierung & Vorgänger ===
 
 /** Berechne Nummern: Gruppen = A, B, C… / Tasks = 1, 2, 3… */

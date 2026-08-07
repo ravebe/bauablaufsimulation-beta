@@ -3,7 +3,8 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import type { SimProjekt, Task, TaskTyp } from "../types";
 import { formatDatum, normalizeDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, getKinder,
-  berechneNummern, gueltigeVorgaenger, verschiebeAufStart, kaskadiereNachfolger, datumPlusTage } from "../types";
+  berechneNummern, gueltigeVorgaenger, verschiebeAufStart, kaskadiereNachfolger, datumPlusTage,
+  taskVerschieben as verschiebeTaskBlock } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import DatePicker from "./DatePicker";
 
@@ -189,43 +190,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
   }
 
   function taskVerschieben(fromIdx: number, toIdx: number) {
-    if (fromIdx === toIdx) return;
-    const tasks = [...aktiveSim.tasks];
-    const target = tasks[toIdx];
-    const isTargetGroup = target && (target.isGroup || istGruppe(aktiveSim.tasks, toIdx));
-
-    if (selectedIds.length > 1) {
-      // Multi-drag: alle ausgewählten Tasks verschieben
-      const selSet = new Set(selectedIds);
-      const moving = tasks.filter(t => selSet.has(t.id));
-      const remaining = tasks.filter(t => !selSet.has(t.id));
-      let insertAt = remaining.findIndex(t => t.id === target?.id);
-      if (insertAt < 0) insertAt = remaining.length;
-      if (isTargetGroup) {
-        moving.forEach(m => { m.outlineLevel = getOutlineLevel(target) + 1; });
-        insertAt += 1;
-      } else {
-        // Kein (Gruppen-)Ziel: Level vom künftigen Vorgänger übernehmen, statt das alte (ggf. verschachtelte) Level zu behalten
-        const vorgaenger = remaining[insertAt - 1];
-        const neuesLevel = target ? getOutlineLevel(target) : (vorgaenger ? getOutlineLevel(vorgaenger) : 1);
-        moving.forEach(m => { m.outlineLevel = neuesLevel; });
-      }
-      remaining.splice(insertAt, 0, ...moving);
-      updateSim({ ...aktiveSim, tasks: remaining });
-    } else {
-      const [moved] = tasks.splice(fromIdx, 1);
-      const insertAt = toIdx > fromIdx ? toIdx - 1 : toIdx;
-      if (isTargetGroup) {
-        moved.outlineLevel = getOutlineLevel(target) + 1;
-        tasks.splice(insertAt + 1, 0, moved);
-      } else {
-        // Kein (Gruppen-)Ziel: Level vom künftigen Vorgänger übernehmen, statt das alte (ggf. verschachtelte) Level zu behalten
-        const vorgaenger = tasks[insertAt - 1];
-        moved.outlineLevel = target ? getOutlineLevel(target) : (vorgaenger ? getOutlineLevel(vorgaenger) : 1);
-        tasks.splice(insertAt, 0, moved);
-      }
-      updateSim({ ...aktiveSim, tasks });
-    }
+    updateSim({ ...aktiveSim, tasks: verschiebeTaskBlock(aktiveSim.tasks, fromIdx, toIdx, selectedIds) });
   }
 
   function taskLoeschen(taskId: string) {
