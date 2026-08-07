@@ -202,7 +202,10 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
         moving.forEach(m => { if (!m.isGroup) m.outlineLevel = gl; });
         remaining.splice(insertAt + 1, 0, ...moving);
       } else {
-        if (target) moving.forEach(m => { if (!m.isGroup) m.outlineLevel = getOutlineLevel(target); });
+        // Kein (Gruppen-)Ziel: Level vom künftigen Vorgänger übernehmen, statt das alte (ggf. verschachtelte) Level zu behalten
+        const vorgaenger = remaining[insertAt - 1];
+        const neuesLevel = target ? getOutlineLevel(target) : (vorgaenger ? getOutlineLevel(vorgaenger) : 1);
+        moving.forEach(m => { if (!m.isGroup) m.outlineLevel = neuesLevel; });
         remaining.splice(insertAt, 0, ...moving);
       }
       updateSim({ ...aktiveSim, tasks: remaining });
@@ -215,7 +218,9 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
         moved.outlineLevel = getOutlineLevel(target) + 1;
         tasks.splice(insertAt + 1, 0, moved);
       } else {
-        if (target) moved.outlineLevel = getOutlineLevel(target);
+        // Kein (Gruppen-)Ziel: Level vom künftigen Vorgänger übernehmen, statt das alte (ggf. verschachtelte) Level zu behalten
+        const vorgaenger = tasks[insertAt - 1];
+        moved.outlineLevel = target ? getOutlineLevel(target) : (vorgaenger ? getOutlineLevel(vorgaenger) : 1);
         tasks.splice(insertAt, 0, moved);
       }
       updateSim({ ...aktiveSim, tasks });

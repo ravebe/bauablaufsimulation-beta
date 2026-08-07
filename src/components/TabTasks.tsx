@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import type { SimProjekt, Task, TaskTyp } from "../types";
-import { formatDatum, normalizeDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten,
+import { formatDatum, normalizeDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, getKinder,
   berechneNummern, gueltigeVorgaenger, verschiebeAufStart, kaskadiereNachfolger, datumPlusTage } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import DatePicker from "./DatePicker";
@@ -204,6 +204,11 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
       if (isTargetGroup) {
         moving.forEach(m => { m.outlineLevel = getOutlineLevel(target) + 1; });
         insertAt += 1;
+      } else {
+        // Kein (Gruppen-)Ziel: Level vom künftigen Vorgänger übernehmen, statt das alte (ggf. verschachtelte) Level zu behalten
+        const vorgaenger = remaining[insertAt - 1];
+        const neuesLevel = target ? getOutlineLevel(target) : (vorgaenger ? getOutlineLevel(vorgaenger) : 1);
+        moving.forEach(m => { m.outlineLevel = neuesLevel; });
       }
       remaining.splice(insertAt, 0, ...moving);
       updateSim({ ...aktiveSim, tasks: remaining });
@@ -214,7 +219,9 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
         moved.outlineLevel = getOutlineLevel(target) + 1;
         tasks.splice(insertAt + 1, 0, moved);
       } else {
-        if (target) moved.outlineLevel = getOutlineLevel(target);
+        // Kein (Gruppen-)Ziel: Level vom künftigen Vorgänger übernehmen, statt das alte (ggf. verschachtelte) Level zu behalten
+        const vorgaenger = tasks[insertAt - 1];
+        moved.outlineLevel = target ? getOutlineLevel(target) : (vorgaenger ? getOutlineLevel(vorgaenger) : 1);
         tasks.splice(insertAt, 0, moved);
       }
       updateSim({ ...aktiveSim, tasks });
@@ -222,7 +229,14 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
   }
 
   function taskLoeschen(taskId: string) {
-    updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.filter(t => t.id !== taskId) });
+    const idx = aktiveSim.tasks.findIndex(t => t.id === taskId);
+    let tasks = aktiveSim.tasks.filter(t => t.id !== taskId);
+    if (idx >= 0 && istGruppe(aktiveSim.tasks, idx)) {
+      // Kinder der gelöschten Gruppe eine Ebene zurückstufen, statt sie verwaist stehen zu lassen
+      const kinderIds = new Set(getKinder(aktiveSim.tasks, idx).map(ci => aktiveSim.tasks[ci].id));
+      tasks = tasks.map(t => kinderIds.has(t.id) ? { ...t, outlineLevel: Math.max(1, getOutlineLevel(t) - 1) } : t);
+    }
+    updateSim({ ...aktiveSim, tasks });
     if (aktivTaskId === taskId) onTaskClick(taskId); // deselect
   }
 
