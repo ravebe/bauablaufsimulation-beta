@@ -145,15 +145,19 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
     return () => el.removeEventListener("wheel", handler);
   }, []);
 
-  // Needle centering — nur bei echtem Wechsel von currentTag
+  // Needle centering — nur wenn die Nadel den sichtbaren Bereich verlässt (nicht bei jedem
+  // Frame während des Abspielens neu zentrieren, sonst zittert die Ansicht)
   const lastCentered = useRef(-999);
   useEffect(() => {
     if (scrollLock.current) return;
     if (currentTag < 0) return;
     if (currentTag === lastCentered.current) return;
-    lastCentered.current = currentTag;
     const el = bodyRef.current; if (!el || !minDate || totalTage <= 0) return;
-    el.scrollLeft = Math.max(0, currentTag * pxProTag - el.clientWidth / 2);
+    const nadelX = currentTag * pxProTag;
+    const rand = el.clientWidth * 0.15;
+    if (nadelX >= el.scrollLeft + rand && nadelX <= el.scrollLeft + el.clientWidth - rand) return;
+    lastCentered.current = currentTag;
+    el.scrollLeft = Math.max(0, nadelX - el.clientWidth / 2);
     if (headerRef.current) headerRef.current.scrollLeft = el.scrollLeft;
   }, [currentTag]);
 

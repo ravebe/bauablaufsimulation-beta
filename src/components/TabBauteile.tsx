@@ -1,7 +1,7 @@
 // TabBauteile.tsx — Orchestrator mit Selektions-Tracking + Gantt-Toggle
 import { useState, useEffect, useRef } from "react";
 import type { SimProjekt, Task } from "../types";
-import { parseDateUniversal, istGruppe, getOutlineLevel, kaskadiereNachfolger, verschiebeAufStart, gruppenDaten, datumPlusTage,
+import { parseDateUniversal, istGruppe, getKinder, getOutlineLevel, kaskadiereNachfolger, verschiebeAufStart, gruppenDaten, datumPlusTage,
   taskVerschieben as verschiebeTaskBlock, nsKey } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { getEchteBauteile, clearEchteBauteileCache } from "./modelHelpers";
@@ -89,8 +89,13 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
       // Ctrl/Cmd: einzeln umschalten
       setSelectedIds(prev => prev.includes(taskId) ? prev.filter(id => id !== taskId) : [...prev, taskId]);
     } else {
-      // Normal: nur diesen Task
-      setSelectedIds(prev => prev.length === 1 && prev[0] === taskId ? [] : [taskId]);
+      // Normal: dieser Task — bei einer Gruppe alle enthaltenen Tasks/Untergruppen mit auswählen
+      const istGrp = idx >= 0 && (tasks[idx].isGroup || istGruppe(tasks, idx));
+      const idsZuWaehlen = istGrp ? [taskId, ...getKinder(tasks, idx).map(i => tasks[i].id)] : [taskId];
+      setSelectedIds(prev => {
+        const gleich = prev.length === idsZuWaehlen.length && idsZuWaehlen.every(id => prev.includes(id));
+        return gleich ? [] : idsZuWaehlen;
+      });
     }
     lastClickIdx.current = idx;
     setResetSignal(s => s + 1);
