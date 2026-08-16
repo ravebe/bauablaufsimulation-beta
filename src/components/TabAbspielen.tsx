@@ -537,7 +537,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
                 <span style={dot(task.typ)} />
               </>)}
               <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12 }}>{task.name}</span>
-              <span style={{ flexShrink: 0, fontSize: 11, marginRight: 6 }}>
+              <span style={{ flexShrink: 0, fontSize: 11, marginRight: 6, minWidth: 34, textAlign: "right" }}>
                 <span style={{ fontWeight: 500, color: "#666" }}>{nummern.get(task.id) ?? ""}</span>
                 {task.predecessorId && (
                   <span style={{ color: "#999", fontStyle: "italic" }}> | {nummern.get(task.predecessorId) ?? "?"}</span>

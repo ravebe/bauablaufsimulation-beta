@@ -413,7 +413,7 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
                         onDoubleClick={editable ? (e) => { e.stopPropagation(); setRenameId(t.id); setRenameVal(t.name); } : undefined}
                         style={{ flex: 1, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: editable ? "text" : "default", color: isEditing ? "#E65100" : isSel ? "#2d7dbd" : "#333", fontWeight: isEditing || isSel || isGrp ? 600 : 400 }}>{lbl}</span>
                     )}
-                    <span style={{ flexShrink: 0, fontSize: 10, marginRight: 16 }} onClick={e => e.stopPropagation()}>
+                    <span style={{ flexShrink: 0, fontSize: 10, marginRight: 16, minWidth: 34, textAlign: "right" }} onClick={e => e.stopPropagation()}>
                       <span
                         onClick={editable ? (e) => oeffnePredPicker(t, e) : undefined}
                         style={{ cursor: editable ? "pointer" : "default", fontWeight: 500, color: "#666" }}
