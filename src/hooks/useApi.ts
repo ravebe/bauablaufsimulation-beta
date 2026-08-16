@@ -177,21 +177,32 @@ async function getProjectId(api: ApiInstance): Promise<string | null> {
   } catch { return null; }
 }
 
-export async function cloudSave(api: ApiInstance, data: Record<string, unknown>): Promise<boolean> {
+export type CloudSaveResult =
+  | { ok: true; version: number }
+  | { ok: false; conflict: true; serverData: Record<string, unknown> | null }
+  | { ok: false; conflict: false };
+
+export async function cloudSave(api: ApiInstance, data: Record<string, unknown>, baseVersion: number): Promise<CloudSaveResult> {
   try {
     const projectId = await getProjectId(api);
-    if (!projectId) { console.warn("[CloudSync] Keine Projekt-ID"); return false; }
+    if (!projectId) { console.warn("[CloudSync] Keine Projekt-ID"); return { ok: false, conflict: false }; }
     const res = await fetch(`/api/sync?projectId=${projectId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectId, data }),
+      body: JSON.stringify({ projectId, data, baseVersion }),
     });
+    if (res.status === 409) {
+      const json = await res.json().catch(() => null);
+      console.warn("[CloudSync] Konflikt — jemand anderes hat inzwischen gespeichert");
+      return { ok: false, conflict: true, serverData: json?.data ?? null };
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
     console.log("[CloudSync] ✓ Gespeichert in Cloud (Projekt:", projectId + ")");
-    return true;
+    return { ok: true, version: json.version };
   } catch (e) {
     console.warn("[CloudSync] Speichern fehlgeschlagen:", e);
-    return false;
+    return { ok: false, conflict: false };
   }
 }
 

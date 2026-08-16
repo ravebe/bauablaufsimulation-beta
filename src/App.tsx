@@ -18,6 +18,8 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [userId, setUserId] = useState<string | null>(null);
   const [cloudLoadDone, setCloudLoadDone] = useState(false);
+  const [konflikt, setKonflikt] = useState(false);
+  const cloudVersion = useRef(0);
   const cloudInitDone = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sharedNadelTag = useRef<number>(-1);
@@ -65,10 +67,28 @@ export default function App() {
           if (data.aktivId) setAktivId(data.aktivId as string);
           console.log("[CloudSync] Cloud-Daten geladen:", cloudSims.length, "Simulationen");
         }
+        if (data && typeof data.version === "number") cloudVersion.current = data.version;
       } catch (e) { console.warn("[CloudSync] Cloud-Load Fehler:", e); }
       finally { setCloudLoadDone(true); }
     })();
   }, [api]);
+
+  // Bei Speicher-Konflikt: aktuelle Cloud-Version übernehmen und weiterarbeiten
+  const konfliktAufloesen = useCallback(async () => {
+    if (!api) return;
+    try {
+      const data = await cloudLoad(api);
+      if (data) {
+        if (Array.isArray(data.sims)) {
+          setSims(data.sims as SimProjekt[]);
+          localStorage.setItem(nsKey(SIMS_KEY, projectId), JSON.stringify(data.sims));
+        }
+        if (data.aktivId) setAktivId(data.aktivId as string);
+        if (typeof data.version === "number") cloudVersion.current = data.version;
+      }
+    } catch { /* ignore */ }
+    setKonflikt(false);
+  }, [api, projectId]);
 
   // 3. localStorage + Cloud speichern (debounced)
   const saveToCloud = useCallback(async (simsData: SimProjekt[], aid: string | null) => {
@@ -87,20 +107,31 @@ export default function App() {
           return;
         }
       }
-      const ok = await cloudSave(api, { sims: simsData, aktivId: aid });
-      setSyncStatus(ok ? "saved" : "error");
-      if (ok) setTimeout(() => setSyncStatus("idle"), 2000);
+      const result = await cloudSave(api, { sims: simsData, aktivId: aid }, cloudVersion.current);
+      if (result.ok) {
+        cloudVersion.current = result.version;
+        setSyncStatus("saved");
+        setTimeout(() => setSyncStatus("idle"), 2000);
+      } else if (result.conflict) {
+        // Jemand anderes hat zwischenzeitlich gespeichert — nicht überschreiben,
+        // sondern den Nutzer entscheiden lassen (Banner mit "Neu laden")
+        setKonflikt(true);
+        setSyncStatus("error");
+      } else {
+        setSyncStatus("error");
+      }
     } catch { setSyncStatus("error"); }
   }, [api, projectId]);
 
   useEffect(() => {
     // Erst speichern, wenn der initiale Ladevorgang (Cloud) abgeschlossen ist —
-    // sonst überschreibt der leere Startzustand echte Cloud-Daten (Race Condition)
-    if (!ready || !cloudLoadDone) return;
+    // sonst überschreibt der leere Startzustand echte Cloud-Daten (Race Condition).
+    // Bei einem ungelösten Speicher-Konflikt pausieren, bis der Nutzer neu geladen hat.
+    if (!ready || !cloudLoadDone || konflikt) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => saveToCloud(sims, aktivId), 1500);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
-  }, [sims, aktivId, saveToCloud, ready, cloudLoadDone]);
+  }, [sims, aktivId, saveToCloud, ready, cloudLoadDone, konflikt]);
 
   const aktiveSim = sims.find(s => s.id === aktivId) ?? null;
 
@@ -256,6 +287,17 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {/* Speicher-Konflikt: jemand anderes hat zwischenzeitlich gespeichert */}
+      {konflikt && (
+        <div className="alert err" style={{ justifyContent: "space-between" }}>
+          <span>⚠ Jemand anderes hat inzwischen gespeichert. Deine letzten Änderungen wurden noch nicht übernommen.</span>
+          <button className="tc-btn-primary" style={{ fontSize: 10, padding: "3px 10px", flexShrink: 0, marginLeft: 8 }}
+            onClick={konfliktAufloesen}>
+            ↻ Neu laden
+          </button>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="tc-tabs">

@@ -38,15 +38,27 @@ export default async function handler(req, res) {
     if (req.method === "GET") {
       const raw = await redis(["GET", key]);
       if (!raw) return res.status(200).json({ data: null });
-      const data = typeof raw === "string" ? JSON.parse(raw) : raw;
-      return res.status(200).json({ data });
+      const stored = typeof raw === "string" ? JSON.parse(raw) : raw;
+      return res.status(200).json({ data: stored, version: stored.version ?? 0 });
     }
 
     if (req.method === "POST") {
-      const { data } = req.body;
+      const { data, baseVersion } = req.body;
       if (!data) return res.status(400).json({ error: "data fehlt" });
-      await redis(["SET", key, JSON.stringify(data)]);
-      return res.status(200).json({ ok: true });
+
+      const raw = await redis(["GET", key]);
+      const stored = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : null;
+      const currentVersion = stored?.version ?? 0;
+
+      // Optimistische Sperre: wenn seit dem letzten Laden des Clients bereits
+      // jemand anderes gespeichert hat, Konflikt melden statt stillschweigend zu überschreiben
+      if (typeof baseVersion === "number" && baseVersion !== currentVersion) {
+        return res.status(409).json({ error: "conflict", data: stored, version: currentVersion });
+      }
+
+      const neueVersion = currentVersion + 1;
+      await redis(["SET", key, JSON.stringify({ ...data, version: neueVersion })]);
+      return res.status(200).json({ ok: true, version: neueVersion });
     }
 
     return res.status(405).json({ error: "Method not allowed" });
