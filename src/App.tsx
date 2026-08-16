@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useApi, cloudSave, cloudLoad } from "./hooks/useApi";
+import { useApi, cloudSave, cloudLoad, sendPresence } from "./hooks/useApi";
 import type { SimProjekt, Zugriff } from "./types";
 import { SIMS_KEY, AKTIV_KEY, nsKey } from "./types";
 import TabProjekte from "./components/TabProjekte";
@@ -17,6 +17,8 @@ export default function App() {
   const [aktivId, setAktivId] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [userId, setUserId] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string>("");
+  const [andererBearbeiter, setAndererBearbeiter] = useState<string | null>(null);
   const [cloudLoadDone, setCloudLoadDone] = useState(false);
   const [konflikt, setKonflikt] = useState(false);
   const cloudVersion = useRef(0);
@@ -32,7 +34,12 @@ export default function App() {
     (async () => {
       try {
         const user = await (api as any).user.getUser();
-        if (user?.id) { setUserId(user.id); console.log("[Auth] User:", user.id); }
+        if (user?.id) {
+          setUserId(user.id);
+          const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
+          setUserName(name || user.email || "Kollege");
+          console.log("[Auth] User:", user.id);
+        }
       } catch { /* ignore */ }
     })();
   }, [api]);
@@ -163,6 +170,35 @@ export default function App() {
   const aktZugriff = getZugriff(aktiveSim);
   const readOnly = aktZugriff !== "edit";
 
+  // Anwesenheit: leichter Heartbeat alle 25s, nur wenn die aktive Simulation
+  // mit Bearbeitungsrechten für andere geteilt ist — zeigt den Namen des anderen
+  // Bearbeiters an, falls er/sie gerade ebenfalls in derselben Simulation ist.
+  // Kein zusätzliches Dauer-Polling nebenher, nur dieser eine Heartbeat.
+  const aktiveSimRef = useRef(aktiveSim);
+  useEffect(() => { aktiveSimRef.current = aktiveSim; });
+  useEffect(() => {
+    if (!api || !userId) { setAndererBearbeiter(null); return; }
+    let abgebrochen = false;
+    const heartbeat = async () => {
+      const sim = aktiveSimRef.current;
+      if (!sim) { if (!abgebrochen) setAndererBearbeiter(null); return; }
+      const z = sim.zugriff;
+      const binErsteller = sim.erstellerId === userId;
+      const meinZugriff: Zugriff = binErsteller ? "edit" : (z?.[userId] ?? z?.["__default__"] ?? "read");
+      if (meinZugriff !== "edit") { if (!abgebrochen) setAndererBearbeiter(null); return; }
+      const geteiltMitBearbeitung = z?.["__default__"] === "edit" ||
+        Object.entries(z ?? {}).some(([uid, zz]) => uid !== "__default__" && uid !== userId && zz === "edit");
+      if (!geteiltMitBearbeitung) { if (!abgebrochen) setAndererBearbeiter(null); return; }
+      const presence = await sendPresence(api, sim.id, userId, userName || "Kollege");
+      if (abgebrochen) return;
+      const andere = Object.entries(presence).find(([uid, e]) => uid !== userId && e.simId === sim.id);
+      setAndererBearbeiter(andere ? andere[1].name : null);
+    };
+    heartbeat();
+    const interval = setInterval(heartbeat, 25000);
+    return () => { abgebrochen = true; clearInterval(interval); };
+  }, [api, userId, userName]);
+
   // Nur Sims anzeigen die nicht "none" sind
   const sichtbareSims = sims.filter(s => {
     if (istErsteller(s)) return true;
@@ -218,6 +254,11 @@ export default function App() {
             <div className="tc-header-org-sub" onClick={e => { e.stopPropagation(); setHeaderDropdown(d => !d); setSortDropdown(false); }}>
               {aktiveSim ? aktiveSim.name : "Kein Projekt"} {headerDropdown ? "▲" : "▼"}
             </div>
+            {andererBearbeiter && (
+              <div style={{ fontSize: 10, color: "#e8a023", marginTop: 2 }} title="Bearbeitet diese Simulation gerade ebenfalls">
+                👥 {andererBearbeiter} ist auch hier
+              </div>
+            )}
             {headerDropdown && (
               <div className="tc-header-dropdown" onClick={e => e.stopPropagation()}>
                 <div className={`tc-header-dropdown-item ${headerFilter === "meine" ? "active" : ""}`}

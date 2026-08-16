@@ -206,6 +206,24 @@ export async function cloudSave(api: ApiInstance, data: Record<string, unknown>,
   }
 }
 
+export interface PresenceEntry { name: string; simId: string; ts: number; }
+
+// --- Anwesenheit ("wer bearbeitet gerade mit") — leichter Heartbeat, kein Polling nebenher ---
+export async function sendPresence(api: ApiInstance, simId: string, userId: string, name: string): Promise<Record<string, PresenceEntry>> {
+  try {
+    const projectId = await getProjectId(api);
+    if (!projectId) return {};
+    const res = await fetch(`/api/presence`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId, simId, userId, name }),
+    });
+    if (!res.ok) return {};
+    const json = await res.json();
+    return json.presence || {};
+  } catch { return {}; }
+}
+
 export async function cloudLoad(api: ApiInstance): Promise<Record<string, unknown> | null> {
   try {
     const projectId = await getProjectId(api);
