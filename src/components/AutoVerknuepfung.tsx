@@ -18,6 +18,7 @@ export default function AutoVerknuepfung({ api, sim, onUpdate, done }: Props) {
   const [gewaehlt, setGewaehlt] = useState<Set<string>>(new Set());
   const [laeuft, setLaeuft] = useState(false);
   const [fortschritt, setFortschritt] = useState("");
+  const [fortschrittProzent, setFortschrittProzent] = useState(0);
   const [ergebnis, setErgebnis] = useState<string | null>(null);
 
   // Verfügbare Extra-Spalten aus Tasks sammeln
@@ -45,18 +46,22 @@ export default function AutoVerknuepfung({ api, sim, onUpdate, done }: Props) {
     if (!api || gewaehlt.size === 0) return;
     setBestaetigen(false);
     setLaeuft(true);
+    setFortschrittProzent(0);
     setErgebnis(null);
 
     const spalten = [...gewaehlt];
     const updatedTasks = [...sim.tasks];
     let totalVerknuepft = 0;
     let tasksMitTreffer = 0;
+    const totalModelle = Math.max(1, sim.modelle.length);
 
     try {
       // Für jedes Modell: alle Objekte + Properties laden
-      for (const modell of sim.modelle) {
+      for (let mi = 0; mi < sim.modelle.length; mi++) {
+        const modell = sim.modelle[mi];
         if (!modell.id) continue;
         setFortschritt(`⟳ Modell ${modell.name} laden…`);
+        setFortschrittProzent(Math.round((mi / totalModelle) * 100));
         const alleIds = await getModellObjekte(api, modell.id);
         if (alleIds.length === 0) continue;
 
@@ -78,7 +83,12 @@ export default function AutoVerknuepfung({ api, sim, onUpdate, done }: Props) {
 
         for (let i = 0; i < alleIds.length; i++) {
           const rId = alleIds[i];
-          if (i % 50 === 0) setFortschritt(`⟳ Objekte scannen… ${i}/${alleIds.length}`);
+          if (i % 50 === 0) {
+            setFortschritt(`⟳ Objekte scannen… ${i}/${alleIds.length}`);
+            // Objekte-Scan macht den Großteil der Modell-Arbeit aus (~80%)
+            const modellAnteil = (i / alleIds.length) * 0.8;
+            setFortschrittProzent(Math.round(((mi + modellAnteil) / totalModelle) * 100));
+          }
 
           const props: Record<string, string> = {};
           const obj = propsById.get(rId);
@@ -116,6 +126,9 @@ export default function AutoVerknuepfung({ api, sim, onUpdate, done }: Props) {
           if (!task.extraSpalten) continue;
 
           setFortschritt(`⟳ Task ${ti + 1}/${updatedTasks.length}: „${task.name}"…`);
+          // Matching (restliche ~20% der Modell-Arbeit)
+          const modellAnteil = 0.8 + (ti / updatedTasks.length) * 0.2;
+          setFortschrittProzent(Math.round(((mi + modellAnteil) / totalModelle) * 100));
 
           // Werte für gewählte Spalten
           const kriterien: { spalte: string; wert: string }[] = [];
@@ -161,6 +174,7 @@ export default function AutoVerknuepfung({ api, sim, onUpdate, done }: Props) {
         }
       }
 
+      setFortschrittProzent(100);
       onUpdate(updatedTasks);
       setErgebnis(`✓ ${totalVerknuepft} Bauteile automatisch verknüpft in ${tasksMitTreffer} Tasks`);
     } catch (e) {
@@ -168,25 +182,33 @@ export default function AutoVerknuepfung({ api, sim, onUpdate, done }: Props) {
     } finally {
       setLaeuft(false);
       setFortschritt("");
+      setFortschrittProzent(0);
     }
   }
 
   return (
     <div style={{ marginTop: 6 }}>
       {!offen ? (
-        <button className={done ? "tc-btn-secondary" : "tc-btn-primary"}
-          style={{ width: "100%", fontSize: 11, opacity: done ? 0.7 : 1 }}
-          onClick={() => setOffen(true)}>
-          {laeuft ? (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <span className="spin-icon">⟳</span> {fortschritt}
-            </span>
-          ) : done ? (
-            <>✓ Auto-Verknüpfung ({alleSpalten.length} Spalten)</>
-          ) : (
-            <>🔗 Auto-Verknüpfung ({alleSpalten.length} Spalten verfügbar)</>
+        <div style={{ position: "relative" }}>
+          <button className={done ? "tc-btn-secondary" : "tc-btn-primary"}
+            style={{ width: "100%", fontSize: 11, opacity: done ? 0.7 : 1 }}
+            onClick={() => setOffen(true)}>
+            {laeuft ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <span className="spin-icon">⟳</span> {fortschritt}
+              </span>
+            ) : done ? (
+              <>✓ Auto-Verknüpfung ({alleSpalten.length} Spalten)</>
+            ) : (
+              <>🔗 Auto-Verknüpfung ({alleSpalten.length} Spalten verfügbar)</>
+            )}
+          </button>
+          {laeuft && (
+            <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 3, background: "rgba(255,255,255,.3)", overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${fortschrittProzent}%`, background: "#fff", transition: "width .2s ease" }} />
+            </div>
           )}
-        </button>
+        </div>
       ) : (
         <div style={{ border: "1px solid var(--tc-border)", padding: 8, fontSize: 11 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
@@ -245,8 +267,14 @@ export default function AutoVerknuepfung({ api, sim, onUpdate, done }: Props) {
 
           {/* Fortschritt */}
           {laeuft && (
-            <div className="alert info" style={{ marginBottom: 6 }}>
-              {fortschritt || "⟳ Wird verarbeitet…"}
+            <div style={{ marginBottom: 6 }}>
+              <div className="alert info" style={{ marginBottom: 4 }}>
+                {fortschritt || "⟳ Wird verarbeitet…"}
+              </div>
+              <div style={{ height: 6, background: "#e4e7ea", overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${fortschrittProzent}%`, background: "#2d7dbd", transition: "width .2s ease" }} />
+              </div>
+              <div style={{ fontSize: 9, color: "var(--tc-text-3)", textAlign: "right", marginTop: 2 }}>{fortschrittProzent}%</div>
             </div>
           )}
 
