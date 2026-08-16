@@ -73,10 +73,12 @@ export function useApi(): UseApiReturn {
         apiInst = (await wapi.connect(window.parent, () => {})) as ApiInstance;
         setApi(apiInst);
 
-        try {
-          const proj = await apiInst.project.getProject();
-          if (proj?.id) setProjectId(proj.id);
-        } catch { /* ignore */ }
+        // Projekt-ID laden — darf "ready" niemals blockieren, falls getProject()
+        // in einzelnen Projekten hängt oder sehr lange braucht
+        const projPromise = apiInst.project.getProject()
+          .then(proj => { if (proj?.id) setProjectId(proj.id); return proj; })
+          .catch(() => null);
+        await Promise.race([projPromise, new Promise(r => setTimeout(r, 2500))]);
 
         const ladeModelle = async () => {
           for (let i = 0; i < 8; i++) {
@@ -167,7 +169,10 @@ export function useApi(): UseApiReturn {
 // --- Cloud Sync via Vercel API + Upstash Redis ---
 async function getProjectId(api: ApiInstance): Promise<string | null> {
   try {
-    const proj = await api.project.getProject();
+    const proj = await Promise.race([
+      api.project.getProject(),
+      new Promise<null>(r => setTimeout(() => r(null), 4000)),
+    ]);
     return proj?.id || null;
   } catch { return null; }
 }
