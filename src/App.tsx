@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useApi, cloudSave, cloudLoad } from "./hooks/useApi";
 import type { SimProjekt, Zugriff } from "./types";
-import { SIMS_KEY, AKTIV_KEY } from "./types";
+import { SIMS_KEY, AKTIV_KEY, nsKey } from "./types";
 import TabProjekte from "./components/TabProjekte";
 import TabBauteile from "./components/TabBauteile";
 import TabAbspielen from "./components/TabAbspielen";
@@ -10,7 +10,7 @@ import "./App.css";
 type Tab = "projekte" | "bauteile" | "abspielen";
 
 export default function App() {
-  const { api, ready, selektion, aktivesModellId, geladeneModelle } = useApi();
+  const { api, ready, selektion, aktivesModellId, geladeneModelle, projectId } = useApi();
 
   const [aktTab, setAktTab] = useState<Tab>("projekte");
   const [sims, setSims] = useState<SimProjekt[]>([]);
@@ -34,15 +34,16 @@ export default function App() {
     })();
   }, [api]);
 
-  // 1. localStorage laden (sofort)
+  // 1. localStorage laden (sobald bekannt ist, ob/welches Projekt aktiv ist)
   useEffect(() => {
+    if (!ready) return;
     try {
-      const raw = localStorage.getItem(SIMS_KEY);
+      const raw = localStorage.getItem(nsKey(SIMS_KEY, projectId));
       if (raw) setSims(JSON.parse(raw));
-      const aid = localStorage.getItem(AKTIV_KEY);
+      const aid = localStorage.getItem(nsKey(AKTIV_KEY, projectId));
       if (aid) setAktivId(aid);
     } catch { /* ignore */ }
-  }, []);
+  }, [ready, projectId]);
 
   // 2. Cloud laden (wenn API ready)
   useEffect(() => {
@@ -69,8 +70,8 @@ export default function App() {
 
   // 3. localStorage + Cloud speichern (debounced)
   const saveToCloud = useCallback(async (simsData: SimProjekt[], aid: string | null) => {
-    localStorage.setItem(SIMS_KEY, JSON.stringify(simsData));
-    if (aid) localStorage.setItem(AKTIV_KEY, aid);
+    localStorage.setItem(nsKey(SIMS_KEY, projectId), JSON.stringify(simsData));
+    if (aid) localStorage.setItem(nsKey(AKTIV_KEY, projectId), aid);
     if (!api) return;
     setSyncStatus("saving");
     try {
@@ -78,7 +79,7 @@ export default function App() {
       setSyncStatus(ok ? "saved" : "error");
       if (ok) setTimeout(() => setSyncStatus("idle"), 2000);
     } catch { setSyncStatus("error"); }
-  }, [api]);
+  }, [api, projectId]);
 
   useEffect(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -291,6 +292,7 @@ export default function App() {
         <div style={{ display: aktTab === "bauteile" ? "block" : "none" }}>
           <TabBauteile
             api={api}
+            projectId={projectId}
             aktiveSim={aktiveSim}
             updateSim={updateSim}
             selektion={selektion}
@@ -304,6 +306,7 @@ export default function App() {
         <div style={{ display: aktTab === "abspielen" ? "block" : "none" }}>
           <TabAbspielen
             api={api}
+            projectId={projectId}
             aktiveSim={aktiveSim}
             aktivesModellId={aktivesModellId}
             taskSort={taskSort}

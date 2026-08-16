@@ -42,6 +42,7 @@ interface UseApiReturn {
   selektion: number[];
   aktivesModellId: string | null;
   geladeneModelle: { id: string; name: string }[];
+  projectId: string | null;
 }
 
 export function useApi(): UseApiReturn {
@@ -51,6 +52,7 @@ export function useApi(): UseApiReturn {
   const [selektion, setSelektion] = useState<number[]>([]);
   const [aktivesModellId, setAktivesModellId] = useState<string | null>(null);
   const [geladeneModelle, setGeladeneModelle] = useState<{ id: string; name: string }[]>([]);
+  const [projectId, setProjectId] = useState<string | null>(null);
   const selCbRef = useRef<((e: TcSelectionEvent) => void) | null>(null);
 
   useEffect(() => {
@@ -70,6 +72,11 @@ export function useApi(): UseApiReturn {
 
         apiInst = (await wapi.connect(window.parent, () => {})) as ApiInstance;
         setApi(apiInst);
+
+        try {
+          const proj = await apiInst.project.getProject();
+          if (proj?.id) setProjectId(proj.id);
+        } catch { /* ignore */ }
 
         const ladeModelle = async () => {
           for (let i = 0; i < 8; i++) {
@@ -154,7 +161,7 @@ export function useApi(): UseApiReturn {
     };
   }, []);
 
-  return { api, ready, fehler, selektion, aktivesModellId, geladeneModelle };
+  return { api, ready, fehler, selektion, aktivesModellId, geladeneModelle, projectId };
 }
 
 // --- Cloud Sync via Vercel API + Upstash Redis ---

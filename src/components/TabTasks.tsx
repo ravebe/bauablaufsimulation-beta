@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import type { SimProjekt, Task, TaskTyp } from "../types";
 import { formatDatum, normalizeDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, getKinder,
   berechneNummern, gueltigeVorgaenger, verschiebeAufStart, kaskadiereNachfolger, datumPlusTage,
-  taskVerschieben as verschiebeTaskBlock, sucheSortiereTasks } from "../types";
+  taskVerschieben as verschiebeTaskBlock, sucheSortiereTasks, nsKey } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { batchGetProperties, batchConvertToObjectIds } from "../hooks/useApi";
 import DatePicker from "./DatePicker";
@@ -15,6 +15,7 @@ interface ObjWerte { [key: string]: string; } // "PSet||PropName" → value
 
 interface Props {
   api: ApiInstance | null;
+  projectId?: string | null;
   aktiveSim: SimProjekt;
   aktivTask: Task | null;
   aktivTaskId: string | null;
@@ -31,18 +32,18 @@ interface Props {
 
 const STORAGE_PREFIX = "4d-guid-display-";
 
-function ladeDisplayConfig(simId: string): { zeile1: string; zeile2: string } {
+function ladeDisplayConfig(simId: string, projectId: string | null): { zeile1: string; zeile2: string } {
   try {
-    const raw = localStorage.getItem(STORAGE_PREFIX + simId);
+    const raw = localStorage.getItem(nsKey(STORAGE_PREFIX + simId, projectId));
     if (raw) return JSON.parse(raw);
   } catch {}
   return { zeile1: "Layer||Layer", zeile2: "Reference Object||Common Type" };
 }
 
-export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selectedIds = [], totalObjekte, updateSim, onTaskClick, selGuids, taskSort = "gantt", readOnly = false, detailOnly = false, suchQuery = "" }: Props) {
+export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, aktivTaskId, selectedIds = [], totalObjekte, updateSim, onTaskClick, selGuids, taskSort = "gantt", readOnly = false, detailOnly = false, suchQuery = "" }: Props) {
   const [guidWerte, setGuidWerte] = useState<Map<string, ObjWerte>>(new Map());
   const [verfuegbareAttrs, setVerfuegbareAttrs] = useState<string[]>([]);
-  const [displayConfig, setDisplayConfig] = useState(() => ladeDisplayConfig(aktiveSim.id));
+  const [displayConfig, setDisplayConfig] = useState(() => ladeDisplayConfig(aktiveSim.id, projectId));
   const [settingsOffen, setSettingsOffen] = useState(false);
   const [loeschenBestaetigen, setLoeschenBestaetigen] = useState(false);
   const [typOffen, setTypOffen] = useState(true);
@@ -83,8 +84,9 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
     return () => { window.removeEventListener("dragend", reset); window.removeEventListener("mouseup", reset); };
   }, [dragIdx]);
   // Task hinzufügen
+  const lsBauteilListHKey = nsKey("4d-list-height-bauteile", projectId);
   const [bauteilListHeight, setBauteilListHeight] = useState(() => {
-    try { return Number(localStorage.getItem("4d-list-height-bauteile")) || 350; } catch { return 350; }
+    try { return Number(localStorage.getItem(lsBauteilListHKey)) || 350; } catch { return 350; }
   });
   const resizingRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -96,12 +98,12 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
     if (el) el.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [aktivTaskId]);
 
-  useEffect(() => { localStorage.setItem("4d-list-height-bauteile", String(bauteilListHeight)); }, [bauteilListHeight]);
+  useEffect(() => { localStorage.setItem(lsBauteilListHKey, String(bauteilListHeight)); }, [lsBauteilListHKey, bauteilListHeight]);
 
   // Display-Config neu laden wenn Sim wechselt
   useEffect(() => {
-    setDisplayConfig(ladeDisplayConfig(aktiveSim.id));
-  }, [aktiveSim.id]);
+    setDisplayConfig(ladeDisplayConfig(aktiveSim.id, projectId));
+  }, [aktiveSim.id, projectId]);
 
   // Alle Properties für Task-Objekte laden
   useEffect(() => {
@@ -196,7 +198,7 @@ export default function TabTasks({ api, aktiveSim, aktivTask, aktivTaskId, selec
 
   function saveDisplayConfig(cfg: { zeile1: string; zeile2: string }) {
     setDisplayConfig(cfg);
-    localStorage.setItem(STORAGE_PREFIX + aktiveSim.id, JSON.stringify(cfg));
+    localStorage.setItem(nsKey(STORAGE_PREFIX + aktiveSim.id, projectId), JSON.stringify(cfg));
   }
 
   function typAendern(taskId: string, typ: TaskTyp) {

@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import type { SimProjekt, Task } from "../types";
 import { parseDateUniversal, istGruppe, getOutlineLevel, kaskadiereNachfolger, verschiebeAufStart, gruppenDaten, datumPlusTage,
-  taskVerschieben as verschiebeTaskBlock } from "../types";
+  taskVerschieben as verschiebeTaskBlock, nsKey } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { getEchteBauteile, clearEchteBauteileCache } from "./modelHelpers";
 import TabTasks from "./TabTasks";
@@ -11,6 +11,7 @@ import GanttChart from "./GanttChart";
 
 interface Props {
   api: ApiInstance | null;
+  projectId?: string | null;
   aktiveSim: SimProjekt | null;
   updateSim: (sim: SimProjekt) => void;
   selektion: number[];
@@ -21,7 +22,7 @@ interface Props {
   sichtbar?: boolean;
 }
 
-export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId, taskSort, readOnly, sharedNadelTag, sichtbar }: Props) {
+export default function TabBauteile({ api, projectId = null, aktiveSim, updateSim, aktivesModellId, taskSort, readOnly, sharedNadelTag, sichtbar }: Props) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [totalObjekte, setTotalObjekte] = useState<number | null>(null);
   const [resetSignal, setResetSignal] = useState(0);
@@ -36,8 +37,9 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
   const [neuInputOffen, setNeuInputOffen] = useState(false);
   const [neuTaskInput, setNeuTaskInput] = useState("");
   const [neuTyp, setNeuTyp] = useState<"task" | "gruppe">("task");
+  const lsGanttHKey = nsKey("4d-gantt-height-bauteile", projectId);
   const [ganttH, setGanttH] = useState(() => {
-    try { return Number(localStorage.getItem("4d-gantt-height-bauteile")) || 260; } catch { return 260; }
+    try { return Number(localStorage.getItem(lsGanttHKey)) || 260; } catch { return 260; }
   });
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastClickIdx = useRef<number>(-1);
@@ -263,6 +265,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
       {ganttOffen ? (
         <>
           <GanttChart
+            projectId={projectId}
             tasks={tasks}
             currentTag={ghostTag >= 0 ? ghostTag : nadelTag}
             totalTage={totalTage}
@@ -290,7 +293,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
             const onMove = (ev: MouseEvent) => {
               const newH = Math.max(120, Math.min(600, sh + ev.clientY - sy));
               setGanttH(newH);
-              localStorage.setItem("4d-gantt-height-bauteile", String(newH));
+              localStorage.setItem(lsGanttHKey, String(newH));
             };
             const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
             document.addEventListener("mousemove", onMove);
@@ -300,6 +303,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
           </div>
           <TabTasks
             api={api}
+            projectId={projectId}
             aktiveSim={aktiveSim}
             aktivTask={combinedTask}
             aktivTaskId={aktivTaskId}
@@ -316,6 +320,7 @@ export default function TabBauteile({ api, aktiveSim, updateSim, aktivesModellId
       ) : (
         <TabTasks
           api={api}
+          projectId={projectId}
           aktiveSim={aktiveSim}
           aktivTask={combinedTask}
           aktivTaskId={aktivTaskId}

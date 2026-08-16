@@ -172,6 +172,12 @@ export function parseIfcLayerMap(ifcContent: string): Record<string, string> {
 export const SIMS_KEY = "4d-sims-v3";
 export const AKTIV_KEY = "4d-aktiv-v3";
 
+// Projekt-spezifischer localStorage-Key, damit Daten aus verschiedenen
+// Trimble-Connect-Projekten sich nicht überschneiden
+export function nsKey(base: string, projectId: string | null): string {
+  return projectId ? `${base}::${projectId}` : base;
+}
+
 // Bekannte GUID→Layer-Mappings pro IFC-Dateiname
 // Wird in TabProjekte beim Speichern von Modellen automatisch zugeordnet
 export const BEKANNTE_GUID_LAYER_MAPS: Record<string, Record<string, string>> = {

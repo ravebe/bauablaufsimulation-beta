@@ -1,10 +1,10 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import type { SimProjekt, Task } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
-import { formatDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern } from "../types";
+import { formatDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, nsKey } from "../types";
 import GanttChart from "./GanttChart";
 
-interface Props { api: ApiInstance | null; aktiveSim: SimProjekt | null; aktivesModellId: string | null; taskSort?: "gantt" | "datum" | "aktiv" | "name" | "nummer"; sharedNadelTag?: React.MutableRefObject<number>; }
+interface Props { api: ApiInstance | null; projectId?: string | null; aktiveSim: SimProjekt | null; aktivesModellId: string | null; taskSort?: "gantt" | "datum" | "aktiv" | "name" | "nummer"; sharedNadelTag?: React.MutableRefObject<number>; }
 
 const FARBEN = { neubau: "#6cc07a", bestand: "#999999", abbruch: "#edb94c", temporaer: "#a0522d" };
 
@@ -19,7 +19,7 @@ function datumBeiTag(min: Date, tag: number): string {
   return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
-export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort = "gantt", sharedNadelTag }: Props) {
+export default function TabAbspielen({ api, projectId = null, aktiveSim, aktivesModellId, taskSort = "gantt", sharedNadelTag }: Props) {
   const [sekProTag, setSekProTag] = useState(0.5);
   const [laeuft, setLaeuft] = useState(false);
   const [currentTag, setCurrentTag] = useState(0);
@@ -33,12 +33,13 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
   const [suchOffen, setSuchOffen] = useState(false);
   const [suchQuery, setSuchQuery] = useState("");
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const lsTaskListHKey = nsKey("4d-list-height-abspielen", projectId);
   const [taskListHeight, setTaskListHeight] = useState(() => {
-    try { return Number(localStorage.getItem("4d-list-height-abspielen")) || 350; } catch { return 350; }
+    try { return Number(localStorage.getItem(lsTaskListHKey)) || 350; } catch { return 350; }
   });
   const resizingRef = useRef(false);
 
-  useEffect(() => { localStorage.setItem("4d-list-height-abspielen", String(taskListHeight)); }, [taskListHeight]);
+  useEffect(() => { localStorage.setItem(lsTaskListHKey, String(taskListHeight)); }, [lsTaskListHKey, taskListHeight]);
   // Tracking: welche Tasks bereits gestartet/beendet wurden
   const gestartet = useRef(new Set<string>());
   const beendet = useRef(new Set<string>());
@@ -448,6 +449,7 @@ export default function TabAbspielen({ api, aktiveSim, aktivesModellId, taskSort
 
       {ganttOffen ? (
           <GanttChart
+            projectId={projectId}
             tasks={tasks}
             currentTag={currentTag}
             totalTage={totalTage}

@@ -1,10 +1,11 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import type { Task } from "../types";
-import { parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks } from "../types";
+import { parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks, nsKey } from "../types";
 import DatePicker from "./DatePicker";
 
 interface Props {
+  projectId?: string | null;
   tasks: Task[];
   currentTag: number;
   totalTage: number;
@@ -53,12 +54,14 @@ function getKW(d: Date): number {
   return Math.ceil(((t.getTime() - y.getTime()) / 86400000 + 1) / 7);
 }
 
-export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selectedIds = [], selGuids, taskSort, height, editable, onDateChange, onTaskReorder, onTaskRename, onSetPredecessor, showObjektCount, suchQuery = "", nadelStil = "normal", dateColor = "#2d7dbd" }: Props) {
+export default function GanttChart({ projectId = null, tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selectedIds = [], selGuids, taskSort, height, editable, onDateChange, onTaskReorder, onTaskRename, onSetPredecessor, showObjektCount, suchQuery = "", nadelStil = "normal", dateColor = "#2d7dbd" }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
-  const [pxProTag, setPxProTag] = useState(() => { try { return Number(localStorage.getItem(LS_ZOOM)) || 6; } catch { return 6; } });
-  const [labelW, setLabelW] = useState(() => { try { return Number(localStorage.getItem(LS_LABEL_W)) || 140; } catch { return 140; } });
+  const lsZoomKey = nsKey(LS_ZOOM, projectId);
+  const lsLabelWKey = nsKey(LS_LABEL_W, projectId);
+  const [pxProTag, setPxProTag] = useState(() => { try { return Number(localStorage.getItem(lsZoomKey)) || 6; } catch { return 6; } });
+  const [labelW, setLabelW] = useState(() => { try { return Number(localStorage.getItem(lsLabelWKey)) || 140; } catch { return 140; } });
   const needleDrag = useRef(false);
   const scrollLock = useRef(false);
   const pxRef = useRef(pxProTag);
@@ -97,8 +100,8 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
     setLagInput(String(t.lagDays ?? 0));
   }
 
-  useEffect(() => { localStorage.setItem(LS_LABEL_W, String(labelW)); }, [labelW]);
-  useEffect(() => { localStorage.setItem(LS_ZOOM, String(pxProTag)); }, [pxProTag]);
+  useEffect(() => { localStorage.setItem(lsLabelWKey, String(labelW)); }, [lsLabelWKey, labelW]);
+  useEffect(() => { localStorage.setItem(lsZoomKey, String(pxProTag)); }, [lsZoomKey, pxProTag]);
 
   // Drag safety: reset wenn abgebrochen
   useEffect(() => {
@@ -112,7 +115,7 @@ export default function GanttChart({ tasks, currentTag, totalTage, minDate, onTa
   // Initial zoom nur wenn kein gespeicherter Wert
   useEffect(() => {
     if (initDone.current) return; initDone.current = true;
-    const saved = Number(localStorage.getItem(LS_ZOOM));
+    const saved = Number(localStorage.getItem(lsZoomKey));
     if (saved > 0) { setPxProTag(saved); return; }
     if (!bodyRef.current || totalTage <= 0) return;
     setPxProTag(Math.max(MIN_PX, Math.min(10, bodyRef.current.clientWidth / totalTage)));
