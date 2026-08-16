@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import type { SimProjekt, Task } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
-import { formatDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, nsKey } from "../types";
+import { formatDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, nsKey, sucheSortiereTasks } from "../types";
 import GanttChart from "./GanttChart";
 
 interface Props { api: ApiInstance | null; projectId?: string | null; aktiveSim: SimProjekt | null; aktivesModellId: string | null; taskSort?: "gantt" | "datum" | "aktiv" | "name" | "nummer"; sharedNadelTag?: React.MutableRefObject<number>; }
@@ -469,14 +469,9 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
         {tasks.length === 0 ? (
           <div style={{ padding: 10, fontSize: 11, color: "var(--tc-text-3)", textAlign: "center" }}>Keine Tasks mit Bauteilen</div>
         ) : (() => {
-          const sorted = [...tasks].map((t, i) => ({ task: t, origIdx: i, allIdx: allTasks.indexOf(t) }));
+          let sorted = [...tasks].map((t, i) => ({ task: t, origIdx: i, allIdx: allTasks.indexOf(t) }));
           if (suchQuery.trim()) {
-            const woerter = suchQuery.toLowerCase().split(/\s+/).filter(w => w.length > 0);
-            sorted.sort((a, b) => {
-              const textA = [a.task.name, ...Object.values(a.task.extraSpalten || {})].join(" ").toLowerCase();
-              const textB = [b.task.name, ...Object.values(b.task.extraSpalten || {})].join(" ").toLowerCase();
-              return woerter.filter(w => textB.includes(w)).length - woerter.filter(w => textA.includes(w)).length;
-            });
+            sorted = sucheSortiereTasks(sorted, e => e.task, suchQuery);
           } else if (taskSort === "datum") {
             sorted.sort((a, b) => {
               const sa = parseDateUniversal(a.task.start)?.getTime() ?? 0;
