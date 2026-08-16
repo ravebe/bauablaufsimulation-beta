@@ -468,7 +468,7 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
                         document.body
                       )}
                     </span>
-                    <span style={{ flexShrink: 0, fontSize: 11, color: "#8a9baa" }}>{
+                    <span style={{ flexShrink: 0, fontSize: 11, color: "#8a9baa", minWidth: 33, textAlign: "right" }}>{
                       isGrp && showObjektCount
                         ? (() => { const ids: string[] = []; for (let ci = origIdx + 1; ci < tasks.length; ci++) { if (getOutlineLevel(tasks[ci]) <= getOutlineLevel(t)) break; ids.push(...tasks[ci].objektGuids); } const cnt = new Set(ids).size; return cnt > 0 ? `O ${cnt}` : ""; })()
                         : isGrp && gDaten ? `${gDaten.tage}d`
