@@ -17,6 +17,7 @@ export default function App() {
   const [aktivId, setAktivId] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [userId, setUserId] = useState<string | null>(null);
+  const [cloudLoadDone, setCloudLoadDone] = useState(false);
   const cloudInitDone = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sharedNadelTag = useRef<number>(-1);
@@ -65,6 +66,7 @@ export default function App() {
           console.log("[CloudSync] Cloud-Daten geladen:", cloudSims.length, "Simulationen");
         }
       } catch (e) { console.warn("[CloudSync] Cloud-Load Fehler:", e); }
+      finally { setCloudLoadDone(true); }
     })();
   }, [api]);
 
@@ -82,10 +84,13 @@ export default function App() {
   }, [api, projectId]);
 
   useEffect(() => {
+    // Erst speichern, wenn der initiale Ladevorgang (Cloud) abgeschlossen ist —
+    // sonst überschreibt der leere Startzustand echte Cloud-Daten (Race Condition)
+    if (!ready || !cloudLoadDone) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => saveToCloud(sims, aktivId), 1500);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
-  }, [sims, aktivId, saveToCloud]);
+  }, [sims, aktivId, saveToCloud, ready, cloudLoadDone]);
 
   const aktiveSim = sims.find(s => s.id === aktivId) ?? null;
 
