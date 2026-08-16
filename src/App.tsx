@@ -77,6 +77,16 @@ export default function App() {
     if (!api) return;
     setSyncStatus("saving");
     try {
+      // Sicherheitsnetz: ein leerer Zustand darf bestehende Cloud-Daten nie stillschweigend
+      // überschreiben (Schutz gegen Timing-Bugs, fehlgeschlagenes Laden etc.)
+      if (simsData.length === 0) {
+        const bestehend = await cloudLoad(api);
+        if (bestehend && Array.isArray(bestehend.sims) && bestehend.sims.length > 0) {
+          console.warn("[CloudSync] Speichern übersprungen — Cloud hat noch Daten, lokal aber leer");
+          setSyncStatus("idle");
+          return;
+        }
+      }
       const ok = await cloudSave(api, { sims: simsData, aktivId: aid });
       setSyncStatus(ok ? "saved" : "error");
       if (ok) setTimeout(() => setSyncStatus("idle"), 2000);
