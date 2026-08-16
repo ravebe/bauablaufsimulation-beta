@@ -138,6 +138,13 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
     try { return new Date(iso).toLocaleDateString("de-DE"); } catch { return iso; }
   };
 
+  // Aktive Simulation zuoberst, Reihenfolge der übrigen bleibt erhalten
+  const angezeigteSims = [...sims].sort((a, b) => {
+    if (a.id === aktivId) return -1;
+    if (b.id === aktivId) return 1;
+    return 0;
+  });
+
   return (
     <div className="tc-setup-content" onClick={() => setMenuOffen(null)}>
 
@@ -178,7 +185,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
       )}
 
       {/* Sim Liste */}
-      {sims.map(sim => {
+      {angezeigteSims.map(sim => {
         const offen = aufgeklappt === sim.id;
         const istAktiv = aktivId === sim.id;
 
