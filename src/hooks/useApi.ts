@@ -80,6 +80,13 @@ export function useApi(): UseApiReturn {
           .catch(() => null);
         await Promise.race([projPromise, new Promise(r => setTimeout(r, 2500))]);
 
+        // Ab hier gilt die App als einsatzbereit — alles Folgende ist Zusatzfunktionalität
+        // (Modell-/Selektions-Sync) und darf "ready" nicht mehr blockieren, falls sie fehlschlägt.
+        // Vorher hing "ready" (und damit das Speichern!) am ungeschützten addListener weiter
+        // unten — schlug der fehl, blieb ready für die ganze Sitzung lautlos false.
+        setReady(true);
+        setFehler(null);
+
         const ladeModelle = async () => {
           for (let i = 0; i < 8; i++) {
             try {
@@ -119,35 +126,35 @@ export function useApi(): UseApiReturn {
               setAktivesModellId(data.id || data.modelId);
             }
           });
-        } catch { /* ignore */ }
+        } catch (e) { console.error("[useApi] onModelStateChanged-Listener fehlgeschlagen:", e); }
 
-        const cb = (event: TcSelectionEvent) => {
-          const ids: number[] = [];
-          const data = (event as any)?.data;
-          if (Array.isArray(data)) {
-            for (const item of data) {
-              if (!item) continue;
-              if (item.modelId) setAktivesModellId(item.modelId);
-              const rIds = item.objectRuntimeIds ?? item.runtimeIds ?? item.ids ?? item.objectIds;
-              if (Array.isArray(rIds)) {
-                ids.push(...rIds.map(Number).filter((n: number) => !isNaN(n)));
-              } else if (Array.isArray(item.objects)) {
-                for (const o of item.objects) {
-                  const n = Number(o?.id ?? o);
-                  if (!isNaN(n)) ids.push(n);
+        try {
+          const cb = (event: TcSelectionEvent) => {
+            const ids: number[] = [];
+            const data = (event as any)?.data;
+            if (Array.isArray(data)) {
+              for (const item of data) {
+                if (!item) continue;
+                if (item.modelId) setAktivesModellId(item.modelId);
+                const rIds = item.objectRuntimeIds ?? item.runtimeIds ?? item.ids ?? item.objectIds;
+                if (Array.isArray(rIds)) {
+                  ids.push(...rIds.map(Number).filter((n: number) => !isNaN(n)));
+                } else if (Array.isArray(item.objects)) {
+                  for (const o of item.objects) {
+                    const n = Number(o?.id ?? o);
+                    if (!isNaN(n)) ids.push(n);
+                  }
                 }
               }
             }
-          }
-          setSelektion(ids);
-        };
-        selCbRef.current = cb;
-        apiInst.viewer.onSelectionChanged.addListener(cb);
-
-        setReady(true);
-        setFehler(null);
+            setSelektion(ids);
+          };
+          selCbRef.current = cb;
+          apiInst.viewer.onSelectionChanged.addListener(cb);
+        } catch (e) { console.error("[useApi] onSelectionChanged-Listener fehlgeschlagen:", e); }
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
+        console.error("[useApi] Init Fehler:", e);
         setFehler(`API Init Fehler: ${msg}`);
       }
     }
