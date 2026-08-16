@@ -136,9 +136,24 @@ export default function App() {
     // Bei einem ungelösten Speicher-Konflikt pausieren, bis der Nutzer neu geladen hat.
     if (!ready || !cloudLoadDone || konflikt) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => saveToCloud(sims, aktivId), 1500);
+    saveTimer.current = setTimeout(() => saveToCloud(sims, aktivId), 400);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
   }, [sims, aktivId, saveToCloud, ready, cloudLoadDone, konflikt]);
+
+  // Sicherheitsnetz: beim Tab-Wechsel/Schließen sofort speichern statt auf die
+  // (kurze) Verzögerung zu warten — verhindert Datenverlust bei schnellem Reload
+  useEffect(() => {
+    const sofortSpeichern = () => {
+      if (document.visibilityState === "visible") return; // nur beim Verlassen/Verstecken, nicht beim Zurückkommen
+      if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; saveToCloud(sims, aktivId); }
+    };
+    document.addEventListener("visibilitychange", sofortSpeichern);
+    window.addEventListener("pagehide", sofortSpeichern);
+    return () => {
+      document.removeEventListener("visibilitychange", sofortSpeichern);
+      window.removeEventListener("pagehide", sofortSpeichern);
+    };
+  }, [sims, aktivId, saveToCloud]);
 
   const aktiveSim = sims.find(s => s.id === aktivId) ?? null;
 
