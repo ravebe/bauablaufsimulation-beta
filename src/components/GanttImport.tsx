@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import type { Task, TaskTyp } from "../types";
 import { isValidDatum, normalizeDatum } from "../types";
+import { istMsProjectXml, parseMsProjectXml } from "./msProjectXml";
 
 interface Props {
   onImport: (tasks: Task[]) => void;
@@ -149,6 +150,7 @@ export default function GanttImport({ onImport, taskCount }: Props) {
   }
 
   function parseXml(text: string): Task[] {
+    if (istMsProjectXml(text)) return parseMsProjectXml(text);
     const parser = new DOMParser();
     const doc = parser.parseFromString(text, "text/xml");
     const tasks: Task[] = [];
@@ -191,8 +193,11 @@ export default function GanttImport({ onImport, taskCount }: Props) {
       } else if (ext === "xml" || ext === "msp") {
         const text = await file.text();
         tasks = parseXml(text);
+      } else if (ext === "mpp") {
+        setMsg(".mpp wird nicht unterstützt — bitte in MS Project über Datei → Speichern unter → XML-Format exportieren und diese Datei importieren.");
+        return;
       } else {
-        setMsg("Unterstützte Formate: .xlsx, .xls, .csv, .xml, .msp");
+        setMsg("Unterstützte Formate: .xlsx, .xls, .csv, .xml (auch MS-Project-XML)");
         return;
       }
 
@@ -226,11 +231,11 @@ export default function GanttImport({ onImport, taskCount }: Props) {
         onClick={() => inputRef.current?.click()}
       >
         <span className="gantt-upload-icon">📂</span>
-        <span className="gantt-upload-text">xlsx oder xml importieren</span>
+        <span className="gantt-upload-text">xlsx, xml oder MS-Project-XML importieren</span>
         <input
           ref={inputRef}
           type="file"
-          accept=".xlsx,.xls,.csv,.tsv,.xml,.msp"
+          accept=".xlsx,.xls,.csv,.tsv,.xml,.msp,.mpp"
           style={{ display: "none" }}
           onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])}
         />

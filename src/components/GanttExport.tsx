@@ -2,6 +2,7 @@ import { useState } from "react";
 import * as XLSX from "xlsx";
 import type { Task } from "../types";
 import { formatDatum } from "../types";
+import { generateMsProjectXml } from "./msProjectXml";
 
 interface Props {
   tasks: Task[];
@@ -49,6 +50,12 @@ export default function GanttExport({ tasks, simName }: Props) {
     setOffen(false);
   }
 
+  function exportMsProject() {
+    const xml = generateMsProjectXml(tasks, simName);
+    download(xml, `${simName}_MSProject.xml`, "application/xml");
+    setOffen(false);
+  }
+
   function exportJson() {
     const data = tasks.map(t => ({
       name: t.name, start: formatDatum(t.start), end: formatDatum(t.end),
@@ -91,7 +98,11 @@ export default function GanttExport({ tasks, simName }: Props) {
           <div style={{ padding: "6px 10px", cursor: "pointer", borderBottom: "1px solid #eef1f4" }}
             onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")}
             onMouseLeave={e => (e.currentTarget.style.background = "")}
-            onClick={exportXml}>📋 XML (.xml)</div>
+            onClick={exportXml}>📋 Einfaches XML (.xml)</div>
+          <div style={{ padding: "6px 10px", cursor: "pointer", borderBottom: "1px solid #eef1f4" }}
+            onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")}
+            onMouseLeave={e => (e.currentTarget.style.background = "")}
+            onClick={exportMsProject}>🗓️ MS Project (.xml)</div>
           <div style={{ padding: "6px 10px", cursor: "pointer" }}
             onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")}
             onMouseLeave={e => (e.currentTarget.style.background = "")}
