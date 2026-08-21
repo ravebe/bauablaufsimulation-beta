@@ -7,16 +7,19 @@ import type { Gewerk, Rate, Stammdaten } from "./stammdatenHelpers";
 import { LEERE_STAMMDATEN, standardStammdaten, innenausbauGewerke, hlksseGewerke, tiefbauGewerke, alleKuerzel } from "./stammdatenHelpers";
 import { StatTile } from "./cockpitCharts";
 import type { ApiInstance } from "../hooks/useApi";
-import { ladeAttributListe } from "./modelHelpers";
+import { ladeAttributListe, ladeObjektAttribute, attrItemsAusWerten, type AttrItem } from "./modelHelpers";
 import { parseFormel, FormelFehler } from "./formelHelpers";
 
-interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; api?: ApiInstance | null; }
+interface Props {
+  sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; api?: ApiInstance | null;
+  selektion?: number[]; aktivesModellId?: string | null;
+}
 
 const NEUE_RATE: Rate = { kuerzel: "", bezeichnung: "", leistungswertHProEinheit: null, anzahlPersonen: 1, chfProEinheit: null };
 
-export default function TabRessourcen({ sim, updateSim, readOnly, api }: Props) {
+export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion = [], aktivesModellId = null }: Props) {
   const [ladeErgebnis, setLadeErgebnis] = useState<string | null>(null);
-  const [attrListe, setAttrListe] = useState<{ pset: string; name: string; key: string }[] | null>(null);
+  const [attrListe, setAttrListe] = useState<AttrItem[] | null>(null);
   const [attrLaedt, setAttrLaedt] = useState(false);
   const [pickerOffenFuer, setPickerOffenFuer] = useState<string | null>(null); // "gewerkIdx-rateIdx"
   const [pickerQuery, setPickerQuery] = useState("");
@@ -78,13 +81,33 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api }: Props) 
     setLadeErgebnis(`${label}: ${zuErgaenzen.length} Gewerke hinzugefügt${uebersprungen > 0 ? `, ${uebersprungen} bereits vorhanden` : ""}.`);
   }
 
+  // Attribut-Quellen in Prioritätsreihenfolge: 1) aktuelle Viewer-Selektion (das, was gerade im
+  // Eigenschaften-Panel steht) — 2) bereits Tasks zugeordnete Bauteile (meist dieselbe Objektart wie
+  // die Formel adressieren soll) — 3) blinde Modell-Stichprobe als letzter Ausweg. Eine blinde
+  // Stichprobe allein trifft oft nur Hierarchie-Knoten (Site/Building/Storey) ohne die gesuchten
+  // Mengen-Attribute, siehe ladeAttributListe().
   async function attrListeLaden() {
-    if (!api || attrListe || attrLaedt) return;
-    const modelId = sim!.modelle[0]?.id;
-    if (!modelId) return;
+    if (!api || !sim || attrListe || attrLaedt) return;
     setAttrLaedt(true);
-    try { setAttrListe(await ladeAttributListe(api, modelId)); }
-    catch { setAttrListe([]); }
+    try {
+      const guids = new Set<string>();
+      if (selektion.length > 0 && aktivesModellId) {
+        for (const rId of selektion.slice(0, 30)) guids.add(`${aktivesModellId}:::${rId}`);
+      }
+      for (const t of sim.tasks) {
+        if (guids.size >= 60) break;
+        for (const g of t.objektGuids) { guids.add(g); if (guids.size >= 60) break; }
+      }
+
+      let ergebnis: AttrItem[] = [];
+      if (guids.size > 0) ergebnis = attrItemsAusWerten((await ladeObjektAttribute(api, [...guids])).values());
+
+      if (ergebnis.length === 0) {
+        const modelId = sim.modelle[0]?.id;
+        if (modelId) ergebnis = await ladeAttributListe(api, modelId);
+      }
+      setAttrListe(ergebnis);
+    } catch { setAttrListe([]); }
     setAttrLaedt(false);
   }
 

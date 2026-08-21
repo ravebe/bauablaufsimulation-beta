@@ -117,41 +117,32 @@ export async function ladeObjektAttribute(api: ApiInstance, guids: string[]): Pr
   return werte;
 }
 
-/** Liste bekannter Attribut-Schlüssel (Pset||Property) aus einer Objekt-Stichprobe — für den
- *  Attribut-Picker beim Formel-Editor in Tab Ressourcen (kein Wert-Sammeln nötig, nur Namen). */
-export async function ladeAttributListe(api: ApiInstance, modelId: string): Promise<{ pset: string; name: string; key: string }[]> {
+export interface AttrItem { pset: string; name: string; key: string; }
+
+/** "Pset||Property" → { pset, name, key } für die Anzeige im Attribut-Picker. */
+export function keyZuAttrItem(key: string): AttrItem {
+  const sep = key.indexOf("||");
+  return sep === -1 ? { pset: "", name: key, key } : { pset: key.slice(0, sep), name: key.slice(sep + 2), key };
+}
+
+/** Attribut-Schlüssel aus den Werten mehrerer Bauteile ableiten (z.B. Ergebnis von ladeObjektAttribute). */
+export function attrItemsAusWerten(werteListe: Iterable<ObjWerte>): AttrItem[] {
+  const attrs = new Map<string, AttrItem>();
+  for (const obj of werteListe) for (const key of Object.keys(obj)) if (!attrs.has(key)) attrs.set(key, keyZuAttrItem(key));
+  return [...attrs.values()].sort((a, b) => a.key.localeCompare(b.key));
+}
+
+/** Liste bekannter Attribut-Schlüssel aus einer BLINDEN Objekt-Stichprobe des Modells — Fallback für
+ *  den Attribut-Picker (Tab Ressourcen), wenn weder eine Viewer-Selektion noch bereits zugeordnete
+ *  Bauteile vorhanden sind. Blind, weil die ersten N Runtime-IDs oft Hierarchie-Knoten (Site/Building/
+ *  Storey) ohne die gesuchten Mengen-Attribute sind — deshalb nur letzter Ausweg. */
+export async function ladeAttributListe(api: ApiInstance, modelId: string): Promise<AttrItem[]> {
   const allIds = await getModellObjekte(api, modelId);
   const probeIds = allIds.slice(0, Math.min(30, allIds.length));
-  const attrs = new Map<string, { pset: string; name: string; key: string }>();
-
-  function sammel(gruppe: any, gruppenName: string) {
-    for (const p of gruppe?.properties ?? gruppe?.items ?? []) {
-      if (!p?.name) continue;
-      const sub = p?.properties ?? p?.items;
-      if (Array.isArray(sub) && sub.length > 0) { sammel(p, p.name); continue; }
-      const key = `${gruppenName}||${p.name}`;
-      if (!attrs.has(key)) attrs.set(key, { pset: gruppenName, name: p.name, key });
-    }
-  }
-
-  try {
-    const props = await batchGetProperties(api, modelId, probeIds);
-    for (const entry of props) {
-      for (const g of entry.properties ?? []) sammel(g, (g as any)?.name || "Eigenschaften");
-      if (entry.product) {
-        if (entry.product.name) attrs.set("Product||Product Name", { pset: "Product", name: "Product Name", key: "Product||Product Name" });
-        if (entry.product.objectType) attrs.set("Reference Object||Common Type", { pset: "Reference Object", name: "Common Type", key: "Reference Object||Common Type" });
-        if (entry.product.description) attrs.set("Product||Description", { pset: "Product", name: "Description", key: "Product||Description" });
-      }
-    }
-  } catch {}
-
-  try {
-    const layers = await api.viewer.getLayers(modelId);
-    if (Array.isArray(layers) && layers.length > 0) attrs.set("Layer||Layer", { pset: "Layer", name: "Layer", key: "Layer||Layer" });
-  } catch {}
-
-  return [...attrs.values()].sort((a, b) => a.key.localeCompare(b.key));
+  if (probeIds.length === 0) return [];
+  const guids = probeIds.map(rId => `${modelId}:::${rId}`);
+  const werte = await ladeObjektAttribute(api, guids);
+  return attrItemsAusWerten(werte.values());
 }
 
 export async function getEchteBauteile(api: ApiInstance, simId: string, mid: string): Promise<number[]> {
