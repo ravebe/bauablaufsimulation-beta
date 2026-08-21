@@ -52,7 +52,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
   // Selection polling
   const [selGuids, setSelGuids] = useState<Set<string>>(new Set());
   const [hoverTaskId, setHoverTaskId] = useState<string | null>(null);
-  const { hinweis, melden } = useDoppelklickHinweis();
+  const { sichtbar: hinweisSichtbar, pos: hinweisPos, hinweisRef, melden } = useDoppelklickHinweis();
   const selRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const modellIds = [...new Set([...(aktiveSim?.modelle.map(m => m.id) ?? []), ...(aktivesModellId ? [aktivesModellId] : [])])].filter(Boolean);
@@ -635,10 +635,11 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
         </div>
       )}
 
-      {hinweis && createPortal(
-        <div style={{ position: "fixed", left: hinweis.x, top: hinweis.y - 8, transform: "translate(-50%, -100%)", zIndex: 2000,
-          background: "#333", color: "#fff", fontSize: 11, padding: "4px 8px", borderRadius: 4, whiteSpace: "nowrap", pointerEvents: "none",
-          boxShadow: "0 2px 6px rgba(0,0,0,.25)" }}>
+      {hinweisSichtbar && createPortal(
+        <div ref={hinweisRef} style={{ position: "fixed", left: hinweisPos?.left ?? -9999, top: hinweisPos?.top ?? -9999,
+          visibility: hinweisPos ? "visible" : "hidden", zIndex: 2000,
+          background: "#333", color: "#fff", fontSize: 11, fontFamily: "var(--tc-font)", padding: "4px 8px", borderRadius: 4,
+          whiteSpace: "nowrap", pointerEvents: "none", boxShadow: "0 2px 6px rgba(0,0,0,.25)" }}>
           Bearbeitung nur unter „Bauteile" möglich
         </div>,
         document.body

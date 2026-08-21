@@ -82,7 +82,7 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
   const [predInput, setPredInput] = useState("");
   const [lagInput, setLagInput] = useState("0");
   const predPopoverRef = useRef<HTMLDivElement>(null);
-  const { hinweis, melden } = useDoppelklickHinweis();
+  const { sichtbar: hinweisSichtbar, pos: hinweisPos, hinweisRef, melden } = useDoppelklickHinweis();
 
   useEffect(() => {
     if (!predPickerTaskId) return;
@@ -610,10 +610,11 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
         </div>
       )}
 
-      {hinweis && createPortal(
-        <div style={{ position: "fixed", left: hinweis.x, top: hinweis.y - 8, transform: "translate(-50%, -100%)", zIndex: 2000,
-          background: "#333", color: "#fff", fontSize: 11, padding: "4px 8px", borderRadius: 4, whiteSpace: "nowrap", pointerEvents: "none",
-          boxShadow: "0 2px 6px rgba(0,0,0,.25)" }}>
+      {hinweisSichtbar && createPortal(
+        <div ref={hinweisRef} style={{ position: "fixed", left: hinweisPos?.left ?? -9999, top: hinweisPos?.top ?? -9999,
+          visibility: hinweisPos ? "visible" : "hidden", zIndex: 2000,
+          background: "#333", color: "#fff", fontSize: 11, fontFamily: "var(--tc-font)", padding: "4px 8px", borderRadius: 4,
+          whiteSpace: "nowrap", pointerEvents: "none", boxShadow: "0 2px 6px rgba(0,0,0,.25)" }}>
           Bearbeitung nur unter „Bauteile" möglich
         </div>,
         document.body

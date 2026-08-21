@@ -215,7 +215,7 @@
 .ac-dropdown {
   position: absolute; top: 100%; left: 0; right: 0; z-index: 10; background: #fff;
   border: 1px solid var(--tc-border); max-height: 180px; overflow-y: auto;
-  box-shadow: 0 4px 12px rgba(0,0,0,.1);
+  box-shadow: 0 4px 12px rgba(0,0,0,.1); font-family: var(--tc-font);
 }
 .ac-item { padding: 6px 8px; cursor: pointer; font-size: 12px; border-bottom: 1px solid var(--tc-border-light); }
 .ac-item:hover { background: var(--tc-blue-light); }
