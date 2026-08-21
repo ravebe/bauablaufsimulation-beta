@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useApi, cloudSave, cloudLoad, sendPresence } from "./hooks/useApi";
 import type { SimProjekt, Zugriff } from "./types";
-import { SIMS_KEY, AKTIV_KEY, nsKey } from "./types";
+import { SIMS_KEY, AKTIV_KEY, nsKey, parseDateUniversal, formatDatum, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern } from "./types";
 import TabProjekte from "./components/TabProjekte";
 import TabBauteile from "./components/TabBauteile";
 import TabAbspielen from "./components/TabAbspielen";
+import ZugriffskontrollManager from "./components/ZugriffskontrollManager";
 import "./App.css";
 
 type Tab = "projekte" | "bauteile" | "abspielen";
@@ -262,10 +263,52 @@ export default function App() {
   const [headerFilter, setHeaderFilter] = useState<"alle" | "meine" | "freigegeben">("alle");
   const [taskSort, setTaskSort] = useState<"gantt" | "datum" | "aktiv" | "name" | "nummer">("gantt");
   const [sortDropdown, setSortDropdown] = useState(false);
+  const [optionsDropdown, setOptionsDropdown] = useState(false);
+  const [zugriffsManagerOffen, setZugriffsManagerOffen] = useState(false);
   const [, setUndoTick] = useState(0);
 
+  function csvEscape(v: string): string {
+    return /[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  }
+
+  function exportTasksCsv() {
+    if (!aktiveSim) return;
+    const tasks = aktiveSim.tasks;
+    const nummern = berechneNummern(tasks);
+    const zeilen = [["Nummer", "Name", "Typ", "Start", "Ende", "Tage", "Vorgänger", "Bauteile"]];
+    tasks.forEach((t, idx) => {
+      const isGrp = t.isGroup || istGruppe(tasks, idx);
+      const gDaten = isGrp ? gruppenDaten(tasks, idx) : null;
+      const start = gDaten ? gDaten.start : t.start;
+      const end = gDaten ? gDaten.end : t.end;
+      const sd = parseDateUniversal(start), ed = parseDateUniversal(end);
+      const tage = gDaten ? gDaten.tage : (sd && ed ? Math.max(1, Math.round((ed.getTime() - sd.getTime()) / 86400000)) : null);
+      zeilen.push([
+        nummern.get(t.id) ?? "",
+        t.name,
+        isGrp ? "Gruppe" : t.typ,
+        start ? formatDatum(start) : "",
+        end ? formatDatum(end) : "",
+        tage != null ? String(tage) : "",
+        t.predecessorId ? nummern.get(t.predecessorId) ?? "" : "",
+        String(t.objektGuids.length),
+      ]);
+    });
+    const csv = "﻿" + zeilen.map(row => row.map(csvEscape).join(";")).join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${aktiveSim.name || "Simulation"}_Tasks.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setOptionsDropdown(false);
+  }
+
   return (
-    <div className="tc-app" onClick={() => { setHeaderDropdown(false); setSortDropdown(false); }}>
+    <div className="tc-app" onClick={() => { setHeaderDropdown(false); setSortDropdown(false); setOptionsDropdown(false); }}>
       {/* Header — Organizer Style */}
       <div className="tc-header-org">
         <div className="tc-header-org-top">
@@ -336,11 +379,36 @@ export default function App() {
               )}
             </div>
             <div style={{ position: "relative" }}>
-              <button className="tc-header-icon-btn" title="Optionen">
+              <button className="tc-header-icon-btn" title="Optionen"
+                onClick={e => { e.stopPropagation(); setOptionsDropdown(d => !d); setHeaderDropdown(false); setSortDropdown(false); }}>
                 <svg viewBox="0 0 20 20" width="18" height="18" fill="currentColor">
                   <circle cx="10" cy="4" r="1.5"/><circle cx="10" cy="10" r="1.5"/><circle cx="10" cy="16" r="1.5"/>
                 </svg>
               </button>
+              {optionsDropdown && (
+                <div className="tc-header-dropdown" style={{ right: 0, left: "auto", minWidth: 210 }} onClick={e => e.stopPropagation()}>
+                  <div className="tc-header-dropdown-item" style={{ opacity: aktiveSim ? 1 : 0.4, cursor: aktiveSim ? "pointer" : "default" }}
+                    onClick={() => aktiveSim && exportTasksCsv()}>
+                    <div>
+                      <div style={{ fontWeight: 500 }}>⬇ Export</div>
+                      <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>Tasks der aktiven Simulation als CSV</div>
+                    </div>
+                  </div>
+                  <div className="tc-header-dropdown-item" style={{ opacity: 0.4, cursor: "default" }}>
+                    <div>
+                      <div style={{ fontWeight: 500 }}>⚙ Ressourcen einrichten</div>
+                      <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>Bald verfügbar</div>
+                    </div>
+                  </div>
+                  <div className="tc-header-dropdown-item"
+                    onClick={() => { setZugriffsManagerOffen(true); setOptionsDropdown(false); }}>
+                    <div>
+                      <div style={{ fontWeight: 500 }}>🔒 Zugriffskontrolle verwalten</div>
+                      <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>Für alle Gruppen</div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
             {/* Sync Status */}
             <span title={syncStatus === "saved" ? "Cloud gespeichert" : syncStatus === "saving" ? "Speichern…" : syncStatus === "error" ? "Sync-Fehler" : ""}
@@ -434,6 +502,8 @@ export default function App() {
           />
         </div>
       </div>
+
+      {zugriffsManagerOffen && <ZugriffskontrollManager onClose={() => setZugriffsManagerOffen(false)} />}
     </div>
   );
 }
