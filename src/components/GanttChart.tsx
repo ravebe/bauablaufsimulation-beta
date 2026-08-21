@@ -89,7 +89,11 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
   useEffect(() => {
     if (!predPickerTaskId) return;
     const onDocMouseDown = (e: MouseEvent) => {
-      if (predPopoverRef.current && !predPopoverRef.current.contains(e.target as Node)) setPredPickerTaskId(null);
+      // composedPath() statt e.target/contains(): eine Vorgänger-Auswahl entfernt die Dropdown-Liste
+      // (und damit das geklickte Element) noch während desselben Klicks aus dem DOM — ein bereits
+      // entferntes Element gilt bei contains() fälschlich als "außerhalb", was das Popover sofort schloss.
+      const pfad = e.composedPath ? e.composedPath() : [];
+      if (predPopoverRef.current && !pfad.includes(predPopoverRef.current)) setPredPickerTaskId(null);
     };
     document.addEventListener("mousedown", onDocMouseDown);
     return () => document.removeEventListener("mousedown", onDocMouseDown);
