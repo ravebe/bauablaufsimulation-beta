@@ -11,18 +11,17 @@ import { StatTile, CategoryBarChart, CockpitAbschnitt, useEingeklappt, FARBEN } 
 
 interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; api?: ApiInstance | null; projectId?: string | null; }
 
-// Grid-Spalten der Tabelle — feste Breiten statt Flex, damit kein Inhalt (z.B. der "Vorschlagen"-
-// Button, der nur bedingt erscheint) nachfolgende Spalten verschiebt. Verstellbar per Drag, siehe startResize.
-const SPALTEN = ["nr", "task", "kuerzel", "vorschlag", "mengen", "geplant", "berechnet", "wbs"] as const;
+// Grid-Spalten der Tabelle — feste Breiten statt Flex, damit kein Inhalt nachfolgende Spalten
+// verschiebt. Verstellbar per Drag, siehe startResize. Alle Zellen top-ausgerichtet (alignItems:
+// "start"), damit sie in einer Flucht stehen, auch wenn die Mengen-Zelle mehrzeilig ist.
+const SPALTEN = ["nr", "task", "kuerzel", "mengen", "geplant", "berechnet", "wbs"] as const;
 type Spalte = typeof SPALTEN[number];
-const SPALTEN_LABEL: Record<Spalte, string> = { nr: "Nr.", task: "Task", kuerzel: "Kürzel", vorschlag: "", mengen: "Mengen", geplant: "Geplant", berechnet: "Berechnet", wbs: "" };
-const DEFAULT_COL_W: Record<Spalte, number> = { nr: 30, task: 220, kuerzel: 64, vorschlag: 92, mengen: 260, geplant: 56, berechnet: 64, wbs: 26 };
+const SPALTEN_LABEL: Record<Spalte, string> = { nr: "Nr.", task: "Task", kuerzel: "Kürzel", mengen: "Mengen", geplant: "Geplant", berechnet: "Berechnet", wbs: "" };
+const DEFAULT_COL_W: Record<Spalte, number> = { nr: 30, task: 220, kuerzel: 64, mengen: 260, geplant: 56, berechnet: 64, wbs: 26 };
 const LS_COLW = "4d-kalk-colw";
 
 export default function TabKalkulation({ sim, updateSim, readOnly, api, projectId = null }: Props) {
   const [wbsOffenIds, setWbsOffenIds] = useState<Set<string>>(new Set());
-  const [ladeIds, setLadeIds] = useState<Set<string>>(new Set());
-  const [hinweisProTask, setHinweisProTask] = useState<Record<string, string>>({});
   const [bulkLaeuft, setBulkLaeuft] = useState(false);
   const [bulkErgebnis, setBulkErgebnis] = useState<string | null>(null);
   const lsColwKey = nsKey(LS_COLW, projectId);
@@ -64,24 +63,6 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     const mengen = { ...(task.mengen ?? {}) };
     if (wert === null || wert === 0) delete mengen[gewerkKey]; else mengen[gewerkKey] = wert;
     taskAendern(task.id, { mengen });
-  }
-
-  async function vorschlagAnwenden(task: Task) {
-    if (!api) return;
-    setLadeIds(prev => new Set(prev).add(task.id));
-    try {
-      const { kuerzel, uneindeutig } = await kuerzelVorschlag(api, task.objektGuids);
-      if (kuerzel) {
-        taskAendern(task.id, { bauteilKuerzel: kuerzel });
-        setHinweisProTask(prev => ({ ...prev, [task.id]: `✓ ${kuerzel}` }));
-      } else if (uneindeutig.length > 0) {
-        setHinweisProTask(prev => ({ ...prev, [task.id]: `Uneindeutig: ${uneindeutig.join(", ")}` }));
-      } else {
-        setHinweisProTask(prev => ({ ...prev, [task.id]: "Kein Katalog-Treffer" }));
-      }
-    } finally {
-      setLadeIds(prev => { const n = new Set(prev); n.delete(task.id); return n; });
-    }
   }
 
   async function alleUnzugeordnetenZuordnen() {
@@ -179,7 +160,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
           const wbsOffen = wbsOffenIds.has(t.id);
           return (
             <div key={t.id} style={{ borderBottom: "1px solid var(--tc-border-light)" }}>
-              <div style={{ display: "grid", gridTemplateColumns: gridTemplate, alignItems: "center", padding: "5px 0" }}>
+              <div style={{ display: "grid", gridTemplateColumns: gridTemplate, alignItems: "start", padding: "6px 0" }}>
                 <span style={{ fontSize: 10, color: "#666" }}>{nummern.get(t.id)}</span>
                 <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 6 }}>{t.name}</span>
                 <select disabled={readOnly} value={t.bauteilKuerzel ?? ""} onChange={e => taskAendern(t.id, { bauteilKuerzel: e.target.value || undefined })}
@@ -187,21 +168,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
                   <option value="">–</option>
                   {kuerzelListe.map(k => <option key={k} value={k}>{k}</option>)}
                 </select>
-                <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                  {!readOnly && api && !t.bauteilKuerzel && t.objektGuids.length > 0 && (
-                    <button className="tc-btn-ghost" disabled={ladeIds.has(t.id)} style={{ fontSize: 9, padding: "2px 5px", alignSelf: "flex-start" }}
-                      onClick={() => vorschlagAnwenden(t)} title="Kürzel aus verknüpften Bauteilen vorschlagen">
-                      {ladeIds.has(t.id) ? "…" : "Vorschlagen"}
-                    </button>
-                  )}
-                  {hinweisProTask[t.id] && (
-                    <span style={{ fontSize: 9, color: hinweisProTask[t.id].startsWith("✓") ? FARBEN.status.good : FARBEN.status.warning, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                      title={hinweisProTask[t.id]}>
-                      {hinweisProTask[t.id]}
-                    </span>
-                  )}
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0, paddingRight: 6, paddingTop: 2, paddingBottom: 2 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0, paddingRight: 6 }}>
                   {gewerke.map(g => (
                     <label key={g.key} title={`${g.label} [${g.einheit}]`} style={{ fontSize: 9, color: "var(--tc-text-3)", display: "flex", alignItems: "center", gap: 3 }}>
                       <span style={{ minWidth: 60, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.label}</span>
@@ -212,12 +179,12 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
                   ))}
                   {gewerke.length === 0 && <span style={{ fontSize: 9, color: "var(--tc-text-3)" }}>Kürzel wählen…</span>}
                 </div>
-                <span style={{ textAlign: "right", fontSize: 11, color: "#888", paddingRight: 4 }}>{geplant}d</span>
-                <span style={{ textAlign: "right", fontSize: 11, fontWeight: 600, color: abweichung ? "#d9622b" : "#333", paddingRight: 4 }}
+                <span style={{ textAlign: "right", fontSize: 11, color: "#888", paddingRight: 4, paddingTop: 3 }}>{geplant}d</span>
+                <span style={{ textAlign: "right", fontSize: 11, fontWeight: 600, color: abweichung ? "#d9622b" : "#333", paddingRight: 4, paddingTop: 3 }}
                   title={abweichung ? "Deutliche Abweichung von der geplanten Dauer" : ""}>
                   {berechnet}d
                 </span>
-                <span style={{ textAlign: "center", cursor: "pointer", fontSize: 9, color: "var(--tc-text-3)" }}
+                <span style={{ textAlign: "center", cursor: "pointer", fontSize: 9, color: "var(--tc-text-3)", paddingTop: 4 }}
                   title="Kranbereich"
                   onClick={() => setWbsOffenIds(prev => { const n = new Set(prev); if (n.has(t.id)) n.delete(t.id); else n.add(t.id); return n; })}>
                   {wbsOffen ? "▲" : "Kran"}
