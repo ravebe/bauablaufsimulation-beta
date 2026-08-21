@@ -86,6 +86,11 @@
 .tc-tab:hover { color: var(--tc-text-2); }
 .tc-tab.active { color: var(--tc-blue); border-bottom-color: var(--tc-blue); font-weight: 600; }
 .tc-tab svg { width: 16px; height: 16px; }
+.tc-tab-toggle {
+  background: none; border: none; cursor: pointer; color: var(--tc-text-3); font-size: 12px;
+  padding: 0 8px; font-family: var(--tc-font); flex-shrink: 0;
+}
+.tc-tab-toggle:hover { color: var(--tc-text); }
 
 /* === SECTION HEADERS === */
 .tc-section-label {

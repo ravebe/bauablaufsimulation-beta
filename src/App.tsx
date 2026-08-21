@@ -411,15 +411,6 @@ export default function App() {
 
       {/* Tabs */}
       <div className="tc-tabs">
-        <button className="tc-btn-ghost" title={tabGruppe === "haupt" ? "Kalkulation / Ressourcen / Kosten anzeigen" : "Projekte / Bauteile / Abspielen anzeigen"}
-          style={{ fontSize: 12, padding: "2px 6px", margin: "4px 2px 4px 6px", flexShrink: 0 }}
-          onClick={() => {
-            const neueGruppe: TabGruppe = tabGruppe === "haupt" ? "erweitert" : "haupt";
-            setTabGruppe(neueGruppe);
-            setAktTab(neueGruppe === "haupt" ? HAUPT_TABS[0] : ERWEITERTE_TABS[0]);
-          }}>
-          {tabGruppe === "haupt" ? "▶" : "◀"}
-        </button>
         {tabGruppe === "haupt" ? (<>
           <button
             className={`tc-tab ${aktTab === "projekte" ? "active" : ""}`}
@@ -482,6 +473,14 @@ export default function App() {
             <span>Kosten</span>
           </button>
         </>)}
+        <button className="tc-tab-toggle" title={tabGruppe === "haupt" ? "Kalkulation / Ressourcen / Kosten anzeigen" : "Projekte / Bauteile / Abspielen anzeigen"}
+          onClick={() => {
+            const neueGruppe: TabGruppe = tabGruppe === "haupt" ? "erweitert" : "haupt";
+            setTabGruppe(neueGruppe);
+            setAktTab(neueGruppe === "haupt" ? HAUPT_TABS[0] : ERWEITERTE_TABS[0]);
+          }}>
+          {tabGruppe === "haupt" ? "▶" : "◀"}
+        </button>
       </div>
 
       {/* Tab Content */}
