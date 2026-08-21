@@ -1,5 +1,6 @@
 // modelHelpers.ts — wiederverwendbare TC-API-Hilfsfunktionen
 import type { ApiInstance } from "../hooks/useApi";
+import { batchGetProperties } from "../hooks/useApi";
 import { parseObjectIds } from "../types";
 
 // Modul-Level-Caches (persistieren über Re-Renders)
@@ -47,6 +48,110 @@ export async function filterEchteBauteile(api: ApiInstance, mid: string, rIds: n
     for (let j = 0; j < chunk.length; j++) { if (results[j].status === 'rejected') echte.push(chunk[j]); }
   }
   return echte;
+}
+
+// Flaches Attribut-Set eines Objekts ("Pset||Property" → Wert), rekursiv über verschachtelte
+// Property-Gruppen — dieselbe Konvention wie in TabTasks.tsx/AttributeFilter.tsx.
+export interface ObjWerte { [key: string]: string; }
+
+function sammelPropWerte(obj: ObjWerte, gruppe: any, gruppenName: string) {
+  for (const p of gruppe?.properties ?? gruppe?.items ?? []) {
+    if (!p?.name) continue;
+    const sub = p?.properties ?? p?.items;
+    if (Array.isArray(sub) && sub.length > 0) { sammelPropWerte(obj, p, p.name); continue; }
+    const v = String(p?.value ?? "").trim();
+    if (v && v !== "null" && v !== "undefined") obj[`${gruppenName}||${p.name}`] = v;
+  }
+}
+
+/**
+ * Lädt für eine Liste von "modelId:::runtimeId"-GUIDs (task.objektGuids) alle Attribut-Werte
+ * (Psets, Product, Layer) — Grundlage für die Formel-Auswertung in Tab Kalkulation.
+ */
+export async function ladeObjektAttribute(api: ApiInstance, guids: string[]): Promise<Map<string, ObjWerte>> {
+  const werte = new Map<string, ObjWerte>();
+  const nachModell = new Map<string, { g: string; rId: number }[]>();
+  for (const g of guids) {
+    if (!g.includes(":::")) continue;
+    const sep = g.indexOf(":::");
+    const mid = g.slice(0, sep); const rId = Number(g.slice(sep + 3));
+    if (!nachModell.has(mid)) nachModell.set(mid, []);
+    nachModell.get(mid)!.push({ g, rId });
+    werte.set(g, {});
+  }
+
+  for (const [mid, eintraege] of nachModell) {
+    const rIds = eintraege.map(e => e.rId);
+    const objByRId = new Map(eintraege.map(e => [e.rId, e.g]));
+
+    try {
+      const props = await batchGetProperties(api, mid, rIds);
+      for (const entry of props) {
+        const g = objByRId.get(entry.id);
+        if (!g) continue;
+        const obj = werte.get(g)!;
+        sammelPropWerte(obj, entry, (entry as any)?.name || "Eigenschaften");
+        if (entry.product) {
+          const p = entry.product;
+          if (p.name) obj["Product||Product Name"] = String(p.name);
+          if (p.objectType) obj["Reference Object||Common Type"] = String(p.objectType);
+          if (p.description) obj["Product||Description"] = String(p.description);
+        }
+      }
+    } catch {}
+
+    try {
+      const layers = await api.viewer.getLayers(mid) as any[];
+      if (Array.isArray(layers)) {
+        for (const l of layers) {
+          if (!l?.name) continue;
+          for (const rId of (l as any)?.objectRuntimeIds ?? []) {
+            const g = objByRId.get(rId);
+            if (g) werte.get(g)!["Layer||Layer"] = String(l.name);
+          }
+        }
+      }
+    } catch {}
+  }
+
+  return werte;
+}
+
+/** Liste bekannter Attribut-Schlüssel (Pset||Property) aus einer Objekt-Stichprobe — für den
+ *  Attribut-Picker beim Formel-Editor in Tab Ressourcen (kein Wert-Sammeln nötig, nur Namen). */
+export async function ladeAttributListe(api: ApiInstance, modelId: string): Promise<{ pset: string; name: string; key: string }[]> {
+  const allIds = await getModellObjekte(api, modelId);
+  const probeIds = allIds.slice(0, Math.min(30, allIds.length));
+  const attrs = new Map<string, { pset: string; name: string; key: string }>();
+
+  function sammel(gruppe: any, gruppenName: string) {
+    for (const p of gruppe?.properties ?? gruppe?.items ?? []) {
+      if (!p?.name) continue;
+      const sub = p?.properties ?? p?.items;
+      if (Array.isArray(sub) && sub.length > 0) { sammel(p, p.name); continue; }
+      const key = `${gruppenName}||${p.name}`;
+      if (!attrs.has(key)) attrs.set(key, { pset: gruppenName, name: p.name, key });
+    }
+  }
+
+  try {
+    const props = await batchGetProperties(api, modelId, probeIds);
+    for (const entry of props) {
+      for (const g of entry.properties ?? []) sammel(g, (g as any)?.name || "Eigenschaften");
+      if (entry.product) {
+        if (entry.product.name) attrs.set("Product||Product Name", { pset: "Product", name: "Product Name", key: "Product||Product Name" });
+        if (entry.product.objectType) attrs.set("Reference Object||Common Type", { pset: "Reference Object", name: "Common Type", key: "Reference Object||Common Type" });
+        if (entry.product.description) attrs.set("Product||Description", { pset: "Product", name: "Description", key: "Product||Description" });
+      }
+    }
+  } catch {}
+
+  try {
+    const layers = await api.viewer.getLayers(modelId);
+    if (Array.isArray(layers) && layers.length > 0) attrs.set("Layer||Layer", { pset: "Layer", name: "Layer", key: "Layer||Layer" });
+  } catch {}
+
+  return [...attrs.values()].sort((a, b) => a.key.localeCompare(b.key));
 }
 
 export async function getEchteBauteile(api: ApiInstance, simId: string, mid: string): Promise<number[]> {

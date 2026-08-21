@@ -8,6 +8,7 @@ export interface Rate {
   leistungswertHProEinheit: number | null;
   anzahlPersonen: number;
   chfProEinheit: number | null;
+  formel?: string; // Menge-Formel aus IFC-Attributen der zugeordneten Bauteile, siehe formelHelpers.ts
 }
 export interface Gewerk {
   key: string;

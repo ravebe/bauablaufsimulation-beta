@@ -1,18 +1,35 @@
 // TabRessourcen.tsx — Stammdaten-Editor (Leistungswerte/Personal/CHF je Bauteil-Kürzel), Basis
 // für die Menge→Tage-Kalkulation (Tab Kalkulation) und die Kosten-Auswertung (Tab Kosten).
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { SimProjekt } from "../types";
 import { istGruppe } from "../types";
 import type { Gewerk, Rate, Stammdaten } from "./stammdatenHelpers";
 import { LEERE_STAMMDATEN, standardStammdaten, innenausbauGewerke, hlksseGewerke, tiefbauGewerke, alleKuerzel } from "./stammdatenHelpers";
 import { StatTile } from "./cockpitCharts";
+import type { ApiInstance } from "../hooks/useApi";
+import { ladeAttributListe } from "./modelHelpers";
+import { parseFormel, FormelFehler } from "./formelHelpers";
 
-interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; }
+interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; api?: ApiInstance | null; }
 
 const NEUE_RATE: Rate = { kuerzel: "", bezeichnung: "", leistungswertHProEinheit: null, anzahlPersonen: 1, chfProEinheit: null };
 
-export default function TabRessourcen({ sim, updateSim, readOnly }: Props) {
+export default function TabRessourcen({ sim, updateSim, readOnly, api }: Props) {
   const [ladeErgebnis, setLadeErgebnis] = useState<string | null>(null);
+  const [attrListe, setAttrListe] = useState<{ pset: string; name: string; key: string }[] | null>(null);
+  const [attrLaedt, setAttrLaedt] = useState(false);
+  const [pickerOffenFuer, setPickerOffenFuer] = useState<string | null>(null); // "gewerkIdx-rateIdx"
+  const [pickerQuery, setPickerQuery] = useState("");
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!pickerOffenFuer) return;
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setPickerOffenFuer(null);
+    };
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [pickerOffenFuer]);
 
   if (!sim) return <div style={{ padding: 14, fontSize: 12, color: "var(--tc-text-3)" }}>Kein aktives Projekt ausgewählt</div>;
 
@@ -59,6 +76,30 @@ export default function TabRessourcen({ sim, updateSim, readOnly }: Props) {
     speichern({ ...stammdaten, gewerke: [...stammdaten.gewerke, ...zuErgaenzen] });
     const uebersprungen = neueGewerke.length - zuErgaenzen.length;
     setLadeErgebnis(`${label}: ${zuErgaenzen.length} Gewerke hinzugefügt${uebersprungen > 0 ? `, ${uebersprungen} bereits vorhanden` : ""}.`);
+  }
+
+  async function attrListeLaden() {
+    if (!api || attrListe || attrLaedt) return;
+    const modelId = sim!.modelle[0]?.id;
+    if (!modelId) return;
+    setAttrLaedt(true);
+    try { setAttrListe(await ladeAttributListe(api, modelId)); }
+    catch { setAttrListe([]); }
+    setAttrLaedt(false);
+  }
+
+  function attributEinfuegen(gewerkIdx: number, rateIdx: number, key: string) {
+    const aktuell = stammdaten.gewerke[gewerkIdx].raten[rateIdx].formel ?? "";
+    const trenner = aktuell && !/\s$/.test(aktuell) ? " " : "";
+    rateAendern(gewerkIdx, rateIdx, { formel: `${aktuell}${trenner}{${key}}` });
+    setPickerOffenFuer(null);
+    setPickerQuery("");
+  }
+
+  function formelValidieren(formel: string | undefined): string | null {
+    if (!formel || !formel.trim()) return null;
+    try { parseFormel(formel); return null; }
+    catch (e) { return e instanceof FormelFehler ? e.message : "Ungültige Formel"; }
   }
 
   const numInput = (val: number | null, onChange: (v: number | null) => void, width: number) => (
@@ -169,22 +210,64 @@ export default function TabRessourcen({ sim, updateSim, readOnly }: Props) {
               <span style={{ width: 60 }} />
             </div>
           </div>
-          {gewerk.raten.map((r, ri) => (
-            <div key={ri} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 0", borderBottom: "1px solid var(--tc-border-light)" }}>
-              <input disabled={readOnly} value={r.kuerzel} onChange={e => rateAendern(gi, ri, { kuerzel: e.target.value })}
-                style={{ width: 60, fontSize: 11, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
-              <input disabled={readOnly} value={r.bezeichnung} onChange={e => rateAendern(gi, ri, { bezeichnung: e.target.value })}
-                style={{ flex: 1, minWidth: 0, fontSize: 11, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
-              {numInput(r.leistungswertHProEinheit, v => rateAendern(gi, ri, { leistungswertHProEinheit: v }), 80)}
-              {numInput(r.anzahlPersonen, v => rateAendern(gi, ri, { anzahlPersonen: v ?? 1 }), 60)}
-              {numInput(r.chfProEinheit, v => rateAendern(gi, ri, { chfProEinheit: v }), 70)}
-              {!readOnly && (
-                <button className="tc-btn-ghost" style={{ fontSize: 10, padding: "2px 6px", width: 60 }} onClick={() => rateEntfernen(gi, ri)}>
-                  Entfernen
-                </button>
+          {gewerk.raten.map((r, ri) => {
+            const pickerKey = `${gi}-${ri}`;
+            const formelFehler = formelValidieren(r.formel);
+            const acItems = attrListe
+              ? attrListe.filter(a => !pickerQuery || a.name.toLowerCase().includes(pickerQuery.toLowerCase()) || a.pset.toLowerCase().includes(pickerQuery.toLowerCase())).slice(0, 20)
+              : [];
+            return (
+            <div key={ri} style={{ padding: "3px 0", borderBottom: "1px solid var(--tc-border-light)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input disabled={readOnly} value={r.kuerzel} onChange={e => rateAendern(gi, ri, { kuerzel: e.target.value })}
+                  style={{ width: 60, fontSize: 11, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
+                <input disabled={readOnly} value={r.bezeichnung} onChange={e => rateAendern(gi, ri, { bezeichnung: e.target.value })}
+                  style={{ flex: 1, minWidth: 0, fontSize: 11, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
+                {numInput(r.leistungswertHProEinheit, v => rateAendern(gi, ri, { leistungswertHProEinheit: v }), 80)}
+                {numInput(r.anzahlPersonen, v => rateAendern(gi, ri, { anzahlPersonen: v ?? 1 }), 60)}
+                {numInput(r.chfProEinheit, v => rateAendern(gi, ri, { chfProEinheit: v }), 70)}
+                {!readOnly && (
+                  <button className="tc-btn-ghost" style={{ fontSize: 10, padding: "2px 6px", width: 60 }} onClick={() => rateEntfernen(gi, ri)}>
+                    Entfernen
+                  </button>
+                )}
+              </div>
+              {(!readOnly || r.formel) && (
+                <div ref={pickerOffenFuer === pickerKey ? pickerRef : undefined}
+                  style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3, paddingLeft: 66, position: "relative" }}>
+                  <span style={{ fontSize: 9, color: "var(--tc-text-3)", width: 40, flexShrink: 0 }}>Formel</span>
+                  <input disabled={readOnly} value={r.formel ?? ""} placeholder="z.B. {Qto_WallBaseQuantities||NetVolume}"
+                    onChange={e => rateAendern(gi, ri, { formel: e.target.value })}
+                    style={{ flex: 1, minWidth: 0, fontSize: 10, padding: "3px 5px", fontFamily: "monospace", border: `1px solid ${formelFehler ? "var(--tc-red)" : "#d4dce4"}` }} />
+                  {api && !readOnly && (
+                    <button className="tc-btn-ghost" style={{ fontSize: 9, padding: "2px 6px", flexShrink: 0 }}
+                      onClick={() => { const opening = pickerOffenFuer !== pickerKey; setPickerOffenFuer(opening ? pickerKey : null); setPickerQuery(""); if (opening) attrListeLaden(); }}>
+                      + Attribut
+                    </button>
+                  )}
+                  {pickerOffenFuer === pickerKey && (
+                    <div style={{ position: "absolute", top: "100%", left: 66, right: 0, marginTop: 2, background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 50, maxHeight: 220, overflowY: "auto" }}>
+                      <input autoFocus value={pickerQuery} onChange={e => setPickerQuery(e.target.value)} placeholder="Attribut suchen…"
+                        style={{ width: "100%", boxSizing: "border-box", fontSize: 10, padding: "5px 6px", border: "none", borderBottom: "1px solid var(--tc-border-light)" }} />
+                      {attrLaedt && <div style={{ padding: 6, fontSize: 10, color: "var(--tc-text-3)" }}>⟳ Attribute laden…</div>}
+                      {!attrLaedt && acItems.length === 0 && <div style={{ padding: 6, fontSize: 10, color: "var(--tc-text-3)" }}>Keine Treffer</div>}
+                      {!attrLaedt && acItems.map(a => (
+                        <div key={a.key} onMouseDown={() => attributEinfuegen(gi, ri, a.key)}
+                          style={{ padding: "5px 8px", cursor: "pointer", fontSize: 10 }}
+                          onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")}
+                          onMouseLeave={e => (e.currentTarget.style.background = "")}>
+                          <div style={{ fontWeight: 500 }}>{a.name}</div>
+                          <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>{a.pset}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
+              {formelFehler && <div style={{ fontSize: 9, color: "var(--tc-red)", marginTop: 2, paddingLeft: 66 }}>⚠ {formelFehler}</div>}
             </div>
-          ))}
+            );
+          })}
           {!readOnly && (
             <button className="tc-btn-ghost" style={{ fontSize: 10, padding: "3px 8px", marginTop: 4 }} onClick={() => rateHinzufuegen(gi)}>
               + Kürzel hinzufügen

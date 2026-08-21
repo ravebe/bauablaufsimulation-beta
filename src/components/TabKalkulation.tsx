@@ -8,6 +8,8 @@ import { arbeitstageZwischen, LEERER_KALENDER } from "./kalenderHelpers";
 import { LEERE_STAMMDATEN, alleKuerzel, gewerkeFuerKuerzel, dauerBerechnetTask } from "./stammdatenHelpers";
 import { kuerzelVorschlag } from "./bauteilkatalogHelpers";
 import { StatTile, CategoryBarChart, CockpitAbschnitt, useEingeklappt, FARBEN } from "./cockpitCharts";
+import { ladeObjektAttribute } from "./modelHelpers";
+import { berechneMenge } from "./formelHelpers";
 
 interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; api?: ApiInstance | null; projectId?: string | null; }
 
@@ -24,6 +26,8 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   const [wbsOffenIds, setWbsOffenIds] = useState<Set<string>>(new Set());
   const [bulkLaeuft, setBulkLaeuft] = useState(false);
   const [bulkErgebnis, setBulkErgebnis] = useState<string | null>(null);
+  const [mengenLaeuft, setMengenLaeuft] = useState(false);
+  const [mengenErgebnis, setMengenErgebnis] = useState<string | null>(null);
   const lsColwKey = nsKey(LS_COLW, projectId);
   const [colW, setColW] = useState<Record<Spalte, number>>(() => {
     try {
@@ -59,10 +63,62 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     updateSim({ ...sim!, tasks: sim!.tasks.map(t => t.id === taskId ? { ...t, ...patch } : t) });
   }
 
+  // Manuelle Eingabe überschreibt eine Formel-Menge (Status "manuell", schwarz statt blau) — Leeren
+  // setzt den Status zurück, damit "Mengen berechnen" die Zelle wieder automatisch befüllen kann.
   function mengeAendern(task: Task, gewerkKey: string, wert: number | null) {
     const mengen = { ...(task.mengen ?? {}) };
-    if (wert === null || wert === 0) delete mengen[gewerkKey]; else mengen[gewerkKey] = wert;
-    taskAendern(task.id, { mengen });
+    const mengenQuelle = { ...(task.mengenQuelle ?? {}) };
+    const mengenInfo = { ...(task.mengenInfo ?? {}) };
+    if (wert === null || wert === 0) { delete mengen[gewerkKey]; delete mengenQuelle[gewerkKey]; delete mengenInfo[gewerkKey]; }
+    else { mengen[gewerkKey] = wert; mengenQuelle[gewerkKey] = "manuell"; delete mengenInfo[gewerkKey]; }
+    taskAendern(task.id, { mengen, mengenQuelle, mengenInfo });
+  }
+
+  // Mengen aus Formeln (Tab Ressourcen) für alle Tasks berechnen — überspringt Gewerk-Keys, die
+  // manuell überschrieben wurden (mengenQuelle "manuell"), damit Nutzer-Korrekturen erhalten bleiben.
+  async function mengenBerechnen() {
+    if (!api || !sim) return;
+    setMengenLaeuft(true);
+    setMengenErgebnis(null);
+    let autoCount = 0, fehlerCount = 0, taskCount = 0;
+    const updatedTasks = [...sim.tasks];
+    for (let i = 0; i < updatedTasks.length; i++) {
+      const t = updatedTasks[i];
+      if (t.isGroup || istGruppe(updatedTasks, i) || !t.bauteilKuerzel) continue;
+      const gewerkeMitFormel = gewerkeFuerKuerzel(stammdaten, t.bauteilKuerzel)
+        .map(g => ({ g, rate: g.raten.find(r => r.kuerzel === t.bauteilKuerzel) }))
+        .filter((e): e is { g: typeof e.g; rate: NonNullable<typeof e.rate> } => !!e.rate?.formel?.trim());
+      const zuBerechnen = gewerkeMitFormel.filter(e => t.mengenQuelle?.[e.g.key] !== "manuell");
+      if (zuBerechnen.length === 0) continue;
+      taskCount++;
+
+      let objektWerteListe: Record<string, string>[] = [];
+      if (t.objektGuids.length > 0) {
+        try { objektWerteListe = [...(await ladeObjektAttribute(api, t.objektGuids)).values()]; } catch { /* unten als Fehler behandelt */ }
+      }
+
+      const mengen = { ...(t.mengen ?? {}) };
+      const mengenQuelle = { ...(t.mengenQuelle ?? {}) };
+      const mengenInfo = { ...(t.mengenInfo ?? {}) };
+      for (const { g, rate } of zuBerechnen) {
+        const erg = berechneMenge(rate.formel!, objektWerteListe);
+        if (erg.wert !== null) mengen[g.key] = erg.wert; else delete mengen[g.key];
+
+        if (erg.wert !== null && erg.anzahlFehler === 0 && !erg.fehler) {
+          mengenQuelle[g.key] = "auto"; delete mengenInfo[g.key]; autoCount++;
+        } else {
+          mengenQuelle[g.key] = "fehler";
+          mengenInfo[g.key] = erg.fehler ? `Formelfehler: ${erg.fehler}`
+            : erg.anzahlObjekte === 0 ? "Keine Bauteile zugeordnet"
+            : `${erg.anzahlFehler} von ${erg.anzahlObjekte} Bauteilen ohne Wert${erg.fehlendeAttribute.length > 0 ? ` für ${erg.fehlendeAttribute.join(", ")}` : ""}`;
+          fehlerCount++;
+        }
+      }
+      updatedTasks[i] = { ...t, mengen, mengenQuelle, mengenInfo };
+    }
+    updateSim({ ...sim, tasks: updatedTasks });
+    setMengenLaeuft(false);
+    setMengenErgebnis(taskCount === 0 ? "Keine Leistungspositionen mit Formel gefunden" : `${taskCount} Tasks aktualisiert · ${autoCount} Mengen berechnet, ${fehlerCount} mit Fehlern`);
   }
 
   async function alleUnzugeordnetenZuordnen() {
@@ -132,13 +188,27 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
       )}
 
       {!readOnly && api && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
           <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }} disabled={bulkLaeuft} onClick={alleUnzugeordnetenZuordnen}>
             {bulkLaeuft ? "Wird zugeordnet…" : "Alle unzugeordneten automatisch zuordnen"}
           </button>
           {bulkErgebnis && <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>{bulkErgebnis}</span>}
         </div>
       )}
+      {!readOnly && api && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+          <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }} disabled={mengenLaeuft} onClick={mengenBerechnen}
+            title="Berechnet Mengen aus den Formeln in Tab Ressourcen für alle Bauteile je Task — manuell überschriebene Werte bleiben unangetastet">
+            {mengenLaeuft ? "Wird berechnet…" : "Mengen aus Bauteilen berechnen"}
+          </button>
+          {mengenErgebnis && <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>{mengenErgebnis}</span>}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 12, fontSize: 9, color: "var(--tc-text-3)", marginBottom: 10 }}>
+        <span><span style={{ color: "var(--tc-blue)", fontWeight: 700 }}>■</span> automatisch aus Formel</span>
+        <span><span style={{ color: "#333", fontWeight: 700 }}>■</span> manuell angepasst</span>
+        <span><span style={{ color: "var(--tc-red)", fontWeight: 700 }}>■</span> Fehler / fehlende Attribute</span>
+      </div>
 
       <div style={{ overflowX: "auto", overflowY: "visible" }}>
         <div style={{ display: "grid", gridTemplateColumns: gridTemplate, fontSize: 9, color: "var(--tc-text-3)", fontWeight: 600, padding: "4px 0", position: "sticky", top: 0, background: "#fff", zIndex: 3 }}>
@@ -172,14 +242,19 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
                   display: "grid", gridTemplateColumns: gewerke.length >= 3 ? "1fr 1fr" : "1fr",
                   columnGap: 10, rowGap: 3, minWidth: 0, paddingRight: 6,
                 }}>
-                  {gewerke.map(g => (
-                    <label key={g.key} title={`${g.label} [${g.einheit}]`} style={{ fontSize: 9, color: "var(--tc-text-3)", display: "flex", alignItems: "center", gap: 3, minWidth: 0 }}>
-                      <span style={{ minWidth: 50, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.label}</span>
+                  {gewerke.map(g => {
+                    const quelle = t.mengenQuelle?.[g.key];
+                    const info = t.mengenInfo?.[g.key];
+                    const farbe = quelle === "auto" ? "var(--tc-blue)" : quelle === "fehler" ? "var(--tc-red)" : "#333";
+                    return (
+                    <label key={g.key} title={info ? `${g.label} [${g.einheit}] — ${info}` : `${g.label} [${g.einheit}]`} style={{ fontSize: 9, color: "var(--tc-text-3)", display: "flex", alignItems: "center", gap: 3, minWidth: 0 }}>
+                      <span style={{ minWidth: 50, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.label}{quelle === "fehler" && " ⚠"}</span>
                       <input type="number" className="no-spinner" disabled={readOnly} value={t.mengen?.[g.key] ?? ""}
                         onChange={e => mengeAendern(t, g.key, e.target.value === "" ? null : Number(e.target.value))}
-                        style={{ width: 50, minWidth: 0, flex: 1, fontSize: 10, padding: "2px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
+                        style={{ width: 50, minWidth: 0, flex: 1, fontSize: 10, padding: "2px 4px", border: `1px solid ${quelle === "fehler" ? "var(--tc-red)" : "#d4dce4"}`, fontFamily: "inherit", color: farbe, fontWeight: quelle ? 600 : 400 }} />
                     </label>
-                  ))}
+                    );
+                  })}
                   {gewerke.length === 0 && <span style={{ fontSize: 9, color: "var(--tc-text-3)" }}>Kürzel wählen…</span>}
                 </div>
                 <span style={{ textAlign: "right", fontSize: 11, color: "#888", paddingRight: 4, paddingTop: 3 }}>{geplant}d</span>

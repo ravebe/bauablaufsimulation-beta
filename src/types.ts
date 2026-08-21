@@ -18,6 +18,8 @@ export interface Task {
   lagDays?: number; // Wartetage nach Vorgänger-Ende (default 0)
   bauteilKuerzel?: string; // Bauteil-Kürzel für die Kalkulation (z.B. "WB"), siehe stammdatenHelpers.ts
   mengen?: Record<string, number>; // Gewerk-key → Menge, für die Menge→Tage-Kalkulation
+  mengenQuelle?: Record<string, "auto" | "manuell" | "fehler">; // Herkunft je Gewerk-key — steuert Farbe (blau/schwarz/rot) in Tab Kalkulation
+  mengenInfo?: Record<string, string>; // Tooltip-Text bei Status "fehler" (z.B. fehlende Attribute), siehe formelHelpers.ts
   kranbereich?: string; // für Kranauslastung in Tab AVOR, siehe avorHelpers.ts
 }
 

@@ -545,7 +545,7 @@ export default function App() {
           <TabKalkulation sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} api={api} projectId={projectId} />
         </div>
         <div className="tc-tab-pane" style={{ display: aktTab === "ressourcen" ? "block" : "none" }}>
-          <TabRessourcen sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} />
+          <TabRessourcen sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} api={api} />
         </div>
         <div className="tc-tab-pane" style={{ display: aktTab === "avor" ? "block" : "none" }}>
           <TabAvor sim={aktiveSim} projectId={projectId} />
