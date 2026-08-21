@@ -55,7 +55,25 @@ export default function GanttImport({ onImport, taskCount }: Props) {
   }
 
   // Standard-Spaltennamen die NICHT als Extra gelten
-  const STANDARD = new Set(["name","start","startdatum","ende","enddatum","end","finish","fertig","anfang","begin","von","bis","typ","type","kategorie","vorgangsname","vorgang","task","bezeichnung"]);
+  const STANDARD = new Set(["name","start","startdatum","ende","enddatum","end","finish","fertig","anfang","begin","von","bis","typ","type","kategorie","vorgangsname","vorgang","task","bezeichnung","vorgänger","vorganger","predecessor","wartetage","lag","lagdays","lag days"]);
+  const VORGAENGER_SPALTEN = ["Vorgänger", "vorgänger", "Vorganger", "Predecessor", "predecessor"];
+  const WARTETAGE_SPALTEN = ["Wartetage", "wartetage", "Lag", "lag", "Lag Days", "LagDays"];
+
+  // Vorgänger-Spalte (Nummer wie in der App, oder Task-Name) → predecessorId auflösen.
+  // Import erzeugt keine Gruppen, daher entspricht die Nummer 1,2,3… exakt der Zeilenreihenfolge
+  // (dieselbe Logik wie berechneNummern() für eine reine Task-Liste ohne Gruppen).
+  function loeseVorgaenger(rows: { task: Task; vorgRoh: string; lagRoh: string }[]): Task[] {
+    const idByNummer = new Map(rows.map((r, i) => [String(i + 1), r.task.id]));
+    const idByName = new Map(rows.map(r => [r.task.name.trim().toLowerCase(), r.task.id]));
+    return rows.map(r => {
+      const roh = r.vorgRoh.trim();
+      if (!roh) return r.task;
+      const predId = idByNummer.get(roh) ?? idByName.get(roh.toLowerCase());
+      if (!predId || predId === r.task.id) return r.task;
+      const lag = Number(String(r.lagRoh ?? "0").replace(",", ".")) || 0;
+      return { ...r.task, predecessorId: predId, lagDays: lag };
+    });
+  }
 
   function extraSpalten(row: Record<string, unknown>): Record<string, string> {
     const extra: Record<string, string> = {};
@@ -102,8 +120,10 @@ export default function GanttImport({ onImport, taskCount }: Props) {
     const startCol = findHeader(["Start", "Startdatum", "Anfang", "Begin", "Von"]);
     const endCol = findHeader(["Ende", "Enddatum", "End", "Finish", "Fertig", "Bis"]);
     const typCol = findHeader(["Typ", "Type", "Kategorie"]);
+    const vorgCol = findHeader(VORGAENGER_SPALTEN);
+    const lagCol = findHeader(WARTETAGE_SPALTEN);
 
-    const tasks: Task[] = [];
+    const rows: { task: Task; vorgRoh: string; lagRoh: string }[] = [];
     for (let r = 2; r <= range.e.r + 1; r++) {
       const name = nameCol ? getCachedValue(ws, nameCol, r) : "";
       if (!name.trim()) continue;
@@ -121,51 +141,64 @@ export default function GanttImport({ onImport, taskCount }: Props) {
         if (v && v !== "null" && v !== "undefined") extra[h.name] = v;
       }
 
-      tasks.push({
-        id: crypto.randomUUID(),
-        name,
-        start: parseDatum(startCell?.v ?? startRaw),
-        end: parseDatum(endCell?.v ?? endRaw),
-        typ: parseTyp(typCol ? getCachedValue(ws, typCol, r) : "neubau"),
-        objektGuids: [],
-        extraSpalten: Object.keys(extra).length > 0 ? extra : undefined,
+      rows.push({
+        task: {
+          id: crypto.randomUUID(),
+          name,
+          start: parseDatum(startCell?.v ?? startRaw),
+          end: parseDatum(endCell?.v ?? endRaw),
+          typ: parseTyp(typCol ? getCachedValue(ws, typCol, r) : "neubau"),
+          objektGuids: [],
+          extraSpalten: Object.keys(extra).length > 0 ? extra : undefined,
+        },
+        vorgRoh: vorgCol ? getCachedValue(ws, vorgCol, r) : "",
+        lagRoh: lagCol ? getCachedValue(ws, lagCol, r) : "0",
       });
     }
-    return tasks;
+    return loeseVorgaenger(rows);
   }
 
   function parseCsv(text: string): Task[] {
     const wb = XLSX.read(text, { type: "string", cellFormula: false });
     const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
-    return rows.map((row, i) => ({
-      id: crypto.randomUUID(),
-      name: String(findCol(row, ["Name", "name", "Vorgangsname", "Vorgang", "Task", "Bezeichnung"]) ?? `Task ${i + 1}`),
-      start: parseDatum(findCol(row, ["Start", "start", "Startdatum", "startdatum", "Anfang", "Begin", "Von"])),
-      end: parseDatum(findCol(row, ["Ende", "end", "Enddatum", "enddatum", "Finish", "Fertig", "Bis", "End"])),
-      typ: parseTyp(findCol(row, ["Typ", "typ", "Type", "type", "Kategorie"])),
-      objektGuids: [],
-      extraSpalten: extraSpalten(row),
-    })).filter(t => t.name.trim() !== "");
+    const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
+    const rows = rawRows.map((row, i) => ({
+      task: {
+        id: crypto.randomUUID(),
+        name: String(findCol(row, ["Name", "name", "Vorgangsname", "Vorgang", "Task", "Bezeichnung"]) ?? `Task ${i + 1}`),
+        start: parseDatum(findCol(row, ["Start", "start", "Startdatum", "startdatum", "Anfang", "Begin", "Von"])),
+        end: parseDatum(findCol(row, ["Ende", "end", "Enddatum", "enddatum", "Finish", "Fertig", "Bis", "End"])),
+        typ: parseTyp(findCol(row, ["Typ", "typ", "Type", "type", "Kategorie"])),
+        objektGuids: [] as string[],
+        extraSpalten: extraSpalten(row),
+      },
+      vorgRoh: String(findCol(row, VORGAENGER_SPALTEN) ?? ""),
+      lagRoh: String(findCol(row, WARTETAGE_SPALTEN) ?? "0"),
+    })).filter(r => r.task.name.trim() !== "");
+    return loeseVorgaenger(rows);
   }
 
   function parseXml(text: string): Task[] {
     if (istMsProjectXml(text)) return parseMsProjectXml(text);
     const parser = new DOMParser();
     const doc = parser.parseFromString(text, "text/xml");
-    const tasks: Task[] = [];
+    const rows: { task: Task; vorgRoh: string; lagRoh: string }[] = [];
     doc.querySelectorAll("Task, task").forEach((el, i) => {
       const g = (tag: string) => el.querySelector(tag)?.textContent?.trim() ?? "";
-      tasks.push({
-        id: crypto.randomUUID(),
-        name: g("Name") || g("name") || `Task ${i + 1}`,
-        start: parseDatum(g("Start") || g("start") || g("EarlyStart") || ""),
-        end: parseDatum(g("Finish") || g("finish") || g("Ende") || g("End") || g("EarlyFinish") || ""),
-        typ: parseTyp(g("Typ") || g("typ") || g("Type") || "neubau"),
-        objektGuids: [],
+      rows.push({
+        task: {
+          id: crypto.randomUUID(),
+          name: g("Name") || g("name") || `Task ${i + 1}`,
+          start: parseDatum(g("Start") || g("start") || g("EarlyStart") || ""),
+          end: parseDatum(g("Finish") || g("finish") || g("Ende") || g("End") || g("EarlyFinish") || ""),
+          typ: parseTyp(g("Typ") || g("typ") || g("Type") || "neubau"),
+          objektGuids: [],
+        },
+        vorgRoh: g("Vorgaenger") || g("Vorgänger") || g("Predecessor") || "",
+        lagRoh: g("Wartetage") || g("Lag") || "0",
       });
     });
-    return tasks;
+    return loeseVorgaenger(rows);
   }
 
   function validiere(tasks: Task[]): ImportFehler[] {

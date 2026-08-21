@@ -3,13 +3,13 @@ import * as XLSX from "xlsx";
 
 export default function GanttVorlage() {
   function downloadVorlage(format: "xlsx" | "csv") {
-    const header = ["Name", "Start", "Ende", "Typ", "Bauabschnitt", "Geschoss", "Etappe", "Objektname", "Layer"];
+    const header = ["Name", "Start", "Ende", "Typ", "Vorgänger", "Wartetage", "Bauabschnitt", "Geschoss", "Etappe", "Objektname", "Layer"];
     const beispiel = [
-      ["Erdarbeiten", "01.01.2025", "15.01.2025", "neubau", "BA1", "UG", "1", "Bodenplatte", "Fundament"],
-      ["Bestandswand", "01.01.2025", "01.01.2025", "bestand", "BA1", "EG", "", "Wand Beton", "Bestand"],
-      ["Abbruch Altbau", "16.01.2025", "20.01.2025", "abbruch", "BA1", "EG", "1", "Altbau Wand", "Abbruch"],
-      ["Rohbau EG", "21.01.2025", "15.02.2025", "neubau", "BA1", "EG", "2", "Decke Beton", "Rohbau"],
-      ["Gerüst", "01.02.2025", "28.02.2025", "temporaer", "BA1", "EG", "2", "Gerüst", "Temporär"],
+      ["Erdarbeiten", "01.01.2025", "15.01.2025", "neubau", "", "", "BA1", "UG", "1", "Bodenplatte", "Fundament"],
+      ["Bestandswand", "01.01.2025", "01.01.2025", "bestand", "", "", "BA1", "EG", "", "Wand Beton", "Bestand"],
+      ["Abbruch Altbau", "16.01.2025", "20.01.2025", "abbruch", "1", "0", "BA1", "EG", "1", "Altbau Wand", "Abbruch"],
+      ["Rohbau EG", "21.01.2025", "15.02.2025", "neubau", "3", "2", "BA1", "EG", "2", "Decke Beton", "Rohbau"],
+      ["Gerüst", "01.02.2025", "28.02.2025", "temporaer", "", "", "BA1", "EG", "2", "Gerüst", "Temporär"],
     ];
 
     if (format === "xlsx") {

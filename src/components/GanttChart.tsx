@@ -81,6 +81,7 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
   const [predPos, setPredPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const [predInput, setPredInput] = useState("");
   const [lagInput, setLagInput] = useState("0");
+  const [predListOffen, setPredListOffen] = useState(false);
   const predPopoverRef = useRef<HTMLDivElement>(null);
   const { sichtbar: hinweisSichtbar, pos: hinweisPos, hinweisRef, melden } = useDoppelklickHinweis();
 
@@ -115,6 +116,8 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
     setPredPickerTaskId(t.id);
     setPredInput(t.predecessorId ? nummern.get(t.predecessorId) ?? "" : "");
     setLagInput(String(t.lagDays ?? 0));
+    // Bei bereits gesetztem Vorgänger gleich Wartetage zeigen statt der Liste (nur bei neuer Auswahl automatisch aufklappen)
+    setPredListOffen(!t.predecessorId);
   }
 
   useEffect(() => { localStorage.setItem(lsLabelWKey, String(labelW)); }, [lsLabelWKey, labelW]);
@@ -450,24 +453,27 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
                           onClick={e => e.stopPropagation()}>
                           <div style={{ position: "relative" }}>
                             <div style={{ fontSize: 9, color: "#8a9baa", marginBottom: 2 }}>Vorgänger (Nummer)</div>
-                            <input className="ac-input" autoFocus style={{ fontSize: 11, padding: "3px 6px", width: "100%" }}
+                            <input className="ac-input" style={{ fontSize: 11, padding: "3px 6px", width: "100%" }}
                               placeholder="— kein Vorgänger —"
                               value={predInput}
-                              onChange={e => setPredInput(e.target.value)} />
-                            <div className="ac-dropdown" style={{ maxHeight: 120 }}>
-                              {gueltigeVorgaenger(tasks, t.id)
-                                .filter(c => {
-                                  const lbl = nummern.get(c.id) ?? "";
-                                  return !predInput || lbl.toLowerCase().startsWith(predInput.trim().toLowerCase()) || c.name.toLowerCase().includes(predInput.trim().toLowerCase());
-                                })
-                                .slice(0, 20)
-                                .map(c => (
-                                  <div key={c.id} className="ac-item" style={{ fontSize: 11, padding: "3px 6px" }}
-                                    onMouseDown={() => { onSetPredecessor?.(t.id, c.id, Number(lagInput) || 0); setPredPickerTaskId(null); }}>
-                                    <span style={{ fontWeight: 600 }}>{nummern.get(c.id)}</span> — {c.name}
-                                  </div>
-                                ))}
-                            </div>
+                              onFocus={() => setPredListOffen(true)}
+                              onChange={e => { setPredInput(e.target.value); setPredListOffen(true); }} />
+                            {predListOffen && (
+                              <div className="ac-dropdown" style={{ maxHeight: 120 }}>
+                                {gueltigeVorgaenger(tasks, t.id)
+                                  .filter(c => {
+                                    const lbl = nummern.get(c.id) ?? "";
+                                    return !predInput || lbl.toLowerCase().startsWith(predInput.trim().toLowerCase()) || c.name.toLowerCase().includes(predInput.trim().toLowerCase());
+                                  })
+                                  .slice(0, 20)
+                                  .map(c => (
+                                    <div key={c.id} className="ac-item" style={{ fontSize: 11, padding: "3px 6px" }}
+                                      onMouseDown={() => { setPredInput(nummern.get(c.id) ?? ""); setPredListOffen(false); }}>
+                                      <span style={{ fontWeight: 600 }}>{nummern.get(c.id)}</span> — {c.name}
+                                    </div>
+                                  ))}
+                              </div>
+                            )}
                           </div>
                           <div style={{ fontSize: 9, color: "#8a9baa", marginTop: 6 }}>Wartetage nach Vorgänger-Ende</div>
                           <input type="number" className="ac-input" style={{ fontSize: 11, padding: "3px 6px", width: "100%", marginTop: 2 }}

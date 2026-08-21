@@ -275,7 +275,7 @@ export default function App() {
     if (!aktiveSim) return;
     const tasks = aktiveSim.tasks;
     const nummern = berechneNummern(tasks);
-    const zeilen = [["Nummer", "Name", "Typ", "Start", "Ende", "Tage", "Vorgänger", "Bauteile"]];
+    const zeilen = [["Nummer", "Name", "Typ", "Start", "Ende", "Tage", "Vorgänger", "Wartetage", "Bauteile"]];
     tasks.forEach((t, idx) => {
       const isGrp = t.isGroup || istGruppe(tasks, idx);
       const gDaten = isGrp ? gruppenDaten(tasks, idx) : null;
@@ -291,6 +291,7 @@ export default function App() {
         end ? formatDatum(end) : "",
         tage != null ? String(tage) : "",
         t.predecessorId ? nummern.get(t.predecessorId) ?? "" : "",
+        t.predecessorId ? String(t.lagDays ?? 0) : "",
         String(t.objektGuids.length),
       ]);
     });
