@@ -55,9 +55,10 @@ export default function GanttImport({ onImport, taskCount }: Props) {
   }
 
   // Standard-Spaltennamen die NICHT als Extra gelten
-  const STANDARD = new Set(["name","start","startdatum","ende","enddatum","end","finish","fertig","anfang","begin","von","bis","typ","type","kategorie","vorgangsname","vorgang","task","bezeichnung","vorgänger","vorganger","predecessor","wartetage","lag","lagdays","lag days"]);
+  const STANDARD = new Set(["name","start","startdatum","ende","enddatum","end","finish","fertig","anfang","begin","von","bis","typ","type","kategorie","vorgangsname","vorgang","task","bezeichnung","vorgänger","vorganger","predecessor","wartetage","lag","lagdays","lag days","kürzel","kuerzel","bauteil-kürzel","bauteil-kuerzel"]);
   const VORGAENGER_SPALTEN = ["Vorgänger", "vorgänger", "Vorganger", "Predecessor", "predecessor"];
   const WARTETAGE_SPALTEN = ["Wartetage", "wartetage", "Lag", "lag", "Lag Days", "LagDays"];
+  const KUERZEL_SPALTEN = ["Kürzel", "kürzel", "Kuerzel", "kuerzel", "Bauteil-Kürzel", "bauteil-kürzel"];
 
   // Vorgänger-Spalte (Nummer wie in der App, oder Task-Name) → predecessorId auflösen.
   // Import erzeugt keine Gruppen, daher entspricht die Nummer 1,2,3… exakt der Zeilenreihenfolge
@@ -122,6 +123,7 @@ export default function GanttImport({ onImport, taskCount }: Props) {
     const typCol = findHeader(["Typ", "Type", "Kategorie"]);
     const vorgCol = findHeader(VORGAENGER_SPALTEN);
     const lagCol = findHeader(WARTETAGE_SPALTEN);
+    const kuerzelCol = findHeader(KUERZEL_SPALTEN);
 
     const rows: { task: Task; vorgRoh: string; lagRoh: string }[] = [];
     for (let r = 2; r <= range.e.r + 1; r++) {
@@ -149,6 +151,7 @@ export default function GanttImport({ onImport, taskCount }: Props) {
           end: parseDatum(endCell?.v ?? endRaw),
           typ: parseTyp(typCol ? getCachedValue(ws, typCol, r) : "neubau"),
           objektGuids: [],
+          bauteilKuerzel: kuerzelCol ? (getCachedValue(ws, kuerzelCol, r).trim() || undefined) : undefined,
           extraSpalten: Object.keys(extra).length > 0 ? extra : undefined,
         },
         vorgRoh: vorgCol ? getCachedValue(ws, vorgCol, r) : "",
@@ -170,6 +173,7 @@ export default function GanttImport({ onImport, taskCount }: Props) {
         end: parseDatum(findCol(row, ["Ende", "end", "Enddatum", "enddatum", "Finish", "Fertig", "Bis", "End"])),
         typ: parseTyp(findCol(row, ["Typ", "typ", "Type", "type", "Kategorie"])),
         objektGuids: [] as string[],
+        bauteilKuerzel: String(findCol(row, KUERZEL_SPALTEN) ?? "").trim() || undefined,
         extraSpalten: extraSpalten(row),
       },
       vorgRoh: String(findCol(row, VORGAENGER_SPALTEN) ?? ""),
@@ -193,6 +197,7 @@ export default function GanttImport({ onImport, taskCount }: Props) {
           end: parseDatum(g("Finish") || g("finish") || g("Ende") || g("End") || g("EarlyFinish") || ""),
           typ: parseTyp(g("Typ") || g("typ") || g("Type") || "neubau"),
           objektGuids: [],
+          bauteilKuerzel: (g("Kuerzel") || g("Kürzel") || g("kuerzel")) || undefined,
         },
         vorgRoh: g("Vorgaenger") || g("Vorgänger") || g("Predecessor") || "",
         lagRoh: g("Wartetage") || g("Lag") || "0",

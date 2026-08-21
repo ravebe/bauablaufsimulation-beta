@@ -26,10 +26,11 @@ export function exportXlsx(tasks: Task[], simName: string) {
     Typ: t.typ,
     Vorgänger: t.predecessorId ? nummern.get(t.predecessorId) ?? "" : "",
     Wartetage: t.predecessorId ? (t.lagDays ?? 0) : "",
+    Kürzel: t.bauteilKuerzel ?? "",
     Bauteile: t.objektGuids.length,
   }));
   const ws = XLSX.utils.json_to_sheet(rows);
-  ws["!cols"] = [{ wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }];
+  ws["!cols"] = [{ wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 10 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Gantt");
   XLSX.writeFile(wb, `${simName}_Gantt.xlsx`);
@@ -38,11 +39,12 @@ export function exportXlsx(tasks: Task[], simName: string) {
 export function exportCsv(tasks: Task[], simName: string) {
   const nummern = berechneNummern(tasks);
   const sep = ";";
-  const header = ["Name", "Start", "Ende", "Typ", "Vorgänger", "Wartetage", "Bauteile"].join(sep);
+  const header = ["Name", "Start", "Ende", "Typ", "Vorgänger", "Wartetage", "Kürzel", "Bauteile"].join(sep);
   const rows = tasks.map(t =>
     [t.name, formatDatum(t.start), formatDatum(t.end), t.typ,
       t.predecessorId ? nummern.get(t.predecessorId) ?? "" : "",
       t.predecessorId ? (t.lagDays ?? 0) : "",
+      t.bauteilKuerzel ?? "",
       t.objektGuids.length].join(sep)
   );
   const csv = "﻿" + [header, ...rows].join("\n"); // BOM for Excel
@@ -55,7 +57,7 @@ export function exportXml(tasks: Task[], simName: string) {
     const vorgLines = t.predecessorId
       ? `\n    <Vorgaenger>${esc(nummern.get(t.predecessorId) ?? "")}</Vorgaenger>\n    <Wartetage>${t.lagDays ?? 0}</Wartetage>`
       : "";
-    return `  <Task>\n    <Name>${esc(t.name)}</Name>\n    <Start>${formatDatum(t.start)}</Start>\n    <Finish>${formatDatum(t.end)}</Finish>\n    <Type>${t.typ}</Type>\n    <Objects>${t.objektGuids.length}</Objects>${vorgLines}\n  </Task>`;
+    return `  <Task>\n    <Name>${esc(t.name)}</Name>\n    <Start>${formatDatum(t.start)}</Start>\n    <Finish>${formatDatum(t.end)}</Finish>\n    <Type>${t.typ}</Type>\n    <Kuerzel>${esc(t.bauteilKuerzel ?? "")}</Kuerzel>\n    <Objects>${t.objektGuids.length}</Objects>${vorgLines}\n  </Task>`;
   }).join("\n");
   const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<Gantt>\n${tasksXml}\n</Gantt>`;
   download(xml, `${simName}_Gantt.xml`, "application/xml");
@@ -70,7 +72,7 @@ export function exportJson(tasks: Task[], simName: string) {
   const nummern = berechneNummern(tasks);
   const data = tasks.map(t => ({
     name: t.name, start: formatDatum(t.start), end: formatDatum(t.end),
-    typ: t.typ, bauteile: t.objektGuids.length, guids: t.objektGuids,
+    typ: t.typ, kuerzel: t.bauteilKuerzel ?? null, bauteile: t.objektGuids.length, guids: t.objektGuids,
     vorgaenger: t.predecessorId ? nummern.get(t.predecessorId) ?? null : null,
     wartetage: t.predecessorId ? (t.lagDays ?? 0) : null,
   }));

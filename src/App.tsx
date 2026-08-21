@@ -495,7 +495,7 @@ export default function App() {
 
       {/* Tab Content */}
       <div className="tc-tab-content">
-        {aktTab === "projekte" && (
+        <div style={{ display: aktTab === "projekte" ? "block" : "none" }}>
           <TabProjekte
             api={api}
             ready={ready}
@@ -506,7 +506,7 @@ export default function App() {
             geladeneModelle={geladeneModelle}
             userId={userId}
           />
-        )}
+        </div>
         <div style={{ display: aktTab === "bauteile" ? "block" : "none" }}>
           <TabBauteile
             api={api}
@@ -531,18 +531,18 @@ export default function App() {
             sharedNadelTag={sharedNadelTag}
           />
         </div>
-        {aktTab === "kalkulation" && (
-          <TabKalkulation sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} api={api} />
-        )}
-        {aktTab === "ressourcen" && (
+        <div style={{ display: aktTab === "kalkulation" ? "block" : "none" }}>
+          <TabKalkulation sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} api={api} projectId={projectId} />
+        </div>
+        <div style={{ display: aktTab === "ressourcen" ? "block" : "none" }}>
           <TabRessourcen sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} />
-        )}
-        {aktTab === "avor" && (
-          <TabAvor sim={aktiveSim} />
-        )}
-        {aktTab === "kosten" && (
-          <TabKosten sim={aktiveSim} />
-        )}
+        </div>
+        <div style={{ display: aktTab === "avor" ? "block" : "none" }}>
+          <TabAvor sim={aktiveSim} projectId={projectId} />
+        </div>
+        <div style={{ display: aktTab === "kosten" ? "block" : "none" }}>
+          <TabKosten sim={aktiveSim} projectId={projectId} />
+        </div>
       </div>
 
       {zugriffsManagerOffen && <ZugriffskontrollManager api={api} onClose={() => setZugriffsManagerOffen(false)} />}

@@ -1,7 +1,8 @@
 // cockpitCharts.tsx — wiederverwendbarer Chart-/Cockpit-Baukasten (reines SVG, kein Package) für
 // Tab AVOR und spätere Cockpits. Farben nach validierter Referenzpalette (dataviz-Skill, Light only
 // — die App hat aktuell keinen Dark-Mode).
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { nsKey } from "../types";
 
 export const FARBEN = {
   kategorial: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"],
@@ -227,6 +228,33 @@ export function StatTile({ label, wert, status, sub }: { label: string; wert: st
       <div style={{ fontSize: 9, color: FARBEN.textMuted, fontWeight: 600, letterSpacing: ".3px", marginBottom: 3 }}>{label.toUpperCase()}</div>
       <div style={{ fontSize: 18, fontWeight: 700, color: farbe }}>{wert}</div>
       {sub && <div style={{ fontSize: 10, color: FARBEN.textSekundaer, marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+}
+
+/** Persistiert (localStorage, Projekt-namespaced), welche Cockpit-Diagramme eingeklappt sind. */
+export function useEingeklappt(projectId: string | null | undefined, namespace: string) {
+  const lsKey = nsKey(`4d-cockpit-collapse-${namespace}`, projectId ?? null);
+  const [eingeklappt, setEingeklappt] = useState<Record<string, boolean>>(() => {
+    try { const raw = localStorage.getItem(lsKey); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
+  });
+  useEffect(() => { try { localStorage.setItem(lsKey, JSON.stringify(eingeklappt)); } catch { /* ignore */ } }, [eingeklappt, lsKey]);
+  function toggle(key: string) { setEingeklappt(prev => ({ ...prev, [key]: !prev[key] })); }
+  return { eingeklappt, toggle };
+}
+
+/** Ein-/ausklappbarer Cockpit-Abschnitt (Diagramm-Titel mit Dreieck-Toggle, optional Aktionen rechts). */
+export function CockpitAbschnitt({ titel, eingeklappt, onToggle, aktionen, children }: { titel: string; eingeklappt: boolean; onToggle: () => void; aktionen?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: eingeklappt ? 0 : 6 }}>
+        <div onClick={onToggle} style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", userSelect: "none" }}>
+          <span style={{ display: "inline-block", transform: `scaleX(1.6) rotate(${eingeklappt ? -90 : 0}deg)`, transition: "transform .15s", fontSize: 9, color: FARBEN.textMuted }}>▼</span>
+          <span style={{ fontSize: 10, fontWeight: 600, color: FARBEN.textMuted, letterSpacing: ".5px" }}>{titel.toUpperCase()}</span>
+        </div>
+        {aktionen}
+      </div>
+      {!eingeklappt && children}
     </div>
   );
 }

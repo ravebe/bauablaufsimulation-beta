@@ -6,10 +6,10 @@ import { LEERER_KALENDER } from "./kalenderHelpers";
 import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
 import { personalauslastung, kranauslastung, mengenProTag, ertragsoptik } from "./avorHelpers";
 import type { TagWert } from "./avorHelpers";
-import { TimeSeriesChart, StatTile, FARBEN } from "./cockpitCharts";
+import { TimeSeriesChart, StatTile, CockpitAbschnitt, useEingeklappt, FARBEN } from "./cockpitCharts";
 import type { Serie } from "./cockpitCharts";
 
-interface Props { sim: SimProjekt | null; }
+interface Props { sim: SimProjekt | null; projectId?: string | null; }
 
 const KRAN_KAPAZITAET = 1; // Annahme: 1 Kran je Kranbereich — Werte darüber = mehrere Tasks wollen gleichzeitig denselben Kran
 
@@ -35,8 +35,9 @@ function gestapelteSerien(tagWerte: TagWert[], labelFuer: (k: string) => string)
   return { tage, serien };
 }
 
-export default function TabAvor({ sim }: Props) {
+export default function TabAvor({ sim, projectId = null }: Props) {
   const [mengenGewerkKey, setMengenGewerkKey] = useState<string>("beton");
+  const { eingeklappt, toggle: toggleEingeklappt } = useEingeklappt(projectId, "avor");
 
   if (!sim) return <div style={{ padding: 14, fontSize: 12, color: "var(--tc-text-3)" }}>Kein aktives Projekt ausgewählt</div>;
 
@@ -84,14 +85,12 @@ export default function TabAvor({ sim }: Props) {
         <StatTile label="Marge (kumuliert)" wert={`${fmtChf(marge)} CHF`} status={marge >= 0 ? "good" : "critical"} />
       </div>
 
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 10, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px", marginBottom: 6 }}>PERSONALAUSLASTUNG</div>
+      <CockpitAbschnitt titel="Personalauslastung" eingeklappt={!!eingeklappt["personal"]} onToggle={() => toggleEingeklappt("personal")}>
         <TimeSeriesChart tage={personalSerien.tage} serien={personalSerien.serien} modus="flaeche-gestapelt" einheit="Personen"
           formatWert={v => String(Math.round(v))} />
-      </div>
+      </CockpitAbschnitt>
 
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 10, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px", marginBottom: 6 }}>KRANAUSLASTUNG</div>
+      <CockpitAbschnitt titel="Kranauslastung" eingeklappt={!!eingeklappt["kran"]} onToggle={() => toggleEingeklappt("kran")}>
         {!kranGibtEsDaten ? (
           <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
             Kein Gewerk als kranpflichtig markiert (Tab Ressourcen) oder keine Tasks mit Kranbereich erfasst.
@@ -100,29 +99,27 @@ export default function TabAvor({ sim }: Props) {
           <TimeSeriesChart tage={kranSerien.tage} serien={kranSerien.serien} modus="linie" einheit="gleichzeitig"
             referenzlinie={{ wert: KRAN_KAPAZITAET, label: "Kapazität" }} formatWert={v => String(Math.round(v))} />
         )}
-      </div>
+      </CockpitAbschnitt>
 
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-          <div style={{ fontSize: 10, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px" }}>MENGEN-FILTER</div>
+      <CockpitAbschnitt titel="Mengen-Filter" eingeklappt={!!eingeklappt["mengen"]} onToggle={() => toggleEingeklappt("mengen")}
+        aktionen={
           <select value={aktivesGewerk?.key ?? ""} onChange={e => setMengenGewerkKey(e.target.value)}
             style={{ fontSize: 11, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }}>
             {gewerkOptionen.map(g => <option key={g.key} value={g.key}>{g.label}</option>)}
           </select>
-        </div>
+        }>
         <TimeSeriesChart tage={mengen.map(m => m.tag)} einheit={aktivesGewerk?.einheit ?? ""}
           serien={[{ key: "menge", label: aktivesGewerk?.label ?? "", color: FARBEN.kategorial[0], werte: mengen.map(m => m.menge) }]}
           modus="linie" formatWert={v => v.toLocaleString("de-CH", { maximumFractionDigits: 1 })} />
-      </div>
+      </CockpitAbschnitt>
 
-      <div>
-        <div style={{ fontSize: 10, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px", marginBottom: 6 }}>ERTRAGSOPTIK</div>
+      <CockpitAbschnitt titel="Ertragsoptik" eingeklappt={!!eingeklappt["ertrag"]} onToggle={() => toggleEingeklappt("ertrag")}>
         <TimeSeriesChart tage={ertrag.map(e => e.tag)} einheit="CHF" formatWert={fmtChf} modus="linie"
           serien={[
             { key: "ertrag", label: "Ertrag (kumuliert)", color: FARBEN.kategorial[0], werte: ertrag.map(e => e.ertragKum) },
             { key: "kosten", label: "Kosten (kumuliert)", color: FARBEN.kategorial[1], werte: ertrag.map(e => e.kostenKum) },
           ]} />
-      </div>
+      </CockpitAbschnitt>
     </div>
   );
 }

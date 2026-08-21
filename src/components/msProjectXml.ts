@@ -60,7 +60,8 @@ export function generateMsProjectXml(tasks: Task[], projectName: string, kalende
       <DurationFormat>7</DurationFormat>
       <Summary>${gruppe ? 1 : 0}</Summary>
       <Milestone>${meilenstein ? 1 : 0}</Milestone>
-      <Text1>${esc(t.typ)}</Text1>${notesLine ? `\n      <Notes>${esc(notesLine)}</Notes>` : ""}${predXml}
+      <Text1>${esc(t.typ)}</Text1>
+      <Text2>${esc(t.bauteilKuerzel ?? "")}</Text2>${notesLine ? `\n      <Notes>${esc(notesLine)}</Notes>` : ""}${predXml}
     </Task>`;
   }).join("\n");
 
@@ -98,7 +99,7 @@ export function parseMsProjectXml(text: string): Task[] {
 
   // 1. Rohdaten sammeln + lokale IDs vergeben (Projekt-Summary-Zeile mit OutlineLevel 0 überspringen)
   interface Roh { uid: string; localId: string; name: string; outlineLevel: number; summary: boolean;
-    start: string; end: string; typ: TaskTyp; objektGuids: string[]; predUid: string | null; lagDays: number; }
+    start: string; end: string; typ: TaskTyp; bauteilKuerzel: string | undefined; objektGuids: string[]; predUid: string | null; lagDays: number; }
   const roh: Roh[] = [];
   for (const el of taskEls) {
     if (g(el, "IsNull") === "1") continue;
@@ -115,11 +116,12 @@ export function parseMsProjectXml(text: string): Task[] {
     const predUid = predLinkEl ? (predLinkEl.querySelector("PredecessorUID")?.textContent?.trim() ?? null) : null;
     const linkLag = predLinkEl ? Number(predLinkEl.querySelector("LinkLag")?.textContent ?? "0") : 0;
 
+    const kuerzelRaw = g(el, "Text2").trim();
     roh.push({
       uid, localId: crypto.randomUUID(), name: g(el, "Name") || "Task",
       outlineLevel, summary: g(el, "Summary") === "1",
       start: normalizeDatum(g(el, "Start")), end: normalizeDatum(g(el, "Finish") || g(el, "Start")),
-      typ, objektGuids, predUid, lagDays: linkLag / MINUTEN_PRO_TAG_LAG,
+      typ, bauteilKuerzel: kuerzelRaw || undefined, objektGuids, predUid, lagDays: linkLag / MINUTEN_PRO_TAG_LAG,
     });
   }
 
@@ -132,6 +134,7 @@ export function parseMsProjectXml(text: string): Task[] {
     start: r.start,
     end: r.end,
     typ: r.typ,
+    bauteilKuerzel: r.bauteilKuerzel,
     objektGuids: r.objektGuids,
     outlineLevel: r.outlineLevel,
     isGroup: r.summary,

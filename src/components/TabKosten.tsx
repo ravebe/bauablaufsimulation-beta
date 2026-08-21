@@ -5,15 +5,17 @@ import { istGruppe } from "../types";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import { LEERE_STAMMDATEN, kostenTask } from "./stammdatenHelpers";
 import { ertragsoptik } from "./avorHelpers";
-import { StatTile, CategoryBarChart, TimeSeriesChart, FARBEN } from "./cockpitCharts";
+import { StatTile, CategoryBarChart, TimeSeriesChart, CockpitAbschnitt, useEingeklappt, FARBEN } from "./cockpitCharts";
 
-interface Props { sim: SimProjekt | null; }
+interface Props { sim: SimProjekt | null; projectId?: string | null; }
 
 function fmtChf(n: number): string {
   return n.toLocaleString("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export default function TabKosten({ sim }: Props) {
+export default function TabKosten({ sim, projectId = null }: Props) {
+  const { eingeklappt, toggle: toggleEingeklappt } = useEingeklappt(projectId, "kosten");
+
   if (!sim) return <div style={{ padding: 14, fontSize: 12, color: "var(--tc-text-3)" }}>Kein aktives Projekt ausgewählt</div>;
 
   const stammdaten = sim.stammdaten ?? LEERE_STAMMDATEN;
@@ -62,20 +64,18 @@ export default function TabKosten({ sim }: Props) {
       </div>
 
       {gewerkeMitKosten.length > 0 && (
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 10, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px", marginBottom: 6 }}>KOSTEN JE GEWERK</div>
+        <CockpitAbschnitt titel="Kosten je Gewerk" eingeklappt={!!eingeklappt["gewerk"]} onToggle={() => toggleEingeklappt("gewerk")}>
           <CategoryBarChart einheit="CHF" formatWert={fmtChf}
             kategorien={gewerkeMitKosten.map(([key]) => stammdaten.gewerke.find(g => g.key === key)?.label ?? key)}
             serien={[{ key: "kosten", label: "Kosten", color: FARBEN.kategorial[0], werte: gewerkeMitKosten.map(([, v]) => v) }]} />
-        </div>
+        </CockpitAbschnitt>
       )}
 
       {ertrag.length > 0 && (
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 10, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px", marginBottom: 6 }}>KOSTEN KUMULIERT</div>
+        <CockpitAbschnitt titel="Kosten kumuliert" eingeklappt={!!eingeklappt["kumuliert"]} onToggle={() => toggleEingeklappt("kumuliert")}>
           <TimeSeriesChart tage={ertrag.map(e => e.tag)} einheit="CHF" formatWert={fmtChf} modus="linie"
             serien={[{ key: "kosten", label: "Kosten (kumuliert)", color: FARBEN.kategorial[0], werte: ertrag.map(e => e.kostenKum) }]} />
-        </div>
+        </CockpitAbschnitt>
       )}
 
       <div style={{ display: "flex", gap: 6, fontSize: 9, color: "var(--tc-text-3)", padding: "0 0 4px", fontWeight: 600 }}>
