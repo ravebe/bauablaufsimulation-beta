@@ -98,36 +98,42 @@ export default function App() {
   }, [api, projectId]);
 
   // 3. localStorage + Cloud speichern (debounced)
-  const saveToCloud = useCallback(async (simsData: SimProjekt[], aid: string | null) => {
-    localStorage.setItem(nsKey(SIMS_KEY, projectId), JSON.stringify(simsData));
-    if (aid) localStorage.setItem(nsKey(AKTIV_KEY, projectId), aid);
-    if (!api) return;
-    setSyncStatus("saving");
-    try {
-      // Sicherheitsnetz: ein leerer Zustand darf bestehende Cloud-Daten nie stillschweigend
-      // überschreiben (Schutz gegen Timing-Bugs, fehlgeschlagenes Laden etc.)
-      if (simsData.length === 0) {
-        const bestehend = await cloudLoad(api);
-        if (bestehend && Array.isArray(bestehend.sims) && bestehend.sims.length > 0) {
-          console.warn("[CloudSync] Speichern übersprungen — Cloud hat noch Daten, lokal aber leer");
-          setSyncStatus("idle");
-          return;
+  // Speichervorgänge werden strikt nacheinander abgearbeitet (Queue) — sonst können sich
+  // zwei sich überschneidende Speichervorgänge (z.B. Debounce + Sofort-Speichern beim
+  // Tab-Wechsel) gegenseitig als "Konflikt" blockieren und danach speichert gar nichts mehr.
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const saveToCloud = useCallback((simsData: SimProjekt[], aid: string | null) => {
+    saveQueue.current = saveQueue.current.then(async () => {
+      localStorage.setItem(nsKey(SIMS_KEY, projectId), JSON.stringify(simsData));
+      if (aid) localStorage.setItem(nsKey(AKTIV_KEY, projectId), aid);
+      if (!api) return;
+      setSyncStatus("saving");
+      try {
+        // Sicherheitsnetz: ein leerer Zustand darf bestehende Cloud-Daten nie stillschweigend
+        // überschreiben (Schutz gegen Timing-Bugs, fehlgeschlagenes Laden etc.)
+        if (simsData.length === 0) {
+          const bestehend = await cloudLoad(api);
+          if (bestehend && Array.isArray(bestehend.sims) && bestehend.sims.length > 0) {
+            console.warn("[CloudSync] Speichern übersprungen — Cloud hat noch Daten, lokal aber leer");
+            setSyncStatus("idle");
+            return;
+          }
         }
-      }
-      const result = await cloudSave(api, { sims: simsData, aktivId: aid }, cloudVersion.current);
-      if (result.ok) {
-        cloudVersion.current = result.version;
-        setSyncStatus("saved");
-        setTimeout(() => setSyncStatus("idle"), 2000);
-      } else if (result.conflict) {
-        // Jemand anderes hat zwischenzeitlich gespeichert — nicht überschreiben,
-        // sondern den Nutzer entscheiden lassen (Banner mit "Neu laden")
-        setKonflikt(true);
-        setSyncStatus("error");
-      } else {
-        setSyncStatus("error");
-      }
-    } catch { setSyncStatus("error"); }
+        const result = await cloudSave(api, { sims: simsData, aktivId: aid }, cloudVersion.current);
+        if (result.ok) {
+          cloudVersion.current = result.version;
+          setSyncStatus("saved");
+          setTimeout(() => setSyncStatus("idle"), 2000);
+        } else if (result.conflict) {
+          // Jemand anderes hat zwischenzeitlich gespeichert — nicht überschreiben,
+          // sondern den Nutzer entscheiden lassen (Banner mit "Neu laden")
+          setKonflikt(true);
+          setSyncStatus("error");
+        } else {
+          setSyncStatus("error");
+        }
+      } catch { setSyncStatus("error"); }
+    });
   }, [api, projectId]);
 
   useEffect(() => {
@@ -145,6 +151,7 @@ export default function App() {
   useEffect(() => {
     const sofortSpeichern = () => {
       if (document.visibilityState === "visible") return; // nur beim Verlassen/Verstecken, nicht beim Zurückkommen
+      if (konflikt) return; // bei ungelöstem Konflikt nicht blind weiterspeichern
       if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; saveToCloud(sims, aktivId); }
     };
     document.addEventListener("visibilitychange", sofortSpeichern);
@@ -153,7 +160,7 @@ export default function App() {
       document.removeEventListener("visibilitychange", sofortSpeichern);
       window.removeEventListener("pagehide", sofortSpeichern);
     };
-  }, [sims, aktivId, saveToCloud]);
+  }, [sims, aktivId, saveToCloud, konflikt]);
 
   const aktiveSim = sims.find(s => s.id === aktivId) ?? null;
 
