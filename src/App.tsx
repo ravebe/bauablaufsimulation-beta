@@ -5,17 +5,24 @@ import { SIMS_KEY, AKTIV_KEY, nsKey } from "./types";
 import TabProjekte from "./components/TabProjekte";
 import TabBauteile from "./components/TabBauteile";
 import TabAbspielen from "./components/TabAbspielen";
+import TabKalkulation from "./components/TabKalkulation";
+import TabRessourcen from "./components/TabRessourcen";
+import TabKosten from "./components/TabKosten";
 import ZugriffskontrollManager from "./components/ZugriffskontrollManager";
 import KalenderManager from "./components/KalenderManager";
 import { EXPORT_FORMATE } from "./components/ganttExportFormate";
 import "./App.css";
 
-type Tab = "projekte" | "bauteile" | "abspielen";
+type Tab = "projekte" | "bauteile" | "abspielen" | "kalkulation" | "ressourcen" | "kosten";
+type TabGruppe = "haupt" | "erweitert";
+const HAUPT_TABS: Tab[] = ["projekte", "bauteile", "abspielen"];
+const ERWEITERTE_TABS: Tab[] = ["kalkulation", "ressourcen", "kosten"];
 
 export default function App() {
   const { api, ready, selektion, aktivesModellId, geladeneModelle, projectId } = useApi();
 
   const [aktTab, setAktTab] = useState<Tab>("projekte");
+  const [tabGruppe, setTabGruppe] = useState<TabGruppe>("haupt");
   const [sims, setSims] = useState<SimProjekt[]>([]);
   const [aktivId, setAktivId] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -372,12 +379,6 @@ export default function App() {
                       <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>Arbeitstage der aktiven Simulation</div>
                     </div>
                   </div>
-                  <div className="tc-header-dropdown-item" style={{ opacity: 0.4, cursor: "default" }}>
-                    <div>
-                      <div style={{ fontWeight: 500 }}>Ressourcen einrichten</div>
-                      <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>Bald verfügbar</div>
-                    </div>
-                  </div>
                   <div className="tc-header-dropdown-item"
                     onClick={() => { setZugriffsManagerOffen(true); setOptionsDropdown(false); }}>
                     <div>
@@ -410,35 +411,77 @@ export default function App() {
 
       {/* Tabs */}
       <div className="tc-tabs">
-        <button
-          className={`tc-tab ${aktTab === "projekte" ? "active" : ""}`}
-          onClick={() => setAktTab("projekte")}
-        >
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" width="16" height="16">
-            <rect x="2" y="2" width="5" height="5" rx="0.5"/><rect x="9" y="2" width="5" height="5" rx="0.5"/>
-            <rect x="2" y="9" width="5" height="5" rx="0.5"/><rect x="9" y="9" width="5" height="5" rx="0.5"/>
-          </svg>
-          <span>Projekte</span>
+        <button className="tc-btn-ghost" title={tabGruppe === "haupt" ? "Kalkulation / Ressourcen / Kosten anzeigen" : "Projekte / Bauteile / Abspielen anzeigen"}
+          style={{ fontSize: 12, padding: "2px 6px", margin: "4px 2px 4px 6px", flexShrink: 0 }}
+          onClick={() => {
+            const neueGruppe: TabGruppe = tabGruppe === "haupt" ? "erweitert" : "haupt";
+            setTabGruppe(neueGruppe);
+            setAktTab(neueGruppe === "haupt" ? HAUPT_TABS[0] : ERWEITERTE_TABS[0]);
+          }}>
+          {tabGruppe === "haupt" ? "▶" : "◀"}
         </button>
-        <button
-          className={`tc-tab ${aktTab === "bauteile" ? "active" : ""}`}
-          onClick={() => setAktTab("bauteile")}
-        >
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" width="16" height="16">
-            <path d="M8 1.5L14.5 5v6L8 14.5 1.5 11V5L8 1.5z"/>
-            <path d="M8 14.5V8M1.5 5L8 8M14.5 5L8 8"/>
-          </svg>
-          <span>Bauteile</span>
-        </button>
-        <button
-          className={`tc-tab ${aktTab === "abspielen" ? "active" : ""}`}
-          onClick={() => setAktTab("abspielen")}
-        >
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" width="16" height="16">
-            <path d="M4 2l10 6-10 6V2z"/>
-          </svg>
-          <span>Abspielen</span>
-        </button>
+        {tabGruppe === "haupt" ? (<>
+          <button
+            className={`tc-tab ${aktTab === "projekte" ? "active" : ""}`}
+            onClick={() => setAktTab("projekte")}
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" width="16" height="16">
+              <rect x="2" y="2" width="5" height="5" rx="0.5"/><rect x="9" y="2" width="5" height="5" rx="0.5"/>
+              <rect x="2" y="9" width="5" height="5" rx="0.5"/><rect x="9" y="9" width="5" height="5" rx="0.5"/>
+            </svg>
+            <span>Projekte</span>
+          </button>
+          <button
+            className={`tc-tab ${aktTab === "bauteile" ? "active" : ""}`}
+            onClick={() => setAktTab("bauteile")}
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" width="16" height="16">
+              <path d="M8 1.5L14.5 5v6L8 14.5 1.5 11V5L8 1.5z"/>
+              <path d="M8 14.5V8M1.5 5L8 8M14.5 5L8 8"/>
+            </svg>
+            <span>Bauteile</span>
+          </button>
+          <button
+            className={`tc-tab ${aktTab === "abspielen" ? "active" : ""}`}
+            onClick={() => setAktTab("abspielen")}
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" width="16" height="16">
+              <path d="M4 2l10 6-10 6V2z"/>
+            </svg>
+            <span>Abspielen</span>
+          </button>
+        </>) : (<>
+          <button
+            className={`tc-tab ${aktTab === "kalkulation" ? "active" : ""}`}
+            onClick={() => setAktTab("kalkulation")}
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" width="16" height="16">
+              <rect x="2.5" y="2" width="11" height="12" rx="0.8"/>
+              <path d="M5 5.5h6M5 8h6M5 10.5h3.5"/>
+            </svg>
+            <span>Kalkulation</span>
+          </button>
+          <button
+            className={`tc-tab ${aktTab === "ressourcen" ? "active" : ""}`}
+            onClick={() => setAktTab("ressourcen")}
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" width="16" height="16">
+              <circle cx="6" cy="5.5" r="2.3"/>
+              <path d="M2 14c0-2.5 1.8-4.2 4-4.2s4 1.7 4 4.2M11 4c1.4 0 2.5 1.1 2.5 2.5S12.4 9 11 9M11.5 9.5c1.7 0 3 1.4 3 3.3"/>
+            </svg>
+            <span>Ressourcen</span>
+          </button>
+          <button
+            className={`tc-tab ${aktTab === "kosten" ? "active" : ""}`}
+            onClick={() => setAktTab("kosten")}
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" width="16" height="16">
+              <circle cx="8" cy="8" r="6"/>
+              <path d="M9.8 6.2c-.3-.6-1-1-1.9-1-1.2 0-2.1.7-2.1 1.7s.9 1.4 2.1 1.6c1.2.2 2.1.6 2.1 1.6s-.9 1.7-2.1 1.7c-.9 0-1.6-.4-1.9-1M8 4.5v1M8 10.5v1"/>
+            </svg>
+            <span>Kosten</span>
+          </button>
+        </>)}
       </div>
 
       {/* Tab Content */}
@@ -479,6 +522,15 @@ export default function App() {
             sharedNadelTag={sharedNadelTag}
           />
         </div>
+        {aktTab === "kalkulation" && (
+          <TabKalkulation sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} />
+        )}
+        {aktTab === "ressourcen" && (
+          <TabRessourcen sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} />
+        )}
+        {aktTab === "kosten" && (
+          <TabKosten sim={aktiveSim} />
+        )}
       </div>
 
       {zugriffsManagerOffen && <ZugriffskontrollManager api={api} onClose={() => setZugriffsManagerOffen(false)} />}

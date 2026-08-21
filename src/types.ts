@@ -1,5 +1,6 @@
 import type { Kalender } from "./components/kalenderHelpers";
 import { arbeitstageZwischen, LEERER_KALENDER } from "./components/kalenderHelpers";
+import type { Stammdaten } from "./components/stammdatenHelpers";
 
 export type TaskTyp = "neubau" | "bestand" | "abbruch" | "temporaer";
 
@@ -15,6 +16,8 @@ export interface Task {
   isGroup?: boolean; // true = Gruppentitel (keine Bauteile, kein Typ)
   predecessorId?: string; // ID des Vorgänger-Tasks
   lagDays?: number; // Wartetage nach Vorgänger-Ende (default 0)
+  bauteilKuerzel?: string; // Bauteil-Kürzel für die Kalkulation (z.B. "WB"), siehe stammdatenHelpers.ts
+  mengen?: Record<string, number>; // Gewerk-key → Menge, für die Menge→Tage-Kalkulation
 }
 
 export interface SimModell {
@@ -35,6 +38,7 @@ export interface SimProjekt {
   tasks: Task[];
   modelle: SimModell[];
   kalender?: Kalender; // Arbeitstage-Kalender (Feiertage) dieses Projekts
+  stammdaten?: Stammdaten; // Leistungswerte/Personal/CHF für die Kalkulation, siehe stammdatenHelpers.ts
 }
 
 // TC API Typen

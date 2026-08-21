@@ -207,7 +207,7 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
   return (
     <div className="tasklist-wrap">
       {/* Suche + Toggle */}
-      <div style={{ display: "flex", alignItems: "center", padding: "4px 8px 0", gap: 4 }}>
+      <div style={{ display: "flex", alignItems: "center", padding: "6px 10px", gap: 4 }}>
         {suchOffen ? (
           <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 4 }}>
             <span style={{ fontSize: 13, color: "#8a9baa", flexShrink: 0, cursor: "pointer" }}
