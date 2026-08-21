@@ -391,20 +391,20 @@ export default function App() {
                   <div className="tc-header-dropdown-item" style={{ opacity: aktiveSim ? 1 : 0.4, cursor: aktiveSim ? "pointer" : "default" }}
                     onClick={() => aktiveSim && exportTasksCsv()}>
                     <div>
-                      <div style={{ fontWeight: 500 }}>⬇ Export</div>
+                      <div style={{ fontWeight: 500 }}>Export</div>
                       <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>Tasks der aktiven Simulation als CSV</div>
                     </div>
                   </div>
                   <div className="tc-header-dropdown-item" style={{ opacity: 0.4, cursor: "default" }}>
                     <div>
-                      <div style={{ fontWeight: 500 }}>⚙ Ressourcen einrichten</div>
+                      <div style={{ fontWeight: 500 }}>Ressourcen einrichten</div>
                       <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>Bald verfügbar</div>
                     </div>
                   </div>
                   <div className="tc-header-dropdown-item"
                     onClick={() => { setZugriffsManagerOffen(true); setOptionsDropdown(false); }}>
                     <div>
-                      <div style={{ fontWeight: 500 }}>🔒 Zugriffskontrolle verwalten</div>
+                      <div style={{ fontWeight: 500 }}>Zugriffskontrolle verwalten</div>
                       <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>Für alle Gruppen</div>
                     </div>
                   </div>
