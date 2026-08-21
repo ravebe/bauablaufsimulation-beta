@@ -18,6 +18,10 @@ export interface Task {
   lagDays?: number; // Wartetage nach Vorgänger-Ende (default 0)
   bauteilKuerzel?: string; // Bauteil-Kürzel für die Kalkulation (z.B. "WB"), siehe stammdatenHelpers.ts
   mengen?: Record<string, number>; // Gewerk-key → Menge, für die Menge→Tage-Kalkulation
+  etappe?: string; // WBS-Attribute für Tab AVOR (Filterung/Gruppierung), siehe avorHelpers.ts
+  geschoss?: string;
+  bauabschnitt?: string;
+  kranbereich?: string;
 }
 
 export interface SimModell {

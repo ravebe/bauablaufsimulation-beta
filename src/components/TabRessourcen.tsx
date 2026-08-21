@@ -54,9 +54,15 @@ export default function TabRessourcen({ sim, updateSim, readOnly }: Props) {
   return (
     <div style={{ padding: 14, fontSize: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontWeight: 600 }}>Arbeitszeit pro Tag (h):</span>
-          {numInput(stammdaten.arbeitszeitStdProTag, v => speichern({ ...stammdaten, arbeitszeitStdProTag: v ?? 8.5 }), 60)}
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontWeight: 600 }}>Arbeitszeit pro Tag (h):</span>
+            {numInput(stammdaten.arbeitszeitStdProTag, v => speichern({ ...stammdaten, arbeitszeitStdProTag: v ?? 8.5 }), 60)}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontWeight: 600 }}>Umsatz CHF/Mannstunde:</span>
+            {numInput(stammdaten.umsatzChfProMannstunde ?? 80, v => speichern({ ...stammdaten, umsatzChfProMannstunde: v ?? 80 }), 60)}
+          </div>
         </div>
         {!readOnly && (
           <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }} onClick={standardLaden}>
@@ -73,8 +79,15 @@ export default function TabRessourcen({ sim, updateSim, readOnly }: Props) {
 
       {stammdaten.gewerke.map((gewerk, gi) => (
         <div key={gewerk.key} style={{ marginBottom: 18 }}>
-          <div style={{ fontSize: 10, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px", marginBottom: 6 }}>
-            {gewerk.label.toUpperCase()} ({gewerk.einheit})
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+            <div style={{ fontSize: 10, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px" }}>
+              {gewerk.label.toUpperCase()} ({gewerk.einheit})
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--tc-text-3)", cursor: readOnly ? "default" : "pointer" }}>
+              <input type="checkbox" disabled={readOnly} checked={!!gewerk.kranpflichtig}
+                onChange={e => speichern({ ...stammdaten, gewerke: stammdaten.gewerke.map((g, i) => i !== gi ? g : { ...g, kranpflichtig: e.target.checked }) })} />
+              kranpflichtig
+            </label>
           </div>
           <div style={{ display: "flex", gap: 6, fontSize: 9, color: "var(--tc-text-3)", padding: "0 0 3px", fontWeight: 600 }}>
             <span style={{ width: 60 }}>Kürzel</span>

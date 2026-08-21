@@ -7,16 +7,17 @@ import TabBauteile from "./components/TabBauteile";
 import TabAbspielen from "./components/TabAbspielen";
 import TabKalkulation from "./components/TabKalkulation";
 import TabRessourcen from "./components/TabRessourcen";
+import TabAvor from "./components/TabAvor";
 import TabKosten from "./components/TabKosten";
 import ZugriffskontrollManager from "./components/ZugriffskontrollManager";
 import KalenderManager from "./components/KalenderManager";
 import { EXPORT_FORMATE } from "./components/ganttExportFormate";
 import "./App.css";
 
-type Tab = "projekte" | "bauteile" | "abspielen" | "kalkulation" | "ressourcen" | "kosten";
+type Tab = "projekte" | "bauteile" | "abspielen" | "kalkulation" | "ressourcen" | "avor" | "kosten";
 type TabGruppe = "haupt" | "erweitert";
 const HAUPT_TABS: Tab[] = ["projekte", "bauteile", "abspielen"];
-const ERWEITERTE_TABS: Tab[] = ["kalkulation", "ressourcen", "kosten"];
+const ERWEITERTE_TABS: Tab[] = ["kalkulation", "ressourcen", "avor", "kosten"];
 
 export default function App() {
   const { api, ready, selektion, aktivesModellId, geladeneModelle, projectId } = useApi();
@@ -463,6 +464,15 @@ export default function App() {
             <span>Ressourcen</span>
           </button>
           <button
+            className={`tc-tab ${aktTab === "avor" ? "active" : ""}`}
+            onClick={() => setAktTab("avor")}
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" width="16" height="16">
+              <path d="M2 13.5h12M4 13.5V8M8 13.5V4.5M12 13.5V6.5"/>
+            </svg>
+            <span>AVOR</span>
+          </button>
+          <button
             className={`tc-tab ${aktTab === "kosten" ? "active" : ""}`}
             onClick={() => setAktTab("kosten")}
           >
@@ -526,6 +536,9 @@ export default function App() {
         )}
         {aktTab === "ressourcen" && (
           <TabRessourcen sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} />
+        )}
+        {aktTab === "avor" && (
+          <TabAvor sim={aktiveSim} />
         )}
         {aktTab === "kosten" && (
           <TabKosten sim={aktiveSim} />

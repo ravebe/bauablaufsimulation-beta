@@ -14,9 +14,11 @@ export interface Gewerk {
   label: string;
   einheit: string;
   raten: Rate[];
+  kranpflichtig?: boolean; // steuert, ob Tasks dieses Gewerks in die Kranauslastung (Tab AVOR) einfliessen
 }
 export interface Stammdaten {
   arbeitszeitStdProTag: number;
+  umsatzChfProMannstunde?: number; // für Ertragsoptik (Tab AVOR), Default 80
   gewerke: Gewerk[];
 }
 export const LEERE_STAMMDATEN: Stammdaten = { arbeitszeitStdProTag: 8.5, gewerke: [] };
@@ -79,8 +81,9 @@ export function gewerkeFuerKuerzel(stammdaten: Stammdaten, kuerzel: string): Gew
 export function standardStammdaten(): Stammdaten {
   return {
     arbeitszeitStdProTag: 8.5,
+    umsatzChfProMannstunde: 80,
     gewerke: [
-      { key: "schalung", label: "Schalung", einheit: "m²", raten: [
+      { key: "schalung", label: "Schalung", einheit: "m²", kranpflichtig: true, raten: [
         { kuerzel: "WB", bezeichnung: "Wandschalung", leistungswertHProEinheit: 0.465, anzahlPersonen: 6, chfProEinheit: 46.47 },
         { kuerzel: "WBK", bezeichnung: "Kletterschalung", leistungswertHProEinheit: null, anzahlPersonen: 4, chfProEinheit: null },
         { kuerzel: "SB", bezeichnung: "Stützenschalung", leistungswertHProEinheit: 1.103, anzahlPersonen: 3, chfProEinheit: 104.09 },
@@ -106,7 +109,7 @@ export function standardStammdaten(): Stammdaten {
         { kuerzel: "UZ", bezeichnung: "Unterzugsbeton", leistungswertHProEinheit: 0.715, anzahlPersonen: 3, chfProEinheit: 228.17 },
         { kuerzel: "DB", bezeichnung: "Deckenbeton", leistungswertHProEinheit: 0.281, anzahlPersonen: 4, chfProEinheit: 188.56 },
       ] },
-      { key: "elemente_versetzen", label: "Elemente versetzen", einheit: "Stk./m²", raten: [
+      { key: "elemente_versetzen", label: "Elemente versetzen", einheit: "Stk./m²", kranpflichtig: true, raten: [
         { kuerzel: "EM", bezeichnung: "Elemente versetzen", leistungswertHProEinheit: 1.875, anzahlPersonen: 2, chfProEinheit: 2 },
       ] },
       { key: "daemmung_horizontal", label: "Dämmung horizontal", einheit: "m²", raten: [

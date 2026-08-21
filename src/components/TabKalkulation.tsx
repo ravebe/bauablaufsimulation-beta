@@ -1,5 +1,6 @@
 // TabKalkulation.tsx — Menge→Tage-Kalkulation je Task (AVOR-Logik) mit Plausibilitätsvergleich
 // zur geplanten Dauer aus dem Bauablauf.
+import { useState } from "react";
 import type { SimProjekt, Task } from "../types";
 import { istGruppe, berechneNummern } from "../types";
 import { arbeitstageZwischen, LEERER_KALENDER } from "./kalenderHelpers";
@@ -8,6 +9,8 @@ import { LEERE_STAMMDATEN, alleKuerzel, gewerkeFuerKuerzel, dauerBerechnetTask }
 interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; }
 
 export default function TabKalkulation({ sim, updateSim, readOnly }: Props) {
+  const [wbsOffenIds, setWbsOffenIds] = useState<Set<string>>(new Set());
+
   if (!sim) return <div style={{ padding: 14, fontSize: 12, color: "var(--tc-text-3)" }}>Kein aktives Projekt ausgewählt</div>;
 
   const stammdaten = sim.stammdaten ?? LEERE_STAMMDATEN;
@@ -42,6 +45,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly }: Props) {
         <span style={{ flex: 2 }}>Mengen</span>
         <span style={{ width: 44, textAlign: "right" }}>Geplant</span>
         <span style={{ width: 44, textAlign: "right" }}>Berechnet</span>
+        <span style={{ width: 20 }} />
       </div>
       {sim.tasks.map((t, i) => {
         if (t.isGroup || istGruppe(sim.tasks, i)) return null;
@@ -49,8 +53,10 @@ export default function TabKalkulation({ sim, updateSim, readOnly }: Props) {
         const berechnet = dauerBerechnetTask(t, stammdaten);
         const gewerke = t.bauteilKuerzel ? gewerkeFuerKuerzel(stammdaten, t.bauteilKuerzel) : [];
         const abweichung = berechnet > 0 && (berechnet > geplant * 1.5 || berechnet < geplant * 0.67);
+        const wbsOffen = wbsOffenIds.has(t.id);
         return (
-          <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 0", borderBottom: "1px solid var(--tc-border-light)" }}>
+          <div key={t.id} style={{ borderBottom: "1px solid var(--tc-border-light)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 0" }}>
             <span style={{ width: 24, fontSize: 10, color: "#666" }}>{nummern.get(t.id)}</span>
             <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</span>
             <select disabled={readOnly} value={t.bauteilKuerzel ?? ""} onChange={e => taskAendern(t.id, { bauteilKuerzel: e.target.value || undefined })}
@@ -74,6 +80,23 @@ export default function TabKalkulation({ sim, updateSim, readOnly }: Props) {
               title={abweichung ? "Deutliche Abweichung von der geplanten Dauer" : ""}>
               {berechnet}d
             </span>
+            <span style={{ width: 20, textAlign: "center", cursor: "pointer", fontSize: 9, color: "var(--tc-text-3)" }}
+              title="WBS-Attribute (Etappe/Geschoss/Bauabschnitt/Kranbereich)"
+              onClick={() => setWbsOffenIds(prev => { const n = new Set(prev); if (n.has(t.id)) n.delete(t.id); else n.add(t.id); return n; })}>
+              {wbsOffen ? "▲" : "WBS"}
+            </span>
+          </div>
+          {wbsOffen && (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "0 0 8px 30px" }}>
+              {([["etappe", "Etappe"], ["geschoss", "Geschoss"], ["bauabschnitt", "Bauabschnitt"], ["kranbereich", "Kranbereich"]] as const).map(([feld, label]) => (
+                <label key={feld} style={{ fontSize: 9, color: "var(--tc-text-3)", display: "flex", alignItems: "center", gap: 3 }}>
+                  {label}
+                  <input type="text" disabled={readOnly} value={t[feld] ?? ""} onChange={e => taskAendern(t.id, { [feld]: e.target.value || undefined })}
+                    style={{ width: 90, fontSize: 10, padding: "2px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
+                </label>
+              ))}
+            </div>
+          )}
           </div>
         );
       })}
