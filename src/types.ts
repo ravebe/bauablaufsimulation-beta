@@ -1,3 +1,6 @@
+import type { Kalender } from "./components/kalenderHelpers";
+import { arbeitstageZwischen, LEERER_KALENDER } from "./components/kalenderHelpers";
+
 export type TaskTyp = "neubau" | "bestand" | "abbruch" | "temporaer";
 
 export interface Task {
@@ -31,6 +34,7 @@ export interface SimProjekt {
   autoVerknuepft?: boolean; // true wenn Auto-Verknüpfung durchgeführt
   tasks: Task[];
   modelle: SimModell[];
+  kalender?: Kalender; // Arbeitstage-Kalender (Feiertage) dieses Projekts
 }
 
 // TC API Typen
@@ -268,7 +272,7 @@ export function getKinder(tasks: Task[], groupIdx: number): number[] {
 }
 
 /** Berechne Start/Ende einer Gruppe aus ihren Kindern */
-export function gruppenDaten(tasks: Task[], groupIdx: number): { start: string; end: string; tage: number } {
+export function gruppenDaten(tasks: Task[], groupIdx: number, kalender?: Kalender): { start: string; end: string; tage: number } {
   // Nur Blatt-Tasks zählen, keine verschachtelten Untergruppen — deren eigene start/end-Felder sind
   // beim Erstellen eingefroren (z.B. "heute") und würden die äußere Gruppe verfälschen. Die Tasks
   // einer Untergruppe stehen ohnehin schon (flach) mit in getKinder() und werden separat gezählt.
@@ -286,7 +290,7 @@ export function gruppenDaten(tasks: Task[], groupIdx: number): { start: string; 
   const endD = new Date(maxEnd);
   const start = `${startD.getFullYear()}-${String(startD.getMonth()+1).padStart(2,"0")}-${String(startD.getDate()).padStart(2,"0")}`;
   const end = `${endD.getFullYear()}-${String(endD.getMonth()+1).padStart(2,"0")}-${String(endD.getDate()).padStart(2,"0")}`;
-  return { start, end, tage: Math.max(1, Math.ceil((maxEnd - minStart) / 86400000)) };
+  return { start, end, tage: arbeitstageZwischen(start, end, kalender ?? LEERER_KALENDER) };
 }
 
 /**

@@ -3,6 +3,8 @@
 import * as XLSX from "xlsx";
 import type { Task } from "../types";
 import { formatDatum, berechneNummern } from "../types";
+import type { Kalender } from "./kalenderHelpers";
+import { LEERER_KALENDER } from "./kalenderHelpers";
 import { generateMsProjectXml } from "./msProjectXml";
 
 function download(content: string, filename: string, mime: string) {
@@ -59,8 +61,8 @@ export function exportXml(tasks: Task[], simName: string) {
   download(xml, `${simName}_Gantt.xml`, "application/xml");
 }
 
-export function exportMsProject(tasks: Task[], simName: string) {
-  const xml = generateMsProjectXml(tasks, simName);
+export function exportMsProject(tasks: Task[], simName: string, kalender: Kalender = LEERER_KALENDER) {
+  const xml = generateMsProjectXml(tasks, simName, kalender);
   download(xml, `${simName}_MSProject.xml`, "application/xml");
 }
 
@@ -75,7 +77,7 @@ export function exportJson(tasks: Task[], simName: string) {
   download(JSON.stringify(data, null, 2), `${simName}_Gantt.json`, "application/json");
 }
 
-export interface ExportFormat { key: string; label: string; run: (tasks: Task[], simName: string) => void; }
+export interface ExportFormat { key: string; label: string; run: (tasks: Task[], simName: string, kalender?: Kalender) => void; }
 
 export const EXPORT_FORMATE: ExportFormat[] = [
   { key: "xlsx", label: "Excel (.xlsx)", run: exportXlsx },

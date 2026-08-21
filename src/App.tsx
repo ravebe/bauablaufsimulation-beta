@@ -6,6 +6,7 @@ import TabProjekte from "./components/TabProjekte";
 import TabBauteile from "./components/TabBauteile";
 import TabAbspielen from "./components/TabAbspielen";
 import ZugriffskontrollManager from "./components/ZugriffskontrollManager";
+import KalenderManager from "./components/KalenderManager";
 import { EXPORT_FORMATE } from "./components/ganttExportFormate";
 import "./App.css";
 
@@ -267,6 +268,7 @@ export default function App() {
   const [optionsDropdown, setOptionsDropdown] = useState(false);
   const [exportSubOffen, setExportSubOffen] = useState(false);
   const [zugriffsManagerOffen, setZugriffsManagerOffen] = useState(false);
+  const [kalenderManagerOffen, setKalenderManagerOffen] = useState(false);
   const [, setUndoTick] = useState(0);
 
   return (
@@ -359,10 +361,17 @@ export default function App() {
                   </div>
                   {exportSubOffen && aktiveSim && EXPORT_FORMATE.map(f => (
                     <div key={f.key} className="tc-header-dropdown-item" style={{ paddingLeft: 24, fontSize: 10 }}
-                      onClick={() => { f.run(aktiveSim.tasks, aktiveSim.name); setExportSubOffen(false); setOptionsDropdown(false); }}>
+                      onClick={() => { f.run(aktiveSim.tasks, aktiveSim.name, aktiveSim.kalender); setExportSubOffen(false); setOptionsDropdown(false); }}>
                       {f.label}
                     </div>
                   ))}
+                  <div className="tc-header-dropdown-item" style={{ opacity: aktiveSim ? 1 : 0.4, cursor: aktiveSim ? "pointer" : "default" }}
+                    onClick={() => { if (aktiveSim) { setKalenderManagerOffen(true); setOptionsDropdown(false); } }}>
+                    <div>
+                      <div style={{ fontWeight: 500 }}>Kalender / Feiertage</div>
+                      <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>Arbeitstage der aktiven Simulation</div>
+                    </div>
+                  </div>
                   <div className="tc-header-dropdown-item" style={{ opacity: 0.4, cursor: "default" }}>
                     <div>
                       <div style={{ fontWeight: 500 }}>Ressourcen einrichten</div>
@@ -473,6 +482,7 @@ export default function App() {
       </div>
 
       {zugriffsManagerOffen && <ZugriffskontrollManager api={api} onClose={() => setZugriffsManagerOffen(false)} />}
+      {kalenderManagerOffen && aktiveSim && <KalenderManager sim={aktiveSim} updateSim={updateSim} onClose={() => setKalenderManagerOffen(false)} />}
     </div>
   );
 }

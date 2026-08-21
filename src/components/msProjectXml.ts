@@ -2,6 +2,8 @@
 // (das Format, das MS Project über "Datei → Speichern unter → XML" liest/schreibt)
 import type { Task, TaskTyp } from "../types";
 import { getOutlineLevel, istGruppe, parseDateUniversal, normalizeDatum } from "../types";
+import type { Kalender } from "./kalenderHelpers";
+import { arbeitstageZwischen, LEERER_KALENDER } from "./kalenderHelpers";
 
 const GUID_MARKER = "4DSIM_GUIDS:";
 const MINUTEN_PRO_TAG_LAG = 4800; // MSP LinkLag-Einheit: Zehntel-Minuten, 8h-Arbeitstag
@@ -16,14 +18,7 @@ function fmtDateTime(iso: string, time: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${time}`;
 }
 
-function tageDiff(start: string, end: string): number {
-  const s = parseDateUniversal(start);
-  const e = parseDateUniversal(end);
-  if (!s || !e) return 1;
-  return Math.max(1, Math.round((e.getTime() - s.getTime()) / 86400000) + 1);
-}
-
-export function generateMsProjectXml(tasks: Task[], projectName: string): string {
+export function generateMsProjectXml(tasks: Task[], projectName: string, kalender: Kalender = LEERER_KALENDER): string {
   const uidById = new Map<string, number>();
   tasks.forEach((t, i) => uidById.set(t.id, i + 1));
 
@@ -38,7 +33,7 @@ export function generateMsProjectXml(tasks: Task[], projectName: string): string
   const taskXml = tasks.map((t, i) => {
     const uid = i + 1;
     const gruppe = istGruppe(tasks, i);
-    const dauerTage = tageDiff(t.start, t.end);
+    const dauerTage = arbeitstageZwischen(t.start, t.end, kalender);
     const meilenstein = t.start === t.end;
     const notesLine = t.objektGuids.length > 0 ? `${GUID_MARKER}${t.objektGuids.join(",")}` : "";
 

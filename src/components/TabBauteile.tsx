@@ -297,6 +297,7 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
             showObjektCount
             suchQuery={suchQuery}
             nadelStil={ghostTag >= 0 ? "ghost" : "normal"}
+            kalender={aktiveSim?.kalender}
           />
           <div onMouseDown={e => {
             e.preventDefault();

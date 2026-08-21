@@ -2,6 +2,8 @@ import { useRef, useState, useEffect, useLayoutEffect, useCallback, useMemo } fr
 import { createPortal } from "react-dom";
 import type { Task } from "../types";
 import { parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks, nsKey } from "../types";
+import type { Kalender } from "./kalenderHelpers";
+import { istArbeitstag, LEERER_KALENDER } from "./kalenderHelpers";
 import DatePicker from "./DatePicker";
 import { useDoppelklickHinweis } from "../hooks/useDoppelklickHinweis";
 
@@ -29,6 +31,7 @@ interface Props {
   suchQuery?: string;
   nadelStil?: "normal" | "ghost";
   dateColor?: string;
+  kalender?: Kalender;
 }
 
 const FARBEN: Record<string, string> = { neubau: "#6cc07a", bestand: "#999", abbruch: "#edb94c", temporaer: "#a0522d" };
@@ -55,7 +58,7 @@ function getKW(d: Date): number {
   return Math.ceil(((t.getTime() - y.getTime()) / 86400000 + 1) / 7);
 }
 
-export default function GanttChart({ projectId = null, tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selectedIds = [], selGuids, taskSort, height, editable, onDateChange, onTaskReorder, onTaskRename, onSetPredecessor, showObjektCount, suchQuery = "", nadelStil = "normal", dateColor = "#2d7dbd" }: Props) {
+export default function GanttChart({ projectId = null, tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selectedIds = [], selGuids, taskSort, height, editable, onDateChange, onTaskReorder, onTaskRename, onSetPredecessor, showObjektCount, suchQuery = "", nadelStil = "normal", dateColor = "#2d7dbd", kalender = LEERER_KALENDER }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
@@ -310,10 +313,10 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
     allDays.push({ x: d * pxProTag, date: dt, dow: dt.getDay() });
   }
 
-  // Wochenend-Bänder (Sa+So)
+  // Arbeitsfreie Tage (Wochenenden + Feiertage aus dem Kalender)
   const weekendBands: { x: number; w: number }[] = [];
   for (const day of allDays) {
-    if (day.dow === 6) weekendBands.push({ x: day.x, w: Math.min(2, totalTage - (day.x / pxProTag)) * pxProTag });
+    if (!istArbeitstag(fmtISO(day.date), kalender)) weekendBands.push({ x: day.x, w: pxProTag });
   }
 
   // Monats-Marker

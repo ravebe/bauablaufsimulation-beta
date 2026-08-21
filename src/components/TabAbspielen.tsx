@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { SimProjekt, Task } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { formatDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, nsKey, sucheSortiereTasks } from "../types";
+import { arbeitstageZwischen, LEERER_KALENDER } from "./kalenderHelpers";
 import GanttChart from "./GanttChart";
 import { useDoppelklickHinweis } from "../hooks/useDoppelklickHinweis";
 
@@ -22,6 +23,7 @@ function datumBeiTag(min: Date, tag: number): string {
 }
 
 export default function TabAbspielen({ api, projectId = null, aktiveSim, aktivesModellId, taskSort = "gantt", sharedNadelTag }: Props) {
+  const kalender = aktiveSim?.kalender ?? LEERER_KALENDER;
   const [sekProTag, setSekProTag] = useState(0.5);
   const [farbModusAktiv, setFarbModusAktiv] = useState(false);
   const farbModusRef = useRef(false);
@@ -498,6 +500,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
             height={taskListHeight}
             dateColor="#333"
             suchQuery={suchQuery}
+            kalender={aktiveSim?.kalender}
           />
       ) : (
       <div className="player-card" style={{ padding: 0, overflow: "hidden", maxHeight: taskListHeight, overflowY: "auto" }}>
@@ -542,10 +545,10 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
           const vorbei = minDate ? istVorbei(task, currentTag) : false;
           const hatSel = selGuids.size > 0 && task.objektGuids.some(g => selGuids.has(g));
           const isGrp = task.isGroup || istGruppe(allTasks, allIdx);
-          const gDaten = isGrp ? gruppenDaten(allTasks, allIdx) : null;
+          const gDaten = isGrp ? gruppenDaten(allTasks, allIdx, kalender) : null;
           const sd = parseDateUniversal(isGrp && gDaten ? gDaten.start : task.start);
           const ed = parseDateUniversal(isGrp && gDaten ? gDaten.end : task.end);
-          const dauer = isGrp && gDaten ? gDaten.tage : (sd && ed ? Math.max(1, Math.round((ed.getTime() - sd.getTime()) / 86400000)) : 1);
+          const dauer = isGrp && gDaten ? gDaten.tage : (sd && ed ? arbeitstageZwischen(task.start, task.end, kalender) : 1);
           const istSelTask = selTaskId === task.id;
           const level = getOutlineLevel(task);
           const indent = (level - 1) * 12;
