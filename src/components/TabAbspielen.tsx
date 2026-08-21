@@ -227,8 +227,8 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
       if (t.typ === "neubau" && tag >= s) colorNeubau.push(...t.objektGuids);
       else if (t.typ === "temporaer" && tag >= s && tag <= e) colorTemp.push(...t.objektGuids);
     }
-    if (colorNeubau.length > 0) setzeZustandAsync(colorNeubau, { color: neu ? FARBEN.neubau : null });
-    if (colorTemp.length > 0) setzeZustandAsync(colorTemp, { color: neu ? FARBEN.temporaer : null });
+    if (colorNeubau.length > 0) setzeZustandAsync(colorNeubau, { color: neu ? FARBEN.neubau : "reset" });
+    if (colorTemp.length > 0) setzeZustandAsync(colorTemp, { color: neu ? FARBEN.temporaer : "reset" });
   }
 
   // --- Pre-computed Events (sortiert nach Tag) ---
