@@ -1,5 +1,5 @@
 // TabTasks.tsx — Task-Liste + Task-Detail + Visibility-Buttons + Guid-Liste
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import type { SimProjekt, Task, TaskTyp } from "../types";
 import { formatDatum, normalizeDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, getKinder,
@@ -85,6 +85,21 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
     };
     document.addEventListener("mousedown", onDocMouseDown);
     return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [predPickerTaskId]);
+
+  // Vorgänger-Popover nach dem Rendern an den Bildschirmrand klemmen, damit er nie abgeschnitten wird
+  useLayoutEffect(() => {
+    if (!predPickerTaskId) return;
+    const el = predPopoverRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const pad = 4;
+    let left = r.left, top = r.top;
+    if (r.right > window.innerWidth - pad) left -= r.right - (window.innerWidth - pad);
+    if (left < pad) left = pad;
+    if (r.bottom > window.innerHeight - pad) top -= r.bottom - (window.innerHeight - pad);
+    if (top < pad) top = pad;
+    if (left !== r.left || top !== r.top) setPredPos({ left, top });
   }, [predPickerTaskId]);
 
   // Safety: dragIdx zurücksetzen wenn Drag abbricht (z.B. Drop ausserhalb)

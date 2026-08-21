@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback, useMemo } from "react";
+import { useRef, useState, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import type { Task } from "../types";
 import { parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks, nsKey } from "../types";
@@ -91,6 +91,21 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
     };
     document.addEventListener("mousedown", onDocMouseDown);
     return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [predPickerTaskId]);
+
+  // Vorgänger-Popover nach dem Rendern an den Bildschirmrand klemmen, damit er nie abgeschnitten wird
+  useLayoutEffect(() => {
+    if (!predPickerTaskId) return;
+    const el = predPopoverRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const pad = 4;
+    let left = r.left, top = r.top;
+    if (r.right > window.innerWidth - pad) left -= r.right - (window.innerWidth - pad);
+    if (left < pad) left = pad;
+    if (r.bottom > window.innerHeight - pad) top -= r.bottom - (window.innerHeight - pad);
+    if (top < pad) top = pad;
+    if (left !== r.left || top !== r.top) setPredPos({ left, top });
   }, [predPickerTaskId]);
 
   function oeffnePredPicker(t: Task, e: React.MouseEvent) {
