@@ -47,13 +47,19 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
   const aktivTaskId = selectedIds.length > 0 ? selectedIds[selectedIds.length - 1] : null;
   const aktivTask = aktiveSim?.tasks.find(t => t.id === aktivTaskId) ?? null;
   // Kombinierte Objekte aller ausgewählten Tasks
-  const selectedTasks = (aktiveSim?.tasks ?? []).filter(t => selectedIds.includes(t.id));
+  const allTasksForSel = aktiveSim?.tasks ?? [];
+  const selectedTasks = allTasksForSel.filter(t => selectedIds.includes(t.id));
+  const selectedGroupCount = selectedTasks.filter(t => {
+    const idx = allTasksForSel.findIndex(x => x.id === t.id);
+    return idx >= 0 && (t.isGroup || istGruppe(allTasksForSel, idx));
+  }).length;
   const combinedGuids = selectedTasks.flatMap(t => t.objektGuids);
   // Virtueller kombinierter Task für Detail-Panel
   const combinedTask = selectedTasks.length > 0 ? {
     ...selectedTasks[0],
     objektGuids: [...new Set(combinedGuids)],
-    name: selectedTasks.length === 1 ? selectedTasks[0].name : `${selectedTasks.length} Tasks ausgewählt`,
+    name: selectedTasks.length === 1 ? selectedTasks[0].name
+      : `${selectedTasks.length} Tasks ausgewählt${selectedGroupCount > 0 ? ` · ${selectedGroupCount} ${selectedGroupCount === 1 ? "Gruppe" : "Gruppen"}` : ""}`,
   } : null;
 
   // Shared Nadel: minDate hier berechnen (vor early return)

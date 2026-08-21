@@ -46,6 +46,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
   const [displayConfig, setDisplayConfig] = useState(() => ladeDisplayConfig(aktiveSim.id, projectId));
   const [settingsOffen, setSettingsOffen] = useState(false);
   const [loeschenBestaetigen, setLoeschenBestaetigen] = useState(false);
+  const [loeschDialogOffen, setLoeschDialogOffen] = useState(false);
   const [typOffen, setTypOffen] = useState(true);
   const [bauteileOffen, setBauteileOffen] = useState(true);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -65,6 +66,17 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
   const [lagInput, setLagInput] = useState("0");
   const predPopoverRef = useRef<HTMLDivElement>(null);
   const nummern = useMemo(() => berechneNummern(aktiveSim.tasks), [aktiveSim.tasks]);
+  // Für die Detail-Kopfzeile: wie viele Tasks sind markiert und wie viele davon Gruppen (für den 2-Optionen-Lösch-Dialog)
+  const selInfo = useMemo(() => {
+    if (!aktivTask) return { total: 0, groups: 0, ids: [] as string[] };
+    const ids = selectedIds.length > 0 ? selectedIds : [aktivTask.id];
+    let groups = 0;
+    for (const id of ids) {
+      const idx = aktiveSim.tasks.findIndex(t => t.id === id);
+      if (idx >= 0 && istGruppe(aktiveSim.tasks, idx)) groups++;
+    }
+    return { total: ids.length, groups, ids };
+  }, [selectedIds, aktivTask, aktiveSim.tasks]);
 
   useEffect(() => {
     if (!predPickerTaskId) return;
@@ -110,6 +122,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
     setGuidWerte(new Map());
     setVerfuegbareAttrs([]);
     setLoeschenBestaetigen(false);
+    setLoeschDialogOffen(false);
     if (!api || !aktivTask?.objektGuids.length) return;
     (async () => {
       const werte = new Map<string, ObjWerte>();
@@ -210,16 +223,27 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
     updateSim({ ...aktiveSim, tasks: verschiebeTaskBlock(aktiveSim.tasks, fromIdx, toIdx, selectedIds) });
   }
 
-  function taskLoeschen(taskId: string) {
-    const idx = aktiveSim.tasks.findIndex(t => t.id === taskId);
-    let tasks = aktiveSim.tasks.filter(t => t.id !== taskId);
-    if (idx >= 0 && istGruppe(aktiveSim.tasks, idx)) {
-      // Kinder der gelöschten Gruppe eine Ebene zurückstufen, statt sie verwaist stehen zu lassen
-      const kinderIds = new Set(getKinder(aktiveSim.tasks, idx).map(ci => aktiveSim.tasks[ci].id));
-      tasks = tasks.map(t => kinderIds.has(t.id) ? { ...t, outlineLevel: Math.max(1, getOutlineLevel(t) - 1) } : t);
+  // modus "mitKindern": alle markierten Ids (inkl. Kinder von Gruppen) werden entfernt
+  // modus "nurGruppe": nur die Gruppen-Zeilen selbst werden entfernt, ihre Kinder bleiben (eine Ebene zurückgestuft)
+  function tasksLoeschen(ids: string[], modus: "mitKindern" | "nurGruppe") {
+    if (modus === "mitKindern") {
+      const idSet = new Set(ids);
+      updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.filter(t => !idSet.has(t.id)) });
+    } else {
+      const groupIds = ids.filter(id => {
+        const idx = aktiveSim.tasks.findIndex(t => t.id === id);
+        return idx >= 0 && istGruppe(aktiveSim.tasks, idx);
+      });
+      let tasks = aktiveSim.tasks;
+      for (const gid of groupIds) {
+        const idx = tasks.findIndex(t => t.id === gid);
+        if (idx < 0) continue;
+        const kinderIds = new Set(getKinder(tasks, idx).map(ci => tasks[ci].id));
+        tasks = tasks.filter(t => t.id !== gid).map(t => kinderIds.has(t.id) ? { ...t, outlineLevel: Math.max(1, getOutlineLevel(t) - 1) } : t);
+      }
+      updateSim({ ...aktiveSim, tasks });
     }
-    updateSim({ ...aktiveSim, tasks });
-    if (aktivTaskId === taskId) onTaskClick(taskId); // deselect
+    setLoeschDialogOffen(false);
   }
 
   function oeffnePredPicker(task: Task, e: React.MouseEvent) {
@@ -596,8 +620,29 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
             </span>}
             {!readOnly && <button className="tc-btn-ghost" style={{ color: "#333", fontSize: 12, padding: "0 4px", marginLeft: "auto" }}
               title="Löschen"
-              onClick={e => { e.stopPropagation(); if (confirm(`„${aktivTask.name}" löschen?`)) taskLoeschen(aktivTask.id); }}><svg width="12" height="12" viewBox="0 0 16 16" fill="#333" stroke="none"><path d="M5 1h6v1H5zM2 3h12v1H2zm1.5 1l.8 11h7.4l.8-11h-9zm2.5 2h1v7H6zm3 0h1v7H9z"/></svg></button>}
+              onClick={e => {
+                e.stopPropagation();
+                if (selInfo.groups > 0) setLoeschDialogOffen(true);
+                else if (confirm(selInfo.total > 1 ? `${selInfo.total} Tasks löschen?` : `„${aktivTask.name}" löschen?`)) tasksLoeschen(selInfo.ids, "mitKindern");
+              }}><svg width="12" height="12" viewBox="0 0 16 16" fill="#333" stroke="none"><path d="M5 1h6v1H5zM2 3h12v1H2zm1.5 1l.8 11h7.4l.8-11h-9zm2.5 2h1v7H6zm3 0h1v7H9z"/></svg></button>}
           </div>
+
+          {/* Lösch-Auswahl bei Gruppen in der Markierung: Gruppe+Tasks oder nur Gruppe */}
+          {loeschDialogOffen && (
+            <div style={{ background: "#FEF2F2", border: "1px solid #FCA5A5", padding: 8, fontSize: 11 }}>
+              <div style={{ fontWeight: 600, color: "#DC2626", marginBottom: 6 }}>
+                ⚠ {selInfo.total > 1 ? `${selInfo.total} Tasks markiert, davon ${selInfo.groups} ${selInfo.groups === 1 ? "Gruppe" : "Gruppen"}` : "Gruppe"} — was löschen?
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <button className="tc-btn-primary" style={{ background: "#DC2626", borderColor: "#DC2626", fontSize: 11 }}
+                  onClick={() => tasksLoeschen(selInfo.ids, "mitKindern")}>Gruppe/n und Tasks löschen</button>
+                <button className="tc-btn-secondary" style={{ fontSize: 11 }}
+                  onClick={() => tasksLoeschen(selInfo.ids, "nurGruppe")}>Nur Gruppe/n löschen</button>
+                <button className="tc-btn-ghost" style={{ fontSize: 11 }}
+                  onClick={() => setLoeschDialogOffen(false)}>Abbrechen</button>
+              </div>
+            </div>
+          )}
 
           {/* Objekte hinzufügen — immer sichtbar, ohne Titel/Klappbereich */}
           {!readOnly && !aktivTask.isGroup && (
