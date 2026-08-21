@@ -133,6 +133,93 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
   );
 }
 
+export interface KategorieSerie { key: string; label: string; color: string; werte: number[] }
+
+interface CategoryBarProps {
+  kategorien: string[]; // x-Achse, gleiche Länge wie serien[].werte
+  serien: KategorieSerie[];
+  einheit?: string;
+  hoehe?: number;
+  formatWert?: (v: number) => string;
+}
+
+/** Gruppierte Balken über einer kategorialen x-Achse (Kürzel/Gewerke statt Zeit). */
+export function CategoryBarChart({ kategorien, serien, einheit = "", hoehe = 180, formatWert }: CategoryBarProps) {
+  const [hover, setHover] = useState<{ ki: number; si: number } | null>(null);
+  const fmt = formatWert ?? ((v: number) => v.toLocaleString("de-CH", { maximumFractionDigits: 1 }));
+
+  if (kategorien.length === 0 || serien.length === 0) {
+    return <div style={{ fontSize: 11, color: FARBEN.textMuted, padding: 12 }}>Keine Daten</div>;
+  }
+
+  const n = kategorien.length;
+  const innerW = VBW - ML - MR;
+  const innerH = hoehe - MT - MB;
+  let maxY = 0;
+  for (const s of serien) for (const w of s.werte) maxY = Math.max(maxY, w ?? 0);
+  if (maxY <= 0) maxY = 1;
+  const y = (v: number) => MT + innerH - (v / maxY) * innerH;
+
+  const gruppenBreite = innerW / n;
+  const pad = gruppenBreite * 0.15;
+  const balkenBreite = (gruppenBreite - pad * 2) / serien.length;
+  const zeigeLegende = serien.length >= 2;
+  const engeKategorien = n > 10;
+
+  return (
+    <div style={{ overflowX: engeKategorien ? "auto" : "visible" }}>
+      <div style={{ minWidth: engeKategorien ? n * 60 : undefined, position: "relative" }}>
+        {zeigeLegende && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 10, color: FARBEN.textSekundaer, marginBottom: 4 }}>
+            {serien.map(s => (
+              <span key={s.key} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ width: 8, height: 8, borderRadius: 2, background: s.color, display: "inline-block" }} />
+                {s.label}
+              </span>
+            ))}
+          </div>
+        )}
+        <svg viewBox={`0 0 ${VBW} ${hoehe}`} width="100%" height={hoehe} preserveAspectRatio="none" style={{ display: "block" }}>
+          <line x1={ML} y1={MT} x2={ML} y2={hoehe - MB} stroke={FARBEN.achse} strokeWidth={1} />
+          <line x1={ML} y1={hoehe - MB} x2={VBW - MR} y2={hoehe - MB} stroke={FARBEN.achse} strokeWidth={1} />
+          <text x={ML - 4} y={y(maxY) + 3} textAnchor="end" fontSize={9} fill={FARBEN.textMuted}>{fmt(maxY)}</text>
+          <text x={ML - 4} y={hoehe - MB} textAnchor="end" fontSize={9} fill={FARBEN.textMuted}>0</text>
+          {kategorien.map((kat, ki) => (
+            <text key={ki} x={ML + ki * gruppenBreite + gruppenBreite / 2} y={hoehe - 4} textAnchor="middle" fontSize={9} fill={FARBEN.textMuted}>{kat}</text>
+          ))}
+          {kategorien.map((_, ki) => serien.map((s, si) => {
+            const w = s.werte[ki] ?? 0;
+            const bx = ML + ki * gruppenBreite + pad + si * balkenBreite;
+            const by = y(w);
+            const bh = hoehe - MB - by;
+            return (
+              <rect key={`${ki}-${si}`} x={bx} y={by} width={Math.max(balkenBreite - 1, 1)} height={Math.max(bh, 0)}
+                fill={s.color} rx={2} onMouseEnter={() => setHover({ ki, si })} onMouseLeave={() => setHover(null)} />
+            );
+          }))}
+        </svg>
+        {hover && (() => {
+          const s = serien[hover.si];
+          const bx = ML + hover.ki * gruppenBreite + pad + hover.si * balkenBreite + balkenBreite / 2;
+          return (
+            <div style={{
+              position: "absolute", top: 4, left: `${Math.min(Math.max((bx / VBW) * 100, 10), 90)}%`,
+              transform: "translateX(-50%)", background: "#fff", border: `1px solid ${FARBEN.gridline}`,
+              boxShadow: "0 2px 6px rgba(0,0,0,.12)", padding: "5px 8px", fontSize: 10, whiteSpace: "nowrap", pointerEvents: "none", zIndex: 5,
+            }}>
+              <div style={{ fontWeight: 600, color: FARBEN.textPrimaer, marginBottom: 2 }}>{kategorien[hover.ki]}</div>
+              <div style={{ color: FARBEN.textSekundaer }}>
+                <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: 2, background: s.color, marginRight: 4 }} />
+                {s.label}: {fmt(s.werte[hover.ki] ?? 0)} {einheit}
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+    </div>
+  );
+}
+
 export function StatTile({ label, wert, status, sub }: { label: string; wert: string; status?: "good" | "warning" | "critical"; sub?: string }) {
   const farbe = status ? FARBEN.status[status] : FARBEN.textPrimaer;
   return (

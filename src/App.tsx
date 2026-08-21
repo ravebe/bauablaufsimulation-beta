@@ -532,7 +532,7 @@ export default function App() {
           />
         </div>
         {aktTab === "kalkulation" && (
-          <TabKalkulation sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} />
+          <TabKalkulation sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} api={api} />
         )}
         {aktTab === "ressourcen" && (
           <TabRessourcen sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} />

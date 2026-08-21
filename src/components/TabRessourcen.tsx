@@ -1,8 +1,10 @@
 // TabRessourcen.tsx — Stammdaten-Editor (Leistungswerte/Personal/CHF je Bauteil-Kürzel), Basis
 // für die Menge→Tage-Kalkulation (Tab Kalkulation) und die Kosten-Auswertung (Tab Kosten).
 import type { SimProjekt } from "../types";
+import { istGruppe } from "../types";
 import type { Rate, Stammdaten } from "./stammdatenHelpers";
-import { LEERE_STAMMDATEN, standardStammdaten } from "./stammdatenHelpers";
+import { LEERE_STAMMDATEN, standardStammdaten, alleKuerzel } from "./stammdatenHelpers";
+import { StatTile } from "./cockpitCharts";
 
 interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; }
 
@@ -51,6 +53,16 @@ export default function TabRessourcen({ sim, updateSim, readOnly }: Props) {
       style={{ width, fontSize: 11, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
   );
 
+  // Cockpit: Kürzel ohne Leistungswert, Kreuzcheck Stammdaten ↔ tatsächlich verwendete Kürzel
+  const alleRaten = stammdaten.gewerke.flatMap(g => g.raten);
+  const kuerzelOhneLw = alleRaten.filter(r => r.leistungswertHProEinheit === null).map(r => r.kuerzel);
+  const kuerzelInStammdaten = new Set(alleKuerzel(stammdaten));
+  const kuerzelInTasks = new Set(
+    sim.tasks.filter((t, i) => !t.isGroup && !istGruppe(sim.tasks, i) && t.bauteilKuerzel).map(t => t.bauteilKuerzel!)
+  );
+  const kuerzelOhneRate = [...kuerzelInTasks].filter(k => !kuerzelInStammdaten.has(k));
+  const kuerzelUnbenutzt = [...kuerzelInStammdaten].filter(k => !kuerzelInTasks.has(k));
+
   return (
     <div style={{ padding: 14, fontSize: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
@@ -76,6 +88,24 @@ export default function TabRessourcen({ sim, updateSim, readOnly }: Props) {
           Noch keine Stammdaten hinterlegt — über "Standard-Stammdaten laden" starten oder Gewerke manuell anlegen.
         </div>
       )}
+
+      {stammdaten.gewerke.length > 0 && (<>
+        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          <StatTile label="Kürzel ohne Leistungswert" wert={String(kuerzelOhneLw.length)} status={kuerzelOhneLw.length > 0 ? "warning" : "good"} />
+          <StatTile label="Kürzel ohne Stammdaten" wert={String(kuerzelOhneRate.length)} status={kuerzelOhneRate.length > 0 ? "warning" : "good"} />
+          <StatTile label="Unbenutzte Kürzel" wert={String(kuerzelUnbenutzt.length)} />
+        </div>
+        {(kuerzelOhneLw.length > 0 || kuerzelOhneRate.length > 0) && (
+          <div style={{ marginBottom: 16, fontSize: 11 }}>
+            {kuerzelOhneLw.length > 0 && (
+              <div style={{ color: "#b5750a", marginBottom: 3 }}>⚠ Ohne Leistungswert: {kuerzelOhneLw.join(", ")}</div>
+            )}
+            {kuerzelOhneRate.length > 0 && (
+              <div style={{ color: "#b5750a" }}>⚠ In Tasks verwendet, aber keine Rate hinterlegt: {kuerzelOhneRate.join(", ")}</div>
+            )}
+          </div>
+        )}
+      </>)}
 
       {stammdaten.gewerke.map((gewerk, gi) => (
         <div key={gewerk.key} style={{ marginBottom: 18 }}>
