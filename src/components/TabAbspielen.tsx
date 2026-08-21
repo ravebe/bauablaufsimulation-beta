@@ -21,6 +21,9 @@ function datumBeiTag(min: Date, tag: number): string {
 
 export default function TabAbspielen({ api, projectId = null, aktiveSim, aktivesModellId, taskSort = "gantt", sharedNadelTag }: Props) {
   const [sekProTag, setSekProTag] = useState(0.5);
+  const [farbModusAktiv, setFarbModusAktiv] = useState(false);
+  const farbModusRef = useRef(false);
+  useEffect(() => { farbModusRef.current = farbModusAktiv; }, [farbModusAktiv]);
   const [laeuft, setLaeuft] = useState(false);
   const [currentTag, setCurrentTag] = useState(0);
   const [status, setStatus] = useState<string | null>(null);
@@ -163,12 +166,15 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
   async function zustandBeiTag(tag: number) {
     if (!api || !aktiveSim || !minDate) return;
     const alleTasks = aktiveSim.tasks;
+    const farbeEin = farbModusRef.current;
 
     // Sammle alle Guids in Kategorien (ein Durchlauf, kein API-Call)
     const showGuids: string[] = [];
     const hideGuids: string[] = [];
     const colorBestand: string[] = [];
     const colorAbbruch: string[] = [];
+    const colorNeubau: string[] = [];
+    const colorTemp: string[] = [];
     const selGuidsLocal: string[] = [];
 
     for (const t of alleTasks) {
@@ -177,7 +183,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
       const e = t.end ? tagVonDatum(t.end, minDate) : s;
 
       if (t.typ === "neubau") {
-        if (tag >= s) { showGuids.push(...t.objektGuids); if (tag <= e) selGuidsLocal.push(...t.objektGuids); }
+        if (tag >= s) { showGuids.push(...t.objektGuids); if (tag <= e) selGuidsLocal.push(...t.objektGuids); if (farbeEin) colorNeubau.push(...t.objektGuids); }
         else hideGuids.push(...t.objektGuids);
       } else if (t.typ === "bestand") {
         showGuids.push(...t.objektGuids); colorBestand.push(...t.objektGuids);
@@ -186,19 +192,42 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
         else { showGuids.push(...t.objektGuids); if (tag >= s) colorAbbruch.push(...t.objektGuids); }
       } else if (t.typ === "temporaer") {
         if (tag > e) hideGuids.push(...t.objektGuids);
-        else showGuids.push(...t.objektGuids);
+        else { showGuids.push(...t.objektGuids); if (farbeEin && tag >= s) colorTemp.push(...t.objektGuids); }
       }
     }
 
-    // Max 5 gebatchte API-Calls statt 610+
+    // Max 7 gebatchte API-Calls statt 610+
     if (hideGuids.length > 0) await setzeZustand(hideGuids, { visible: false });
     if (showGuids.length > 0) await setzeZustand(showGuids, { visible: true });
     if (colorBestand.length > 0) setzeZustandAsync(colorBestand, { color: FARBEN.bestand });
     if (colorAbbruch.length > 0) setzeZustandAsync(colorAbbruch, { color: FARBEN.abbruch });
+    if (colorNeubau.length > 0) setzeZustandAsync(colorNeubau, { color: FARBEN.neubau });
+    if (colorTemp.length > 0) setzeZustandAsync(colorTemp, { color: FARBEN.temporaer });
     if (selGuidsLocal.length > 0) await selektieren(selGuidsLocal);
 
     const aktive = alleTasks.filter(t => t.objektGuids.length > 0 && istAktiv(t, tag));
     if (aktive.length > 0) setStatus(aktive.map(t => `${t.typ === "neubau" ? "🟢" : t.typ === "abbruch" ? "🟡" : t.typ === "temporaer" ? "🟤" : "⚫"} ${t.name}`).join(", "));
+  }
+
+  // --- Typ-Einfärbung ein/ausschalten (Auge-Button) ---
+  function toggleFarbModus() {
+    const neu = !farbModusAktiv;
+    setFarbModusAktiv(neu);
+    farbModusRef.current = neu; // sofort setzen, damit ein laufendes Playback (rAF-Loop) es ohne Verzögerung sieht
+    if (!api || !aktiveSim || !minDate) return;
+    // Aktuell sichtbare neubau/temporaer-Objekte sofort ein- bzw. zurückfärben (bestand/abbruch bleiben unverändert)
+    const colorNeubau: string[] = [];
+    const colorTemp: string[] = [];
+    const tag = currentTagRef.current;
+    for (const t of aktiveSim.tasks) {
+      if (t.objektGuids.length === 0) continue;
+      const s = tagVonDatum(t.start, minDate);
+      const e = t.end ? tagVonDatum(t.end, minDate) : s;
+      if (t.typ === "neubau" && tag >= s) colorNeubau.push(...t.objektGuids);
+      else if (t.typ === "temporaer" && tag >= s && tag <= e) colorTemp.push(...t.objektGuids);
+    }
+    if (colorNeubau.length > 0) setzeZustandAsync(colorNeubau, { color: neu ? FARBEN.neubau : null });
+    if (colorTemp.length > 0) setzeZustandAsync(colorTemp, { color: neu ? FARBEN.temporaer : null });
   }
 
   // --- Pre-computed Events (sortiert nach Tag) ---
@@ -248,10 +277,12 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
         statusChanged = true;
         if (t.typ === "neubau") {
           showGuids.push(...t.objektGuids);
+          if (farbModusRef.current) setzeZustandAsync(t.objektGuids, { color: FARBEN.neubau });
         } else if (t.typ === "abbruch") {
           // Abbruch wird erst bei End-Event ausgeblendet
           setzeZustandAsync(t.objektGuids, { color: FARBEN.abbruch });
         } else if (t.typ === "temporaer") {
+          if (farbModusRef.current) setzeZustandAsync(t.objektGuids, { color: FARBEN.temporaer });
           selektierenAsync(t.objektGuids);
           setTimeout(() => { (api!.viewer as any).setSelection({ modelObjectIds: [] }, "set").catch(() => {}); }, 1000);
         }
@@ -570,11 +601,20 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
         <div style={{ width: 40, height: 3, background: "#ccc", borderRadius: 2 }} />
       </div>
 
-      <div style={{ padding: "4px 0", fontSize: 10, color: "var(--tc-text-3)", display: "flex", gap: 10, flexWrap: "wrap" }}>
+      <div style={{ padding: "4px 0", fontSize: 10, color: "var(--tc-text-3)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <span><span style={{ ...dot("neubau"), width: 6, height: 6, marginRight: 3 }} />Neubau</span>
         <span><span style={{ ...dot("bestand"), width: 6, height: 6, marginRight: 3 }} />Bestand</span>
         <span><span style={{ ...dot("abbruch"), width: 6, height: 6, marginRight: 3 }} />Abbruch</span>
         <span><span style={{ ...dot("temporaer"), width: 6, height: 6, marginRight: 3 }} />Temporär</span>
+        <button className="tc-btn-ghost" style={{ marginLeft: "auto", padding: "1px 4px", color: farbModusAktiv ? "var(--tc-blue)" : "#8a9baa", flexShrink: 0 }}
+          title={farbModusAktiv ? "Typ-Einfärbung deaktivieren" : "Bauteile nach Typ einfärben"}
+          onClick={toggleFarbModus}>
+          {farbModusAktiv ? (
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M1 8s2.7-4.5 7-4.5S15 8 15 8s-2.7 4.5-7 4.5S1 8 1 8Z"/><circle cx="8" cy="8" r="2" fill="currentColor" stroke="none"/></svg>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M1 8s2.7-4.5 7-4.5S15 8 15 8s-2.7 4.5-7 4.5S1 8 1 8Z"/><circle cx="8" cy="8" r="2"/><line x1="2" y1="14" x2="14" y2="2"/></svg>
+          )}
+        </button>
       </div>
 
       {status && (
