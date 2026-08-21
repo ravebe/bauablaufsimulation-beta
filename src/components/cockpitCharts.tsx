@@ -224,7 +224,7 @@ export function CategoryBarChart({ kategorien, serien, einheit = "", hoehe = 180
 export function StatTile({ label, wert, status, sub }: { label: string; wert: string; status?: "good" | "warning" | "critical"; sub?: string }) {
   const farbe = status ? FARBEN.status[status] : FARBEN.textPrimaer;
   return (
-    <div style={{ border: `1px solid ${FARBEN.gridline}`, padding: "8px 12px", minWidth: 120, flex: 1 }}>
+    <div style={{ border: `1px solid ${FARBEN.gridline}`, background: FARBEN.surface, padding: "8px 12px", minWidth: 120, flex: 1 }}>
       <div style={{ fontSize: 9, color: FARBEN.textMuted, fontWeight: 600, letterSpacing: ".3px", marginBottom: 3 }}>{label.toUpperCase()}</div>
       <div style={{ fontSize: 18, fontWeight: 700, color: farbe }}>{wert}</div>
       {sub && <div style={{ fontSize: 10, color: FARBEN.textSekundaer, marginTop: 2 }}>{sub}</div>}

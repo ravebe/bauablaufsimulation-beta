@@ -79,7 +79,7 @@ export default function TabAvor({ sim, projectId = null }: Props) {
 
   return (
     <div style={{ padding: 14, fontSize: 12 }}>
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, position: "sticky", top: 0, background: "#fff", zIndex: 3, paddingBottom: 4 }}>
         <StatTile label="Peak Personalbedarf" wert={`${peakWert} Pers.`} sub={peakTag !== "–" ? peakTag : undefined} />
         <StatTile label="Tage über Kran-Kapazität" wert={String(tageUeberKapazitaet)} status={tageUeberKapazitaet > 0 ? "warning" : "good"} />
         <StatTile label="Marge (kumuliert)" wert={`${fmtChf(marge)} CHF`} status={marge >= 0 ? "good" : "critical"} />

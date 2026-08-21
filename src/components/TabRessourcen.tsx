@@ -144,23 +144,25 @@ export default function TabRessourcen({ sim, updateSim, readOnly }: Props) {
 
       {stammdaten.gewerke.map((gewerk, gi) => (
         <div key={gewerk.key} style={{ marginBottom: 18 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px" }}>
-              {gewerk.label.toUpperCase()} ({gewerk.einheit})
+          <div style={{ position: "sticky", top: 0, background: "#fff", zIndex: 2, paddingBottom: 3 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px" }}>
+                {gewerk.label.toUpperCase()} ({gewerk.einheit})
+              </div>
+              <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--tc-text-3)", cursor: readOnly ? "default" : "pointer" }}>
+                <input type="checkbox" disabled={readOnly} checked={!!gewerk.kranpflichtig}
+                  onChange={e => speichern({ ...stammdaten, gewerke: stammdaten.gewerke.map((g, i) => i !== gi ? g : { ...g, kranpflichtig: e.target.checked }) })} />
+                kranpflichtig
+              </label>
             </div>
-            <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--tc-text-3)", cursor: readOnly ? "default" : "pointer" }}>
-              <input type="checkbox" disabled={readOnly} checked={!!gewerk.kranpflichtig}
-                onChange={e => speichern({ ...stammdaten, gewerke: stammdaten.gewerke.map((g, i) => i !== gi ? g : { ...g, kranpflichtig: e.target.checked }) })} />
-              kranpflichtig
-            </label>
-          </div>
-          <div style={{ display: "flex", gap: 6, fontSize: 9, color: "var(--tc-text-3)", padding: "0 0 3px", fontWeight: 600 }}>
-            <span style={{ width: 60 }}>Kürzel</span>
-            <span style={{ flex: 1 }}>Bezeichnung</span>
-            <span style={{ width: 80 }}>LW [h/Einh.]</span>
-            <span style={{ width: 60 }}>Personen</span>
-            <span style={{ width: 70 }}>CHF/Einh.</span>
-            <span style={{ width: 60 }} />
+            <div style={{ display: "flex", gap: 6, fontSize: 9, color: "var(--tc-text-3)", padding: "0 0 3px", fontWeight: 600 }}>
+              <span style={{ width: 60 }}>Kürzel</span>
+              <span style={{ flex: 1 }}>Bezeichnung</span>
+              <span style={{ width: 80 }}>LW [h/Einh.]</span>
+              <span style={{ width: 60 }}>Personen</span>
+              <span style={{ width: 70 }}>CHF/Einh.</span>
+              <span style={{ width: 60 }} />
+            </div>
           </div>
           {gewerk.raten.map((r, ri) => (
             <div key={ri} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 0", borderBottom: "1px solid var(--tc-border-light)" }}>

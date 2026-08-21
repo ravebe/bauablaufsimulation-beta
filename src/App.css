@@ -1,6 +1,18 @@
 /* 4D Bauablaufsimulation — Design V2 (Mockup Match) */
 *{box-sizing:border-box}
 
+/* Zahleneingabe ohne native Spinner-Pfeile (Mengen-Felder etc.) */
+.no-spinner::-webkit-outer-spin-button,
+.no-spinner::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.no-spinner { -moz-appearance: textfield; appearance: textfield; }
+
+/* Verstellbare Spalten: sichtbare Trennlinie beim Drüberfahren über den Grab-Bereich */
+.col-resize-handle::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 2px;
+  background: transparent; transform: translateX(-50%);
+}
+.col-resize-handle:hover::after { background: var(--tc-blue); }
+
 :root {
   --tc-blue: #2d7dbd;
   --tc-blue-dark: #1a5a8a;

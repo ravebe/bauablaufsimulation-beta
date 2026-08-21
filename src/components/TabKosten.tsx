@@ -78,7 +78,7 @@ export default function TabKosten({ sim, projectId = null }: Props) {
         </CockpitAbschnitt>
       )}
 
-      <div style={{ display: "flex", gap: 6, fontSize: 9, color: "var(--tc-text-3)", padding: "0 0 4px", fontWeight: 600 }}>
+      <div style={{ display: "flex", gap: 6, fontSize: 9, color: "var(--tc-text-3)", padding: "4px 0", fontWeight: 600, position: "sticky", top: 0, background: "#fff", zIndex: 3 }}>
         <span style={{ width: 60 }}>Kürzel</span>
         <span style={{ flex: 1 }}>Bezeichnung</span>
         <span style={{ width: 50, textAlign: "right" }}>Tasks</span>

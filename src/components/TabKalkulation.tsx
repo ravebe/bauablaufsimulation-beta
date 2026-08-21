@@ -159,8 +159,8 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
         </div>
       )}
 
-      <div style={{ overflowX: "auto" }}>
-        <div style={{ display: "grid", gridTemplateColumns: gridTemplate, fontSize: 9, color: "var(--tc-text-3)", fontWeight: 600, padding: "0 0 4px" }}>
+      <div style={{ overflowX: "auto", overflowY: "visible" }}>
+        <div style={{ display: "grid", gridTemplateColumns: gridTemplate, fontSize: 9, color: "var(--tc-text-3)", fontWeight: 600, padding: "4px 0", position: "sticky", top: 0, background: "#fff", zIndex: 3 }}>
           {SPALTEN.map((s, i) => (
             <div key={s} style={{
               position: "relative", textAlign: s === "geplant" || s === "berechnet" ? "right" : "left",
@@ -168,7 +168,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
             }}>
               {SPALTEN_LABEL[s]}
               {i < SPALTEN.length - 1 && (
-                <div onMouseDown={e => startResize(s, e)}
+                <div className="col-resize-handle" onMouseDown={e => startResize(s, e)}
                   style={{ position: "absolute", top: -4, right: -3, width: 7, height: 18, cursor: "col-resize", zIndex: 2 }} />
               )}
             </div>
@@ -201,11 +201,11 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
                     </span>
                   )}
                 </div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", minWidth: 0, paddingRight: 6 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0, paddingRight: 6, paddingTop: 2, paddingBottom: 2 }}>
                   {gewerke.map(g => (
                     <label key={g.key} title={`${g.label} [${g.einheit}]`} style={{ fontSize: 9, color: "var(--tc-text-3)", display: "flex", alignItems: "center", gap: 3 }}>
-                      {g.label}
-                      <input type="number" disabled={readOnly} value={t.mengen?.[g.key] ?? ""}
+                      <span style={{ minWidth: 60, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.label}</span>
+                      <input type="number" className="no-spinner" disabled={readOnly} value={t.mengen?.[g.key] ?? ""}
                         onChange={e => mengeAendern(t, g.key, e.target.value === "" ? null : Number(e.target.value))}
                         style={{ width: 56, fontSize: 10, padding: "2px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
                     </label>
@@ -218,20 +218,18 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
                   {berechnet}d
                 </span>
                 <span style={{ textAlign: "center", cursor: "pointer", fontSize: 9, color: "var(--tc-text-3)" }}
-                  title="WBS-Attribute (Etappe/Geschoss/Bauabschnitt/Kranbereich)"
+                  title="Kranbereich"
                   onClick={() => setWbsOffenIds(prev => { const n = new Set(prev); if (n.has(t.id)) n.delete(t.id); else n.add(t.id); return n; })}>
-                  {wbsOffen ? "▲" : "WBS"}
+                  {wbsOffen ? "▲" : "Kran"}
                 </span>
               </div>
               {wbsOffen && (
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "0 0 8px 30px" }}>
-                  {([["etappe", "Etappe"], ["geschoss", "Geschoss"], ["bauabschnitt", "Bauabschnitt"], ["kranbereich", "Kranbereich"]] as const).map(([feld, label]) => (
-                    <label key={feld} style={{ fontSize: 9, color: "var(--tc-text-3)", display: "flex", alignItems: "center", gap: 3 }}>
-                      {label}
-                      <input type="text" disabled={readOnly} value={t[feld] ?? ""} onChange={e => taskAendern(t.id, { [feld]: e.target.value || undefined })}
-                        style={{ width: 90, fontSize: 10, padding: "2px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
-                    </label>
-                  ))}
+                  <label style={{ fontSize: 9, color: "var(--tc-text-3)", display: "flex", alignItems: "center", gap: 3 }}>
+                    Kranbereich
+                    <input type="text" disabled={readOnly} value={t.kranbereich ?? ""} onChange={e => taskAendern(t.id, { kranbereich: e.target.value || undefined })}
+                      style={{ width: 90, fontSize: 10, padding: "2px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
+                  </label>
                 </div>
               )}
             </div>
