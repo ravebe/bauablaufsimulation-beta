@@ -83,6 +83,7 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
   const [lagInput, setLagInput] = useState("0");
   const [predListOffen, setPredListOffen] = useState(false);
   const predPopoverRef = useRef<HTMLDivElement>(null);
+  const predDropdownRef = useRef<HTMLDivElement>(null);
   const { sichtbar: hinweisSichtbar, pos: hinweisPos, hinweisRef, melden } = useDoppelklickHinweis();
 
   useEffect(() => {
@@ -108,6 +109,26 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
     if (top < pad) top = pad;
     if (left !== r.left || top !== r.top) setPredPos({ left, top });
   }, [predPickerTaskId]);
+
+  // Vorgänger-Liste beim Öffnen so scrollen, dass der bestehende bzw. naheliegende Vorgänger mittig sichtbar ist
+  useLayoutEffect(() => {
+    if (!predPickerTaskId || !predListOffen) return;
+    const container = predDropdownRef.current;
+    const task = tasks.find(t => t.id === predPickerTaskId);
+    if (!container || !task) return;
+    const nummernLokal = berechneNummern(tasks);
+    let zielId = task.predecessorId;
+    if (!zielId) {
+      const eigeneNr = Number(nummernLokal.get(task.id));
+      if (!isNaN(eigeneNr)) {
+        const kandidat = gueltigeVorgaenger(tasks, task.id).find(c => Number(nummernLokal.get(c.id)) === eigeneNr - 1);
+        zielId = kandidat?.id;
+      }
+    }
+    if (!zielId) return;
+    const el = container.querySelector(`[data-cid="${zielId}"]`) as HTMLElement | null;
+    if (el) container.scrollTop = el.offsetTop - container.clientHeight / 2 + el.clientHeight / 2;
+  }, [predPickerTaskId, predListOffen, tasks]);
 
   function oeffnePredPicker(t: Task, e: React.MouseEvent) {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -459,15 +480,14 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
                               onFocus={() => setPredListOffen(true)}
                               onChange={e => { setPredInput(e.target.value); setPredListOffen(true); }} />
                             {predListOffen && (
-                              <div className="ac-dropdown" style={{ maxHeight: 120 }}>
+                              <div className="ac-dropdown" ref={predDropdownRef} style={{ maxHeight: 120 }}>
                                 {gueltigeVorgaenger(tasks, t.id)
                                   .filter(c => {
                                     const lbl = nummern.get(c.id) ?? "";
                                     return !predInput || lbl.toLowerCase().startsWith(predInput.trim().toLowerCase()) || c.name.toLowerCase().includes(predInput.trim().toLowerCase());
                                   })
-                                  .slice(0, 20)
                                   .map(c => (
-                                    <div key={c.id} className="ac-item" style={{ fontSize: 11, padding: "3px 6px" }}
+                                    <div key={c.id} data-cid={c.id} className="ac-item" style={{ fontSize: 11, padding: "3px 6px" }}
                                       onMouseDown={() => { setPredInput(nummern.get(c.id) ?? ""); setPredListOffen(false); }}>
                                       <span style={{ fontWeight: 600 }}>{nummern.get(c.id)}</span> — {c.name}
                                     </div>
