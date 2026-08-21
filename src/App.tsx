@@ -17,13 +17,18 @@ import "./App.css";
 type Tab = "projekte" | "bauteile" | "abspielen" | "kalkulation" | "ressourcen" | "avor" | "kosten";
 type TabGruppe = "haupt" | "erweitert";
 const HAUPT_TABS: Tab[] = ["projekte", "bauteile", "abspielen"];
-const ERWEITERTE_TABS: Tab[] = ["kalkulation", "ressourcen", "avor", "kosten"];
 
 export default function App() {
   const { api, ready, selektion, aktivesModellId, geladeneModelle, projectId } = useApi();
 
   const [aktTab, setAktTab] = useState<Tab>("projekte");
   const [tabGruppe, setTabGruppe] = useState<TabGruppe>("haupt");
+  const lastHauptTab = useRef<Tab>("projekte");
+  const lastErweitertTab = useRef<Tab>("kalkulation");
+  useEffect(() => {
+    if (HAUPT_TABS.includes(aktTab)) lastHauptTab.current = aktTab;
+    else lastErweitertTab.current = aktTab;
+  }, [aktTab]);
   const [sims, setSims] = useState<SimProjekt[]>([]);
   const [aktivId, setAktivId] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -279,6 +284,17 @@ export default function App() {
   const [kalenderManagerOffen, setKalenderManagerOffen] = useState(false);
   const [, setUndoTick] = useState(0);
 
+  const tabToggleButton = (
+    <button className="tc-tab-toggle" title={tabGruppe === "haupt" ? "Kalkulation / Ressourcen / Kosten anzeigen" : "Projekte / Bauteile / Abspielen anzeigen"}
+      onClick={() => {
+        const neueGruppe: TabGruppe = tabGruppe === "haupt" ? "erweitert" : "haupt";
+        setTabGruppe(neueGruppe);
+        setAktTab(neueGruppe === "haupt" ? lastHauptTab.current : lastErweitertTab.current);
+      }}>
+      {tabGruppe === "haupt" ? "▶" : "◀"}
+    </button>
+  );
+
   return (
     <div className="tc-app" onClick={() => { setHeaderDropdown(false); setSortDropdown(false); setOptionsDropdown(false); setExportSubOffen(false); }}>
       {/* Header — Organizer Style */}
@@ -412,14 +428,7 @@ export default function App() {
 
       {/* Tabs */}
       <div className="tc-tabs">
-        <button className="tc-tab-toggle" title={tabGruppe === "haupt" ? "Kalkulation / Ressourcen / Kosten anzeigen" : "Projekte / Bauteile / Abspielen anzeigen"}
-          onClick={() => {
-            const neueGruppe: TabGruppe = tabGruppe === "haupt" ? "erweitert" : "haupt";
-            setTabGruppe(neueGruppe);
-            setAktTab(neueGruppe === "haupt" ? HAUPT_TABS[0] : ERWEITERTE_TABS[0]);
-          }}>
-          {tabGruppe === "haupt" ? "▶" : "◀"}
-        </button>
+        {tabGruppe === "erweitert" && tabToggleButton}
         {tabGruppe === "haupt" ? (<>
           <button
             className={`tc-tab ${aktTab === "projekte" ? "active" : ""}`}
@@ -491,6 +500,7 @@ export default function App() {
             <span>Kosten</span>
           </button>
         </>)}
+        {tabGruppe === "haupt" && tabToggleButton}
       </div>
 
       {/* Tab Content */}
