@@ -565,18 +565,18 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
                   <line x1={0} y1={y + ROW_H} x2={chartW} y2={y + ROW_H} stroke="#eef1f4" strokeWidth={0.5} />
                   {showDates && <text x={bX - 3} y={y + ROW_H / 2 + 4} fontSize={11} fill={dateColor} textAnchor="end"
                     style={{ cursor: editable ? "pointer" : "default" }}
-                    onClick={editable ? (e) => { e.stopPropagation(); setEditingTaskId(t.id); const r = (e.target as SVGElement).getBoundingClientRect(); setCalEdit({ taskId: t.id, field: "start", value: fmtDMY(sd!), x: r.left, y: r.bottom }); } : (e) => melden(`start-${t.id}`, e.clientX, e.clientY)}
+                    onClick={editable ? (e) => { e.stopPropagation(); setEditingTaskId(t.id); const r = (e.target as SVGElement).getBoundingClientRect(); setCalEdit({ taskId: t.id, field: "start", value: fmtDMY(sd!), x: r.left, y: r.bottom }); } : (e) => melden(`row-${t.id}`, e.clientX, e.clientY)}
                   >{fmtDatum(sd!, longDates)}</text>}
                   {sd && <rect x={bX} y={y + 5} width={bW} height={ROW_H - 10} rx={3}
                     fill={barFill} opacity={isEditing ? 1 : isSel ? 1 : 0.85}
                     stroke={barStroke} strokeWidth={barStrokeW}
                     style={editable && ed ? { cursor: "move" } : undefined}
-                    onClick={e => e.stopPropagation()}
+                    onClick={e => { e.stopPropagation(); if (!editable) melden(`row-${t.id}`, e.clientX, e.clientY); }}
                     onMouseDown={editable && ed ? (e) => startBarDrag(e, t.id, "move", sd, ed) : undefined} />}
                   {sd && bW > 28 && <text x={bX + bW / 2} y={y + ROW_H / 2 + 4} fontSize={12} fill="#333" fontWeight={600} textAnchor="middle" style={{ pointerEvents: "none" }}>{dauer}d</text>}
                   {showDates && <text x={bX + bW + 3} y={y + ROW_H / 2 + 4} fontSize={11} fill={dateColor}
                     style={{ cursor: editable ? "pointer" : "default" }}
-                    onClick={editable ? (e) => { e.stopPropagation(); setEditingTaskId(t.id); const r = (e.target as SVGElement).getBoundingClientRect(); setCalEdit({ taskId: t.id, field: "end", value: fmtDMY(ed!), x: r.left, y: r.bottom }); } : (e) => melden(`end-${t.id}`, e.clientX, e.clientY)}
+                    onClick={editable ? (e) => { e.stopPropagation(); setEditingTaskId(t.id); const r = (e.target as SVGElement).getBoundingClientRect(); setCalEdit({ taskId: t.id, field: "end", value: fmtDMY(ed!), x: r.left, y: r.bottom }); } : (e) => melden(`row-${t.id}`, e.clientX, e.clientY)}
                   >{fmtDatum(ed!, longDates)}</text>}
                   {editable && sd && ed && bW > 8 && (<>
                     <rect x={bX} y={y + 3} width={handleW} height={ROW_H - 6} rx={1} fill="rgba(255,255,255,.3)" style={{ cursor: "ew-resize" }} onMouseDown={e => startBarDrag(e, t.id, "start", sd, ed)} />
