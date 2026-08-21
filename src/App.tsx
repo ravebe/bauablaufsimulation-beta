@@ -505,7 +505,7 @@ export default function App() {
 
       {/* Tab Content */}
       <div className="tc-tab-content">
-        <div style={{ display: aktTab === "projekte" ? "block" : "none" }}>
+        <div className="tc-tab-pane" style={{ display: aktTab === "projekte" ? "block" : "none" }}>
           <TabProjekte
             api={api}
             ready={ready}
@@ -517,7 +517,7 @@ export default function App() {
             userId={userId}
           />
         </div>
-        <div style={{ display: aktTab === "bauteile" ? "block" : "none" }}>
+        <div className="tc-tab-pane" style={{ display: aktTab === "bauteile" ? "block" : "none" }}>
           <TabBauteile
             api={api}
             projectId={projectId}
@@ -531,7 +531,7 @@ export default function App() {
             sichtbar={aktTab === "bauteile"}
           />
         </div>
-        <div style={{ display: aktTab === "abspielen" ? "block" : "none" }}>
+        <div className="tc-tab-pane" style={{ display: aktTab === "abspielen" ? "block" : "none" }}>
           <TabAbspielen
             api={api}
             projectId={projectId}
@@ -541,16 +541,16 @@ export default function App() {
             sharedNadelTag={sharedNadelTag}
           />
         </div>
-        <div style={{ display: aktTab === "kalkulation" ? "block" : "none" }}>
+        <div className="tc-tab-pane" style={{ display: aktTab === "kalkulation" ? "block" : "none" }}>
           <TabKalkulation sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} api={api} projectId={projectId} />
         </div>
-        <div style={{ display: aktTab === "ressourcen" ? "block" : "none" }}>
+        <div className="tc-tab-pane" style={{ display: aktTab === "ressourcen" ? "block" : "none" }}>
           <TabRessourcen sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} />
         </div>
-        <div style={{ display: aktTab === "avor" ? "block" : "none" }}>
+        <div className="tc-tab-pane" style={{ display: aktTab === "avor" ? "block" : "none" }}>
           <TabAvor sim={aktiveSim} projectId={projectId} />
         </div>
-        <div style={{ display: aktTab === "kosten" ? "block" : "none" }}>
+        <div className="tc-tab-pane" style={{ display: aktTab === "kosten" ? "block" : "none" }}>
           <TabKosten sim={aktiveSim} projectId={projectId} />
         </div>
       </div>

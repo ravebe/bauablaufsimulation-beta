@@ -37,7 +37,11 @@
 
 /* === LAYOUT === */
 .tc-app { font-family: var(--tc-font); font-size: 13px; color: var(--tc-text); background: #fff; height: 100%; display: flex; flex-direction: column; overflow: hidden; }
-.tc-tab-content { flex: 1; overflow-y: auto; }
+/* Kein eigenes Scrollen hier — jeder Tab-Inhalt bekommt seinen eigenen Scroll-Container
+   (.tc-tab-pane), damit die Scroll-Position je Tab unabhängig erhalten bleibt statt sich
+   einen gemeinsamen scrollTop mit allen anderen (unterschiedlich hohen) Tabs zu teilen. */
+.tc-tab-content { flex: 1; min-height: 0; overflow: hidden; }
+.tc-tab-pane { height: 100%; overflow-y: auto; }
 .tc-setup-content { padding: 8px 0; font-family: var(--tc-font); font-size: 13px; color: var(--tc-text); }
 .tasklist-wrap { font-family: var(--tc-font); font-size: 13px; color: var(--tc-text); display: flex; flex-direction: column; height: 100%; }
 

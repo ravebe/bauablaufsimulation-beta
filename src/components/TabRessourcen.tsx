@@ -146,8 +146,13 @@ export default function TabRessourcen({ sim, updateSim, readOnly }: Props) {
         <div key={gewerk.key} style={{ marginBottom: 18 }}>
           <div style={{ position: "sticky", top: 0, background: "#fff", zIndex: 2, paddingBottom: 3 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-              <div style={{ fontSize: 10, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px" }}>
-                {gewerk.label.toUpperCase()} ({gewerk.einheit})
+              <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px" }}>
+                <span>{gewerk.label.toUpperCase()}</span>
+                <span>(</span>
+                <input disabled={readOnly} value={gewerk.einheit} title="Einheit (z.B. m², m³, m1, Stk.)"
+                  onChange={e => speichern({ ...stammdaten, gewerke: stammdaten.gewerke.map((g, i) => i !== gi ? g : { ...g, einheit: e.target.value }) })}
+                  style={{ width: 44, fontSize: 10, fontWeight: 600, padding: "1px 3px", border: "1px solid #d4dce4", fontFamily: "inherit", color: "var(--tc-text-3)" }} />
+                <span>)</span>
               </div>
               <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--tc-text-3)", cursor: readOnly ? "default" : "pointer" }}>
                 <input type="checkbox" disabled={readOnly} checked={!!gewerk.kranpflichtig}
