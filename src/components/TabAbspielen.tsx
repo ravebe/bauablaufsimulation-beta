@@ -592,7 +592,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
           const startH = taskListHeight;
           const onMove = (ev: MouseEvent) => {
             if (!resizingRef.current) return;
-            setTaskListHeight(Math.max(150, Math.min(800, startH + ev.clientY - startY)));
+            setTaskListHeight(Math.max(150, startH + ev.clientY - startY));
           };
           const onUp = () => { resizingRef.current = false; document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
           document.addEventListener("mousemove", onMove);

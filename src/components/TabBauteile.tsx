@@ -302,7 +302,7 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
             e.preventDefault();
             const sy = e.clientY, sh = ganttH;
             const onMove = (ev: MouseEvent) => {
-              const newH = Math.max(120, Math.min(600, sh + ev.clientY - sy));
+              const newH = Math.max(120, sh + ev.clientY - sy);
               setGanttH(newH);
               localStorage.setItem(lsGanttHKey, String(newH));
             };

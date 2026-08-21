@@ -597,7 +597,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
           const startH = bauteilListHeight;
           const onMove = (ev: MouseEvent) => {
             if (!resizingRef.current) return;
-            setBauteilListHeight(Math.max(150, Math.min(800, startH + ev.clientY - startY)));
+            setBauteilListHeight(Math.max(150, startH + ev.clientY - startY));
           };
           const onUp = () => { resizingRef.current = false; document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
           document.addEventListener("mousemove", onMove);

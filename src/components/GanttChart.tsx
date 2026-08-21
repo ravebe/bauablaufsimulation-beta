@@ -170,7 +170,7 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
   const startResize = useCallback((e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
     const sx = e.clientX, sw = labelW;
-    const onMove = (ev: MouseEvent) => setLabelW(Math.max(60, Math.min(300, sw + ev.clientX - sx)));
+    const onMove = (ev: MouseEvent) => setLabelW(Math.max(60, sw + ev.clientX - sx));
     const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
     document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp);
   }, [labelW]);
