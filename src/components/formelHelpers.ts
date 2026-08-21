@@ -246,5 +246,5 @@ export function berechneMenge(formula: string, objektWerteListe: Record<string, 
     summe += wert; ok++;
   }
   const anzahlFehler = objektWerteListe.length - ok;
-  return { wert: ok > 0 ? summe : null, anzahlObjekte: objektWerteListe.length, anzahlFehler, fehlendeAttribute: [...fehlend] };
+  return { wert: ok > 0 ? Math.round(summe * 1000) / 1000 : null, anzahlObjekte: objektWerteListe.length, anzahlFehler, fehlendeAttribute: [...fehlend] };
 }
