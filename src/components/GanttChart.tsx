@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { Task } from "../types";
 import { parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks, nsKey } from "../types";
 import DatePicker from "./DatePicker";
+import { useDoppelklickHinweis } from "../hooks/useDoppelklickHinweis";
 
 interface Props {
   projectId?: string | null;
@@ -81,6 +82,7 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
   const [predInput, setPredInput] = useState("");
   const [lagInput, setLagInput] = useState("0");
   const predPopoverRef = useRef<HTMLDivElement>(null);
+  const { hinweis, melden } = useDoppelklickHinweis();
 
   useEffect(() => {
     if (!predPickerTaskId) return;
@@ -419,7 +421,7 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
                     )}
                     <span style={{ flexShrink: 0, fontSize: 10, marginRight: 16, minWidth: 34, textAlign: "right" }} onClick={e => e.stopPropagation()}>
                       <span
-                        onClick={editable ? (e) => oeffnePredPicker(t, e) : undefined}
+                        onClick={editable ? (e) => oeffnePredPicker(t, e) : (e) => melden(`pred-${t.id}`, e.clientX, e.clientY)}
                         style={{ cursor: editable ? "pointer" : "default", fontWeight: 500, color: "#666" }}
                         title="Vorgänger festlegen">
                         {nummern.get(t.id) ?? ""}
@@ -563,7 +565,7 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
                   <line x1={0} y1={y + ROW_H} x2={chartW} y2={y + ROW_H} stroke="#eef1f4" strokeWidth={0.5} />
                   {showDates && <text x={bX - 3} y={y + ROW_H / 2 + 4} fontSize={11} fill={dateColor} textAnchor="end"
                     style={{ cursor: editable ? "pointer" : "default" }}
-                    onClick={editable ? (e) => { e.stopPropagation(); setEditingTaskId(t.id); const r = (e.target as SVGElement).getBoundingClientRect(); setCalEdit({ taskId: t.id, field: "start", value: fmtDMY(sd!), x: r.left, y: r.bottom }); } : undefined}
+                    onClick={editable ? (e) => { e.stopPropagation(); setEditingTaskId(t.id); const r = (e.target as SVGElement).getBoundingClientRect(); setCalEdit({ taskId: t.id, field: "start", value: fmtDMY(sd!), x: r.left, y: r.bottom }); } : (e) => melden(`start-${t.id}`, e.clientX, e.clientY)}
                   >{fmtDatum(sd!, longDates)}</text>}
                   {sd && <rect x={bX} y={y + 5} width={bW} height={ROW_H - 10} rx={3}
                     fill={barFill} opacity={isEditing ? 1 : isSel ? 1 : 0.85}
@@ -574,7 +576,7 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
                   {sd && bW > 28 && <text x={bX + bW / 2} y={y + ROW_H / 2 + 4} fontSize={12} fill="#333" fontWeight={600} textAnchor="middle" style={{ pointerEvents: "none" }}>{dauer}d</text>}
                   {showDates && <text x={bX + bW + 3} y={y + ROW_H / 2 + 4} fontSize={11} fill={dateColor}
                     style={{ cursor: editable ? "pointer" : "default" }}
-                    onClick={editable ? (e) => { e.stopPropagation(); setEditingTaskId(t.id); const r = (e.target as SVGElement).getBoundingClientRect(); setCalEdit({ taskId: t.id, field: "end", value: fmtDMY(ed!), x: r.left, y: r.bottom }); } : undefined}
+                    onClick={editable ? (e) => { e.stopPropagation(); setEditingTaskId(t.id); const r = (e.target as SVGElement).getBoundingClientRect(); setCalEdit({ taskId: t.id, field: "end", value: fmtDMY(ed!), x: r.left, y: r.bottom }); } : (e) => melden(`end-${t.id}`, e.clientX, e.clientY)}
                   >{fmtDatum(ed!, longDates)}</text>}
                   {editable && sd && ed && bW > 8 && (<>
                     <rect x={bX} y={y + 3} width={handleW} height={ROW_H - 6} rx={1} fill="rgba(255,255,255,.3)" style={{ cursor: "ew-resize" }} onMouseDown={e => startBarDrag(e, t.id, "start", sd, ed)} />
@@ -606,6 +608,15 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
           }} />
           <div style={{ position: "fixed", inset: 0, zIndex: -1 }} onClick={() => { setCalEdit(null); setEditingTaskId(null); }} />
         </div>
+      )}
+
+      {hinweis && createPortal(
+        <div style={{ position: "fixed", left: hinweis.x, top: hinweis.y - 8, transform: "translate(-50%, -100%)", zIndex: 2000,
+          background: "#333", color: "#fff", fontSize: 11, padding: "4px 8px", borderRadius: 4, whiteSpace: "nowrap", pointerEvents: "none",
+          boxShadow: "0 2px 6px rgba(0,0,0,.25)" }}>
+          Bearbeitung nur unter „Bauteile" möglich
+        </div>,
+        document.body
       )}
     </div>
   );

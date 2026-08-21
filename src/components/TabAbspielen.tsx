@@ -1,8 +1,10 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import type { SimProjekt, Task } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { formatDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, nsKey, sucheSortiereTasks } from "../types";
 import GanttChart from "./GanttChart";
+import { useDoppelklickHinweis } from "../hooks/useDoppelklickHinweis";
 
 interface Props { api: ApiInstance | null; projectId?: string | null; aktiveSim: SimProjekt | null; aktivesModellId: string | null; taskSort?: "gantt" | "datum" | "aktiv" | "name" | "nummer"; sharedNadelTag?: React.MutableRefObject<number>; }
 
@@ -50,6 +52,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
   // Selection polling
   const [selGuids, setSelGuids] = useState<Set<string>>(new Set());
   const [hoverTaskId, setHoverTaskId] = useState<string | null>(null);
+  const { hinweis, melden } = useDoppelklickHinweis();
   const selRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const modellIds = [...new Set([...(aktiveSim?.modelle.map(m => m.id) ?? []), ...(aktivesModellId ? [aktivesModellId] : [])])].filter(Boolean);
@@ -564,15 +567,18 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
                 <span style={dot(task.typ)} />
               </>)}
               <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12 }}>{task.name}</span>
-              <span style={{ flexShrink: 0, fontSize: 11, marginRight: 6, minWidth: 34, textAlign: "right" }}>
+              <span style={{ flexShrink: 0, fontSize: 11, marginRight: 6, minWidth: 34, textAlign: "right" }}
+                onClick={e => { e.stopPropagation(); melden(`pred-${task.id}`, e.clientX, e.clientY); }}>
                 <span style={{ fontWeight: 500, color: "#666" }}>{nummern.get(task.id) ?? ""}</span>
                 {task.predecessorId && (
                   <span style={{ color: "#999", fontStyle: "italic" }}> | {nummern.get(task.predecessorId) ?? "?"}</span>
                 )}
               </span>
               <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, lineHeight: 1.3 }}>
-                <span style={{ fontSize: 11, color: isGrp ? "#888" : "#333" }}>{sd ? formatDatum(isGrp && gDaten ? gDaten.start : task.start) : ""}</span>
-                <span style={{ fontSize: 11, color: isGrp ? "#888" : "#333" }}>{ed ? formatDatum(isGrp && gDaten ? gDaten.end : task.end) : ""}</span>
+                <span style={{ fontSize: 11, color: isGrp ? "#888" : "#333" }}
+                  onClick={e => { e.stopPropagation(); melden(`start-${task.id}`, e.clientX, e.clientY); }}>{sd ? formatDatum(isGrp && gDaten ? gDaten.start : task.start) : ""}</span>
+                <span style={{ fontSize: 11, color: isGrp ? "#888" : "#333" }}
+                  onClick={e => { e.stopPropagation(); melden(`end-${task.id}`, e.clientX, e.clientY); }}>{ed ? formatDatum(isGrp && gDaten ? gDaten.end : task.end) : ""}</span>
               </span>
               <span style={{ fontSize: 12, color: "#8a9baa", flexShrink: 0, minWidth: 28, textAlign: "right" }}>{dauer}d</span>
             </div>
@@ -627,6 +633,15 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
             </span>
           )) : status}
         </div>
+      )}
+
+      {hinweis && createPortal(
+        <div style={{ position: "fixed", left: hinweis.x, top: hinweis.y - 8, transform: "translate(-50%, -100%)", zIndex: 2000,
+          background: "#333", color: "#fff", fontSize: 11, padding: "4px 8px", borderRadius: 4, whiteSpace: "nowrap", pointerEvents: "none",
+          boxShadow: "0 2px 6px rgba(0,0,0,.25)" }}>
+          Bearbeitung nur unter „Bauteile" möglich
+        </div>,
+        document.body
       )}
     </div>
   );
