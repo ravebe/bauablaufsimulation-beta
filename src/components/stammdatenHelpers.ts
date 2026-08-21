@@ -133,3 +133,81 @@ export function standardStammdaten(): Stammdaten {
     ],
   };
 }
+
+/** Leere Rate ohne Leistungswert/CHF — Platzhalter für Gerüst-Vorlagen ohne reale Referenzzahlen. */
+function leer(kuerzel: string, bezeichnung: string): Rate {
+  return { kuerzel, bezeichnung, leistungswertHProEinheit: null, anzahlPersonen: 1, chfProEinheit: null };
+}
+
+/**
+ * Gerüst-Vorlage Innenausbau — nur Gewerke/Kürzel/Einheiten angelegt, KEINE realen Leistungswerte/
+ * CHF-Sätze (anders als standardStammdaten(), die aus einer echten AVOR-Excel stammt). Über
+ * "Innenausbau hinzufügen" additiv zu bestehenden Stammdaten zumischbar; Werte danach in Tab
+ * Ressourcen selbst eintragen.
+ */
+export function innenausbauGewerke(): Gewerk[] {
+  return [
+    { key: "trockenbau", label: "Trockenbau", einheit: "m²", raten: [
+      leer("TB", "Trockenbauwand"),
+      leer("TBD", "Trockenbau-Decke"),
+    ] },
+    { key: "bodenbelaege", label: "Bodenbeläge", einheit: "m²", raten: [
+      leer("BOD", "Bodenbelag"),
+    ] },
+    { key: "maler", label: "Maler-/Beschichtungsarbeiten", einheit: "m²", raten: [
+      leer("MAL", "Malerarbeiten"),
+    ] },
+    { key: "tueren_fenster_innen", label: "Türen/Fenster innen", einheit: "Stk.", raten: [
+      leer("TUE", "Türen/Fenster einbauen"),
+    ] },
+    { key: "schreiner", label: "Schreinerarbeiten", einheit: "m²", raten: [
+      leer("SCHR", "Schreinerarbeiten/Einbaumöbel"),
+    ] },
+  ];
+}
+
+/** Gerüst-Vorlage HLKSSE (Heizung/Lüftung/Klima/Sanitär/Sprinkler/Elektro) — siehe innenausbauGewerke(). */
+export function hlksseGewerke(): Gewerk[] {
+  return [
+    { key: "heizung", label: "Heizung", einheit: "m1", raten: [
+      leer("HZ", "Heizungsleitungen"),
+    ] },
+    { key: "lueftung", label: "Lüftung", einheit: "m1", raten: [
+      leer("LUE", "Lüftungskanäle"),
+    ] },
+    { key: "klima", label: "Klima", einheit: "Stk.", raten: [
+      leer("KLI", "Klimageräte"),
+    ] },
+    { key: "sanitaer", label: "Sanitär", einheit: "Stk.", raten: [
+      leer("SAN", "Sanitärapparate/-installation"),
+    ] },
+    { key: "sprinkler", label: "Sprinkler", einheit: "m1", raten: [
+      leer("SPR", "Sprinklerleitungen"),
+    ] },
+    { key: "elektro", label: "Elektro", einheit: "m1", raten: [
+      leer("EL", "Elektroinstallation/Kabeltrassen"),
+    ] },
+  ];
+}
+
+/** Gerüst-Vorlage Tiefbau — siehe innenausbauGewerke(). Bewusst ohne Überschneidung zu den in
+ *  standardStammdaten() bereits vorhandenen Gewerken (aushub, kanalisation, folien). */
+export function tiefbauGewerke(): Gewerk[] {
+  return [
+    { key: "baugrubensicherung", label: "Baugrubensicherung", einheit: "m²", raten: [
+      leer("BGS", "Baugrubensicherung/Verbau"),
+    ] },
+    { key: "werkleitungen_tiefbau", label: "Werkleitungen (Tiefbau)", einheit: "m1", raten: [
+      leer("WLT", "Werkleitungen verlegen"),
+    ] },
+    { key: "kanalbau", label: "Kanalbau", einheit: "m1", raten: [
+      leer("KANB", "Kanalbau/Schächte"),
+    ] },
+    { key: "strassenbau", label: "Strassenbau", einheit: "m²", raten: [
+      leer("STR", "Strassenbau/Beläge"),
+    ] },
+    { key: "humusierung", label: "Humusierung/Umgebung", einheit: "m²", raten: [
+      leer("HUM", "Humusierung/Umgebungsarbeiten"),
+    ] },
+  ];
+}

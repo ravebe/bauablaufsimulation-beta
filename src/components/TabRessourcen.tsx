@@ -1,9 +1,10 @@
 // TabRessourcen.tsx — Stammdaten-Editor (Leistungswerte/Personal/CHF je Bauteil-Kürzel), Basis
 // für die Menge→Tage-Kalkulation (Tab Kalkulation) und die Kosten-Auswertung (Tab Kosten).
+import { useState } from "react";
 import type { SimProjekt } from "../types";
 import { istGruppe } from "../types";
-import type { Rate, Stammdaten } from "./stammdatenHelpers";
-import { LEERE_STAMMDATEN, standardStammdaten, alleKuerzel } from "./stammdatenHelpers";
+import type { Gewerk, Rate, Stammdaten } from "./stammdatenHelpers";
+import { LEERE_STAMMDATEN, standardStammdaten, innenausbauGewerke, hlksseGewerke, tiefbauGewerke, alleKuerzel } from "./stammdatenHelpers";
 import { StatTile } from "./cockpitCharts";
 
 interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; }
@@ -11,6 +12,8 @@ interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; re
 const NEUE_RATE: Rate = { kuerzel: "", bezeichnung: "", leistungswertHProEinheit: null, anzahlPersonen: 1, chfProEinheit: null };
 
 export default function TabRessourcen({ sim, updateSim, readOnly }: Props) {
+  const [ladeErgebnis, setLadeErgebnis] = useState<string | null>(null);
+
   if (!sim) return <div style={{ padding: 14, fontSize: 12, color: "var(--tc-text-3)" }}>Kein aktives Projekt ausgewählt</div>;
 
   const stammdaten = sim.stammdaten ?? LEERE_STAMMDATEN;
@@ -45,6 +48,17 @@ export default function TabRessourcen({ sim, updateSim, readOnly }: Props) {
   function standardLaden() {
     if (stammdaten.gewerke.length > 0 && !confirm("Bestehende Stammdaten mit den Standardwerten überschreiben?")) return;
     speichern(standardStammdaten());
+    setLadeErgebnis(null);
+  }
+
+  /** Fügt Gewerke additiv hinzu — bestehende Gewerke (gleicher key) bleiben unberührt. */
+  function gewerkeHinzufuegen(neueGewerke: Gewerk[], label: string) {
+    const vorhandeneKeys = new Set(stammdaten.gewerke.map(g => g.key));
+    const zuErgaenzen = neueGewerke.filter(g => !vorhandeneKeys.has(g.key));
+    if (zuErgaenzen.length === 0) { setLadeErgebnis(`${label}: bereits vollständig vorhanden.`); return; }
+    speichern({ ...stammdaten, gewerke: [...stammdaten.gewerke, ...zuErgaenzen] });
+    const uebersprungen = neueGewerke.length - zuErgaenzen.length;
+    setLadeErgebnis(`${label}: ${zuErgaenzen.length} Gewerke hinzugefügt${uebersprungen > 0 ? `, ${uebersprungen} bereits vorhanden` : ""}.`);
   }
 
   const numInput = (val: number | null, onChange: (v: number | null) => void, width: number) => (
@@ -65,27 +79,48 @@ export default function TabRessourcen({ sim, updateSim, readOnly }: Props) {
 
   return (
     <div style={{ padding: 14, fontSize: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontWeight: 600 }}>Arbeitszeit pro Tag (h):</span>
-            {numInput(stammdaten.arbeitszeitStdProTag, v => speichern({ ...stammdaten, arbeitszeitStdProTag: v ?? 8.5 }), 60)}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontWeight: 600 }}>Umsatz CHF/Mannstunde:</span>
-            {numInput(stammdaten.umsatzChfProMannstunde ?? 80, v => speichern({ ...stammdaten, umsatzChfProMannstunde: v ?? 80 }), 60)}
-          </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontWeight: 600 }}>Arbeitszeit pro Tag (h):</span>
+          {numInput(stammdaten.arbeitszeitStdProTag, v => speichern({ ...stammdaten, arbeitszeitStdProTag: v ?? 8.5 }), 60)}
         </div>
-        {!readOnly && (
-          <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }} onClick={standardLaden}>
-            Standard-Stammdaten laden
-          </button>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontWeight: 600 }}>Umsatz CHF/Mannstunde:</span>
+          {numInput(stammdaten.umsatzChfProMannstunde ?? 80, v => speichern({ ...stammdaten, umsatzChfProMannstunde: v ?? 80 }), 60)}
+        </div>
       </div>
+
+      {!readOnly && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }} onClick={standardLaden}>
+              Rohbau-Stammdaten laden
+            </button>
+            <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }}
+              onClick={() => gewerkeHinzufuegen(innenausbauGewerke(), "Innenausbau")}>
+              Innenausbau hinzufügen
+            </button>
+            <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }}
+              onClick={() => gewerkeHinzufuegen(hlksseGewerke(), "HLKSSE")}>
+              HLKSSE hinzufügen
+            </button>
+            <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }}
+              onClick={() => gewerkeHinzufuegen(tiefbauGewerke(), "Tiefbau")}>
+              Tiefbau hinzufügen
+            </button>
+          </div>
+          <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 4 }}>
+            Innenausbau/HLKSSE/Tiefbau legen nur Gewerke/Kürzel/Einheiten an — Leistungswerte, Personen
+            und CHF-Sätze sind bewusst leer und müssen selbst eingetragen werden (keine reale Referenz
+            wie beim Rohbau-Datensatz).
+          </div>
+          {ladeErgebnis && <div style={{ fontSize: 10, color: "var(--tc-text-3)", marginTop: 4 }}>{ladeErgebnis}</div>}
+        </div>
+      )}
 
       {stammdaten.gewerke.length === 0 && (
         <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
-          Noch keine Stammdaten hinterlegt — über "Standard-Stammdaten laden" starten oder Gewerke manuell anlegen.
+          Noch keine Stammdaten hinterlegt — über einen der Lade-Buttons starten oder Gewerke manuell anlegen.
         </div>
       )}
 
