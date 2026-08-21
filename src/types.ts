@@ -269,7 +269,10 @@ export function getKinder(tasks: Task[], groupIdx: number): number[] {
 
 /** Berechne Start/Ende einer Gruppe aus ihren Kindern */
 export function gruppenDaten(tasks: Task[], groupIdx: number): { start: string; end: string; tage: number } {
-  const children = getKinder(tasks, groupIdx);
+  // Nur Blatt-Tasks zählen, keine verschachtelten Untergruppen — deren eigene start/end-Felder sind
+  // beim Erstellen eingefroren (z.B. "heute") und würden die äußere Gruppe verfälschen. Die Tasks
+  // einer Untergruppe stehen ohnehin schon (flach) mit in getKinder() und werden separat gezählt.
+  const children = getKinder(tasks, groupIdx).filter(ci => !istGruppe(tasks, ci));
   if (children.length === 0) return { start: tasks[groupIdx].start, end: tasks[groupIdx].end, tage: 0 };
   let minStart = Infinity, maxEnd = -Infinity;
   for (const ci of children) {

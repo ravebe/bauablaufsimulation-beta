@@ -583,21 +583,30 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
               const barStrokeW = isEditing ? 2 : (isSel ? 1.5 : 0);
 
               if (isGrp) {
-                // Gruppe: Klammer nach unten (MSP-Stil)
-                const bracketY = y + ROW_H / 2 - 2;
-                const bracketH = 6;
-                const tickH = 4;
+                // Gruppe: Klammer nach unten (MSP-Stil), dünner + mit Lücke für die Tage-Beschriftung
+                const bracketY = y + ROW_H / 2 - 1.5;
+                const bracketH = 4;
+                const tickH = 3;
+                const zeigeDauerText = !!sd && bW > 40;
+                const durText = `${dauer}d`;
+                const barMidX = bX + bW / 2;
+                const textGapHalb = zeigeDauerText ? Math.max(0, Math.min(bW / 2 - tickH - 2, durText.length * 3.3 + 4)) : 0;
                 return (
                   <g key={t.id}>
                     <rect x={0} y={y} width={chartW} height={ROW_H} fill={isSel ? "#e8f0fe" : "transparent"} />
                     <line x1={0} y1={y + ROW_H} x2={chartW} y2={y + ROW_H} stroke="#eef1f4" strokeWidth={0.5} />
                     {sd && <>
-                      <rect x={bX} y={bracketY} width={bW} height={bracketH} rx={1} fill="#555" opacity={0.8} />
+                      {textGapHalb > 0 ? (<>
+                        <rect x={bX} y={bracketY} width={Math.max(0, barMidX - textGapHalb - bX)} height={bracketH} rx={1} fill="#555" opacity={0.8} />
+                        <rect x={barMidX + textGapHalb} y={bracketY} width={Math.max(0, bX + bW - (barMidX + textGapHalb))} height={bracketH} rx={1} fill="#555" opacity={0.8} />
+                      </>) : (
+                        <rect x={bX} y={bracketY} width={bW} height={bracketH} rx={1} fill="#555" opacity={0.8} />
+                      )}
                       <polygon points={`${bX},${bracketY + bracketH} ${bX + tickH},${bracketY + bracketH} ${bX},${bracketY + bracketH + tickH}`} fill="#555" />
                       <polygon points={`${bX + bW},${bracketY + bracketH} ${bX + bW - tickH},${bracketY + bracketH} ${bX + bW},${bracketY + bracketH + tickH}`} fill="#555" />
                     </>}
                     {showDates && <text x={bX - 3} y={y + ROW_H / 2 + 4} fontSize={11} fill="#888" textAnchor="end">{fmtDatum(sd!, longDates)}</text>}
-                    {sd && bW > 40 && <text x={bX + bW / 2} y={y + ROW_H / 2 + 4} fontSize={11} fill="#555" fontWeight={600} textAnchor="middle" style={{ pointerEvents: "none" }}>{dauer}d</text>}
+                    {zeigeDauerText && <text x={barMidX} y={y + ROW_H / 2 + 4} fontSize={11} fill="#555" fontWeight={600} textAnchor="middle" style={{ pointerEvents: "none" }}>{durText}</text>}
                     {showDates && <text x={bX + bW + 3} y={y + ROW_H / 2 + 4} fontSize={11} fill="#888">{fmtDatum(ed!, longDates)}</text>}
                   </g>
                 );
