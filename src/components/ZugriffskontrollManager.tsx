@@ -1,9 +1,12 @@
-// ZugriffskontrollManager.tsx — UI-Mockup im Organizer-Design (kein echter Datenzugriff/keine echte Durchsetzung).
-// Trimble Connect stellt über die Workspace-API keine Connect-Gruppen bereit (nur einzelne Projektmitglieder
-// via project.getMembers()) — bis eine echte Datenquelle feststeht, arbeitet dieses Fenster mit Platzhalter-Gruppen.
-import { useState } from "react";
+// ZugriffskontrollManager.tsx — Fenster im Organizer-Design zur Zugriffskontrolle pro Projektmitglied.
+// Trimble Connect stellt über die Workspace-API keine Connect-Gruppen bereit (Gruppen leben in der separaten
+// Core-REST-API, die einen eigenen OAuth-Login bräuchte) — echte Connect-Gruppen sind einzelnen Nutzern
+// (project.getMembers()) gewichen. Auswahl wird aktuell nur lokal gehalten, noch nicht gespeichert/durchgesetzt.
+import { useState, useEffect } from "react";
+import type { ApiInstance, TcProjectMember } from "../hooks/useApi";
 
-interface Zeile { id: string; name: string; zugriff: "edit" | "read" | "none"; }
+type Zugriff = "edit" | "read" | "none";
+interface Zeile { id: string; name: string; email?: string; zugriff: Zugriff; }
 
 const OPTIONEN = [
   { key: "edit" as const, label: "Zugriff bearbeiten", icon: "✏", desc: "Inhalt hinzufügen, bearbeiten oder entfernen" },
@@ -11,20 +14,30 @@ const OPTIONEN = [
   { key: "none" as const, label: "Kein Zugriff", icon: "🚫", desc: "Kein Zugriff auf diese Simulation" },
 ];
 
-export default function ZugriffskontrollManager({ onClose }: { onClose: () => void }) {
-  const [standard, setStandard] = useState<Zeile["zugriff"]>("read");
-  const [gruppen, setGruppen] = useState<Zeile[]>([
-    { id: "g1", name: "Gruppe A", zugriff: "read" },
-    { id: "g2", name: "Gruppe B", zugriff: "none" },
-  ]);
+function mitgliedName(m: TcProjectMember): string {
+  const n = [m.firstName, m.lastName].filter(Boolean).join(" ").trim();
+  return n || m.email || m.id;
+}
+
+export default function ZugriffskontrollManager({ api, onClose }: { api: ApiInstance | null; onClose: () => void }) {
+  const [standard, setStandard] = useState<Zugriff>("read");
+  const [mitglieder, setMitglieder] = useState<Zeile[] | null>(null);
+  const [fehler, setFehler] = useState<string | null>(null);
   const [offenerDropdown, setOffenerDropdown] = useState<string | null>(null);
 
-  function gruppeHinzufuegen() {
-    const buchstabe = String.fromCharCode(65 + gruppen.length);
-    setGruppen(g => [...g, { id: `g${g.length + 1}`, name: `Gruppe ${buchstabe}`, zugriff: "none" }]);
-  }
+  useEffect(() => {
+    if (!api?.project.getMembers) { setFehler("Projektmitglieder nicht verfügbar"); return; }
+    (async () => {
+      try {
+        const liste = await api.project.getMembers!();
+        setMitglieder(liste.map(m => ({ id: m.id, name: mitgliedName(m), email: m.email, zugriff: "read" as Zugriff })));
+      } catch {
+        setFehler("Projektmitglieder konnten nicht geladen werden");
+      }
+    })();
+  }, [api]);
 
-  function AccessDropdown({ id, aktuell, onSelect }: { id: string; aktuell: Zeile["zugriff"]; onSelect: (v: Zeile["zugriff"]) => void }) {
+  function AccessDropdown({ id, aktuell, onSelect }: { id: string; aktuell: Zugriff; onSelect: (v: Zugriff) => void }) {
     const opt = OPTIONEN.find(o => o.key === aktuell)!;
     return (
       <div style={{ position: "relative" }} onClick={e => e.stopPropagation()}>
@@ -64,9 +77,8 @@ export default function ZugriffskontrollManager({ onClose }: { onClose: () => vo
 
         <div style={{ padding: "14px 18px" }}>
           <div style={{ fontSize: 11, color: "var(--tc-text-2)", lineHeight: 1.5, marginBottom: 12 }}>
-            Legt fest, welche Gruppen wie auf die 4D-Simulationen dieses Projekts zugreifen dürfen.
-            Für eine Gruppe angewendete Zugriffskontrolle setzt den Standardzugriff außer Kraft.
-            Ist ein Nutzer in mehreren Gruppen, gilt die am wenigsten einschränkende Regel.
+            Legt fest, welche Projektmitglieder wie auf die 4D-Simulationen dieses Projekts zugreifen dürfen.
+            Für ein Mitglied angewendete Zugriffskontrolle setzt den Standardzugriff außer Kraft.
           </div>
 
           <div style={{ fontSize: 9, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px", marginBottom: 6 }}>STANDARDZUGRIFF</div>
@@ -79,22 +91,24 @@ export default function ZugriffskontrollManager({ onClose }: { onClose: () => vo
             <AccessDropdown id="standard" aktuell={standard} onSelect={setStandard} />
           </div>
 
-          <div style={{ fontSize: 9, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px", marginBottom: 6 }}>ZUGRIFF PRO GRUPPE</div>
-          {gruppen.map(g => (
-            <div key={g.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px",
+          <div style={{ fontSize: 9, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px", marginBottom: 6 }}>ZUGRIFF PRO MITGLIED</div>
+          {fehler && <div style={{ fontSize: 11, color: "var(--tc-red)" }}>{fehler}</div>}
+          {!fehler && mitglieder === null && <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>Lade Projektmitglieder…</div>}
+          {!fehler && mitglieder?.length === 0 && <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>Keine weiteren Projektmitglieder gefunden</div>}
+          {mitglieder?.map(m => (
+            <div key={m.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px",
               borderBottom: "1px solid var(--tc-border-light)" }}>
-              <div style={{ fontSize: 12, fontWeight: 500 }}>👥 {g.name}</div>
-              <AccessDropdown id={g.id} aktuell={g.zugriff}
-                onSelect={v => setGruppen(prev => prev.map(x => x.id === g.id ? { ...x, zugriff: v } : x))} />
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 500 }}>👤 {m.name}</div>
+                {m.email && m.email !== m.name && <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>{m.email}</div>}
+              </div>
+              <AccessDropdown id={m.id} aktuell={m.zugriff}
+                onSelect={v => setMitglieder(prev => prev!.map(x => x.id === m.id ? { ...x, zugriff: v } : x))} />
             </div>
           ))}
 
-          <button className="tc-btn-secondary" style={{ fontSize: 11, marginTop: 12, padding: "6px 12px" }} onClick={gruppeHinzufuegen}>
-            + Zugriffskontrolle für andere Gruppe hinzufügen
-          </button>
-
           <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 14, fontStyle: "italic" }}>
-            Vorschau — Gruppen sind Platzhalter und Einstellungen werden noch nicht gespeichert oder durchgesetzt.
+            Einstellungen werden noch nicht gespeichert oder durchgesetzt — Vorschau.
           </div>
         </div>
       </div>

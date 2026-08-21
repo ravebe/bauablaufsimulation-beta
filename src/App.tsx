@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useApi, cloudSave, cloudLoad, sendPresence } from "./hooks/useApi";
 import type { SimProjekt, Zugriff } from "./types";
-import { SIMS_KEY, AKTIV_KEY, nsKey, parseDateUniversal, formatDatum, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern } from "./types";
+import { SIMS_KEY, AKTIV_KEY, nsKey, parseDateUniversal, formatDatum, istGruppe, gruppenDaten, berechneNummern } from "./types";
 import TabProjekte from "./components/TabProjekte";
 import TabBauteile from "./components/TabBauteile";
 import TabAbspielen from "./components/TabAbspielen";
@@ -503,7 +503,7 @@ export default function App() {
         </div>
       </div>
 
-      {zugriffsManagerOffen && <ZugriffskontrollManager onClose={() => setZugriffsManagerOffen(false)} />}
+      {zugriffsManagerOffen && <ZugriffskontrollManager api={api} onClose={() => setZugriffsManagerOffen(false)} />}
     </div>
   );
 }

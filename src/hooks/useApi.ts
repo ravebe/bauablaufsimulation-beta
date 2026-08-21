@@ -32,7 +32,18 @@ export interface ApiInstance {
     getSettings?: () => Promise<Record<string, unknown>>;
     setSettings?: (settings: Record<string, unknown>) => Promise<void>;
   };
-  project: { getProject: () => Promise<{ id: string; name: string }>; };
+  project: {
+    getProject: () => Promise<{ id: string; name: string }>;
+    getMembers?: () => Promise<TcProjectMember[]>;
+  };
+}
+
+export interface TcProjectMember {
+  id: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  role?: string;
 }
 
 interface UseApiReturn {
