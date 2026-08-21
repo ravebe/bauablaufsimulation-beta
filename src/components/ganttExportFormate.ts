@@ -17,8 +17,25 @@ function download(content: string, filename: string, mime: string) {
 
 function esc(s: string) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
+// Reihenfolge wie in der Gantt-Vorlage (GanttVorlage.tsx), zusätzliche Spalten alphabetisch dahinter
+const VORLAGE_SPALTEN = ["Bauabschnitt", "Geschoss", "Etappe", "Objektname", "Layer"];
+
+function sammleExtraSpalten(tasks: Task[]): string[] {
+  const set = new Set<string>();
+  for (const t of tasks) if (t.extraSpalten) for (const k of Object.keys(t.extraSpalten)) set.add(k);
+  const vorlage = VORLAGE_SPALTEN.filter(k => set.has(k));
+  const rest = [...set].filter(k => !VORLAGE_SPALTEN.includes(k)).sort();
+  return [...vorlage, ...rest];
+}
+
+// XML-Tag-Namen dürfen keine Leer-/Sonderzeichen enthalten
+function xmlTag(name: string): string {
+  return name.replace(/[^a-zA-Z0-9_]/g, "_").replace(/^(?=\d)/, "_");
+}
+
 export function exportXlsx(tasks: Task[], simName: string) {
   const nummern = berechneNummern(tasks);
+  const extraSpalten = sammleExtraSpalten(tasks);
   const rows = tasks.map(t => ({
     Name: t.name,
     Start: formatDatum(t.start),
@@ -26,11 +43,12 @@ export function exportXlsx(tasks: Task[], simName: string) {
     Typ: t.typ,
     Vorgänger: t.predecessorId ? nummern.get(t.predecessorId) ?? "" : "",
     Wartetage: t.predecessorId ? (t.lagDays ?? 0) : "",
+    ...Object.fromEntries(extraSpalten.map(k => [k, t.extraSpalten?.[k] ?? ""])),
     Kürzel: t.bauteilKuerzel ?? "",
     Bauteile: t.objektGuids.length,
   }));
   const ws = XLSX.utils.json_to_sheet(rows);
-  ws["!cols"] = [{ wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 10 }];
+  ws["!cols"] = [{ wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, ...extraSpalten.map(() => ({ wch: 14 })), { wch: 8 }, { wch: 10 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Gantt");
   XLSX.writeFile(wb, `${simName}_Gantt.xlsx`);
@@ -38,12 +56,14 @@ export function exportXlsx(tasks: Task[], simName: string) {
 
 export function exportCsv(tasks: Task[], simName: string) {
   const nummern = berechneNummern(tasks);
+  const extraSpalten = sammleExtraSpalten(tasks);
   const sep = ";";
-  const header = ["Name", "Start", "Ende", "Typ", "Vorgänger", "Wartetage", "Kürzel", "Bauteile"].join(sep);
+  const header = ["Name", "Start", "Ende", "Typ", "Vorgänger", "Wartetage", ...extraSpalten, "Kürzel", "Bauteile"].join(sep);
   const rows = tasks.map(t =>
     [t.name, formatDatum(t.start), formatDatum(t.end), t.typ,
       t.predecessorId ? nummern.get(t.predecessorId) ?? "" : "",
       t.predecessorId ? (t.lagDays ?? 0) : "",
+      ...extraSpalten.map(k => t.extraSpalten?.[k] ?? ""),
       t.bauteilKuerzel ?? "",
       t.objektGuids.length].join(sep)
   );
@@ -53,11 +73,13 @@ export function exportCsv(tasks: Task[], simName: string) {
 
 export function exportXml(tasks: Task[], simName: string) {
   const nummern = berechneNummern(tasks);
+  const extraSpalten = sammleExtraSpalten(tasks);
   const tasksXml = tasks.map(t => {
     const vorgLines = t.predecessorId
       ? `\n    <Vorgaenger>${esc(nummern.get(t.predecessorId) ?? "")}</Vorgaenger>\n    <Wartetage>${t.lagDays ?? 0}</Wartetage>`
       : "";
-    return `  <Task>\n    <Name>${esc(t.name)}</Name>\n    <Start>${formatDatum(t.start)}</Start>\n    <Finish>${formatDatum(t.end)}</Finish>\n    <Type>${t.typ}</Type>\n    <Kuerzel>${esc(t.bauteilKuerzel ?? "")}</Kuerzel>\n    <Objects>${t.objektGuids.length}</Objects>${vorgLines}\n  </Task>`;
+    const extraLines = extraSpalten.map(k => `\n    <${xmlTag(k)}>${esc(t.extraSpalten?.[k] ?? "")}</${xmlTag(k)}>`).join("");
+    return `  <Task>\n    <Name>${esc(t.name)}</Name>\n    <Start>${formatDatum(t.start)}</Start>\n    <Finish>${formatDatum(t.end)}</Finish>\n    <Type>${t.typ}</Type>\n    <Kuerzel>${esc(t.bauteilKuerzel ?? "")}</Kuerzel>\n    <Objects>${t.objektGuids.length}</Objects>${vorgLines}${extraLines}\n  </Task>`;
   }).join("\n");
   const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<Gantt>\n${tasksXml}\n</Gantt>`;
   download(xml, `${simName}_Gantt.xml`, "application/xml");
@@ -75,6 +97,7 @@ export function exportJson(tasks: Task[], simName: string) {
     typ: t.typ, kuerzel: t.bauteilKuerzel ?? null, bauteile: t.objektGuids.length, guids: t.objektGuids,
     vorgaenger: t.predecessorId ? nummern.get(t.predecessorId) ?? null : null,
     wartetage: t.predecessorId ? (t.lagDays ?? 0) : null,
+    ...t.extraSpalten,
   }));
   download(JSON.stringify(data, null, 2), `${simName}_Gantt.json`, "application/json");
 }

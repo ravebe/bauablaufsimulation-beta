@@ -55,7 +55,7 @@ export default function GanttImport({ onImport, taskCount }: Props) {
   }
 
   // Standard-Spaltennamen die NICHT als Extra gelten
-  const STANDARD = new Set(["name","start","startdatum","ende","enddatum","end","finish","fertig","anfang","begin","von","bis","typ","type","kategorie","vorgangsname","vorgang","task","bezeichnung","vorgänger","vorganger","predecessor","wartetage","lag","lagdays","lag days","kürzel","kuerzel","bauteil-kürzel","bauteil-kuerzel"]);
+  const STANDARD = new Set(["name","start","startdatum","ende","enddatum","end","finish","fertig","anfang","begin","von","bis","typ","type","kategorie","vorgangsname","vorgang","task","bezeichnung","vorgänger","vorganger","predecessor","wartetage","lag","lagdays","lag days","kürzel","kuerzel","bauteil-kürzel","bauteil-kuerzel","bauteile"]);
   const VORGAENGER_SPALTEN = ["Vorgänger", "vorgänger", "Vorganger", "Predecessor", "predecessor"];
   const WARTETAGE_SPALTEN = ["Wartetage", "wartetage", "Lag", "lag", "Lag Days", "LagDays"];
   const KUERZEL_SPALTEN = ["Kürzel", "kürzel", "Kuerzel", "kuerzel", "Bauteil-Kürzel", "bauteil-kürzel"];
@@ -182,6 +182,8 @@ export default function GanttImport({ onImport, taskCount }: Props) {
     return loeseVorgaenger(rows);
   }
 
+  const XML_STANDARD_TAGS = new Set(["name","start","earlystart","finish","end","ende","typ","type","kuerzel","kürzel","objects","bauteile","vorgaenger","vorgänger","predecessor","wartetage","lag"]);
+
   function parseXml(text: string): Task[] {
     if (istMsProjectXml(text)) return parseMsProjectXml(text);
     const parser = new DOMParser();
@@ -189,6 +191,12 @@ export default function GanttImport({ onImport, taskCount }: Props) {
     const rows: { task: Task; vorgRoh: string; lagRoh: string }[] = [];
     doc.querySelectorAll("Task, task").forEach((el, i) => {
       const g = (tag: string) => el.querySelector(tag)?.textContent?.trim() ?? "";
+      const extra: Record<string, string> = {};
+      for (const child of Array.from(el.children)) {
+        if (XML_STANDARD_TAGS.has(child.tagName.toLowerCase())) continue;
+        const v = (child.textContent ?? "").trim();
+        if (v) extra[child.tagName] = v;
+      }
       rows.push({
         task: {
           id: crypto.randomUUID(),
@@ -198,6 +206,7 @@ export default function GanttImport({ onImport, taskCount }: Props) {
           typ: parseTyp(g("Typ") || g("typ") || g("Type") || "neubau"),
           objektGuids: [],
           bauteilKuerzel: (g("Kuerzel") || g("Kürzel") || g("kuerzel")) || undefined,
+          extraSpalten: Object.keys(extra).length > 0 ? extra : undefined,
         },
         vorgRoh: g("Vorgaenger") || g("Vorgänger") || g("Predecessor") || "",
         lagRoh: g("Wartetage") || g("Lag") || "0",
