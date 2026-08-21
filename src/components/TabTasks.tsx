@@ -353,9 +353,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                   onClick={offeneMarkieren} title="Zugewiesene ausblenden → offene sichtbar">
                   {offen} OFFEN
                 </button>
-              ) : (
-                <span style={{ fontSize: 11, color: "#2d7dbd", fontWeight: 600 }}>✓ VERTEILT</span>
-              );
+              ) : null;
             })()}
           </div>
         </div>
