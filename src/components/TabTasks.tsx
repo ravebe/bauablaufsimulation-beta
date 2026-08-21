@@ -471,12 +471,11 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                     style={{ fontSize: 13, flex: 1, cursor: !readOnly ? "text" : "default", color: selectedIds.includes(task.id) ? "#2d7dbd" : "#333", fontWeight: selectedIds.includes(task.id) || hatSelektierte || isGroup ? 600 : 400 }}>{task.name}</span>
                 )}
 
-                {/* Nummer | Vorgänger — Klick öffnet Vorgänger-Auswahl */}
-                <span style={{ flexShrink: 0, fontSize: 11, marginRight: 6, minWidth: 34, textAlign: "right" }} onClick={e => e.stopPropagation()}>
-                  <span
-                    onClick={!readOnly ? (e) => oeffnePredPicker(task, e) : undefined}
-                    style={{ cursor: !readOnly ? "pointer" : "default", fontWeight: 500, color: "#666" }}
-                    title="Vorgänger festlegen">
+                {/* Nummer | Vorgänger — Klick auf den ganzen Bereich öffnet Vorgänger-Auswahl */}
+                <span style={{ flexShrink: 0, fontSize: 11, marginRight: 6, minWidth: 34, textAlign: "right", cursor: !readOnly ? "pointer" : "default" }}
+                  onClick={!readOnly ? (e) => { e.stopPropagation(); oeffnePredPicker(task, e); } : (e) => e.stopPropagation()}
+                  title={!readOnly ? "Vorgänger festlegen" : undefined}>
+                  <span style={{ fontWeight: 500, color: "#666" }}>
                     {nummern.get(task.id) ?? ""}
                   </span>
                   {task.predecessorId && (
