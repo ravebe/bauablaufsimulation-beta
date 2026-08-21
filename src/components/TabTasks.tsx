@@ -629,15 +629,15 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
 
           {/* Lösch-Auswahl bei Gruppen in der Markierung: Gruppe+Tasks oder nur Gruppe */}
           {loeschDialogOffen && (
-            <div style={{ background: "#FEF2F2", border: "1px solid #FCA5A5", padding: 8, fontSize: 11 }}>
-              <div style={{ fontWeight: 600, color: "#DC2626", marginBottom: 6 }}>
-                ⚠ {selInfo.total > 1 ? `${selInfo.total} Tasks markiert, davon ${selInfo.groups} ${selInfo.groups === 1 ? "Gruppe" : "Gruppen"}` : "Gruppe"} — was löschen?
+            <div style={{ background: "var(--tc-blue-bg)", border: "1px solid #b0d4f0", padding: 8, fontSize: 11 }}>
+              <div style={{ fontWeight: 600, color: "var(--tc-blue)", marginBottom: 6 }}>
+                {selInfo.total > 1 ? `${selInfo.total} Tasks markiert, davon ${selInfo.groups} ${selInfo.groups === 1 ? "Gruppe" : "Gruppen"}` : "Gruppe"} — was löschen?
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <button className="tc-btn-primary" style={{ background: "#DC2626", borderColor: "#DC2626", fontSize: 11 }}
-                  onClick={() => tasksLoeschen(selInfo.ids, "mitKindern")}>Gruppe/n und Tasks löschen</button>
-                <button className="tc-btn-secondary" style={{ fontSize: 11 }}
+                <button className="tc-btn-primary" style={{ fontSize: 11 }}
                   onClick={() => tasksLoeschen(selInfo.ids, "nurGruppe")}>Nur Gruppe/n löschen</button>
+                <button className="tc-btn-secondary" style={{ fontSize: 11 }}
+                  onClick={() => tasksLoeschen(selInfo.ids, "mitKindern")}>Gruppe/n und Tasks löschen</button>
                 <button className="tc-btn-ghost" style={{ fontSize: 11 }}
                   onClick={() => setLoeschDialogOffen(false)}>Abbrechen</button>
               </div>
