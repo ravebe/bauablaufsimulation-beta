@@ -168,13 +168,16 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
                   <option value="">–</option>
                   {kuerzelListe.map(k => <option key={k} value={k}>{k}</option>)}
                 </select>
-                <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0, paddingRight: 6 }}>
+                <div style={{
+                  display: "grid", gridTemplateColumns: gewerke.length >= 3 ? "1fr 1fr" : "1fr",
+                  columnGap: 10, rowGap: 3, minWidth: 0, paddingRight: 6,
+                }}>
                   {gewerke.map(g => (
-                    <label key={g.key} title={`${g.label} [${g.einheit}]`} style={{ fontSize: 9, color: "var(--tc-text-3)", display: "flex", alignItems: "center", gap: 3 }}>
-                      <span style={{ minWidth: 60, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.label}</span>
+                    <label key={g.key} title={`${g.label} [${g.einheit}]`} style={{ fontSize: 9, color: "var(--tc-text-3)", display: "flex", alignItems: "center", gap: 3, minWidth: 0 }}>
+                      <span style={{ minWidth: 50, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.label}</span>
                       <input type="number" className="no-spinner" disabled={readOnly} value={t.mengen?.[g.key] ?? ""}
                         onChange={e => mengeAendern(t, g.key, e.target.value === "" ? null : Number(e.target.value))}
-                        style={{ width: 56, fontSize: 10, padding: "2px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
+                        style={{ width: 50, minWidth: 0, flex: 1, fontSize: 10, padding: "2px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
                     </label>
                   ))}
                   {gewerke.length === 0 && <span style={{ fontSize: 9, color: "var(--tc-text-3)" }}>Kürzel wählen…</span>}
