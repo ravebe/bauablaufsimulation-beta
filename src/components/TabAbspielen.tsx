@@ -27,6 +27,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
   const [laeuft, setLaeuft] = useState(false);
   const [currentTag, setCurrentTag] = useState(0);
   const [status, setStatus] = useState<string | null>(null);
+  const [aktiveTasksAnzeige, setAktiveTasksAnzeige] = useState<Task[] | null>(null);
   const stopRef = useRef(false);
   const animRef = useRef<number | null>(null);
   const lastTimeRef = useRef(0);
@@ -146,7 +147,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
   async function startzustand() {
     if (!api || !aktiveSim) return;
     gestartet.current.clear(); beendet.current.clear();
-    setStatus("⟳ Bereit machen…");
+    setStatus("⟳ Bereit machen…"); setAktiveTasksAnzeige(null);
 
     // Alle Tasks der Simulation (nicht nur gefilterte)
     const alleTasks = aktiveSim.tasks;
@@ -159,7 +160,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
         await setzeZustand(t.objektGuids, { visible: true });
     }
     setCurrentTag(0); currentTagRef.current = 0;
-    setStatus("✓ Bereit");
+    setStatus("✓ Bereit"); setAktiveTasksAnzeige(null);
   }
 
   // --- Zustand bei Tag aufbauen (Slider/Klick) — BATCHED ---
@@ -206,7 +207,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
     if (selGuidsLocal.length > 0) await selektieren(selGuidsLocal);
 
     const aktive = alleTasks.filter(t => t.objektGuids.length > 0 && istAktiv(t, tag));
-    if (aktive.length > 0) setStatus(aktive.map(t => `${t.typ === "neubau" ? "🟢" : t.typ === "abbruch" ? "🟡" : t.typ === "temporaer" ? "🟤" : "⚫"} ${t.name}`).join(", "));
+    if (aktive.length > 0) { setAktiveTasksAnzeige(aktive); setStatus(aktive.map(t => t.name).join(", ")); }
   }
 
   // --- Typ-Einfärbung ein/ausschalten (Auge-Button) ---
@@ -314,7 +315,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
 
     if (statusChanged) {
       const aktive = tasks.filter(t => istAktiv(t, tag));
-      if (aktive.length > 0) setStatus(aktive.map(t => `${t.typ === "neubau" ? "🟢" : t.typ === "abbruch" ? "🟡" : t.typ === "temporaer" ? "🟤" : "⚫"} ${t.name}`).join(", "));
+      if (aktive.length > 0) { setAktiveTasksAnzeige(aktive); setStatus(aktive.map(t => t.name).join(", ")); }
     }
   }
 
@@ -336,7 +337,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
       const neuerTag = currentTagRef.current + delta * tageProSek;
       if (neuerTag >= totalTage) {
         setCurrentTag(totalTage); currentTagRef.current = totalTage;
-        setLaeuft(false); setStatus("✓ Simulation abgeschlossen"); return;
+        setLaeuft(false); setStatus("✓ Simulation abgeschlossen"); setAktiveTasksAnzeige(null); return;
       }
       setCurrentTag(neuerTag); currentTagRef.current = neuerTag;
       pruefeTaskEvents(neuerTag);
@@ -349,7 +350,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
   function stoppen() {
     stopRef.current = true;
     if (animRef.current) { cancelAnimationFrame(animRef.current); animRef.current = null; }
-    setLaeuft(false); setStatus("■ Gestoppt");
+    setLaeuft(false); setStatus("■ Gestoppt"); setAktiveTasksAnzeige(null);
     // Polling wieder starten
     if (api && !selRef.current) {
       const check = async () => {
@@ -618,7 +619,14 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
       </div>
 
       {status && (
-        <div className={`alert ${status.startsWith("✓") ? "ok" : status.startsWith("■") ? "err" : "info"}`} style={{ marginTop: 8 }}>{status}</div>
+        <div className={`alert ${status.startsWith("✓") ? "ok" : status.startsWith("■") ? "err" : "info"}`} style={{ marginTop: 8 }}>
+          {aktiveTasksAnzeige ? aktiveTasksAnzeige.map((t, i) => (
+            <span key={t.id}>
+              {i > 0 && ", "}
+              <span style={{ ...dot(t.typ), width: 7, height: 7 }} />{t.name}
+            </span>
+          )) : status}
+        </div>
       )}
     </div>
   );
