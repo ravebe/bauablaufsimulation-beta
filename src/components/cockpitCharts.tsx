@@ -1,8 +1,26 @@
 // cockpitCharts.tsx — wiederverwendbarer Chart-/Cockpit-Baukasten (reines SVG, kein Package) für
 // Tab AVOR und spätere Cockpits. Farben nach validierter Referenzpalette (dataviz-Skill, Light only
 // — die App hat aktuell keinen Dark-Mode).
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { nsKey } from "../types";
+
+/** Misst die tatsächliche Pixelbreite eines Containers, damit die SVG-viewBox exakt dazu passt
+ * (sonst verzerrt preserveAspectRatio bei ungleichem Seitenverhältnis die Achsentexte). */
+function useMeasuredWidth<T extends HTMLElement>(fallback: number) {
+  const ref = useRef<T>(null);
+  const [width, setWidth] = useState(fallback);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(entries => {
+      const w = entries[0]?.contentRect.width;
+      if (w) setWidth(w);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, width] as const;
+}
 
 export const FARBEN = {
   kategorial: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"],
@@ -28,10 +46,11 @@ interface TimeSeriesProps {
   formatWert?: (v: number) => string;
 }
 
-const VBW = 1000, ML = 40, MR = 8, MT = 10, MB = 20;
+const ML = 40, MR = 8, MT = 10, MB = 20;
 
 export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = "", hoehe = 180, formatWert }: TimeSeriesProps) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const [containerRef, VBW] = useMeasuredWidth<HTMLDivElement>(1000);
   const fmt = formatWert ?? ((v: number) => v.toLocaleString("de-CH", { maximumFractionDigits: 1 }));
 
   if (tage.length === 0 || serien.length === 0) {
@@ -79,7 +98,7 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
   const tickIdx = [...new Set([0, Math.floor((n - 1) / 2), n - 1])];
 
   return (
-    <div style={{ position: "relative" }}>
+    <div ref={containerRef} style={{ position: "relative" }}>
       {zeigeLegende && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 10, color: FARBEN.textSekundaer, marginBottom: 4 }}>
           {serien.map(s => (
@@ -90,19 +109,19 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
           ))}
         </div>
       )}
-      <svg viewBox={`0 0 ${VBW} ${hoehe}`} width="100%" height={hoehe} preserveAspectRatio="none"
+      <svg viewBox={`0 0 ${VBW} ${hoehe}`} width="100%" height={hoehe}
         onMouseMove={onMove} onMouseLeave={() => setHoverIdx(null)} style={{ display: "block", cursor: "crosshair" }}>
         <line x1={ML} y1={MT} x2={ML} y2={hoehe - MB} stroke={FARBEN.achse} strokeWidth={1} />
         <line x1={ML} y1={hoehe - MB} x2={VBW - MR} y2={hoehe - MB} stroke={FARBEN.achse} strokeWidth={1} />
-        <text x={ML - 4} y={y(maxY) + 3} textAnchor="end" fontSize={9} fill={FARBEN.textMuted}>{fmt(maxY)}</text>
-        <text x={ML - 4} y={hoehe - MB} textAnchor="end" fontSize={9} fill={FARBEN.textMuted}>0</text>
+        <text x={ML - 4} y={y(maxY) + 3} textAnchor="end" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>{fmt(maxY)}</text>
+        <text x={ML - 4} y={hoehe - MB} textAnchor="end" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>0</text>
         {tickIdx.map(i => (
-          <text key={i} x={x(i)} y={hoehe - 4} textAnchor="middle" fontSize={9} fill={FARBEN.textMuted}>{tage[i].slice(5)}</text>
+          <text key={i} x={x(i)} y={hoehe - 4} textAnchor="middle" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>{tage[i].slice(5)}</text>
         ))}
         {referenzlinie && (<>
           <line x1={ML} y1={y(referenzlinie.wert)} x2={VBW - MR} y2={y(referenzlinie.wert)}
             stroke={FARBEN.status.critical} strokeWidth={1} strokeDasharray="4 3" />
-          <text x={VBW - MR} y={y(referenzlinie.wert) - 3} textAnchor="end" fontSize={9} fill={FARBEN.status.critical}>{referenzlinie.label}</text>
+          <text x={VBW - MR} y={y(referenzlinie.wert) - 3} textAnchor="end" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.status.critical}>{referenzlinie.label}</text>
         </>)}
         {modus === "flaeche-gestapelt" && stackedPaths.map(p => (
           <path key={p.key} d={p.d} fill={p.color} fillOpacity={0.85} stroke={FARBEN.surface} strokeWidth={1} />
@@ -147,6 +166,7 @@ interface CategoryBarProps {
 /** Gruppierte Balken über einer kategorialen x-Achse (Kürzel/Gewerke statt Zeit). */
 export function CategoryBarChart({ kategorien, serien, einheit = "", hoehe = 180, formatWert }: CategoryBarProps) {
   const [hover, setHover] = useState<{ ki: number; si: number } | null>(null);
+  const [containerRef, VBW] = useMeasuredWidth<HTMLDivElement>(1000);
   const fmt = formatWert ?? ((v: number) => v.toLocaleString("de-CH", { maximumFractionDigits: 1 }));
 
   if (kategorien.length === 0 || serien.length === 0) {
@@ -169,7 +189,7 @@ export function CategoryBarChart({ kategorien, serien, einheit = "", hoehe = 180
 
   return (
     <div style={{ overflowX: engeKategorien ? "auto" : "visible" }}>
-      <div style={{ minWidth: engeKategorien ? n * 60 : undefined, position: "relative" }}>
+      <div ref={containerRef} style={{ minWidth: engeKategorien ? n * 60 : undefined, position: "relative" }}>
         {zeigeLegende && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 10, color: FARBEN.textSekundaer, marginBottom: 4 }}>
             {serien.map(s => (
@@ -180,13 +200,13 @@ export function CategoryBarChart({ kategorien, serien, einheit = "", hoehe = 180
             ))}
           </div>
         )}
-        <svg viewBox={`0 0 ${VBW} ${hoehe}`} width="100%" height={hoehe} preserveAspectRatio="none" style={{ display: "block" }}>
+        <svg viewBox={`0 0 ${VBW} ${hoehe}`} width="100%" height={hoehe} style={{ display: "block" }}>
           <line x1={ML} y1={MT} x2={ML} y2={hoehe - MB} stroke={FARBEN.achse} strokeWidth={1} />
           <line x1={ML} y1={hoehe - MB} x2={VBW - MR} y2={hoehe - MB} stroke={FARBEN.achse} strokeWidth={1} />
-          <text x={ML - 4} y={y(maxY) + 3} textAnchor="end" fontSize={9} fill={FARBEN.textMuted}>{fmt(maxY)}</text>
-          <text x={ML - 4} y={hoehe - MB} textAnchor="end" fontSize={9} fill={FARBEN.textMuted}>0</text>
+          <text x={ML - 4} y={y(maxY) + 3} textAnchor="end" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>{fmt(maxY)}</text>
+          <text x={ML - 4} y={hoehe - MB} textAnchor="end" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>0</text>
           {kategorien.map((kat, ki) => (
-            <text key={ki} x={ML + ki * gruppenBreite + gruppenBreite / 2} y={hoehe - 4} textAnchor="middle" fontSize={9} fill={FARBEN.textMuted}>{kat}</text>
+            <text key={ki} x={ML + ki * gruppenBreite + gruppenBreite / 2} y={hoehe - 4} textAnchor="middle" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>{kat}</text>
           ))}
           {kategorien.map((_, ki) => serien.map((s, si) => {
             const w = s.werte[ki] ?? 0;
