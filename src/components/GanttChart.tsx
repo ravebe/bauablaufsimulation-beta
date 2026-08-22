@@ -474,11 +474,19 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
                       {t.predecessorId && (
                         <span style={{ color: "#999", fontStyle: "italic" }}> | {nummern.get(t.predecessorId) ?? "?"}</span>
                       )}
-                      {predPickerTaskId === t.id && createPortal(
+                      {predPickerTaskId === t.id && (() => {
+                        const predUebernehmen = () => {
+                          const treffer = gueltigeVorgaenger(tasks, t.id)
+                            .find(c => (nummern.get(c.id) ?? "").toLowerCase() === predInput.trim().toLowerCase());
+                          if (treffer) onSetPredecessor?.(t.id, treffer.id, Number(lagInput) || 0);
+                          setPredPickerTaskId(null);
+                        };
+                        return createPortal(
                         <div ref={predPopoverRef}
                           style={{ position: "fixed", top: predPos.top, left: predPos.left, zIndex: 1000, background: "#fff",
                             border: "1px solid #d4dce4", boxShadow: "0 2px 8px rgba(0,0,0,.12)", padding: 8, width: 190, fontWeight: 400, fontSize: 11 }}
-                          onClick={e => e.stopPropagation()}>
+                          onClick={e => e.stopPropagation()}
+                          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); predUebernehmen(); } }}>
                           <div style={{ position: "relative" }}>
                             <div style={{ fontSize: 9, color: "#8a9baa", marginBottom: 2 }}>Vorgänger (Nummer)</div>
                             <input className="ac-input" style={{ fontSize: 11, padding: "3px 6px", width: "100%" }}
@@ -510,16 +518,12 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
                             <button className="tc-btn-ghost" style={{ flex: 1, fontSize: 10 }}
                               onClick={() => { onSetPredecessor?.(t.id, null, 0); setPredPickerTaskId(null); }}>Entfernen</button>
                             <button className="tc-btn-primary" style={{ flex: 1, fontSize: 10 }}
-                              onClick={() => {
-                                const treffer = gueltigeVorgaenger(tasks, t.id)
-                                  .find(c => (nummern.get(c.id) ?? "").toLowerCase() === predInput.trim().toLowerCase());
-                                if (treffer) onSetPredecessor?.(t.id, treffer.id, Number(lagInput) || 0);
-                                setPredPickerTaskId(null);
-                              }}>Übernehmen</button>
+                              onClick={predUebernehmen}>Übernehmen</button>
                           </div>
                         </div>,
                         document.body
-                      )}
+                      );
+                      })()}
                     </span>
                     <span style={{ flexShrink: 0, fontSize: 11, color: "#8a9baa", minWidth: 33, textAlign: "right" }}>{
                       isGrp && showObjektCount
