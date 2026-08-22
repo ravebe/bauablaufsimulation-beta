@@ -291,7 +291,7 @@ export default function App() {
         setTabGruppe(neueGruppe);
         setAktTab(neueGruppe === "haupt" ? lastHauptTab.current : lastErweitertTab.current);
       }}>
-      {tabGruppe === "haupt" ? "▶" : "◀"}
+      <span style={{ display: "inline-block", transform: `scaleX(1.6) rotate(${tabGruppe === "haupt" ? -90 : 90}deg)`, transition: "transform .15s" }}>▼</span>
     </button>
   );
 
