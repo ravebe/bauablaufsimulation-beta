@@ -558,7 +558,8 @@ export default function App() {
         </div>
       </div>
 
-      {zugriffsManagerOffen && <ZugriffskontrollManager api={api} onClose={() => setZugriffsManagerOffen(false)} />}
+      {zugriffsManagerOffen && <ZugriffskontrollManager api={api} onClose={() => setZugriffsManagerOffen(false)}
+        sims={sims} aktivId={aktivId} onWechsel={setAktivId} />}
       {kalenderManagerOffen && aktiveSim && <KalenderManager sim={aktiveSim} updateSim={updateSim} onClose={() => setKalenderManagerOffen(false)} />}
     </div>
   );

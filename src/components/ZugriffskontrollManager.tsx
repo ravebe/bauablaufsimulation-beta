@@ -4,6 +4,7 @@
 // (project.getMembers()) gewichen. Auswahl wird aktuell nur lokal gehalten, noch nicht gespeichert/durchgesetzt.
 import { useState, useEffect } from "react";
 import type { ApiInstance, TcProjectMember } from "../hooks/useApi";
+import type { SimProjekt } from "../types";
 
 type Zugriff = "edit" | "read" | "none";
 interface Zeile { id: string; name: string; email?: string; zugriff: Zugriff; }
@@ -19,18 +20,29 @@ function mitgliedName(m: TcProjectMember): string {
   return n || m.email || m.id;
 }
 
-export default function ZugriffskontrollManager({ api, onClose }: { api: ApiInstance | null; onClose: () => void }) {
+interface Props {
+  api: ApiInstance | null;
+  onClose: () => void;
+  sims: SimProjekt[];
+  aktivId: string | null;
+  onWechsel: (id: string) => void;
+}
+
+export default function ZugriffskontrollManager({ api, onClose, sims, aktivId, onWechsel }: Props) {
+  const aktiveSim = sims.find(s => s.id === aktivId) ?? null;
   const [standard, setStandard] = useState<Zugriff>("read");
   const [mitglieder, setMitglieder] = useState<Zeile[] | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
   const [offenerDropdown, setOffenerDropdown] = useState<string | null>(null);
+  const [simDropdownOffen, setSimDropdownOffen] = useState(false);
 
   useEffect(() => {
     if (!api?.project.getMembers) { setFehler("Projektmitglieder nicht verfügbar"); return; }
     (async () => {
       try {
         const liste = await api.project.getMembers!();
-        setMitglieder(liste.map(m => ({ id: m.id, name: mitgliedName(m), email: m.email, zugriff: "read" as Zugriff })));
+        const aktive = liste.filter(m => m.status !== "REMOVED");
+        setMitglieder(aktive.map(m => ({ id: m.id, name: mitgliedName(m), email: m.email, zugriff: "read" as Zugriff })));
       } catch {
         setFehler("Projektmitglieder konnten nicht geladen werden");
       }
@@ -69,9 +81,28 @@ export default function ZugriffskontrollManager({ api, onClose }: { api: ApiInst
       onClick={onClose}>
       <div style={{ background: "#fff", width: 520, maxWidth: "92vw", maxHeight: "85vh", overflowY: "auto",
         boxShadow: "0 8px 30px rgba(0,0,0,.25)", fontFamily: "var(--tc-font)" }}
-        onClick={e => e.stopPropagation()}>
+        onClick={e => { e.stopPropagation(); setOffenerDropdown(null); setSimDropdownOffen(false); }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid var(--tc-border-light)" }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "var(--tc-text)" }}>Zugriffskontrollmanager</div>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "var(--tc-text)" }}>Zugriffskontrollmanager</div>
+            <div style={{ position: "relative" }}>
+              <div style={{ fontSize: 11, color: "var(--tc-text-3)", cursor: sims.length > 1 ? "pointer" : "default", userSelect: "none", marginTop: 2 }}
+                onClick={e => { if (sims.length > 1) { e.stopPropagation(); setSimDropdownOffen(o => !o); } }}>
+                {aktiveSim ? aktiveSim.name : "Keine Simulation"} {sims.length > 1 && (simDropdownOffen ? "▲" : "▼")}
+              </div>
+              {simDropdownOffen && (
+                <div className="tc-header-dropdown" style={{ top: "100%", left: 0, right: "auto", minWidth: 220 }} onClick={e => e.stopPropagation()}>
+                  {sims.map(s => (
+                    <div key={s.id} className={`tc-header-dropdown-item ${s.id === aktivId ? "active" : ""}`}
+                      onClick={() => { onWechsel(s.id); setSimDropdownOffen(false); }}>
+                      <div style={{ fontWeight: 500 }}>{s.name}</div>
+                      {s.id === aktivId && <span>✓</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
           <button className="tc-btn-ghost" style={{ fontSize: 14, padding: "2px 8px" }} onClick={onClose}>✕</button>
         </div>
 

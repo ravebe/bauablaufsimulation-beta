@@ -44,6 +44,7 @@ export interface TcProjectMember {
   lastName?: string;
   email?: string;
   role?: string;
+  status?: "ACTIVE" | "PENDING" | "REMOVED";
 }
 
 interface UseApiReturn {
