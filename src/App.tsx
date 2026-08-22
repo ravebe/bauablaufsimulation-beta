@@ -291,7 +291,10 @@ export default function App() {
         setTabGruppe(neueGruppe);
         setAktTab(neueGruppe === "haupt" ? lastHauptTab.current : lastErweitertTab.current);
       }}>
-      <span style={{ display: "inline-block", transform: `scaleX(1.6) rotate(${tabGruppe === "haupt" ? -90 : 90}deg)`, transition: "transform .15s" }}>▼</span>
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" width="14" height="14"
+        style={{ display: "inline-block", transform: `rotate(${tabGruppe === "haupt" ? -90 : 90}deg)`, transition: "transform .15s" }}>
+        <path d="M4 6l4 4 4-4"/>
+      </svg>
     </button>
   );
 
