@@ -24,6 +24,11 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   const [pickerOffenFuer, setPickerOffenFuer] = useState<string | null>(null); // "gewerkIdx-rateIdx"
   const [pickerQuery, setPickerQuery] = useState("");
   const pickerRef = useRef<HTMLDivElement>(null);
+  const [formelOffenFuer, setFormelOffenFuer] = useState<Set<string>>(new Set()); // "gewerkIdx-rateIdx", eingeklappt per Default
+
+  function formelUmschalten(key: string) {
+    setFormelOffenFuer(prev => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
+  }
 
   useEffect(() => {
     if (!pickerOffenFuer) return;
@@ -254,8 +259,17 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                     Entfernen
                   </button>
                 )}
+                {(!readOnly || r.formel) && (
+                  <button className="tc-btn-ghost" title={r.formel ? "Formel anzeigen/ausblenden" : "Formel hinterlegen"}
+                    onClick={() => formelUmschalten(pickerKey)}
+                    style={{ fontSize: 11, fontStyle: "italic", fontFamily: "serif", padding: "2px 6px", width: 26, flexShrink: 0,
+                      color: r.formel ? "var(--tc-blue)" : "var(--tc-text-3)",
+                      border: `1px solid ${formelOffenFuer.has(pickerKey) ? "var(--tc-blue)" : "#d4dce4"}` }}>
+                    ƒx
+                  </button>
+                )}
               </div>
-              {(!readOnly || r.formel) && (
+              {(!readOnly || r.formel) && formelOffenFuer.has(pickerKey) && (
                 <div ref={pickerOffenFuer === pickerKey ? pickerRef : undefined}
                   style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3, paddingLeft: 66, position: "relative" }}>
                   <span style={{ fontSize: 9, color: "var(--tc-text-3)", width: 40, flexShrink: 0 }}>Formel</span>
