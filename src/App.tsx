@@ -464,16 +464,6 @@ export default function App() {
           </button>
         </>) : (<>
           <button
-            className={`tc-tab ${aktTab === "kalkulation" ? "active" : ""}`}
-            onClick={() => setAktTab("kalkulation")}
-          >
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" width="16" height="16">
-              <rect x="2.5" y="2" width="11" height="12" rx="0.8"/>
-              <path d="M5 5.5h6M5 8h6M5 10.5h3.5"/>
-            </svg>
-            <span>Kalkulation</span>
-          </button>
-          <button
             className={`tc-tab ${aktTab === "ressourcen" ? "active" : ""}`}
             onClick={() => setAktTab("ressourcen")}
           >
@@ -482,6 +472,16 @@ export default function App() {
               <path d="M2 14c0-2.5 1.8-4.2 4-4.2s4 1.7 4 4.2M11 4c1.4 0 2.5 1.1 2.5 2.5S12.4 9 11 9M11.5 9.5c1.7 0 3 1.4 3 3.3"/>
             </svg>
             <span>Ressourcen</span>
+          </button>
+          <button
+            className={`tc-tab ${aktTab === "kalkulation" ? "active" : ""}`}
+            onClick={() => setAktTab("kalkulation")}
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" width="16" height="16">
+              <rect x="2.5" y="2" width="11" height="12" rx="0.8"/>
+              <path d="M5 5.5h6M5 8h6M5 10.5h3.5"/>
+            </svg>
+            <span>Kalkulation</span>
           </button>
           <button
             className={`tc-tab ${aktTab === "avor" ? "active" : ""}`}
