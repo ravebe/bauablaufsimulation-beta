@@ -11,11 +11,12 @@ import TabAvor from "./components/TabAvor";
 import TabKosten from "./components/TabKosten";
 import ZugriffskontrollManager from "./components/ZugriffskontrollManager";
 import KalenderManager from "./components/KalenderManager";
+import HilfeManager from "./components/HilfeManager";
 import { EXPORT_FORMATE } from "./components/ganttExportFormate";
 import "./App.css";
 
-type Tab = "projekte" | "bauteile" | "abspielen" | "kalkulation" | "ressourcen" | "avor" | "kosten";
-type TabGruppe = "haupt" | "erweitert";
+export type Tab = "projekte" | "bauteile" | "abspielen" | "kalkulation" | "ressourcen" | "avor" | "kosten";
+export type TabGruppe = "haupt" | "erweitert";
 const HAUPT_TABS: Tab[] = ["projekte", "bauteile", "abspielen"];
 
 export default function App() {
@@ -282,6 +283,7 @@ export default function App() {
   const [exportSubOffen, setExportSubOffen] = useState(false);
   const [zugriffsManagerOffen, setZugriffsManagerOffen] = useState(false);
   const [kalenderManagerOffen, setKalenderManagerOffen] = useState(false);
+  const [hilfeOffen, setHilfeOffen] = useState(false);
   const [, setUndoTick] = useState(0);
 
   const tabToggleButton = (
@@ -409,6 +411,14 @@ export default function App() {
                 </div>
               )}
             </div>
+            <button className="tc-header-icon-btn" title="Hilfe zu diesem Tab"
+              onClick={e => { e.stopPropagation(); setHilfeOffen(true); }}>
+              <svg viewBox="0 0 20 20" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <circle cx="10" cy="10" r="7.5"/>
+                <path d="M7.8 8a2.2 2.2 0 1 1 3.2 2c-.7.5-1 .9-1 1.7v.3" strokeLinecap="round"/>
+                <circle cx="10" cy="14.3" r="0.15" fill="currentColor"/>
+              </svg>
+            </button>
             {/* Sync Status */}
             <span title={syncStatus === "saved" ? "Cloud gespeichert" : syncStatus === "saving" ? "Speichern…" : syncStatus === "error" ? "Sync-Fehler" : ""}
               style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
@@ -561,6 +571,7 @@ export default function App() {
       {zugriffsManagerOffen && <ZugriffskontrollManager api={api} onClose={() => setZugriffsManagerOffen(false)}
         sims={sims} aktivId={aktivId} onWechsel={setAktivId} />}
       {kalenderManagerOffen && aktiveSim && <KalenderManager sim={aktiveSim} updateSim={updateSim} onClose={() => setKalenderManagerOffen(false)} />}
+      {hilfeOffen && <HilfeManager initialTab={aktTab} onClose={() => setHilfeOffen(false)} />}
     </div>
   );
 }
