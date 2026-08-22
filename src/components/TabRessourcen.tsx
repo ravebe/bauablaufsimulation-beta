@@ -194,6 +194,23 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   const kuerzelOhneRate = [...kuerzelInTasks].filter(k => !kuerzelInStammdaten.has(k));
   const kuerzelUnbenutzt = [...kuerzelInStammdaten].filter(k => !kuerzelInTasks.has(k));
 
+  // Wo ein Kürzel überall vorkommt (gewerkIdx→Gewerk-Label) — für Duplikat-Warnung beim Erfassen.
+  // Dasselbe Kürzel in mehreren Gewerken ist beabsichtigt (z.B. "WB" in Schalung UND Bewehrung UND
+  // Beton — ein Task mit Kürzel "WB" braucht dann Mengen für jedes dieser Gewerke), nur innerhalb
+  // desselben Gewerks ist ein doppeltes Kürzel ein Fehler (eine der beiden Raten wäre nie erreichbar,
+  // siehe rateFuerKuerzel() in stammdatenHelpers.ts, das nur die erste Übereinstimmung findet).
+  const kuerzelOrte = new Map<string, { gewerkIdx: number; gewerkLabel: string }[]>();
+  stammdaten.gewerke.forEach((g, gi) => {
+    const inDiesemGewerk = new Set<string>();
+    for (const r of g.raten) {
+      if (!r.kuerzel.trim() || inDiesemGewerk.has(r.kuerzel)) continue;
+      inDiesemGewerk.add(r.kuerzel);
+      const liste = kuerzelOrte.get(r.kuerzel) ?? [];
+      liste.push({ gewerkIdx: gi, gewerkLabel: g.label || "(ohne Namen)" });
+      kuerzelOrte.set(r.kuerzel, liste);
+    }
+  });
+
   return (
     <div style={{ padding: 14, fontSize: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 10 }}>
@@ -289,6 +306,14 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
           {gewerk.raten.map((r, ri) => {
             const pickerKey = `${gi}-${ri}`;
             const formelFehler = formelValidieren(r.formel);
+            const kuerzelGetrimmt = r.kuerzel.trim();
+            const dupImGewerk = kuerzelGetrimmt !== "" && gewerk.raten.filter(x => x.kuerzel.trim() === kuerzelGetrimmt).length > 1;
+            const andereGewerkeMitKuerzel = kuerzelGetrimmt === "" ? [] : (kuerzelOrte.get(kuerzelGetrimmt) ?? []).filter(o => o.gewerkIdx !== gi);
+            const kuerzelTitle = dupImGewerk
+              ? "Kürzel ist in dieser Kategorie mehrfach vergeben — nur die erste Zeile wird verwendet"
+              : andereGewerkeMitKuerzel.length > 0
+                ? `Auch verwendet in: ${andereGewerkeMitKuerzel.map(o => o.gewerkLabel).join(", ")}`
+                : undefined;
             const acItems = attrListe
               ? attrListe.filter(a => !pickerQuery || a.name.toLowerCase().includes(pickerQuery.toLowerCase()) || a.pset.toLowerCase().includes(pickerQuery.toLowerCase())).slice(0, 20)
               : [];
@@ -296,7 +321,9 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
             <div key={ri} style={{ padding: "3px 0", borderBottom: "1px solid var(--tc-border-light)" }}>
               <div style={{ display: "grid", gridTemplateColumns: ratenGridTemplate, alignItems: "center", columnGap: 6 }}>
                 <input disabled={readOnly} value={r.kuerzel} onChange={e => rateAendern(gi, ri, { kuerzel: e.target.value })}
-                  style={{ width: "100%", minWidth: 0, fontSize: 11, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
+                  title={kuerzelTitle}
+                  style={{ width: "100%", minWidth: 0, fontSize: 11, padding: "3px 5px", fontFamily: "inherit",
+                    border: `1px solid ${dupImGewerk ? "var(--tc-red)" : andereGewerkeMitKuerzel.length > 0 ? "var(--tc-blue)" : "#d4dce4"}` }} />
                 <input disabled={readOnly} value={r.bezeichnung} onChange={e => rateAendern(gi, ri, { bezeichnung: e.target.value })}
                   style={{ width: "100%", minWidth: 0, fontSize: 11, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
                 {numInput(r.leistungswertHProEinheit, v => rateAendern(gi, ri, { leistungswertHProEinheit: v }))}
@@ -350,6 +377,11 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                       ))}
                     </div>
                   )}
+                </div>
+              )}
+              {dupImGewerk && (
+                <div style={{ fontSize: 9, color: "var(--tc-red)", marginTop: 2 }}>
+                  ⚠ Kürzel "{kuerzelGetrimmt}" mehrfach in dieser Kategorie — nur die erste Zeile zählt
                 </div>
               )}
               {formelFehler && <div style={{ fontSize: 9, color: "var(--tc-red)", marginTop: 2, paddingLeft: ratenColW.kuerzel + 6 }}>⚠ {formelFehler}</div>}
