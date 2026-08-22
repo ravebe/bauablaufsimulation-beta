@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { SimProjekt } from "../types";
+import type { SimProjekt, Task } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import GanttImport from "./GanttImport";
 import GanttExport from "./GanttExport";
@@ -28,6 +28,9 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
     simId: string;
     alle: { id: string; name: string }[];
     ausgewaehlt: Set<string>;
+  } | null>(null);
+  const [kopierDialog, setKopierDialog] = useState<{
+    simId: string; name: string; tasks: boolean; kalkulation: boolean; modelle: boolean; stammdaten: boolean; kalender: boolean;
   } | null>(null);
 
   async function toggleAufgeklappt(id: string) {
@@ -122,6 +125,37 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
     const neu = new Set(modellPicker.ausgewaehlt);
     neu.has(id) ? neu.delete(id) : neu.add(id);
     setModellPicker({ ...modellPicker, ausgewaehlt: neu });
+  }
+
+  function simKopieren() {
+    if (!kopierDialog) return;
+    const orig = sims.find(s => s.id === kopierDialog.simId);
+    if (!orig) return;
+
+    let tasks: Task[] = [];
+    if (kopierDialog.tasks) {
+      tasks = structuredClone(orig.tasks);
+      if (!kopierDialog.kalkulation) {
+        for (const t of tasks) {
+          delete t.bauteilKuerzel; delete t.mengen; delete t.mengenQuelle; delete t.mengenInfo; delete t.kranbereich;
+        }
+      }
+    }
+
+    const kopie: SimProjekt = {
+      id: crypto.randomUUID(),
+      name: kopierDialog.name.trim() || `${orig.name} (Kopie)`,
+      erstelltAm: new Date().toISOString(),
+      erstellerId: userId || undefined,
+      tasks,
+      modelle: kopierDialog.modelle ? structuredClone(orig.modelle) : [],
+      kalender: kopierDialog.kalender && orig.kalender ? structuredClone(orig.kalender) : undefined,
+      stammdaten: kopierDialog.stammdaten && orig.stammdaten ? structuredClone(orig.stammdaten) : undefined,
+    };
+    setSims(prev => [kopie, ...prev]);
+    setAktivId(kopie.id);
+    setAufgeklappt(kopie.id);
+    setKopierDialog(null);
   }
 
   function loeschen(simId: string) {
@@ -222,6 +256,13 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                       border: "0.5px solid var(--tc-border)", borderRadius: 5,
                       boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, minWidth: 200,
                     }}>
+                      <button
+                        style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", fontSize: 11, cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
+                        onClick={() => {
+                          setKopierDialog({ simId: sim.id, name: `${sim.name} (Kopie)`, tasks: true, kalkulation: true, modelle: true, stammdaten: true, kalender: true });
+                          setMenuOffen(null);
+                        }}
+                      >📋 Kopieren…</button>
                       {(!!userId && sim.erstellerId === userId) && (
                       <>
                       <div style={{ padding: "6px 14px", fontSize: 10, color: "var(--tc-text-3)", fontWeight: 600, borderBottom: "1px solid #eef1f4" }}>
@@ -414,6 +455,49 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
           </div>
         );
       })}
+
+      {kopierDialog && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setKopierDialog(null)}>
+          <div style={{ background: "#fff", width: 420, maxWidth: "92vw", boxShadow: "0 8px 30px rgba(0,0,0,.25)", fontFamily: "var(--tc-font)" }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid var(--tc-border-light)" }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "var(--tc-text)" }}>Simulation kopieren</div>
+              <button className="tc-btn-ghost" style={{ fontSize: 14, padding: "2px 8px" }} onClick={() => setKopierDialog(null)}>✕</button>
+            </div>
+            <div style={{ padding: "16px 18px" }}>
+              <div style={{ fontSize: 9, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px", marginBottom: 6 }}>NAME DER KOPIE</div>
+              <input className="tc-input" style={{ width: "100%", marginBottom: 16, boxSizing: "border-box" }}
+                value={kopierDialog.name} autoFocus
+                onChange={e => setKopierDialog({ ...kopierDialog, name: e.target.value })}
+                onKeyDown={e => e.key === "Enter" && simKopieren()} />
+
+              <div style={{ fontSize: 9, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px", marginBottom: 8 }}>ZU KOPIERENDE INHALTE</div>
+              {([
+                { key: "tasks", label: "Bauablauf (Tasks, Termine, Struktur)", indent: false, disabled: false },
+                { key: "kalkulation", label: "Bauteil-Kürzel & Mengen (Kalkulation)", indent: true, disabled: !kopierDialog.tasks },
+                { key: "modelle", label: "Zugewiesene Modelle", indent: false, disabled: false },
+                { key: "stammdaten", label: "Stammdaten (Ressourcen)", indent: false, disabled: false },
+                { key: "kalender", label: "Kalender (Arbeitstage/Feiertage)", indent: false, disabled: false },
+              ] as const).map(opt => (
+                <label key={opt.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0",
+                  paddingLeft: opt.indent ? 20 : 0, fontSize: 12,
+                  cursor: opt.disabled ? "default" : "pointer", opacity: opt.disabled ? 0.4 : 1 }}>
+                  <input type="checkbox" disabled={opt.disabled}
+                    checked={opt.disabled ? false : kopierDialog[opt.key]}
+                    onChange={e => setKopierDialog({ ...kopierDialog, [opt.key]: e.target.checked })} />
+                  {opt.label}
+                </label>
+              ))}
+
+              <div style={{ display: "flex", gap: 6, marginTop: 18 }}>
+                <button className="tc-btn-primary" style={{ flex: 1 }} onClick={simKopieren}>Kopieren</button>
+                <button className="tc-btn-secondary" onClick={() => setKopierDialog(null)}>Abbrechen</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
