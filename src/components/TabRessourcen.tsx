@@ -23,7 +23,7 @@ const RATEN_SPALTEN = ["kuerzel", "bezeichnung", "lw", "personen", "chf"] as con
 type RatenSpalte = typeof RATEN_SPALTEN[number];
 const RATEN_SPALTEN_LABEL: Record<RatenSpalte, string> = { kuerzel: "Kürzel", bezeichnung: "Bezeichnung", lw: "LW [h/Einh.]", personen: "Personen", chf: "CHF/Einh." };
 const RATEN_COL_DEFAULT: Record<RatenSpalte, number> = { kuerzel: 60, bezeichnung: 220, lw: 80, personen: 60, chf: 70 };
-const AKTION_BREITE = 50; // fx (26) + gap (6) + × (18), exakt an den Inhalt angepasst
+const AKTION_BREITE = 54; // fx (26) + gap (10) + × (18), exakt an den Inhalt angepasst
 const LS_RATEN_COLW = "4d-ressourcen-raten-colw";
 
 export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion = [], aktivesModellId = null, projectId = null }: Props) {
@@ -225,9 +225,9 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
 
       {stammdaten.gewerke.length > 0 && (<>
         <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-          <StatTile label="Kürzel ohne Leistungswert" wert={String(kuerzelOhneLw.length)} status={kuerzelOhneLw.length > 0 ? "warning" : "good"} />
-          <StatTile label="Kürzel ohne Stammdaten" wert={String(kuerzelOhneRate.length)} status={kuerzelOhneRate.length > 0 ? "warning" : "good"} />
-          <StatTile label="Unbenutzte Kürzel" wert={String(kuerzelUnbenutzt.length)} />
+          <StatTile label="Elemente ohne Leistungswert" wert={String(kuerzelOhneLw.length)} status={kuerzelOhneLw.length > 0 ? "warning" : "good"} />
+          <StatTile label="Elemente ohne Stammdaten" wert={String(kuerzelOhneRate.length)} status={kuerzelOhneRate.length > 0 ? "warning" : "good"} />
+          <StatTile label="Unbenutzte Elemente" wert={String(kuerzelUnbenutzt.length)} />
         </div>
         {(kuerzelOhneLw.length > 0 || kuerzelOhneRate.length > 0) && (
           <div style={{ marginBottom: 16, fontSize: 11 }}>
@@ -287,7 +287,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                 {numInput(r.leistungswertHProEinheit, v => rateAendern(gi, ri, { leistungswertHProEinheit: v }))}
                 {numInput(r.anzahlPersonen, v => rateAendern(gi, ri, { anzahlPersonen: v ?? 1 }))}
                 {numInput(r.chfProEinheit, v => rateAendern(gi, ri, { chfProEinheit: v }))}
-                <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-start" }}>
                   {(!readOnly || r.formel) && (
                     <button className="tc-btn-ghost" title={r.formel ? "Formel anzeigen/ausblenden" : "Formel hinterlegen"}
                       onClick={() => formelUmschalten(pickerKey)}
