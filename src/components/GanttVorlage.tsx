@@ -31,7 +31,7 @@ export default function GanttVorlage() {
     <div style={{ position: "relative", display: "inline-block" }}>
       <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "3px 8px" }}
         onClick={() => downloadVorlage("xlsx")} title="Vorlage herunterladen">
-        📋 Vorlage
+        Vorlage
       </button>
     </div>
   );

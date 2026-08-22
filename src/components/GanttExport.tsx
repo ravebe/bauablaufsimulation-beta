@@ -16,7 +16,7 @@ export default function GanttExport({ tasks, simName }: Props) {
     <div style={{ position: "relative", display: "inline-block" }}>
       <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "3px 8px" }}
         onClick={e => { e.stopPropagation(); setOffen(o => !o); }}>
-        ↓ Export
+        Export
       </button>
       {offen && (
         <div style={{

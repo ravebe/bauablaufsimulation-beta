@@ -277,7 +277,6 @@ export default function GanttImport({ onImport, taskCount }: Props) {
         onDrop={handleDrop}
         onClick={() => inputRef.current?.click()}
       >
-        <span className="gantt-upload-icon">📂</span>
         <span className="gantt-upload-text">xlsx, xml oder MS-Project-XML importieren</span>
         <input
           ref={inputRef}
