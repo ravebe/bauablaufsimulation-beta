@@ -215,7 +215,8 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
           {SPALTEN.map((s, i) => (
             <div key={s} style={{
               position: "relative", textAlign: s === "geplant" || s === "berechnet" ? "right" : "left",
-              paddingRight: s === "geplant" || s === "berechnet" ? 4 : 0, overflow: "hidden", whiteSpace: "nowrap",
+              paddingRight: s === "geplant" || s === "berechnet" ? 4 : 0, paddingLeft: i > 0 ? 8 : 0,
+              overflow: "hidden", whiteSpace: "nowrap",
             }}>
               {SPALTEN_LABEL[s]}
               {i < SPALTEN.length - 1 && (

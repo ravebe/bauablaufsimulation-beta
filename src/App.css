@@ -6,12 +6,12 @@
 .no-spinner::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .no-spinner { -moz-appearance: textfield; appearance: textfield; }
 
-/* Verstellbare Spalten: sichtbare Trennlinie beim Drüberfahren über den Grab-Bereich */
+/* Verstellbare Spalten: dünne Trennlinie immer sichtbar, blau beim Drüberfahren über den Grab-Bereich */
 .col-resize-handle::after {
-  content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 2px;
-  background: transparent; transform: translateX(-50%);
+  content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px;
+  background: var(--tc-border); transform: translateX(-50%);
 }
-.col-resize-handle:hover::after { background: var(--tc-blue); }
+.col-resize-handle:hover::after { background: var(--tc-blue); width: 2px; }
 
 :root {
   --tc-blue: #2d7dbd;

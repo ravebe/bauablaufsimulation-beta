@@ -2,7 +2,7 @@
 // für die Menge→Tage-Kalkulation (Tab Kalkulation) und die Kosten-Auswertung (Tab Kosten).
 import { useState, useEffect, useRef } from "react";
 import type { SimProjekt } from "../types";
-import { istGruppe } from "../types";
+import { istGruppe, nsKey } from "../types";
 import type { Gewerk, Rate, Stammdaten } from "./stammdatenHelpers";
 import { LEERE_STAMMDATEN, standardStammdaten, innenausbauGewerke, hlksseGewerke, tiefbauGewerke, alleKuerzel } from "./stammdatenHelpers";
 import { StatTile } from "./cockpitCharts";
@@ -12,12 +12,21 @@ import { parseFormel, FormelFehler } from "./formelHelpers";
 
 interface Props {
   sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; api?: ApiInstance | null;
-  selektion?: number[]; aktivesModellId?: string | null;
+  selektion?: number[]; aktivesModellId?: string | null; projectId?: string | null;
 }
 
 const NEUE_RATE: Rate = { kuerzel: "", bezeichnung: "", leistungswertHProEinheit: null, anzahlPersonen: 1, chfProEinheit: null };
 
-export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion = [], aktivesModellId = null }: Props) {
+// Grid-Spalten der Raten-Tabelle — verstellbar per Drag, siehe startResize (gleiches Prinzip wie
+// Tab Kalkulation). "aktion" fasst die fixen ƒx/×-Buttons am Zeilenende zusammen, nicht verstellbar.
+const RATEN_SPALTEN = ["kuerzel", "bezeichnung", "lw", "personen", "chf"] as const;
+type RatenSpalte = typeof RATEN_SPALTEN[number];
+const RATEN_SPALTEN_LABEL: Record<RatenSpalte, string> = { kuerzel: "Kürzel", bezeichnung: "Bezeichnung", lw: "LW [h/Einh.]", personen: "Personen", chf: "CHF/Einh." };
+const RATEN_COL_DEFAULT: Record<RatenSpalte, number> = { kuerzel: 60, bezeichnung: 220, lw: 80, personen: 60, chf: 70 };
+const AKTION_BREITE = 60; // fx (26) + × (26) + gap
+const LS_RATEN_COLW = "4d-ressourcen-raten-colw";
+
+export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion = [], aktivesModellId = null, projectId = null }: Props) {
   const [ladeErgebnis, setLadeErgebnis] = useState<string | null>(null);
   const [attrListe, setAttrListe] = useState<AttrItem[] | null>(null);
   const [attrLaedt, setAttrLaedt] = useState(false);
@@ -25,6 +34,27 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   const [pickerQuery, setPickerQuery] = useState("");
   const pickerRef = useRef<HTMLDivElement>(null);
   const [formelOffenFuer, setFormelOffenFuer] = useState<Set<string>>(new Set()); // "gewerkIdx-rateIdx", eingeklappt per Default
+  const lsRatenColwKey = nsKey(LS_RATEN_COLW, projectId);
+  const [ratenColW, setRatenColW] = useState<Record<RatenSpalte, number>>(() => {
+    try {
+      const raw = localStorage.getItem(lsRatenColwKey);
+      return raw ? { ...RATEN_COL_DEFAULT, ...JSON.parse(raw) } : { ...RATEN_COL_DEFAULT };
+    } catch { return { ...RATEN_COL_DEFAULT }; }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem(lsRatenColwKey, JSON.stringify(ratenColW)); } catch { /* ignore */ }
+  }, [ratenColW, lsRatenColwKey]);
+
+  function startResize(spalte: RatenSpalte, e: React.MouseEvent) {
+    e.preventDefault(); e.stopPropagation();
+    const sx = e.clientX, sw = ratenColW[spalte];
+    const onMove = (ev: MouseEvent) => setRatenColW(prev => ({ ...prev, [spalte]: Math.max(24, sw + ev.clientX - sx) }));
+    const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+    document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp);
+  }
+
+  const ratenGridTemplate = `${RATEN_SPALTEN.map(s => `${ratenColW[s]}px`).join(" ")} ${AKTION_BREITE}px`;
 
   function formelUmschalten(key: string) {
     setFormelOffenFuer(prev => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
@@ -130,10 +160,10 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     catch (e) { return e instanceof FormelFehler ? e.message : "Ungültige Formel"; }
   }
 
-  const numInput = (val: number | null, onChange: (v: number | null) => void, width: number) => (
+  const numInput = (val: number | null, onChange: (v: number | null) => void, width: number | string = "100%") => (
     <input type="number" disabled={readOnly} value={val ?? ""} placeholder="—"
       onChange={e => onChange(e.target.value === "" ? null : Number(e.target.value))}
-      style={{ width, fontSize: 11, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
+      style={{ width, minWidth: 0, fontSize: 11, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
   );
 
   // Cockpit: Kürzel ohne Leistungswert, Kreuzcheck Stammdaten ↔ tatsächlich verwendete Kürzel
@@ -211,6 +241,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
         )}
       </>)}
 
+      <div style={{ overflowX: "auto" }}>
       {stammdaten.gewerke.map((gewerk, gi) => (
         <div key={gewerk.key} style={{ marginBottom: 18 }}>
           <div style={{ position: "sticky", top: 0, background: "#fff", zIndex: 2, paddingBottom: 3 }}>
@@ -229,13 +260,15 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                 kranpflichtig
               </label>
             </div>
-            <div style={{ display: "flex", gap: 6, fontSize: 9, color: "var(--tc-text-3)", padding: "0 0 3px", fontWeight: 600 }}>
-              <span style={{ width: 60 }}>Kürzel</span>
-              <span style={{ flex: 1 }}>Bezeichnung</span>
-              <span style={{ width: 80 }}>LW [h/Einh.]</span>
-              <span style={{ width: 60 }}>Personen</span>
-              <span style={{ width: 70 }}>CHF/Einh.</span>
-              <span style={{ width: 60 }} />
+            <div style={{ display: "grid", gridTemplateColumns: ratenGridTemplate, fontSize: 9, color: "var(--tc-text-3)", padding: "0 0 3px", fontWeight: 600 }}>
+              {RATEN_SPALTEN.map((s, i) => (
+                <div key={s} style={{ position: "relative", textAlign: "left", paddingLeft: i > 0 ? 8 : 0, overflow: "hidden", whiteSpace: "nowrap" }}>
+                  {RATEN_SPALTEN_LABEL[s]}
+                  <div className="col-resize-handle" onMouseDown={e => startResize(s, e)}
+                    style={{ position: "absolute", top: -4, right: -3, width: 7, height: 18, cursor: "col-resize", zIndex: 2 }} />
+                </div>
+              ))}
+              <span />
             </div>
           </div>
           {gewerk.raten.map((r, ri) => {
@@ -246,32 +279,35 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
               : [];
             return (
             <div key={ri} style={{ padding: "3px 0", borderBottom: "1px solid var(--tc-border-light)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div style={{ display: "grid", gridTemplateColumns: ratenGridTemplate, alignItems: "center", columnGap: 6 }}>
                 <input disabled={readOnly} value={r.kuerzel} onChange={e => rateAendern(gi, ri, { kuerzel: e.target.value })}
-                  style={{ width: 60, fontSize: 11, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
+                  style={{ width: "100%", minWidth: 0, fontSize: 11, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
                 <input disabled={readOnly} value={r.bezeichnung} onChange={e => rateAendern(gi, ri, { bezeichnung: e.target.value })}
-                  style={{ flex: 1, minWidth: 0, fontSize: 11, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
-                {numInput(r.leistungswertHProEinheit, v => rateAendern(gi, ri, { leistungswertHProEinheit: v }), 80)}
-                {numInput(r.anzahlPersonen, v => rateAendern(gi, ri, { anzahlPersonen: v ?? 1 }), 60)}
-                {numInput(r.chfProEinheit, v => rateAendern(gi, ri, { chfProEinheit: v }), 70)}
-                {!readOnly && (
-                  <button className="tc-btn-ghost" style={{ fontSize: 10, padding: "2px 6px", width: 60 }} onClick={() => rateEntfernen(gi, ri)}>
-                    Entfernen
-                  </button>
-                )}
-                {(!readOnly || r.formel) && (
-                  <button className="tc-btn-ghost" title={r.formel ? "Formel anzeigen/ausblenden" : "Formel hinterlegen"}
-                    onClick={() => formelUmschalten(pickerKey)}
-                    style={{ fontSize: 11, fontStyle: "italic", fontFamily: "serif", padding: "2px 6px", width: 26, flexShrink: 0,
-                      color: r.formel ? "var(--tc-blue)" : "var(--tc-text-3)",
-                      border: `1px solid ${formelOffenFuer.has(pickerKey) ? "var(--tc-blue)" : "#d4dce4"}` }}>
-                    ƒx
-                  </button>
-                )}
+                  style={{ width: "100%", minWidth: 0, fontSize: 11, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
+                {numInput(r.leistungswertHProEinheit, v => rateAendern(gi, ri, { leistungswertHProEinheit: v }))}
+                {numInput(r.anzahlPersonen, v => rateAendern(gi, ri, { anzahlPersonen: v ?? 1 }))}
+                {numInput(r.chfProEinheit, v => rateAendern(gi, ri, { chfProEinheit: v }))}
+                <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+                  {(!readOnly || r.formel) && (
+                    <button className="tc-btn-ghost" title={r.formel ? "Formel anzeigen/ausblenden" : "Formel hinterlegen"}
+                      onClick={() => formelUmschalten(pickerKey)}
+                      style={{ fontSize: 11, fontStyle: "italic", fontFamily: "serif", padding: "2px 6px", width: 26, flexShrink: 0,
+                        color: r.formel ? "var(--tc-blue)" : "var(--tc-text-3)",
+                        border: `1px solid ${formelOffenFuer.has(pickerKey) ? "var(--tc-blue)" : "#d4dce4"}` }}>
+                      ƒx
+                    </button>
+                  )}
+                  {!readOnly && (
+                    <button title="Entfernen" onClick={() => rateEntfernen(gi, ri)}
+                      style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "var(--tc-text-3)", padding: "0 2px", flexShrink: 0, lineHeight: 1 }}>
+                      ×
+                    </button>
+                  )}
+                </div>
               </div>
               {(!readOnly || r.formel) && formelOffenFuer.has(pickerKey) && (
                 <div ref={pickerOffenFuer === pickerKey ? pickerRef : undefined}
-                  style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3, paddingLeft: 66, position: "relative" }}>
+                  style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3, paddingLeft: ratenColW.kuerzel + 6, position: "relative" }}>
                   <span style={{ fontSize: 9, color: "var(--tc-text-3)", width: 40, flexShrink: 0 }}>Formel</span>
                   <input disabled={readOnly} value={r.formel ?? ""} placeholder="z.B. {Qto_WallBaseQuantities||NetVolume}"
                     onChange={e => rateAendern(gi, ri, { formel: e.target.value })}
@@ -301,7 +337,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                   )}
                 </div>
               )}
-              {formelFehler && <div style={{ fontSize: 9, color: "var(--tc-red)", marginTop: 2, paddingLeft: 66 }}>⚠ {formelFehler}</div>}
+              {formelFehler && <div style={{ fontSize: 9, color: "var(--tc-red)", marginTop: 2, paddingLeft: ratenColW.kuerzel + 6 }}>⚠ {formelFehler}</div>}
             </div>
             );
           })}
@@ -312,6 +348,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
           )}
         </div>
       ))}
+      </div>
     </div>
   );
 }
