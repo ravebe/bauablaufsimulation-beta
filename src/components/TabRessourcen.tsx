@@ -228,17 +228,13 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
         <div style={{ marginBottom: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <select value="" onChange={e => { if (e.target.value) katalogHinzufuegen(e.target.value); }}
+              title="Kategorien legen nur Gewerke/Kürzel/Einheiten an und müssen selbst befüllt werden. Kategorien lassen sich nach dem Hinzufügen frei umbenennen, bereits vollständig geladene verschwinden aus der Liste."
               style={{ fontSize: 11, padding: "5px 8px", border: "1px solid #d4dce4", fontFamily: "inherit", color: "var(--tc-text-3)" }}>
               <option value="">+ Kategorie hinzufügen…</option>
               {GEWERKE_KATALOGE.filter(k => !katalogVollstaendigGeladen(k)).map(k => (
                 <option key={k.key} value={k.key}>{k.label}</option>
               ))}
             </select>
-          </div>
-          <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 4 }}>
-            Nur "Rohbau" enthält reale Referenzwerte aus der AVOR-Excel — alle anderen Kategorien legen
-            nur Gewerke/Kürzel/Einheiten an und müssen selbst befüllt werden. Kategorien lassen sich
-            nach dem Hinzufügen frei umbenennen, bereits vollständig geladene verschwinden aus der Liste.
           </div>
           {ladeErgebnis && <div style={{ fontSize: 10, color: "var(--tc-text-3)", marginTop: 4 }}>{ladeErgebnis}</div>}
         </div>
