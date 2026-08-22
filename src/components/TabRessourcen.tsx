@@ -260,7 +260,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                 kranpflichtig
               </label>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: ratenGridTemplate, fontSize: 9, color: "var(--tc-text-3)", padding: "0 0 3px", fontWeight: 600 }}>
+            <div style={{ display: "grid", gridTemplateColumns: ratenGridTemplate, columnGap: 6, fontSize: 9, color: "var(--tc-text-3)", padding: "0 0 3px", fontWeight: 600 }}>
               {RATEN_SPALTEN.map((s, i) => (
                 <div key={s} style={{ position: "relative", textAlign: "left", paddingLeft: i > 0 ? 8 : 0, overflow: "hidden", whiteSpace: "nowrap" }}>
                   {RATEN_SPALTEN_LABEL[s]}
