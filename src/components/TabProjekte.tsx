@@ -210,6 +210,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
               </div>
               <div className="sim-card-right">
                 {istAktiv && <span className="sim-aktiv-badge">Aktiv</span>}
+                {offen && (
                 <div style={{ position: "relative" }} onClick={e => e.stopPropagation()}>
                   <button
                     style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "var(--tc-text-3)", padding: "0 4px" }}
@@ -260,6 +261,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                     </div>
                   )}
                 </div>
+                )}
                 <span className="sim-chevron">{offen ? "▲" : "▼"}</span>
               </div>
             </div>
