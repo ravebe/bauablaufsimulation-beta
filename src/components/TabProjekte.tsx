@@ -262,16 +262,16 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                           setKopierDialog({ simId: sim.id, name: `${sim.name} (Kopie)`, tasks: true, kalkulation: true, modelle: true, stammdaten: true, kalender: true });
                           setMenuOffen(null);
                         }}
-                      >📋 Kopieren…</button>
+                      >Projekt kopieren</button>
                       {(!!userId && sim.erstellerId === userId) && (
                       <>
                       <div style={{ padding: "6px 14px", fontSize: 10, color: "var(--tc-text-3)", fontWeight: 600, borderBottom: "1px solid #eef1f4" }}>
                         Zugriff für Projektmitglieder
                       </div>
                       {([
-                        { key: "edit", label: "Zugriff bearbeiten", icon: "✏", desc: "Inhalt hinzufügen, bearbeiten" },
-                        { key: "read", label: "Schreibgeschützt", icon: "👁", desc: "Nur Anzeigen von Inhalt" },
-                        { key: "none", label: "Kein Zugriff", icon: "🚫", desc: "Projekt wird ausgeblendet" },
+                        { key: "edit", label: "Zugriff bearbeiten", desc: "Inhalt hinzufügen, bearbeiten" },
+                        { key: "read", label: "Schreibgeschützt", desc: "Nur Anzeigen von Inhalt" },
+                        { key: "none", label: "Kein Zugriff", desc: "Projekt wird ausgeblendet" },
                       ] as const).map(opt => {
                         const aktDefault = sim.zugriff?.["__default__"] ?? "read";
                         const istAktiv = aktDefault === opt.key;
@@ -286,7 +286,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                             setMenuOffen(null);
                           }}
                         >
-                          <div style={{ fontWeight: 500 }}>{opt.icon} {opt.label} {istAktiv && "✓"}</div>
+                          <div style={{ fontWeight: 500 }}>{opt.label} {istAktiv && "✓"}</div>
                           {opt.desc && <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>{opt.desc}</div>}
                         </button>
                         );
@@ -297,7 +297,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                       <button
                         style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", fontSize: 11, color: "var(--tc-red)", cursor: "pointer" }}
                         onClick={() => loeschen(sim.id)}
-                      >🗑 Simulation löschen</button>
+                      >Simulation löschen</button>
                       )}
                     </div>
                   )}
