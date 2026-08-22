@@ -212,3 +212,137 @@ export function tiefbauGewerke(): Gewerk[] {
     ] },
   ];
 }
+
+/** Gerüst-Vorlage Vorbereitungsarbeiten (eBKP-H Hauptgruppe B) — siehe innenausbauGewerke(). */
+export function vorbereitungGewerke(): Gewerk[] {
+  return [
+    { key: "baustelleneinrichtung", label: "Baustelleneinrichtung", einheit: "psch", raten: [
+      leer("BE", "Baustelleneinrichtung"),
+    ] },
+    { key: "abbruch", label: "Abbrucharbeiten", einheit: "m³", raten: [
+      leer("ABBR", "Abbrucharbeiten"),
+    ] },
+    { key: "altlasten", label: "Altlastensanierung", einheit: "m³", raten: [
+      leer("ALT", "Altlastensanierung"),
+    ] },
+  ];
+}
+
+/** Gerüst-Vorlage Fassade (eBKP-H Hauptgruppe E, Äussere Wandbekleidung Gebäude) — siehe innenausbauGewerke(). */
+export function fassadeGewerke(): Gewerk[] {
+  return [
+    { key: "fassadenverkleidung", label: "Fassadenverkleidung", einheit: "m²", kranpflichtig: true, raten: [
+      leer("FAS", "Fassadenverkleidung"),
+    ] },
+    { key: "fenster_aussen", label: "Fenster/Aussentüren", einheit: "Stk.", raten: [
+      leer("FEA", "Fenster/Aussentüren einbauen"),
+    ] },
+    { key: "sonnenschutz", label: "Sonnenschutz", einheit: "m²", raten: [
+      leer("SOS", "Sonnenschutzanlagen"),
+    ] },
+  ];
+}
+
+/** Gerüst-Vorlage Bedachung (eBKP-H Hauptgruppe F) — siehe innenausbauGewerke(). */
+export function bedachungGewerke(): Gewerk[] {
+  return [
+    { key: "dachabdichtung", label: "Dachabdichtung", einheit: "m²", raten: [
+      leer("DAB", "Dachabdichtung"),
+    ] },
+    { key: "spenglerarbeiten", label: "Spenglerarbeiten", einheit: "m1", raten: [
+      leer("SPG", "Spenglerarbeiten"),
+    ] },
+    { key: "dacheindeckung", label: "Dacheindeckung", einheit: "m²", raten: [
+      leer("DEI", "Dacheindeckung"),
+    ] },
+  ];
+}
+
+/** Gerüst-Vorlage Umgebung (eBKP-H Hauptgruppe I, Umgebung Gebäude) — siehe innenausbauGewerke(). */
+export function umgebungGewerke(): Gewerk[] {
+  return [
+    { key: "umgebungsgestaltung", label: "Umgebungsgestaltung", einheit: "m²", raten: [
+      leer("UMG", "Umgebungsgestaltung"),
+    ] },
+    { key: "wege_plaetze", label: "Wege/Plätze", einheit: "m²", raten: [
+      leer("WEG", "Wege/Plätze"),
+    ] },
+    { key: "bepflanzung", label: "Bepflanzung", einheit: "m²", raten: [
+      leer("BEP", "Bepflanzung"),
+    ] },
+  ];
+}
+
+/** Gerüst-Vorlage Untertagbau (eBKP-T Hauptgruppe N) — siehe innenausbauGewerke(). */
+export function untertagbauGewerke(): Gewerk[] {
+  return [
+    { key: "tunnelbau", label: "Tunnelbau", einheit: "m1", raten: [
+      leer("TUN", "Tunnelbau/Vortrieb"),
+    ] },
+    { key: "stollenbau", label: "Stollenbau", einheit: "m1", raten: [
+      leer("STO", "Stollenbau"),
+    ] },
+  ];
+}
+
+/** Gerüst-Vorlage Kunstbauten (eBKP-T Hauptgruppe O, Konstruktion Kunstbauten) — siehe innenausbauGewerke(). */
+export function kunstbautenGewerke(): Gewerk[] {
+  return [
+    { key: "brueckenbau", label: "Brückenbau", einheit: "m²", raten: [
+      leer("BRU", "Brückenbau"),
+    ] },
+    { key: "stuetzmauern", label: "Stützmauern", einheit: "m²", raten: [
+      leer("STM", "Stützmauern"),
+    ] },
+  ];
+}
+
+/** Gerüst-Vorlage Leitungsbau (eBKP-T Hauptgruppe Q) — siehe innenausbauGewerke(). */
+export function leitungsbauGewerke(): Gewerk[] {
+  return [
+    { key: "gas_wasserleitungen", label: "Gas-/Wasserleitungen", einheit: "m1", raten: [
+      leer("GWL", "Gas-/Wasserleitungen verlegen"),
+    ] },
+    { key: "fernwaerme", label: "Fernwärmeleitungen", einheit: "m1", raten: [
+      leer("FWL", "Fernwärmeleitungen verlegen"),
+    ] },
+  ];
+}
+
+/** Gerüst-Vorlage Betriebs-/Sicherheitsanlagen (eBKP-T Hauptgruppe S) — siehe innenausbauGewerke(). */
+export function betriebssicherheitGewerke(): Gewerk[] {
+  return [
+    { key: "signalanlagen", label: "Signalanlagen", einheit: "Stk.", raten: [
+      leer("SIG", "Signalanlagen"),
+    ] },
+    { key: "beleuchtung_tiefbau", label: "Beleuchtung", einheit: "Stk.", raten: [
+      leer("BEL", "Beleuchtung"),
+    ] },
+  ];
+}
+
+export interface GewerkeKatalog {
+  key: string;
+  label: string;
+  gewerke: () => Gewerk[];
+}
+
+/** Alle per Dropdown wählbaren Gerüst-Vorlagen — additiv zu bestehenden Stammdaten zumischbar
+ * (siehe gewerkeHinzufuegen in TabRessourcen.tsx). Rohbau enthält reale Referenzwerte aus der
+ * AVOR-Excel, alle anderen sind bewusst leere Gerüste nach eBKP-H/eBKP-T-Logik (Hauptgruppen-
+ * Bezeichnungen ohne Ziffern-Codes, siehe CRB-Standard). Nach dem Hinzufügen ist der Kategorie-
+ * Titel in Tab Ressourcen frei umbenennbar. */
+export const GEWERKE_KATALOGE: GewerkeKatalog[] = [
+  { key: "rohbau", label: "Rohbau", gewerke: () => standardStammdaten().gewerke },
+  { key: "vorbereitung", label: "Vorbereitungsarbeiten", gewerke: vorbereitungGewerke },
+  { key: "innenausbau", label: "Innenausbau", gewerke: innenausbauGewerke },
+  { key: "fassade", label: "Fassade", gewerke: fassadeGewerke },
+  { key: "bedachung", label: "Bedachung", gewerke: bedachungGewerke },
+  { key: "hlksse", label: "HLKSSE", gewerke: hlksseGewerke },
+  { key: "umgebung", label: "Umgebung", gewerke: umgebungGewerke },
+  { key: "tiefbau", label: "Tiefbau", gewerke: tiefbauGewerke },
+  { key: "untertagbau", label: "Untertagbau", gewerke: untertagbauGewerke },
+  { key: "kunstbauten", label: "Kunstbauten", gewerke: kunstbautenGewerke },
+  { key: "leitungsbau", label: "Leitungsbau", gewerke: leitungsbauGewerke },
+  { key: "betriebssicherheit", label: "Betriebs-/Sicherheitsanlagen", gewerke: betriebssicherheitGewerke },
+];

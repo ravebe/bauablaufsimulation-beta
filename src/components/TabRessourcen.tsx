@@ -3,8 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import type { SimProjekt } from "../types";
 import { istGruppe, nsKey } from "../types";
-import type { Gewerk, Rate, Stammdaten } from "./stammdatenHelpers";
-import { LEERE_STAMMDATEN, standardStammdaten, innenausbauGewerke, hlksseGewerke, tiefbauGewerke, alleKuerzel } from "./stammdatenHelpers";
+import type { Gewerk, GewerkeKatalog, Rate, Stammdaten } from "./stammdatenHelpers";
+import { LEERE_STAMMDATEN, GEWERKE_KATALOGE, alleKuerzel } from "./stammdatenHelpers";
 import { StatTile } from "./cockpitCharts";
 import type { ApiInstance } from "../hooks/useApi";
 import { ladeAttributListe, ladeObjektAttribute, attrItemsAusWerten, type AttrItem } from "./modelHelpers";
@@ -28,6 +28,7 @@ const LS_RATEN_COLW = "4d-ressourcen-raten-colw";
 
 export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion = [], aktivesModellId = null, projectId = null }: Props) {
   const [ladeErgebnis, setLadeErgebnis] = useState<string | null>(null);
+  const [neueKategorieName, setNeueKategorieName] = useState("");
   const [attrListe, setAttrListe] = useState<AttrItem[] | null>(null);
   const [attrLaedt, setAttrLaedt] = useState(false);
   const [pickerOffenFuer, setPickerOffenFuer] = useState<string | null>(null); // "gewerkIdx-rateIdx"
@@ -100,12 +101,6 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     });
   }
 
-  function standardLaden() {
-    if (stammdaten.gewerke.length > 0 && !confirm("Bestehende Stammdaten mit den Standardwerten überschreiben?")) return;
-    speichern(standardStammdaten());
-    setLadeErgebnis(null);
-  }
-
   /** Fügt Gewerke additiv hinzu — bestehende Gewerke (gleicher key) bleiben unberührt. */
   function gewerkeHinzufuegen(neueGewerke: Gewerk[], label: string) {
     const vorhandeneKeys = new Set(stammdaten.gewerke.map(g => g.key));
@@ -114,6 +109,29 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     speichern({ ...stammdaten, gewerke: [...stammdaten.gewerke, ...zuErgaenzen] });
     const uebersprungen = neueGewerke.length - zuErgaenzen.length;
     setLadeErgebnis(`${label}: ${zuErgaenzen.length} Gewerke hinzugefügt${uebersprungen > 0 ? `, ${uebersprungen} bereits vorhanden` : ""}.`);
+  }
+
+  /** Ein Katalog gilt als vollständig geladen, wenn alle seine Gewerke-Keys bereits vorhanden sind — er verschwindet dann aus dem Dropdown. */
+  function katalogVollstaendigGeladen(katalog: GewerkeKatalog): boolean {
+    const vorhandeneKeys = new Set(stammdaten.gewerke.map(g => g.key));
+    return katalog.gewerke().every(g => vorhandeneKeys.has(g.key));
+  }
+
+  function katalogHinzufuegen(katalogKey: string) {
+    const katalog = GEWERKE_KATALOGE.find(k => k.key === katalogKey);
+    if (katalog) gewerkeHinzufuegen(katalog.gewerke(), katalog.label);
+  }
+
+  function eigeneKategorieErstellen() {
+    const name = neueKategorieName.trim();
+    if (!name) return;
+    const key = `eigene_${Date.now()}`;
+    speichern({ ...stammdaten, gewerke: [...stammdaten.gewerke, { key, label: name, einheit: "", raten: [] }] });
+    setNeueKategorieName("");
+  }
+
+  function gewerkLabelAendern(gewerkIdx: number, label: string) {
+    speichern({ ...stammdaten, gewerke: stammdaten.gewerke.map((g, i) => i !== gewerkIdx ? g : { ...g, label }) });
   }
 
   // Attribut-Quellen in Prioritätsreihenfolge: 1) aktuelle Viewer-Selektion (das, was gerade im
@@ -191,27 +209,19 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
 
       {!readOnly && (
         <div style={{ marginBottom: 14 }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }} onClick={standardLaden}>
-              Rohbau-Stammdaten laden
-            </button>
-            <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }}
-              onClick={() => gewerkeHinzufuegen(innenausbauGewerke(), "Innenausbau")}>
-              Innenausbau hinzufügen
-            </button>
-            <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }}
-              onClick={() => gewerkeHinzufuegen(hlksseGewerke(), "HLKSSE")}>
-              HLKSSE hinzufügen
-            </button>
-            <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }}
-              onClick={() => gewerkeHinzufuegen(tiefbauGewerke(), "Tiefbau")}>
-              Tiefbau hinzufügen
-            </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <select value="" onChange={e => { if (e.target.value) katalogHinzufuegen(e.target.value); }}
+              style={{ fontSize: 11, padding: "5px 8px", border: "1px solid #d4dce4", fontFamily: "inherit", color: "var(--tc-text-3)" }}>
+              <option value="">+ Kategorie hinzufügen…</option>
+              {GEWERKE_KATALOGE.filter(k => !katalogVollstaendigGeladen(k)).map(k => (
+                <option key={k.key} value={k.key}>{k.label}</option>
+              ))}
+            </select>
           </div>
           <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 4 }}>
-            Innenausbau/HLKSSE/Tiefbau legen nur Gewerke/Kürzel/Einheiten an — Leistungswerte, Personen
-            und CHF-Sätze sind bewusst leer und müssen selbst eingetragen werden (keine reale Referenz
-            wie beim Rohbau-Datensatz).
+            Nur "Rohbau" enthält reale Referenzwerte aus der AVOR-Excel — alle anderen Kategorien legen
+            nur Gewerke/Kürzel/Einheiten an und müssen selbst befüllt werden. Kategorien lassen sich
+            nach dem Hinzufügen frei umbenennen, bereits vollständig geladene verschwinden aus der Liste.
           </div>
           {ladeErgebnis && <div style={{ fontSize: 10, color: "var(--tc-text-3)", marginTop: 4 }}>{ladeErgebnis}</div>}
         </div>
@@ -247,7 +257,12 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
           <div style={{ position: "sticky", top: 0, background: "#fff", zIndex: 2, paddingBottom: 3 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px" }}>
-                <span>{gewerk.label.toUpperCase()}</span>
+                <input disabled={readOnly} value={gewerk.label} title="Kategorie umbenennen"
+                  onChange={e => gewerkLabelAendern(gi, e.target.value)}
+                  style={{ width: 160, fontSize: 10, fontWeight: 600, letterSpacing: ".5px", textTransform: "uppercase",
+                    padding: "1px 3px", border: "1px solid transparent", background: "transparent", fontFamily: "inherit", color: "var(--tc-text-3)" }}
+                  onFocus={e => e.currentTarget.style.border = "1px solid #d4dce4"}
+                  onBlur={e => e.currentTarget.style.border = "1px solid transparent"} />
                 <span>(</span>
                 <input disabled={readOnly} value={gewerk.einheit} title="Einheit (z.B. m², m³, m1, Stk.)"
                   onChange={e => speichern({ ...stammdaten, gewerke: stammdaten.gewerke.map((g, i) => i !== gi ? g : { ...g, einheit: e.target.value }) })}
@@ -349,6 +364,17 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
         </div>
       ))}
       </div>
+      {!readOnly && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 14 }}>
+          <input value={neueKategorieName} placeholder="Neue Kategorie…" onChange={e => setNeueKategorieName(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") eigeneKategorieErstellen(); }}
+            style={{ fontSize: 11, padding: "5px 8px", border: "1px solid #d4dce4", fontFamily: "inherit", width: 200 }} />
+          <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }}
+            disabled={!neueKategorieName.trim()} onClick={eigeneKategorieErstellen}>
+            + Eigene Kategorie erstellen
+          </button>
+        </div>
+      )}
     </div>
   );
 }
