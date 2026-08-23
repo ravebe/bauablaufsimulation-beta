@@ -67,7 +67,7 @@ export default function SimKebabMenu({ sim, istErsteller, onKopieren, onZugriffA
                 style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 14px", fontSize: 11, cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
                 onClick={() => setExportSubOffen(o => !o)}
               >
-                <span>Export</span>
+                <span>Gantt-Export</span>
                 <span>{exportSubOffen ? "▲" : "▼"}</span>
               </div>
               {exportSubOffen && EXPORT_FORMATE.map(f => (
@@ -84,7 +84,7 @@ export default function SimKebabMenu({ sim, istErsteller, onKopieren, onZugriffA
           >Projekt kopieren</button>
           {istErsteller && (
           <>
-          <div style={{ padding: "6px 14px", fontSize: 10, color: "var(--tc-text-3)", fontWeight: 600, borderBottom: "1px solid #eef1f4" }}>
+          <div style={{ padding: "6px 14px", fontSize: 12, color: "var(--tc-text-3)", fontWeight: 600, borderBottom: "1px solid #eef1f4" }}>
             Zugriff für Projektmitglieder
           </div>
           {ZUGRIFF_OPTIONEN.map(opt => {
@@ -103,7 +103,7 @@ export default function SimKebabMenu({ sim, istErsteller, onKopieren, onZugriffA
           )}
           {istErsteller && (
           <button
-            style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", fontSize: 11, color: "var(--tc-red)", cursor: "pointer" }}
+            style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", fontSize: 11, cursor: "pointer" }}
             onClick={() => { onLoeschen(); setOffen(false); }}
           >Simulation löschen</button>
           )}
