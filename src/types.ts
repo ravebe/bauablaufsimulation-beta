@@ -24,8 +24,9 @@ export interface Task {
 }
 
 export interface SimModell {
-  id: string;   // modelId aus TC
+  id: string;   // modelId aus TC (über alle Versionen hinweg stabil)
   name: string; // Dateiname z.B. "23.ifc"
+  versionId?: string; // zum Zeitpunkt der Zuweisung gepinnte TC-Versions-ID — wird beim Laden verwendet, damit neue Revisionen NICHT automatisch übernommen werden
   ifcGuidLayerMap?: Record<string, string>; // GUID → Layer-Name (aus IFC-Parsing)
 }
 

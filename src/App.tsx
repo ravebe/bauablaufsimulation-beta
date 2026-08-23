@@ -13,6 +13,7 @@ import ZugriffskontrollManager from "./components/ZugriffskontrollManager";
 import KalenderManager from "./components/KalenderManager";
 import HilfeManager from "./components/HilfeManager";
 import { EXPORT_FORMATE } from "./components/ganttExportFormate";
+import { useClickOutside } from "./hooks/useClickOutside";
 import "./App.css";
 
 export type Tab = "projekte" | "bauteile" | "abspielen" | "kalkulation" | "ressourcen" | "avor" | "kosten";
@@ -281,6 +282,9 @@ export default function App() {
   const [sortDropdown, setSortDropdown] = useState(false);
   const [optionsDropdown, setOptionsDropdown] = useState(false);
   const [exportSubOffen, setExportSubOffen] = useState(false);
+  const headerDropdownRef = useClickOutside<HTMLDivElement>(headerDropdown, () => setHeaderDropdown(false));
+  const sortDropdownRef = useClickOutside<HTMLDivElement>(sortDropdown, () => setSortDropdown(false));
+  const optionsDropdownRef = useClickOutside<HTMLDivElement>(optionsDropdown, () => { setOptionsDropdown(false); setExportSubOffen(false); });
   const [zugriffsManagerOffen, setZugriffsManagerOffen] = useState(false);
   const [kalenderManagerOffen, setKalenderManagerOffen] = useState(false);
   const [hilfeOffen, setHilfeOffen] = useState(false);
@@ -309,6 +313,7 @@ export default function App() {
             <div className="tc-header-org-title">
               <span className="tc-logo">4D</span> Simulationen
             </div>
+            <div ref={headerDropdownRef}>
             <div className="tc-header-org-sub" onClick={e => { e.stopPropagation(); setHeaderDropdown(d => !d); setSortDropdown(false); }}>
               {aktiveSim ? aktiveSim.name : "Kein Projekt"} {headerDropdown ? "▲" : "▼"}
             </div>
@@ -329,6 +334,7 @@ export default function App() {
                 </div>
               </div>
             )}
+            </div>
           </div>
           <div className="tc-header-org-actions">
             <button className="tc-header-icon-btn" title="Rückgängig" disabled={undoStack.current.length === 0}
@@ -343,7 +349,7 @@ export default function App() {
                 <path d="M16 10l-4-4M16 10l-4 4M15 10H6a3 3 0 0 0 0 6h3"/>
               </svg>
             </button>
-            <div style={{ position: "relative" }}>
+            <div ref={sortDropdownRef} style={{ position: "relative" }}>
               <button className={`tc-header-icon-btn ${taskSort !== "gantt" ? "active-filter" : ""}`} title="Sortierung"
                 onClick={e => { e.stopPropagation(); setSortDropdown(d => !d); setHeaderDropdown(false); }}>
                 <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -371,7 +377,7 @@ export default function App() {
                 </div>
               )}
             </div>
-            <div style={{ position: "relative" }}>
+            <div ref={optionsDropdownRef} style={{ position: "relative" }}>
               <button className="tc-header-icon-btn" title="Optionen"
                 onClick={e => { e.stopPropagation(); setOptionsDropdown(d => !d); setExportSubOffen(false); setHeaderDropdown(false); setSortDropdown(false); }}>
                 <svg viewBox="0 0 20 20" width="18" height="18" fill="currentColor">

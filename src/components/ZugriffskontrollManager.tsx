@@ -5,6 +5,7 @@
 import { useState, useEffect } from "react";
 import type { ApiInstance, TcProjectMember } from "../hooks/useApi";
 import type { SimProjekt } from "../types";
+import { useClickOutside } from "../hooks/useClickOutside";
 
 type Zugriff = "edit" | "read" | "none";
 interface Zeile { id: string; name: string; email?: string; zugriff: Zugriff; }
@@ -35,6 +36,7 @@ export default function ZugriffskontrollManager({ api, onClose, sims, aktivId, o
   const [fehler, setFehler] = useState<string | null>(null);
   const [offenerDropdown, setOffenerDropdown] = useState<string | null>(null);
   const [simDropdownOffen, setSimDropdownOffen] = useState(false);
+  const simDropdownRef = useClickOutside<HTMLDivElement>(simDropdownOffen, () => setSimDropdownOffen(false));
 
   useEffect(() => {
     if (!api?.project.getMembers) { setFehler("Projektmitglieder nicht verfügbar"); return; }
@@ -51,8 +53,9 @@ export default function ZugriffskontrollManager({ api, onClose, sims, aktivId, o
 
   function AccessDropdown({ id, aktuell, onSelect }: { id: string; aktuell: Zugriff; onSelect: (v: Zugriff) => void }) {
     const opt = OPTIONEN.find(o => o.key === aktuell)!;
+    const ref = useClickOutside<HTMLDivElement>(offenerDropdown === id, () => setOffenerDropdown(null));
     return (
-      <div style={{ position: "relative" }} onClick={e => e.stopPropagation()}>
+      <div ref={ref} style={{ position: "relative" }} onClick={e => e.stopPropagation()}>
         <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px", minWidth: 150, justifyContent: "space-between", display: "flex" }}
           onClick={() => setOffenerDropdown(d => d === id ? null : id)}>
           <span>{opt.icon} {opt.label}</span>
@@ -85,7 +88,7 @@ export default function ZugriffskontrollManager({ api, onClose, sims, aktivId, o
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid var(--tc-border-light)" }}>
           <div>
             <div style={{ fontSize: 16, fontWeight: 700, color: "var(--tc-text)" }}>Zugriffskontrollmanager</div>
-            <div style={{ position: "relative" }}>
+            <div ref={simDropdownRef} style={{ position: "relative" }}>
               <div style={{ fontSize: 11, color: "var(--tc-text-3)", cursor: sims.length > 1 ? "pointer" : "default", userSelect: "none", marginTop: 2 }}
                 onClick={e => { if (sims.length > 1) { e.stopPropagation(); setSimDropdownOffen(o => !o); } }}>
                 {aktiveSim ? aktiveSim.name : "Keine Simulation"} {sims.length > 1 && (simDropdownOffen ? "▲" : "▼")}

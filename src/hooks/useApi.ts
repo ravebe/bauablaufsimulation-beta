@@ -2,9 +2,25 @@ import { useEffect, useRef, useState } from "react";
 import type { TcModel, TcObjectWithProps, TcSelectionEvent } from "../types";
 import { parseObjectIds } from "../types";
 
+// Entspricht ModelSpec der Trimble Connect Workspace API (viewer.getModels())
+export interface TcModelSpec {
+  id: string;
+  name: string;
+  type?: string;
+  state?: string;
+  versionId: string;
+  isLatestVersion?: boolean;
+}
+
+// Entspricht ModelVersionIdentifier der Trimble Connect Workspace API
+export interface TcModelVersionIdentifier {
+  id: string;
+  versionId?: string;
+}
+
 export interface ApiInstance {
   viewer: {
-    getModels: () => Promise<TcModel[]>;
+    getModels: () => Promise<TcModelSpec[]>;
     getLoadedModel: () => Promise<TcModel[]>;
     getObjects: (modelId: string) => Promise<unknown>;
     getObjectProperties: (modelId: string, ids: number[]) => Promise<TcObjectWithProps[]>;
@@ -21,7 +37,11 @@ export interface ApiInstance {
       entities: { modelId: string; objectRuntimeIds?: number[] }[]
     ) => Promise<boolean>;
     reset: () => Promise<void>;
-    toggleModelVersion: (modelId: string, load: boolean, fitToView?: boolean) => Promise<void>;
+    toggleModelVersion: (
+      modelId: TcModelVersionIdentifier | TcModelVersionIdentifier[],
+      load: boolean,
+      fitToView?: boolean
+    ) => Promise<void>;
     onSelectionChanged: {
       addListener: (cb: (event: TcSelectionEvent) => void) => void;
       removeListener: (cb: (event: TcSelectionEvent) => void) => void;
