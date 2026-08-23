@@ -39,6 +39,7 @@ export interface SimProjekt {
   erstellerId?: string; // TC User ID des Erstellers
   zugriff?: Record<string, Zugriff>; // userId → Zugriff (default: "read")
   autoVerknuepft?: boolean; // true wenn Auto-Verknüpfung durchgeführt
+  ganttImport?: { dateiname: string; version: number }; // Metadaten des zuletzt importierten Gantt (version zählt Importe hoch)
   tasks: Task[];
   modelle: SimModell[];
   kalender?: Kalender; // Arbeitstage-Kalender (Feiertage) dieses Projekts

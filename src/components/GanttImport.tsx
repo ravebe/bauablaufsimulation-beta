@@ -5,8 +5,9 @@ import { isValidDatum, normalizeDatum } from "../types";
 import { istMsProjectXml, parseMsProjectXml } from "./msProjectXml";
 
 interface Props {
-  onImport: (tasks: Task[]) => void;
+  onImport: (tasks: Task[], dateiname: string) => void;
   taskCount: number;
+  ganttInfo?: { dateiname: string; version: number } | null;
 }
 
 interface ImportFehler {
@@ -16,7 +17,7 @@ interface ImportFehler {
   wert: string;
 }
 
-export default function GanttImport({ onImport, taskCount }: Props) {
+export default function GanttImport({ onImport, taskCount, ganttInfo }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [fehler, setFehler] = useState<ImportFehler[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
@@ -256,7 +257,7 @@ export default function GanttImport({ onImport, taskCount }: Props) {
       const errs = validiere(tasks);
       setFehler(errs);
 
-      onImport(tasks);
+      onImport(tasks, file.name);
       setMsg(`${tasks.length} Tasks importiert${errs.length > 0 ? ` · ${errs.length} Datumsfehler` : ""}`);
     } catch (e) {
       setMsg(`Fehler: ${e instanceof Error ? e.message : String(e)}`);
@@ -269,23 +270,36 @@ export default function GanttImport({ onImport, taskCount }: Props) {
     if (file) handleFile(file);
   }
 
+  const punkt = ganttInfo ? ganttInfo.dateiname.lastIndexOf(".") : -1;
+  const ganttName = ganttInfo ? (punkt > 0 ? ganttInfo.dateiname.slice(0, punkt) : ganttInfo.dateiname) : "";
+  const ganttExt = ganttInfo && punkt > 0 ? ganttInfo.dateiname.slice(punkt) : "";
+
   return (
     <div>
-      <label
-        className="gantt-upload"
-        onDragOver={e => e.preventDefault()}
-        onDrop={handleDrop}
-        onClick={() => inputRef.current?.click()}
-      >
-        <span className="gantt-upload-text">xlsx, xml oder MS-Project-XML importieren</span>
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".xlsx,.xls,.csv,.tsv,.xml,.msp,.mpp"
-          style={{ display: "none" }}
-          onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])}
-        />
-      </label>
+      <div className={ganttInfo ? "gantt-upload-row" : undefined}>
+        <label
+          className="gantt-upload"
+          onDragOver={e => e.preventDefault()}
+          onDrop={handleDrop}
+          onClick={() => inputRef.current?.click()}
+        >
+          <span className="gantt-upload-text">xlsx, xml oder MS-Project-XML importieren</span>
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv,.tsv,.xml,.msp,.mpp"
+            style={{ display: "none" }}
+            onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])}
+          />
+        </label>
+
+        {ganttInfo && (
+          <div className="gantt-info-box" title={ganttInfo.dateiname}>
+            <span className="gantt-info-name">{ganttName}<span className="gantt-info-ext">{ganttExt}</span></span>
+            <span className="gantt-info-version">Version {ganttInfo.version}</span>
+          </div>
+        )}
+      </div>
 
       {taskCount > 0 && !msg && (
         <div className="alert ok" style={{ marginTop: 5 }}>✓ {taskCount} Tasks geladen</div>

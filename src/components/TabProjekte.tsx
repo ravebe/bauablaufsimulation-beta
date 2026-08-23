@@ -201,6 +201,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
       erstelltAm: new Date().toISOString(),
       erstellerId: userId || undefined,
       tasks,
+      ganttImport: kopierDialog.tasks ? orig.ganttImport : undefined,
       modelle: kopierDialog.modelle ? structuredClone(orig.modelle) : [],
       kalender: kopierDialog.kalender && orig.kalender ? structuredClone(orig.kalender) : undefined,
       stammdaten: kopierDialog.stammdaten && orig.stammdaten ? structuredClone(orig.stammdaten) : undefined,
@@ -362,10 +363,14 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                 <>
                 <div className="tc-section-label" style={{ marginBottom: 4 }}>Gantt</div>
                 <GanttImport
-                  onImport={tasks => setSims(prev =>
-                    prev.map(s => s.id === sim.id ? { ...s, tasks, autoVerknuepft: false } : s)
+                  onImport={(tasks, dateiname) => setSims(prev =>
+                    prev.map(s => s.id === sim.id ? {
+                      ...s, tasks, autoVerknuepft: false,
+                      ganttImport: { dateiname, version: (s.ganttImport?.version ?? 0) + 1 },
+                    } : s)
                   )}
                   taskCount={sim.tasks.length}
+                  ganttInfo={sim.ganttImport}
                 />
 
                 {sim.tasks.length > 0 && sim.modelle.length > 0 && (

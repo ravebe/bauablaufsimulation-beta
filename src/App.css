@@ -257,6 +257,19 @@
 .gantt-upload-icon { font-size: 24px; color: #e8a023; }
 .gantt-upload-text { font-size: 12px; color: var(--tc-text-2); }
 
+.gantt-upload-row { display: flex; align-items: stretch; gap: 8px; }
+.gantt-upload-row .gantt-upload { flex: 1; padding: 10px; min-width: 0; }
+.gantt-info-box {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 10px; border: 1.5px dashed #ccc; background: #f9fafb; text-align: center; gap: 4px;
+}
+.gantt-info-name {
+  font-size: 12px; font-weight: 600; color: var(--tc-text); max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.gantt-info-ext { font-weight: 400; color: var(--tc-text-3); }
+.gantt-info-version { font-size: 10px; color: var(--tc-text-3); }
+
 /* === EMPTY STATE === */
 .tc-empty { padding: 30px 16px; text-align: center; }
 .tc-empty-icon { font-size: 28px; margin-bottom: 8px; }
