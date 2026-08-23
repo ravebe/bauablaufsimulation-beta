@@ -419,7 +419,10 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
         <span><span style={{ color: "#333", fontWeight: 700 }}>■</span> manuell angepasst</span>
         <span><span style={{ color: "var(--tc-red)", fontWeight: 700 }}>■</span> Fehler / fehlende Attribute</span>
       </div>
-      <div style={{ overflowX: "auto", overflowY: "visible" }}>
+      {/* overflowX:auto zwingt overflowY (auch wenn "visible" gesetzt) effektiv zu "auto" —
+          bei 0 Treffern schrumpft der Container sonst auf die Kopfzeile und schneidet das
+          absolut positionierte Such-/Filter-Popup ab. minHeight hält den Container groß genug. */}
+      <div style={{ overflowX: "auto", overflowY: "visible", minHeight: (suchOffen || filterMenuOffen) ? 260 : undefined }}>
         <div style={{ display: "grid", gridTemplateColumns: gridTemplate, fontSize: 9, color: "var(--tc-text-3)", fontWeight: 600, padding: "4px 0", position: "sticky", top: 0, background: "#fff", zIndex: 3 }}>
           {ALLE_SPALTEN.map((s, i) => renderHeaderZelle(s, i))}
         </div>
