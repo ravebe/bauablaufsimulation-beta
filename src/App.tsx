@@ -431,21 +431,21 @@ export default function App() {
                 </div>
               )}
             </div>
+            <button className="tc-header-icon-btn" title={maximiert ? "Verkleinern" : "Vergrössern"}
+              onClick={e => { e.stopPropagation(); maximierenUmschalten(); }}>
+              <svg viewBox="0 0 20 20" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 7V2h5"/>
+                <path d="M13 2h5v5"/>
+                <path d="M2 13v5h5"/>
+                <path d="M18 13v5h-5"/>
+              </svg>
+            </button>
             <button className="tc-header-icon-btn" title="Hilfe zu diesem Tab"
               onClick={e => { e.stopPropagation(); setHilfeOffen(true); }}>
               <svg viewBox="0 0 20 20" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <circle cx="10" cy="10" r="7.5"/>
                 <path d="M7.8 8a2.2 2.2 0 1 1 3.2 2c-.7.5-1 .9-1 1.7v.3" strokeLinecap="round"/>
                 <circle cx="10" cy="14.3" r="0.15" fill="currentColor"/>
-              </svg>
-            </button>
-            <button className="tc-header-icon-btn" title={maximiert ? "Verkleinern" : "Vergrössern"}
-              onClick={e => { e.stopPropagation(); maximierenUmschalten(); }}>
-              <svg viewBox="0 0 20 20" width="17" height="17" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path stroke="#17324a" d="M2 7V2h5"/>
-                <path stroke="#e8a023" d="M13 2h5v5"/>
-                <path stroke="#e8a023" d="M2 13v5h5"/>
-                <path stroke="#17324a" d="M18 13v5h-5"/>
               </svg>
             </button>
             {/* Sync Status */}

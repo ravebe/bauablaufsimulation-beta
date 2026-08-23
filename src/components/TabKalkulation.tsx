@@ -5,7 +5,7 @@ import type { SimProjekt, Task } from "../types";
 import { istGruppe, berechneNummern, nsKey } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { arbeitstageZwischen, LEERER_KALENDER } from "./kalenderHelpers";
-import { LEERE_STAMMDATEN, alleKuerzel, gewerkeFuerKuerzel, dauerBerechnetTask } from "./stammdatenHelpers";
+import { LEERE_STAMMDATEN, alleKuerzel, gewerkeFuerKuerzel, dauerBerechnetTask, bezeichnungFuerKuerzel } from "./stammdatenHelpers";
 import { kuerzelVorschlag } from "./bauteilkatalogHelpers";
 import { StatTile, CategoryBarChart, CockpitAbschnitt, useEingeklappt, FARBEN } from "./cockpitCharts";
 import { ladeObjektAttribute } from "./modelHelpers";
@@ -80,6 +80,10 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   const stammdaten = sim.stammdaten ?? LEERE_STAMMDATEN;
   const kalender = sim.kalender ?? LEERER_KALENDER;
   const kuerzelListe = alleKuerzel(stammdaten);
+  const kuerzelOptionen = kuerzelListe.map(k => {
+    const bez = bezeichnungFuerKuerzel(stammdaten, k);
+    return { k, label: bez ? `${k} – ${bez}` : k };
+  });
   const nummern = berechneNummern(sim.tasks);
 
   function taskAendern(taskId: string, patch: Partial<Task>) {
@@ -332,7 +336,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
           <select disabled={readOnly} value={z.t.bauteilKuerzel ?? ""} onChange={e => taskAendern(z.t.id, { bauteilKuerzel: e.target.value || undefined })}
             style={{ width: "90%", fontSize: 11, padding: "3px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }}>
             <option value="">–</option>
-            {kuerzelListe.map(k => <option key={k} value={k}>{k}</option>)}
+            {kuerzelOptionen.map(o => <option key={o.k} value={o.k}>{o.label}</option>)}
           </select>
         );
       case "mengen": {

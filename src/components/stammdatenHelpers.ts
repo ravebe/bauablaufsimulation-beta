@@ -96,6 +96,16 @@ export function gewerkeFuerKuerzel(stammdaten: Stammdaten, kuerzel: string): Gew
   return stammdaten.gewerke.filter(g => g.raten.some(r => r.kuerzel === kuerzel));
 }
 
+/** Bezeichnung zu einem Bauteil-Kürzel (aus der ersten passenden Rate über alle Gewerke) — für die
+ * Anzeige "Kürzel – Bezeichnung" in Dropdowns. */
+export function bezeichnungFuerKuerzel(stammdaten: Stammdaten, kuerzel: string): string {
+  for (const gewerk of stammdaten.gewerke) {
+    const r = gewerk.raten.find(r => r.kuerzel === kuerzel);
+    if (r?.bezeichnung) return r.bezeichnung;
+  }
+  return "";
+}
+
 /** Standard-Stammdaten aus dem AVOR-Tool "LUKS Wolhusen" als Startpunkt (frei editierbar danach). */
 export function standardStammdaten(): Stammdaten {
   return {
