@@ -22,10 +22,12 @@ export default function TabKosten({ sim, projectId = null }: Props) {
   const kalender = sim.kalender ?? LEERER_KALENDER;
   const proKuerzel = new Map<string, { summe: number; anzahl: number; bezeichnung: string }>();
   const kostenProGewerk = new Map<string, number>();
-  let gesamt = 0, tasksMitKosten = 0;
+  let gesamt = 0, tasksMitKosten = 0, gesamtTaskAnzahl = 0;
 
   sim.tasks.forEach((t, i) => {
-    if (t.isGroup || istGruppe(sim.tasks, i) || !t.bauteilKuerzel || !t.mengen) return;
+    if (t.isGroup || istGruppe(sim.tasks, i)) return;
+    gesamtTaskAnzahl += 1;
+    if (!t.bauteilKuerzel || !t.mengen) return;
     const kosten = kostenTask(t, stammdaten);
     if (kosten <= 0) return;
     gesamt += kosten;
@@ -46,6 +48,8 @@ export default function TabKosten({ sim, projectId = null }: Props) {
   const zeilen = [...proKuerzel.entries()].sort((a, b) => b[1].summe - a[1].summe);
   const gewerkeMitKosten = [...kostenProGewerk.entries()].sort((a, b) => b[1] - a[1]);
   const ertrag = ertragsoptik(sim.tasks, stammdaten, kalender);
+  const topEintrag = zeilen[0];
+  const topAnteilProzent = topEintrag && gesamt > 0 ? (topEintrag[1].summe / gesamt) * 100 : 0;
 
   if (zeilen.length === 0) {
     return (
@@ -59,8 +63,10 @@ export default function TabKosten({ sim, projectId = null }: Props) {
     <div style={{ padding: 14, fontSize: 12 }}>
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         <StatTile label="Gesamtkosten" wert={`${fmtChf(gesamt)} CHF`} />
-        <StatTile label="Tasks mit Kosten" wert={String(tasksMitKosten)} />
-        <StatTile label="Ø Kosten/Task" wert={`${fmtChf(tasksMitKosten > 0 ? gesamt / tasksMitKosten : 0)} CHF`} />
+        <StatTile label="Tasks mit Kosten" wert={`${tasksMitKosten}/${gesamtTaskAnzahl}`} />
+        {topEintrag && (
+          <StatTile label="Größte Kostenposition" wert={`${topEintrag[0]} · ${topAnteilProzent.toFixed(0)}%`} sub={topEintrag[1].bezeichnung} />
+        )}
       </div>
 
       {gewerkeMitKosten.length > 0 && (
