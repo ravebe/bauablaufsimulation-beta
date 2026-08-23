@@ -593,7 +593,7 @@ export default function App() {
           <TabAvor sim={aktiveSim} projectId={projectId} />
         </div>
         <div className="tc-tab-pane" style={{ display: aktTab === "kosten" ? "block" : "none" }}>
-          <TabKosten sim={aktiveSim} projectId={projectId} />
+          <TabKosten sim={aktiveSim} projectId={projectId} api={api} sharedNadelTag={sharedNadelTag} />
         </div>
       </div>
 

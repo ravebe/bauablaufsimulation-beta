@@ -44,11 +44,13 @@ interface TimeSeriesProps {
   einheit?: string;
   hoehe?: number;
   formatWert?: (v: number) => string;
+  markerIdx?: number | null; // Index in tage[] für eine dauerhafte Markierung (z.B. "Heute")
+  markerLabel?: string;
 }
 
-const ML = 40, MR = 8, MT = 10, MB = 20;
+const ML = 40, MR = 8, MT = 16, MB = 20;
 
-export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = "", hoehe = 180, formatWert }: TimeSeriesProps) {
+export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = "", hoehe = 180, formatWert, markerIdx, markerLabel = "Heute" }: TimeSeriesProps) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [containerRef, VBW] = useMeasuredWidth<HTMLDivElement>(1000);
   const fmt = formatWert ?? ((v: number) => v.toLocaleString("de-CH", { maximumFractionDigits: 1 }));
@@ -132,6 +134,12 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
         ))}
         {hoverIdx !== null && (
           <line x1={x(hoverIdx)} y1={MT} x2={x(hoverIdx)} y2={hoehe - MB} stroke={FARBEN.achse} strokeWidth={1} strokeDasharray="2 2" />
+        )}
+        {markerIdx !== null && markerIdx !== undefined && markerIdx >= 0 && markerIdx < n && (
+          <g>
+            <line x1={x(markerIdx)} y1={MT} x2={x(markerIdx)} y2={hoehe - MB} stroke={FARBEN.status.warning} strokeWidth={1.5} />
+            <text x={x(markerIdx)} y={MT - 5} textAnchor="middle" fontSize={9} fontWeight={700} fontFamily="var(--tc-font)" fill={FARBEN.status.warning}>{markerLabel}</text>
+          </g>
         )}
       </svg>
       {hoverIdx !== null && (

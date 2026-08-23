@@ -1,20 +1,32 @@
 // TabKosten.tsx — Kosten-Auswertung aus den Mengen×Stammdaten-Raten je Task, aggregiert nach
 // Bauteil-Kürzel. Rein lesend, keine Eingabe (Mengen/Kürzel werden im Tab Kalkulation gepflegt).
+import { useState } from "react";
 import type { SimProjekt } from "../types";
-import { istGruppe } from "../types";
+import { istGruppe, parseDateUniversal } from "../types";
+import type { ApiInstance } from "../hooks/useApi";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import { LEERE_STAMMDATEN, kostenTask } from "./stammdatenHelpers";
 import { ertragsoptik } from "./avorHelpers";
+import { dreiDZustandAufTagSetzen, tagVonDatum } from "./dreiDHeuteHelper";
 import { StatTile, CategoryBarChart, TimeSeriesChart, CockpitAbschnitt, useEingeklappt, FARBEN } from "./cockpitCharts";
 
-interface Props { sim: SimProjekt | null; projectId?: string | null; }
+interface Props { sim: SimProjekt | null; projectId?: string | null; api?: ApiInstance | null; sharedNadelTag?: React.MutableRefObject<number>; }
 
 function fmtChf(n: number): string {
   return n.toLocaleString("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export default function TabKosten({ sim, projectId = null }: Props) {
+function heuteIsoUndDatum(): { iso: string; datum: Date } {
+  const datum = new Date();
+  datum.setHours(0, 0, 0, 0);
+  const iso = `${datum.getFullYear()}-${String(datum.getMonth() + 1).padStart(2, "0")}-${String(datum.getDate()).padStart(2, "0")}`;
+  return { iso, datum };
+}
+
+export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }: Props) {
   const { eingeklappt, toggle: toggleEingeklappt } = useEingeklappt(projectId, "kosten");
+  const [heuteLaeuft, setHeuteLaeuft] = useState(false);
+  const [heuteErgebnis, setHeuteErgebnis] = useState<string | null>(null);
 
   if (!sim) return <div style={{ padding: 14, fontSize: 12, color: "var(--tc-text-3)" }}>Kein aktives Projekt ausgewählt</div>;
 
@@ -51,6 +63,27 @@ export default function TabKosten({ sim, projectId = null }: Props) {
   const topEintrag = zeilen[0];
   const topAnteilProzent = topEintrag && gesamt > 0 ? (topEintrag[1].summe / gesamt) * 100 : 0;
 
+  // "Heute"-Bezug: Position im kumulierten Verlauf + 3D-Baufortschritt von heute.
+  const { iso: heuteIso, datum: heute } = heuteIsoUndDatum();
+  const heuteIdxRoh = ertrag.findIndex(e => e.tag === heuteIso);
+  const vorProjektstart = ertrag.length > 0 && heuteIso < ertrag[0].tag;
+  const heuteIdx = heuteIdxRoh >= 0 ? heuteIdxRoh : (vorProjektstart ? -1 : ertrag.length - 1);
+  const kostenHeute = heuteIdx >= 0 ? ertrag[heuteIdx].kostenKum : 0;
+
+  const allStarts = sim.tasks.map(t => parseDateUniversal(t.start)).filter((d): d is Date => !!d);
+  const minDate = allStarts.length > 0 ? new Date(Math.min(...allStarts.map(d => d.getTime()))) : null;
+
+  async function heuteIm3dZeigen() {
+    if (!api || !minDate) return;
+    setHeuteLaeuft(true);
+    setHeuteErgebnis(null);
+    if (sharedNadelTag) sharedNadelTag.current = heute.getTime();
+    const tag = tagVonDatum(heuteIso, minDate);
+    const aktive = await dreiDZustandAufTagSetzen(api, sim!.tasks, minDate, tag, true);
+    setHeuteLaeuft(false);
+    setHeuteErgebnis(aktive.length > 0 ? `${aktive.length} Task${aktive.length === 1 ? "" : "s"} aktiv am ${heute.toLocaleDateString("de-CH")}` : `Keine aktiven Tasks am ${heute.toLocaleDateString("de-CH")}`);
+  }
+
   if (zeilen.length === 0) {
     return (
       <div style={{ padding: 14, fontSize: 12, color: "var(--tc-text-3)" }}>
@@ -63,11 +96,22 @@ export default function TabKosten({ sim, projectId = null }: Props) {
     <div style={{ padding: 14, fontSize: 12 }}>
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         <StatTile label="Gesamtkosten" wert={`${fmtChf(gesamt)} CHF`} />
+        <StatTile label="Kosten heute" wert={`${fmtChf(kostenHeute)} CHF`} sub={heute.toLocaleDateString("de-CH")} />
         <StatTile label="Tasks mit Kosten" wert={`${tasksMitKosten}/${gesamtTaskAnzahl}`} />
         {topEintrag && (
           <StatTile label="Größte Kostenposition" wert={`${topEintrag[0]} · ${topAnteilProzent.toFixed(0)}%`} sub={topEintrag[1].bezeichnung} />
         )}
       </div>
+
+      {api && minDate && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+          <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }} disabled={heuteLaeuft} onClick={heuteIm3dZeigen}
+            title="Zeigt den Baufortschritt von heute im 3D-Modell und markiert heute im Kosten-Diagramm">
+            {heuteLaeuft ? "Wird aktualisiert…" : "Heute im 3D-Modell zeigen"}
+          </button>
+          {heuteErgebnis && <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>{heuteErgebnis}</span>}
+        </div>
+      )}
 
       {gewerkeMitKosten.length > 0 && (
         <CockpitAbschnitt titel="Kosten je Gewerk" eingeklappt={!!eingeklappt["gewerk"]} onToggle={() => toggleEingeklappt("gewerk")}>
@@ -80,6 +124,7 @@ export default function TabKosten({ sim, projectId = null }: Props) {
       {ertrag.length > 0 && (
         <CockpitAbschnitt titel="Kosten kumuliert" eingeklappt={!!eingeklappt["kumuliert"]} onToggle={() => toggleEingeklappt("kumuliert")}>
           <TimeSeriesChart tage={ertrag.map(e => e.tag)} einheit="CHF" formatWert={fmtChf} modus="linie"
+            markerIdx={heuteIdx >= 0 ? heuteIdx : null}
             serien={[{ key: "kosten", label: "Kosten (kumuliert)", color: FARBEN.kategorial[0], werte: ertrag.map(e => e.kostenKum) }]} />
         </CockpitAbschnitt>
       )}
