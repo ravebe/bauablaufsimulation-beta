@@ -63,13 +63,13 @@ export default function SimKebabMenu({ sim, istErsteller, onKopieren, onZugriffA
           )}
           {istErsteller && sim.tasks.length > 0 && (
             <>
-              <div
-                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 14px", fontSize: 11, cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
+              <button
+                style={{ display: "flex", width: "100%", justifyContent: "space-between", alignItems: "center", padding: "8px 14px", background: "none", border: "none", fontSize: 11, cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
                 onClick={() => setExportSubOffen(o => !o)}
               >
                 <span>Gantt-Export</span>
                 <span>{exportSubOffen ? "▲" : "▼"}</span>
-              </div>
+              </button>
               {exportSubOffen && EXPORT_FORMATE.map(f => (
                 <button key={f.key}
                   style={{ display: "block", width: "100%", padding: "8px 14px 8px 24px", background: "none", border: "none", textAlign: "left", fontSize: 10, cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
