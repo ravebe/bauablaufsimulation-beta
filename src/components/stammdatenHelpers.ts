@@ -24,6 +24,24 @@ export interface Stammdaten {
 }
 export const LEERE_STAMMDATEN: Stammdaten = { arbeitszeitStdProTag: 8.5, gewerke: [] };
 
+/** Stammdaten als JSON-Text für den Datei-Export — 1:1 Rohobjekt, damit der Import verlustfrei zurückspielt. */
+export function stammdatenAlsJson(s: Stammdaten): string {
+  return JSON.stringify(s, null, 2);
+}
+
+/** Parst eine zuvor exportierte Stammdaten-JSON-Datei und validiert grob die Struktur (z.B. aus einem anderen TC-Projekt). */
+export function parseStammdatenJson(text: string): Stammdaten {
+  const raw = JSON.parse(text);
+  if (!raw || typeof raw !== "object" || !Array.isArray(raw.gewerke)) {
+    throw new Error("Ungültiges Format — keine Stammdaten-Datei");
+  }
+  return {
+    arbeitszeitStdProTag: typeof raw.arbeitszeitStdProTag === "number" ? raw.arbeitszeitStdProTag : 8.5,
+    umsatzChfProMannstunde: typeof raw.umsatzChfProMannstunde === "number" ? raw.umsatzChfProMannstunde : undefined,
+    gewerke: raw.gewerke,
+  };
+}
+
 /** Dauer eines einzelnen Gewerks in Tagen: benötigte Personenstunden / verfügbare Personenstunden pro Tag. */
 export function dauerGewerk(menge: number, rate: Rate | undefined, arbeitszeitStdProTag: number): number {
   if (!rate || !rate.leistungswertHProEinheit || !menge || !arbeitszeitStdProTag || !rate.anzahlPersonen) return 0;

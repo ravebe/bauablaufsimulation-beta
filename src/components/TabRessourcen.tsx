@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import type { SimProjekt } from "../types";
 import { istGruppe, nsKey } from "../types";
 import type { Gewerk, GewerkeKatalog, Rate, Stammdaten } from "./stammdatenHelpers";
-import { LEERE_STAMMDATEN, GEWERKE_KATALOGE, alleKuerzel } from "./stammdatenHelpers";
+import { LEERE_STAMMDATEN, GEWERKE_KATALOGE, alleKuerzel, stammdatenAlsJson, parseStammdatenJson } from "./stammdatenHelpers";
 import { StatTile } from "./cockpitCharts";
 import type { ApiInstance } from "../hooks/useApi";
 import { ladeAttributListe, ladeObjektAttribute, attrItemsAusWerten, type AttrItem } from "./modelHelpers";
@@ -28,6 +28,8 @@ const LS_RATEN_COLW = "4d-ressourcen-raten-colw";
 
 export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion = [], aktivesModellId = null, projectId = null }: Props) {
   const [ladeErgebnis, setLadeErgebnis] = useState<string | null>(null);
+  const [importFehler, setImportFehler] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const [neueKategorieName, setNeueKategorieName] = useState("");
   const [attrListe, setAttrListe] = useState<AttrItem[] | null>(null);
   const [attrLaedt, setAttrLaedt] = useState(false);
@@ -76,6 +78,30 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
 
   function speichern(neu: Stammdaten) {
     updateSim({ ...sim!, stammdaten: neu });
+  }
+
+  // Export/Import der kompletten Ressourcen (Stammdaten) als Datei — zum Übertragen in andere TC-Projekte,
+  // in denen dieselbe Extension läuft aber kein gemeinsamer Zugriff auf diese Simulation besteht.
+  function stammdatenExportieren() {
+    const blob = new Blob([stammdatenAlsJson(stammdaten)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `${sim!.name}_Ressourcen.json`; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function stammdatenImportieren(file: File) {
+    setImportFehler(null);
+    try {
+      const importiert = parseStammdatenJson(await file.text());
+      if (stammdaten.gewerke.length > 0 &&
+        !confirm(`Bestehende Ressourcen (${stammdaten.gewerke.length} Kategorien) werden durch den Import ersetzt. Fortfahren?`)) return;
+      speichern(importiert);
+    } catch (e) {
+      setImportFehler(e instanceof Error ? e.message : "Import fehlgeschlagen");
+    } finally {
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
   }
 
   function rateAendern(gewerkIdx: number, rateIdx: number, patch: Partial<Rate>) {
@@ -222,7 +248,23 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
           <span style={{ fontWeight: 600 }}>Umsatz CHF/Mannstunde:</span>
           {numInput(stammdaten.umsatzChfProMannstunde ?? 80, v => speichern({ ...stammdaten, umsatzChfProMannstunde: v ?? 80 }), 60)}
         </div>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
+          <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "3px 8px" }}
+            disabled={stammdaten.gewerke.length === 0}
+            onClick={stammdatenExportieren} title="Ressourcen (alle Kategorien, Kürzel, Leistungswerte) als Datei exportieren — z.B. für ein anderes Trimble-Connect-Projekt">
+            ⭳ Export
+          </button>
+          {!readOnly && (<>
+            <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "3px 8px" }}
+              onClick={() => importInputRef.current?.click()} title="Ressourcen aus einer zuvor exportierten Datei importieren">
+              ⭱ Import
+            </button>
+            <input ref={importInputRef} type="file" accept=".json" style={{ display: "none" }}
+              onChange={e => e.target.files?.[0] && stammdatenImportieren(e.target.files[0])} />
+          </>)}
+        </div>
       </div>
+      {importFehler && <div className="alert err" style={{ marginBottom: 10 }}>! {importFehler}</div>}
 
       {stammdaten.gewerke.length === 0 && (
         <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
