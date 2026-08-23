@@ -417,7 +417,7 @@ export default function App() {
                   <div className="tc-header-dropdown-item" style={{ opacity: aktiveSim ? 1 : 0.4, cursor: aktiveSim ? "pointer" : "default" }}
                     onClick={() => { if (aktiveSim) { setKalenderManagerOffen(true); setOptionsDropdown(false); } }}>
                     <div>
-                      <div style={{ fontWeight: 500 }}>Kalender / Feiertage</div>
+                      <div style={{ fontWeight: 500 }}>Kalender / Feiertage / Ferien</div>
                       <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>Arbeitstage der aktiven Simulation</div>
                     </div>
                   </div>

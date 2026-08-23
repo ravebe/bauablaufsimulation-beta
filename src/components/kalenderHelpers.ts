@@ -3,16 +3,19 @@
 import { parseDateUniversal } from "../types";
 
 export type Feiertag = { datum: string; name: string }; // YYYY-MM-DD
-export type Kalender = { feiertage: Feiertag[] };
-export const LEERER_KALENDER: Kalender = { feiertage: [] };
+export type Ferienzeitraum = { von: string; bis: string; name: string }; // YYYY-MM-DD, inklusive
+export type Kalender = { feiertage: Feiertag[]; ferien?: Ferienzeitraum[] };
+export const LEERER_KALENDER: Kalender = { feiertage: [], ferien: [] };
 
-/** Ist dieses Datum ein Arbeitstag (kein Wochenende, kein Feiertag im Kalender)? */
+/** Ist dieses Datum ein Arbeitstag (kein Wochenende, kein Feiertag, keine Ferien im Kalender)? */
 export function istArbeitstag(datum: string, kalender: Kalender): boolean {
   const d = parseDateUniversal(datum);
   if (!d) return true;
   const dow = d.getDay();
   if (dow === 0 || dow === 6) return false;
-  return !kalender.feiertage.some(f => f.datum === datum);
+  if (kalender.feiertage.some(f => f.datum === datum)) return false;
+  if ((kalender.ferien ?? []).some(f => datum >= f.von && datum <= f.bis)) return false;
+  return true;
 }
 
 /** Anzahl Arbeitstage zwischen start und end (inklusive beider Enden), mindestens 1. */

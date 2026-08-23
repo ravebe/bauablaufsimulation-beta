@@ -313,7 +313,7 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
     allDays.push({ x: d * pxProTag, date: dt, dow: dt.getDay() });
   }
 
-  // Arbeitsfreie Tage (Wochenenden + Feiertage aus dem Kalender)
+  // Arbeitsfreie Tage (Wochenenden + Feiertage + Ferien aus dem Kalender)
   const weekendBands: { x: number; w: number }[] = [];
   for (const day of allDays) {
     if (!istArbeitstag(fmtISO(day.date), kalender)) weekendBands.push({ x: day.x, w: pxProTag });

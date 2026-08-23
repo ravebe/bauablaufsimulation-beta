@@ -494,7 +494,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                 { key: "kalkulation", label: "Bauteil-Kürzel & Mengen (Kalkulation)", indent: true, disabled: !kopierDialog.tasks },
                 { key: "modelle", label: "Zugewiesene Modelle", indent: false, disabled: false },
                 { key: "stammdaten", label: "Stammdaten (Ressourcen)", indent: false, disabled: false },
-                { key: "kalender", label: "Kalender (Arbeitstage/Feiertage)", indent: false, disabled: false },
+                { key: "kalender", label: "Kalender (Arbeitstage/Feiertage/Ferien)", indent: false, disabled: false },
               ] as const).map(opt => (
                 <label key={opt.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0",
                   paddingLeft: opt.indent ? 20 : 0, fontSize: 12,
