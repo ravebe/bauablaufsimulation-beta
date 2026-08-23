@@ -16,18 +16,44 @@ interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; re
 // Grid-Spalten der Tabelle — feste Breiten statt Flex, damit kein Inhalt nachfolgende Spalten
 // verschiebt. Verstellbar per Drag, siehe startResize. Alle Zellen top-ausgerichtet (alignItems:
 // "start"), damit sie in einer Flucht stehen, auch wenn die Mengen-Zelle mehrzeilig ist.
-const SPALTEN = ["nr", "task", "kuerzel", "mengen", "geplant", "berechnet", "wbs"] as const;
-type Spalte = typeof SPALTEN[number];
-const SPALTEN_LABEL: Record<Spalte, string> = { nr: "Nr.", task: "Task", kuerzel: "Kürzel", mengen: "Mengen", geplant: "Geplant", berechnet: "Berechnet", wbs: "" };
-const DEFAULT_COL_W: Record<Spalte, number> = { nr: 30, task: 220, kuerzel: 64, mengen: 260, geplant: 56, berechnet: 64, wbs: 26 };
+// "differenz" und "kranbereich" sind optionale, einblendbare Spalten (siehe spaltenSichtbar).
+const ALLE_SPALTEN = ["nr", "task", "kuerzel", "mengen", "geplant", "berechnet", "differenz", "kranbereich"] as const;
+type Spalte = typeof ALLE_SPALTEN[number];
+const SPALTEN_LABEL: Record<Spalte, string> = {
+  nr: "Nr.", task: "Task", kuerzel: "Kürzel", mengen: "Mengen", geplant: "Geplant", berechnet: "Berechnet",
+  differenz: "Differenz", kranbereich: "Kranbereich",
+};
+const DEFAULT_COL_W: Record<Spalte, number> = { nr: 30, task: 220, kuerzel: 64, mengen: 260, geplant: 76, berechnet: 88, differenz: 60, kranbereich: 110 };
 const LS_COLW = "4d-kalk-colw";
+const LS_SPALTEN = "4d-kalk-opt-spalten";
+
+// Spalten mit Sortier-/Filterfunktion im Header (Klick auf Titel = sortieren, ▾ = Filter-Popover).
+const SORTIERBARE_SPALTEN = ["task", "kuerzel", "geplant", "berechnet"] as const;
+type SortSpalte = typeof SORTIERBARE_SPALTEN[number];
+
+type Zeile = { t: Task; geplant: number; berechnet: number; differenz: number; abweichung: boolean };
+
+function spalteWert(z: Zeile, spalte: SortSpalte): string {
+  switch (spalte) {
+    case "task": return z.t.name;
+    case "kuerzel": return z.t.bauteilKuerzel || "–";
+    case "geplant": return `${z.geplant}d`;
+    case "berechnet": return `${z.berechnet}d`;
+  }
+}
 
 export default function TabKalkulation({ sim, updateSim, readOnly, api, projectId = null }: Props) {
-  const [wbsOffenIds, setWbsOffenIds] = useState<Set<string>>(new Set());
   const [bulkLaeuft, setBulkLaeuft] = useState(false);
   const [bulkErgebnis, setBulkErgebnis] = useState<string | null>(null);
   const [mengenLaeuft, setMengenLaeuft] = useState(false);
   const [mengenErgebnis, setMengenErgebnis] = useState<string | null>(null);
+  const [suchOffen, setSuchOffen] = useState(false);
+  const [suchQuery, setSuchQuery] = useState("");
+  const [sortSpalte, setSortSpalte] = useState<SortSpalte | null>(null);
+  const [sortRichtung, setSortRichtung] = useState<"asc" | "desc">("asc");
+  const [spaltenFilter, setSpaltenFilter] = useState<Partial<Record<SortSpalte, Set<string>>>>({});
+  const [filterMenuOffen, setFilterMenuOffen] = useState<SortSpalte | null>(null);
+
   const lsColwKey = nsKey(LS_COLW, projectId);
   const [colW, setColW] = useState<Record<Spalte, number>>(() => {
     try {
@@ -35,10 +61,20 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
       return raw ? { ...DEFAULT_COL_W, ...JSON.parse(raw) } : { ...DEFAULT_COL_W };
     } catch { return { ...DEFAULT_COL_W }; }
   });
-
   useEffect(() => {
     try { localStorage.setItem(lsColwKey, JSON.stringify(colW)); } catch { /* ignore */ }
   }, [colW, lsColwKey]);
+
+  const lsSpaltenKey = nsKey(LS_SPALTEN, projectId);
+  const [spaltenSichtbar, setSpaltenSichtbar] = useState<{ differenz: boolean; kranbereich: boolean }>(() => {
+    try {
+      const raw = localStorage.getItem(lsSpaltenKey);
+      return raw ? { differenz: false, kranbereich: false, ...JSON.parse(raw) } : { differenz: false, kranbereich: false };
+    } catch { return { differenz: false, kranbereich: false }; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(lsSpaltenKey, JSON.stringify(spaltenSichtbar)); } catch { /* ignore */ }
+  }, [spaltenSichtbar, lsSpaltenKey]);
 
   const { eingeklappt, toggle: toggleEingeklappt } = useEingeklappt(projectId, "kalkulation");
 
@@ -50,7 +86,10 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp);
   }
 
-  const gridTemplate = SPALTEN.map(s => `${colW[s]}px`).join(" ");
+  const sichtbareSpalten = ALLE_SPALTEN.filter(s =>
+    (s !== "differenz" || spaltenSichtbar.differenz) && (s !== "kranbereich" || spaltenSichtbar.kranbereich)
+  );
+  const gridTemplate = sichtbareSpalten.map(s => `${colW[s]}px`).join(" ");
 
   if (!sim) return <div style={{ padding: 14, fontSize: 12, color: "var(--tc-text-3)" }}>Kein aktives Projekt ausgewählt</div>;
 
@@ -146,13 +185,13 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     );
   }
 
-  const zeilen = sim.tasks.map((t, i) => {
+  const zeilen: Zeile[] = sim.tasks.map((t, i) => {
     if (t.isGroup || istGruppe(sim.tasks, i)) return null;
     const geplant = arbeitstageZwischen(t.start, t.end, kalender);
     const berechnet = dauerBerechnetTask(t, stammdaten);
     const abweichung = berechnet > 0 && (berechnet > geplant * 1.5 || berechnet < geplant * 0.67);
-    return { t, geplant, berechnet, abweichung };
-  }).filter((z): z is NonNullable<typeof z> => z !== null);
+    return { t, geplant, berechnet, differenz: berechnet - geplant, abweichung };
+  }).filter((z): z is Zeile => z !== null);
 
   const tasksMitKuerzel = zeilen.filter(z => z.t.bauteilKuerzel).length;
   const anzahlAbweichung = zeilen.filter(z => z.abweichung).length;
@@ -160,6 +199,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   const durchschnAbweichungProzent = abweichungsBasis.length > 0
     ? abweichungsBasis.reduce((s, z) => s + Math.abs(z.berechnet - z.geplant) / z.geplant, 0) / abweichungsBasis.length * 100
     : 0;
+  const gesamtAbweichungTage = zeilen.filter(z => z.t.bauteilKuerzel).reduce((s, z) => s + z.differenz, 0);
 
   const summeProKuerzel = new Map<string, { geplant: number; berechnet: number }>();
   for (const z of zeilen) {
@@ -170,9 +210,192 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   }
   const kuerzelKategorien = [...summeProKuerzel.keys()].sort();
 
+  // Eindeutige Werte einer sortier-/filterbaren Spalte — Basis sind alle anderen aktiven Filter
+  // (nicht der eigenen Spalte), damit das Filter-Popover wie in Tabellenkalkulationen üblich nur
+  // noch erreichbare Werte zeigt.
+  function eindeutigeWerte(spalte: SortSpalte): string[] {
+    let basis = zeilen;
+    if (suchQuery.trim()) {
+      const q = suchQuery.trim().toLowerCase();
+      basis = basis.filter(z => z.t.name.toLowerCase().includes(q) || (z.t.bauteilKuerzel ?? "").toLowerCase().includes(q));
+    }
+    for (const s of SORTIERBARE_SPALTEN) {
+      if (s === spalte) continue;
+      const erlaubt = spaltenFilter[s];
+      if (erlaubt) basis = basis.filter(z => erlaubt.has(spalteWert(z, s)));
+    }
+    const werte = new Set(basis.map(z => spalteWert(z, spalte)));
+    return [...werte].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }
+
+  function filterWertToggeln(spalte: SortSpalte, wert: string, alleWerte: string[]) {
+    setSpaltenFilter(prev => {
+      const aktuell = prev[spalte] ?? new Set(alleWerte);
+      const neu = new Set(aktuell);
+      if (neu.has(wert)) neu.delete(wert); else neu.add(wert);
+      const next = { ...prev };
+      if (neu.size === alleWerte.length) delete next[spalte]; else next[spalte] = neu;
+      return next;
+    });
+  }
+
+  // Such- + Filter- + Sortier-Pipeline
+  let zeilenGefiltert = zeilen;
+  if (suchQuery.trim()) {
+    const q = suchQuery.trim().toLowerCase();
+    zeilenGefiltert = zeilenGefiltert.filter(z => z.t.name.toLowerCase().includes(q) || (z.t.bauteilKuerzel ?? "").toLowerCase().includes(q));
+  }
+  for (const spalte of SORTIERBARE_SPALTEN) {
+    const erlaubt = spaltenFilter[spalte];
+    if (erlaubt) zeilenGefiltert = zeilenGefiltert.filter(z => erlaubt.has(spalteWert(z, spalte)));
+  }
+  if (sortSpalte) {
+    const richt = sortRichtung === "asc" ? 1 : -1;
+    zeilenGefiltert = [...zeilenGefiltert].sort((a, b) => {
+      if (sortSpalte === "geplant") return (a.geplant - b.geplant) * richt;
+      if (sortSpalte === "berechnet") return (a.berechnet - b.berechnet) * richt;
+      if (sortSpalte === "kuerzel") return (a.t.bauteilKuerzel ?? "").localeCompare(b.t.bauteilKuerzel ?? "") * richt;
+      return a.t.name.localeCompare(b.t.name) * richt;
+    });
+  }
+
+  function headerKlick(spalte: SortSpalte) {
+    if (sortSpalte !== spalte) { setSortSpalte(spalte); setSortRichtung("asc"); }
+    else if (sortRichtung === "asc") setSortRichtung("desc");
+    else setSortSpalte(null);
+  }
+
+  function renderHeaderZelle(spalte: Spalte, idx: number) {
+    const istSortierbar = (SORTIERBARE_SPALTEN as readonly string[]).includes(spalte);
+    const sortSpalteTyp = istSortierbar ? spalte as SortSpalte : null;
+    const aktivSort = sortSpalteTyp && sortSpalte === sortSpalteTyp;
+    const gefiltert = sortSpalteTyp ? !!spaltenFilter[sortSpalteTyp] : false;
+    const alleWerte = sortSpalteTyp && filterMenuOffen === sortSpalteTyp ? eindeutigeWerte(sortSpalteTyp) : [];
+    return (
+      <div key={spalte} style={{ position: "relative", display: "flex", alignItems: "center", gap: 3, paddingLeft: idx > 0 ? 8 : 0, overflow: "visible", whiteSpace: "nowrap" }}>
+        <span
+          onClick={() => sortSpalteTyp && headerKlick(sortSpalteTyp)}
+          style={{ cursor: sortSpalteTyp ? "pointer" : "default", userSelect: "none", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
+          {SPALTEN_LABEL[spalte]}
+        </span>
+        {aktivSort && (
+          <span onClick={() => sortSpalteTyp && headerKlick(sortSpalteTyp)} style={{ cursor: "pointer", flexShrink: 0, fontSize: 9 }}>
+            {sortRichtung === "asc" ? "▲" : "▼"}
+          </span>
+        )}
+        {sortSpalteTyp && (
+          <span onClick={() => setFilterMenuOffen(m => m === sortSpalteTyp ? null : sortSpalteTyp)}
+            title="Filtern" style={{ cursor: "pointer", fontSize: 9, color: gefiltert ? "var(--tc-blue)" : "var(--tc-text-3)", flexShrink: 0 }}>
+            ▾
+          </span>
+        )}
+        {sortSpalteTyp && filterMenuOffen === sortSpalteTyp && (
+          <>
+            <div style={{ position: "fixed", inset: 0, zIndex: 90 }} onClick={() => setFilterMenuOffen(null)} />
+            <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 2, background: "#fff", border: "1px solid #d4dce4", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, minWidth: 140, maxHeight: 220, overflowY: "auto", fontSize: 11, padding: 4, fontWeight: 400 }}>
+              <div style={{ padding: "3px 6px", cursor: "pointer", color: "var(--tc-blue)", fontWeight: 600 }}
+                onClick={() => setSpaltenFilter(prev => { const n = { ...prev }; delete n[sortSpalteTyp]; return n; })}>
+                Alle anzeigen
+              </div>
+              {alleWerte.map(w => {
+                const erlaubt = spaltenFilter[sortSpalteTyp];
+                const checked = !erlaubt || erlaubt.has(w);
+                return (
+                  <label key={w} style={{ display: "flex", alignItems: "center", gap: 5, padding: "2px 6px", cursor: "pointer" }}>
+                    <input type="checkbox" checked={checked} onChange={() => filterWertToggeln(sortSpalteTyp, w, alleWerte)} />
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{w}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </>
+        )}
+        {idx < sichtbareSpalten.length - 1 && (
+          <div className="col-resize-handle" onMouseDown={e => startResize(spalte, e)}
+            style={{ position: "absolute", top: -4, right: -3, width: 7, height: 18, cursor: "col-resize", zIndex: 2 }} />
+        )}
+      </div>
+    );
+  }
+
+  function renderZelle(spalte: Spalte, z: Zeile) {
+    switch (spalte) {
+      case "nr":
+        return <span style={{ fontSize: 10, color: "#666" }}>{nummern.get(z.t.id)}</span>;
+      case "task":
+        return <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 6 }}>{z.t.name}</span>;
+      case "kuerzel":
+        return (
+          <select disabled={readOnly} value={z.t.bauteilKuerzel ?? ""} onChange={e => taskAendern(z.t.id, { bauteilKuerzel: e.target.value || undefined })}
+            style={{ width: "90%", fontSize: 11, padding: "3px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }}>
+            <option value="">–</option>
+            {kuerzelListe.map(k => <option key={k} value={k}>{k}</option>)}
+          </select>
+        );
+      case "mengen": {
+        const gewerke = z.t.bauteilKuerzel ? gewerkeFuerKuerzel(stammdaten, z.t.bauteilKuerzel) : [];
+        return (
+          <div style={{ display: "grid", gridTemplateColumns: gewerke.length >= 3 ? "1fr 1fr" : "1fr", columnGap: 10, rowGap: 3, minWidth: 0, paddingRight: 6 }}>
+            {gewerke.map(g => {
+              const quelle = z.t.mengenQuelle?.[g.key];
+              const info = z.t.mengenInfo?.[g.key];
+              const farbe = quelle === "auto" ? "var(--tc-blue)" : quelle === "fehler" ? "var(--tc-red)" : "#333";
+              return (
+                <label key={g.key} title={info ? `${g.label} [${g.einheit}] — ${info}` : `${g.label} [${g.einheit}]`} style={{ fontSize: 9, color: "var(--tc-text-3)", display: "flex", alignItems: "center", gap: 3, minWidth: 0 }}>
+                  <span style={{ minWidth: 50, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.label}{quelle === "fehler" && " ⚠"}</span>
+                  <input type="number" className="no-spinner" disabled={readOnly} value={z.t.mengen?.[g.key] ?? ""}
+                    onChange={e => mengeAendern(z.t, g.key, e.target.value === "" ? null : Number(e.target.value))}
+                    style={{ width: 50, minWidth: 0, flex: 1, fontSize: 10, padding: "2px 4px", border: `1px solid ${quelle === "fehler" ? "var(--tc-red)" : "#d4dce4"}`, fontFamily: "inherit", color: farbe, fontWeight: quelle ? 600 : 400 }} />
+                </label>
+              );
+            })}
+            {gewerke.length === 0 && <span style={{ fontSize: 9, color: "var(--tc-text-3)" }}>Kürzel wählen…</span>}
+          </div>
+        );
+      }
+      case "geplant":
+        return <span style={{ fontSize: 11, color: "#888", paddingTop: 3 }}>{z.geplant}d</span>;
+      case "berechnet":
+        return (
+          <span style={{ fontSize: 11, fontWeight: 600, color: z.abweichung ? "#d9622b" : "#333", paddingTop: 3 }}
+            title={z.abweichung ? "Deutliche Abweichung von der geplanten Dauer" : ""}>
+            {z.berechnet}d
+          </span>
+        );
+      case "differenz": {
+        const farbe = z.differenz > 0 ? "#d9622b" : z.differenz < 0 ? "#2e8b57" : "#888";
+        return <span style={{ fontSize: 11, fontWeight: 600, color: farbe, paddingTop: 3 }}>{z.differenz > 0 ? "+" : ""}{z.differenz}d</span>;
+      }
+      case "kranbereich":
+        return (
+          <input type="text" disabled={readOnly} value={z.t.kranbereich ?? ""} onChange={e => taskAendern(z.t.id, { kranbereich: e.target.value || undefined })}
+            style={{ width: "90%", fontSize: 10, padding: "2px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
+        );
+    }
+  }
+
   return (
     <div style={{ padding: 14, fontSize: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 10 }}>
+        {suchOffen ? (
+          <div style={{ flex: 1, maxWidth: 260, display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ fontSize: 13, color: "#8a9baa", flexShrink: 0, cursor: "pointer" }}
+              onClick={() => { setSuchOffen(false); setSuchQuery(""); }}>✕</span>
+            <input autoFocus placeholder="Task suchen…" value={suchQuery}
+              onChange={e => setSuchQuery(e.target.value)}
+              style={{ flex: 1, padding: "3px 6px", fontSize: 11, border: "1px solid #d4dce4", fontFamily: "inherit", outline: "none" }}
+              onKeyDown={e => { if (e.key === "Escape") { setSuchOffen(false); setSuchQuery(""); } }} />
+          </div>
+        ) : (
+          <button className="tc-btn-secondary" style={{ fontSize: 12, padding: "2px 6px" }}
+            onClick={() => setSuchOffen(true)} title="Tasks suchen">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#333" strokeWidth="1.8"><circle cx="6.5" cy="6.5" r="5" /><line x1="10.2" y1="10.2" x2="14.5" y2="14.5" /></svg>
+          </button>
+        )}
+      </div>
+
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <StatTile label="Total Abweichung" wert={`${gesamtAbweichungTage > 0 ? "+" : ""}${gesamtAbweichungTage}d`} status={gesamtAbweichungTage !== 0 ? "warning" : "good"} sub="Berechnet − Geplant, alle Tasks" />
         <StatTile label="Tasks mit Kürzel" wert={`${tasksMitKuerzel}/${zeilen.length}`} />
         <StatTile label="Tasks mit Abweichung" wert={String(anzahlAbweichung)} status={anzahlAbweichung > 0 ? "warning" : "good"} />
         <StatTile label="Ø Abweichung" wert={`${durchschnAbweichungProzent.toFixed(0)}%`} />
@@ -204,83 +427,30 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
           {mengenErgebnis && <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>{mengenErgebnis}</span>}
         </div>
       )}
-      <div style={{ display: "flex", gap: 12, fontSize: 9, color: "var(--tc-text-3)", marginBottom: 10 }}>
+      <div style={{ display: "flex", gap: 12, fontSize: 9, color: "var(--tc-text-3)", marginBottom: 6 }}>
         <span><span style={{ color: "var(--tc-blue)", fontWeight: 700 }}>■</span> automatisch aus Formel</span>
         <span><span style={{ color: "#333", fontWeight: 700 }}>■</span> manuell angepasst</span>
         <span><span style={{ color: "var(--tc-red)", fontWeight: 700 }}>■</span> Fehler / fehlende Attribute</span>
       </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+        <span style={{ fontSize: 9, color: "var(--tc-text-3)", fontWeight: 600 }}>Spalten:</span>
+        <button className={spaltenSichtbar.differenz ? "tc-btn-primary" : "tc-btn-secondary"} style={{ fontSize: 10, padding: "3px 8px" }}
+          onClick={() => setSpaltenSichtbar(s => ({ ...s, differenz: !s.differenz }))}>Differenz</button>
+        <button className={spaltenSichtbar.kranbereich ? "tc-btn-primary" : "tc-btn-secondary"} style={{ fontSize: 10, padding: "3px 8px" }}
+          onClick={() => setSpaltenSichtbar(s => ({ ...s, kranbereich: !s.kranbereich }))}>Kranbereich</button>
+      </div>
 
       <div style={{ overflowX: "auto", overflowY: "visible" }}>
         <div style={{ display: "grid", gridTemplateColumns: gridTemplate, fontSize: 9, color: "var(--tc-text-3)", fontWeight: 600, padding: "4px 0", position: "sticky", top: 0, background: "#fff", zIndex: 3 }}>
-          {SPALTEN.map((s, i) => (
-            <div key={s} style={{
-              position: "relative", textAlign: s === "geplant" || s === "berechnet" ? "right" : "left",
-              paddingRight: s === "geplant" || s === "berechnet" ? 4 : 0, paddingLeft: i > 0 ? 8 : 0,
-              overflow: "hidden", whiteSpace: "nowrap",
-            }}>
-              {SPALTEN_LABEL[s]}
-              {i < SPALTEN.length - 1 && (
-                <div className="col-resize-handle" onMouseDown={e => startResize(s, e)}
-                  style={{ position: "absolute", top: -4, right: -3, width: 7, height: 18, cursor: "col-resize", zIndex: 2 }} />
-              )}
-            </div>
-          ))}
+          {sichtbareSpalten.map((s, i) => renderHeaderZelle(s, i))}
         </div>
-        {zeilen.map(({ t, geplant, berechnet, abweichung }) => {
-          const gewerke = t.bauteilKuerzel ? gewerkeFuerKuerzel(stammdaten, t.bauteilKuerzel) : [];
-          const wbsOffen = wbsOffenIds.has(t.id);
-          return (
-            <div key={t.id} style={{ borderBottom: "1px solid var(--tc-border-light)" }}>
-              <div style={{ display: "grid", gridTemplateColumns: gridTemplate, alignItems: "start", padding: "6px 0" }}>
-                <span style={{ fontSize: 10, color: "#666" }}>{nummern.get(t.id)}</span>
-                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 6 }}>{t.name}</span>
-                <select disabled={readOnly} value={t.bauteilKuerzel ?? ""} onChange={e => taskAendern(t.id, { bauteilKuerzel: e.target.value || undefined })}
-                  style={{ width: "90%", fontSize: 11, padding: "3px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }}>
-                  <option value="">–</option>
-                  {kuerzelListe.map(k => <option key={k} value={k}>{k}</option>)}
-                </select>
-                <div style={{
-                  display: "grid", gridTemplateColumns: gewerke.length >= 3 ? "1fr 1fr" : "1fr",
-                  columnGap: 10, rowGap: 3, minWidth: 0, paddingRight: 6,
-                }}>
-                  {gewerke.map(g => {
-                    const quelle = t.mengenQuelle?.[g.key];
-                    const info = t.mengenInfo?.[g.key];
-                    const farbe = quelle === "auto" ? "var(--tc-blue)" : quelle === "fehler" ? "var(--tc-red)" : "#333";
-                    return (
-                    <label key={g.key} title={info ? `${g.label} [${g.einheit}] — ${info}` : `${g.label} [${g.einheit}]`} style={{ fontSize: 9, color: "var(--tc-text-3)", display: "flex", alignItems: "center", gap: 3, minWidth: 0 }}>
-                      <span style={{ minWidth: 50, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.label}{quelle === "fehler" && " ⚠"}</span>
-                      <input type="number" className="no-spinner" disabled={readOnly} value={t.mengen?.[g.key] ?? ""}
-                        onChange={e => mengeAendern(t, g.key, e.target.value === "" ? null : Number(e.target.value))}
-                        style={{ width: 50, minWidth: 0, flex: 1, fontSize: 10, padding: "2px 4px", border: `1px solid ${quelle === "fehler" ? "var(--tc-red)" : "#d4dce4"}`, fontFamily: "inherit", color: farbe, fontWeight: quelle ? 600 : 400 }} />
-                    </label>
-                    );
-                  })}
-                  {gewerke.length === 0 && <span style={{ fontSize: 9, color: "var(--tc-text-3)" }}>Kürzel wählen…</span>}
-                </div>
-                <span style={{ textAlign: "right", fontSize: 11, color: "#888", paddingRight: 4, paddingTop: 3 }}>{geplant}d</span>
-                <span style={{ textAlign: "right", fontSize: 11, fontWeight: 600, color: abweichung ? "#d9622b" : "#333", paddingRight: 4, paddingTop: 3 }}
-                  title={abweichung ? "Deutliche Abweichung von der geplanten Dauer" : ""}>
-                  {berechnet}d
-                </span>
-                <span style={{ textAlign: "center", cursor: "pointer", fontSize: 9, color: "var(--tc-text-3)", paddingTop: 4 }}
-                  title="Kranbereich"
-                  onClick={() => setWbsOffenIds(prev => { const n = new Set(prev); if (n.has(t.id)) n.delete(t.id); else n.add(t.id); return n; })}>
-                  {wbsOffen ? "▲" : "Kran"}
-                </span>
-              </div>
-              {wbsOffen && (
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "0 0 8px 30px" }}>
-                  <label style={{ fontSize: 9, color: "var(--tc-text-3)", display: "flex", alignItems: "center", gap: 3 }}>
-                    Kranbereich
-                    <input type="text" disabled={readOnly} value={t.kranbereich ?? ""} onChange={e => taskAendern(t.id, { kranbereich: e.target.value || undefined })}
-                      style={{ width: 90, fontSize: 10, padding: "2px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
-                  </label>
-                </div>
-              )}
-            </div>
-          );
-        })}
+        {zeilenGefiltert.map(z => (
+          <div key={z.t.id} style={{ display: "grid", gridTemplateColumns: gridTemplate, alignItems: "start", padding: "6px 0", borderBottom: "1px solid var(--tc-border-light)" }}>
+            {sichtbareSpalten.map((s, i) => (
+              <div key={s} style={{ minWidth: 0, paddingLeft: i > 0 ? 8 : 0 }}>{renderZelle(s, z)}</div>
+            ))}
+          </div>
+        ))}
       </div>
     </div>
   );
