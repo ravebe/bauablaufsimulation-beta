@@ -16,7 +16,6 @@ interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; re
 // Grid-Spalten der Tabelle — feste Breiten statt Flex, damit kein Inhalt nachfolgende Spalten
 // verschiebt. Verstellbar per Drag, siehe startResize. Alle Zellen top-ausgerichtet (alignItems:
 // "start"), damit sie in einer Flucht stehen, auch wenn die Mengen-Zelle mehrzeilig ist.
-// "differenz" und "kranbereich" sind optionale, einblendbare Spalten (siehe spaltenSichtbar).
 const ALLE_SPALTEN = ["nr", "task", "kuerzel", "mengen", "geplant", "berechnet", "differenz", "kranbereich"] as const;
 type Spalte = typeof ALLE_SPALTEN[number];
 const SPALTEN_LABEL: Record<Spalte, string> = {
@@ -25,7 +24,6 @@ const SPALTEN_LABEL: Record<Spalte, string> = {
 };
 const DEFAULT_COL_W: Record<Spalte, number> = { nr: 30, task: 220, kuerzel: 64, mengen: 260, geplant: 76, berechnet: 88, differenz: 60, kranbereich: 110 };
 const LS_COLW = "4d-kalk-colw";
-const LS_SPALTEN = "4d-kalk-opt-spalten";
 
 // Spalten mit Sortier-/Filterfunktion im Header (Klick auf Titel = sortieren, ▾ = Filter-Popover).
 const SORTIERBARE_SPALTEN = ["task", "kuerzel", "geplant", "berechnet"] as const;
@@ -65,17 +63,6 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     try { localStorage.setItem(lsColwKey, JSON.stringify(colW)); } catch { /* ignore */ }
   }, [colW, lsColwKey]);
 
-  const lsSpaltenKey = nsKey(LS_SPALTEN, projectId);
-  const [spaltenSichtbar, setSpaltenSichtbar] = useState<{ differenz: boolean; kranbereich: boolean }>(() => {
-    try {
-      const raw = localStorage.getItem(lsSpaltenKey);
-      return raw ? { differenz: false, kranbereich: false, ...JSON.parse(raw) } : { differenz: false, kranbereich: false };
-    } catch { return { differenz: false, kranbereich: false }; }
-  });
-  useEffect(() => {
-    try { localStorage.setItem(lsSpaltenKey, JSON.stringify(spaltenSichtbar)); } catch { /* ignore */ }
-  }, [spaltenSichtbar, lsSpaltenKey]);
-
   const { eingeklappt, toggle: toggleEingeklappt } = useEingeklappt(projectId, "kalkulation");
 
   function startResize(spalte: Spalte, e: React.MouseEvent) {
@@ -86,10 +73,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp);
   }
 
-  const sichtbareSpalten = ALLE_SPALTEN.filter(s =>
-    (s !== "differenz" || spaltenSichtbar.differenz) && (s !== "kranbereich" || spaltenSichtbar.kranbereich)
-  );
-  const gridTemplate = sichtbareSpalten.map(s => `${colW[s]}px`).join(" ");
+  const gridTemplate = ALLE_SPALTEN.map(s => `${colW[s]}px`).join(" ");
 
   if (!sim) return <div style={{ padding: 14, fontSize: 12, color: "var(--tc-text-3)" }}>Kein aktives Projekt ausgewählt</div>;
 
@@ -289,6 +273,12 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
             ▾
           </span>
         )}
+        {spalte === "task" && (
+          <span onClick={() => setSuchOffen(o => !o)} title="Tasks suchen"
+            style={{ cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", color: suchQuery ? "var(--tc-blue)" : "var(--tc-text-3)" }}>
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="6.5" cy="6.5" r="5" /><line x1="10.2" y1="10.2" x2="14.5" y2="14.5" /></svg>
+          </span>
+        )}
         {sortSpalteTyp && filterMenuOffen === sortSpalteTyp && (
           <>
             <div style={{ position: "fixed", inset: 0, zIndex: 90 }} onClick={() => setFilterMenuOffen(null)} />
@@ -310,7 +300,20 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
             </div>
           </>
         )}
-        {idx < sichtbareSpalten.length - 1 && (
+        {spalte === "task" && suchOffen && (
+          <>
+            <div style={{ position: "fixed", inset: 0, zIndex: 90 }} onClick={() => setSuchOffen(false)} />
+            <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 2, background: "#fff", border: "1px solid #d4dce4", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, padding: 4, display: "flex", alignItems: "center", gap: 4 }}>
+              <input autoFocus placeholder="Task suchen…" value={suchQuery} onChange={e => setSuchQuery(e.target.value)}
+                style={{ width: 160, padding: "3px 6px", fontSize: 11, border: "1px solid #d4dce4", fontFamily: "inherit", outline: "none" }}
+                onKeyDown={e => { if (e.key === "Escape") setSuchOffen(false); }} />
+              {suchQuery && (
+                <span style={{ cursor: "pointer", fontSize: 12, color: "#8a9baa", flexShrink: 0 }} onClick={() => setSuchQuery("")}>✕</span>
+              )}
+            </div>
+          </>
+        )}
+        {idx < ALLE_SPALTEN.length - 1 && (
           <div className="col-resize-handle" onMouseDown={e => startResize(spalte, e)}
             style={{ position: "absolute", top: -4, right: -3, width: 7, height: 18, cursor: "col-resize", zIndex: 2 }} />
         )}
@@ -376,24 +379,6 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
 
   return (
     <div style={{ padding: 14, fontSize: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 10 }}>
-        {suchOffen ? (
-          <div style={{ flex: 1, maxWidth: 260, display: "flex", alignItems: "center", gap: 4 }}>
-            <span style={{ fontSize: 13, color: "#8a9baa", flexShrink: 0, cursor: "pointer" }}
-              onClick={() => { setSuchOffen(false); setSuchQuery(""); }}>✕</span>
-            <input autoFocus placeholder="Task suchen…" value={suchQuery}
-              onChange={e => setSuchQuery(e.target.value)}
-              style={{ flex: 1, padding: "3px 6px", fontSize: 11, border: "1px solid #d4dce4", fontFamily: "inherit", outline: "none" }}
-              onKeyDown={e => { if (e.key === "Escape") { setSuchOffen(false); setSuchQuery(""); } }} />
-          </div>
-        ) : (
-          <button className="tc-btn-secondary" style={{ fontSize: 12, padding: "2px 6px" }}
-            onClick={() => setSuchOffen(true)} title="Tasks suchen">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#333" strokeWidth="1.8"><circle cx="6.5" cy="6.5" r="5" /><line x1="10.2" y1="10.2" x2="14.5" y2="14.5" /></svg>
-          </button>
-        )}
-      </div>
-
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
         <StatTile label="Total Abweichung" wert={`${gesamtAbweichungTage > 0 ? "+" : ""}${gesamtAbweichungTage}d`} status={gesamtAbweichungTage !== 0 ? "warning" : "good"} sub="Berechnet − Geplant, alle Tasks" />
         <StatTile label="Tasks mit Kürzel" wert={`${tasksMitKuerzel}/${zeilen.length}`} />
@@ -432,21 +417,13 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
         <span><span style={{ color: "#333", fontWeight: 700 }}>■</span> manuell angepasst</span>
         <span><span style={{ color: "var(--tc-red)", fontWeight: 700 }}>■</span> Fehler / fehlende Attribute</span>
       </div>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
-        <span style={{ fontSize: 9, color: "var(--tc-text-3)", fontWeight: 600 }}>Spalten:</span>
-        <button className={spaltenSichtbar.differenz ? "tc-btn-primary" : "tc-btn-secondary"} style={{ fontSize: 10, padding: "3px 8px" }}
-          onClick={() => setSpaltenSichtbar(s => ({ ...s, differenz: !s.differenz }))}>Differenz</button>
-        <button className={spaltenSichtbar.kranbereich ? "tc-btn-primary" : "tc-btn-secondary"} style={{ fontSize: 10, padding: "3px 8px" }}
-          onClick={() => setSpaltenSichtbar(s => ({ ...s, kranbereich: !s.kranbereich }))}>Kranbereich</button>
-      </div>
-
       <div style={{ overflowX: "auto", overflowY: "visible" }}>
         <div style={{ display: "grid", gridTemplateColumns: gridTemplate, fontSize: 9, color: "var(--tc-text-3)", fontWeight: 600, padding: "4px 0", position: "sticky", top: 0, background: "#fff", zIndex: 3 }}>
-          {sichtbareSpalten.map((s, i) => renderHeaderZelle(s, i))}
+          {ALLE_SPALTEN.map((s, i) => renderHeaderZelle(s, i))}
         </div>
         {zeilenGefiltert.map(z => (
           <div key={z.t.id} style={{ display: "grid", gridTemplateColumns: gridTemplate, alignItems: "start", padding: "6px 0", borderBottom: "1px solid var(--tc-border-light)" }}>
-            {sichtbareSpalten.map((s, i) => (
+            {ALLE_SPALTEN.map((s, i) => (
               <div key={s} style={{ minWidth: 0, paddingLeft: i > 0 ? 8 : 0 }}>{renderZelle(s, z)}</div>
             ))}
           </div>
