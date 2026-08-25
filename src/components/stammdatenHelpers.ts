@@ -50,6 +50,119 @@ export function parseStammdatenJson(text: string): Stammdaten {
   };
 }
 
+const CSV_HEADER = ["Gewerk-Schlüssel", "Gewerk", "Einheit", "Kranpflichtig", "Kürzel", "Bezeichnung", "LW [h/Einheit]", "Personen", "CHF/Einheit", "Formel", "Öffnungen ausschließen"];
+
+function csvZelle(v: string): string {
+  return /[;"\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+}
+
+/** Stammdaten als CSV-Text (Semikolon-getrennt, UTF-8-BOM für Excel) — eine Zeile je Kürzel, plus
+ *  eine Leerzeile für Kategorien ohne Kürzel, damit sie beim Reimport erhalten bleiben. Die Spalte
+ *  "Gewerk-Schlüssel" referenziert intern die Mengen in den Tasks (task.mengen[gewerk.key]) und
+ *  sollte beim Bearbeiten in Excel nicht verändert werden — siehe parseStammdatenCsv(). */
+export function stammdatenAlsCsv(s: Stammdaten): string {
+  const zeilen: string[][] = [CSV_HEADER];
+  for (const g of s.gewerke) {
+    if (g.raten.length === 0) {
+      zeilen.push([g.key, g.label, g.einheit, g.kranpflichtig ? "ja" : "nein", "", "", "", "", "", "", ""]);
+      continue;
+    }
+    for (const r of g.raten) {
+      zeilen.push([
+        g.key, g.label, g.einheit, g.kranpflichtig ? "ja" : "nein",
+        r.kuerzel, r.bezeichnung,
+        r.leistungswertHProEinheit != null ? String(r.leistungswertHProEinheit) : "",
+        String(r.anzahlPersonen),
+        r.chfProEinheit != null ? String(r.chfProEinheit) : "",
+        r.formel ?? "",
+        r.oeffnungenAusschliessen ? "ja" : "nein",
+      ]);
+    }
+  }
+  return "﻿" + zeilen.map(z => z.map(csvZelle).join(";")).join("\r\n");
+}
+
+/** Minimaler RFC4180-Parser (Semikolon statt Komma) — versteht Anführungszeichen mit eingebetteten
+ *  Semikolons/Zeilenumbrüchen/escapten „"" (wie sie Excel beim Speichern erzeugt). */
+function parseCsvZeilen(text: string): string[][] {
+  const zeilen: string[][] = [];
+  let zeile: string[] = [];
+  let feld = "";
+  let inQuotes = false;
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { feld += '"'; i += 2; continue; }
+        inQuotes = false; i++; continue;
+      }
+      feld += c; i++; continue;
+    }
+    if (c === '"') { inQuotes = true; i++; continue; }
+    if (c === ";") { zeile.push(feld); feld = ""; i++; continue; }
+    if (c === "\r") { i++; continue; }
+    if (c === "\n") { zeile.push(feld); zeilen.push(zeile); zeile = []; feld = ""; i++; continue; }
+    feld += c; i++;
+  }
+  if (feld !== "" || zeile.length > 0) { zeile.push(feld); zeilen.push(zeile); }
+  return zeilen.filter(z => !(z.length === 1 && z[0].trim() === ""));
+}
+
+/** Parst eine (in Excel bearbeitete) Stammdaten-CSV-Datei — ersetzt nur die Kategorien/Raten,
+ *  Arbeitszeit/Umsatz/Öffnungsfilter bleiben von `bestehende` erhalten. Eine leere "Gewerk-Schlüssel"-
+ *  Spalte wird über den Gewerk-Namen einem vorhandenen Gewerk zugeordnet, sonst neu angelegt — damit
+ *  bereits erfasste Mengen (task.mengen[gewerk.key]) beim Reimport nicht verwaist. */
+export function parseStammdatenCsv(text: string, bestehende: Stammdaten): Stammdaten {
+  const zeilen = parseCsvZeilen(text.replace(/^﻿/, ""));
+  if (zeilen.length === 0) throw new Error("Leere CSV-Datei");
+  const header = zeilen[0];
+  const idx = (name: string) => header.findIndex(h => h.trim().toLowerCase() === name.toLowerCase());
+  const iKey = idx("Gewerk-Schlüssel"), iLabel = idx("Gewerk"), iEinheit = idx("Einheit"), iKran = idx("Kranpflichtig"),
+    iKuerzel = idx("Kürzel"), iBez = idx("Bezeichnung"), iLw = idx("LW [h/Einheit]"), iPers = idx("Personen"),
+    iChf = idx("CHF/Einheit"), iFormel = idx("Formel"), iOeff = idx("Öffnungen ausschließen");
+  if (iLabel === -1 || iKuerzel === -1) throw new Error('Ungültiges CSV-Format — Spalten "Gewerk" und "Kürzel" erwartet');
+
+  const parseNum = (s: string): number | null => {
+    const t = s.trim().replace(",", ".");
+    if (!t) return null;
+    const n = Number(t);
+    return isNaN(n) ? null : n;
+  };
+  const parseBool = (s: string) => /^(ja|true|1|x|wahr)$/i.test(s.trim());
+
+  const gewerkeMap = new Map<string, Gewerk>();
+  const keyNachLabel = new Map(bestehende.gewerke.map(g => [g.label.trim().toLowerCase(), g.key]));
+  let neuZaehler = 0;
+  for (let i = 1; i < zeilen.length; i++) {
+    const z = zeilen[i];
+    if (z.every(c => !c.trim())) continue;
+    const label = (z[iLabel] ?? "").trim();
+    if (!label) continue;
+    let key = iKey !== -1 ? (z[iKey] ?? "").trim() : "";
+    if (!key) key = keyNachLabel.get(label.toLowerCase()) ?? `eigene_${Date.now()}_${neuZaehler++}`;
+    let gewerk = gewerkeMap.get(key);
+    if (!gewerk) {
+      gewerk = { key, label, einheit: (z[iEinheit] ?? "").trim(), raten: [] };
+      if (iKran !== -1 && parseBool(z[iKran] ?? "")) gewerk.kranpflichtig = true;
+      gewerkeMap.set(key, gewerk);
+    }
+    const kuerzel = (z[iKuerzel] ?? "").trim();
+    if (!kuerzel) continue;
+    gewerk.raten.push({
+      kuerzel,
+      bezeichnung: (z[iBez] ?? "").trim(),
+      leistungswertHProEinheit: iLw !== -1 ? parseNum(z[iLw] ?? "") : null,
+      anzahlPersonen: (iPers !== -1 ? parseNum(z[iPers] ?? "") : null) ?? 1,
+      chfProEinheit: iChf !== -1 ? parseNum(z[iChf] ?? "") : null,
+      formel: iFormel !== -1 && (z[iFormel] ?? "").trim() ? z[iFormel].trim() : undefined,
+      oeffnungenAusschliessen: iOeff !== -1 ? parseBool(z[iOeff] ?? "") : undefined,
+    });
+  }
+  if (gewerkeMap.size === 0) throw new Error("Keine gültigen Zeilen in der CSV-Datei gefunden");
+  return { ...bestehende, gewerke: [...gewerkeMap.values()] };
+}
+
 /** Prüft anhand des globalen Öffnungsfilters, ob ein Bauteil (dessen flache Pset||Property-Attribute)
  *  als Öffnung gilt — Vergleich getrimmt/case-insensitiv, da IFC-Werte je nach Exporter unterschiedlich
  *  geschrieben sind (z.B. "Opening" vs. "opening"). */

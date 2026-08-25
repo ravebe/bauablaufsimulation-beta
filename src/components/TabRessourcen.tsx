@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import type { SimProjekt } from "../types";
 import { istGruppe, nsKey } from "../types";
 import type { Gewerk, GewerkeKatalog, Rate, Stammdaten } from "./stammdatenHelpers";
-import { LEERE_STAMMDATEN, GEWERKE_KATALOGE, alleKuerzel, stammdatenAlsJson, parseStammdatenJson } from "./stammdatenHelpers";
+import { LEERE_STAMMDATEN, GEWERKE_KATALOGE, alleKuerzel, stammdatenAlsJson, parseStammdatenJson, stammdatenAlsCsv, parseStammdatenCsv } from "./stammdatenHelpers";
 import { StatTile } from "./cockpitCharts";
 import type { ApiInstance } from "../hooks/useApi";
 import { ladeAttributListe, ladeObjektAttribute, attrItemsAusWerten, keyZuAttrItem, type AttrItem } from "./modelHelpers";
@@ -32,6 +32,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   const [ladeErgebnis, setLadeErgebnis] = useState<string | null>(null);
   const [importFehler, setImportFehler] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const importCsvInputRef = useRef<HTMLInputElement>(null);
   const [neueKategorieName, setNeueKategorieName] = useState("");
   const [attrListe, setAttrListe] = useState<AttrItem[] | null>(null);
   const [attrLaedt, setAttrLaedt] = useState(false);
@@ -115,6 +116,31 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
       setImportFehler(e instanceof Error ? e.message : "Import fehlgeschlagen");
     } finally {
       if (importInputRef.current) importInputRef.current.value = "";
+    }
+  }
+
+  // CSV-Export/-Import — zum manuellen Bearbeiten der Raten (Kürzel/LW/Personen/CHF/Formel) in Excel.
+  // Anders als der JSON-Export ersetzt der CSV-Import nur die Kategorien/Raten, Arbeitszeit/Umsatz/
+  // Öffnungsfilter bleiben unverändert (siehe parseStammdatenCsv in stammdatenHelpers.ts).
+  function stammdatenExportierenCsv() {
+    const blob = new Blob([stammdatenAlsCsv(stammdaten)], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `${sim!.name}_Ressourcen.csv`; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function stammdatenImportierenCsv(file: File) {
+    setImportFehler(null);
+    try {
+      const importiert = parseStammdatenCsv(await file.text(), stammdaten);
+      if (stammdaten.gewerke.length > 0 &&
+        !confirm(`Bestehende Ressourcen (${stammdaten.gewerke.length} Kategorien) werden durch den CSV-Import ersetzt. Fortfahren?`)) return;
+      speichern(importiert);
+    } catch (e) {
+      setImportFehler(e instanceof Error ? e.message : "CSV-Import fehlgeschlagen");
+    } finally {
+      if (importCsvInputRef.current) importCsvInputRef.current.value = "";
     }
   }
 
@@ -269,16 +295,30 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
           <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "3px 8px" }}
             disabled={stammdaten.gewerke.length === 0}
-            onClick={stammdatenExportieren} title="Ressourcen (alle Kategorien, Kürzel, Leistungswerte) als Datei exportieren — z.B. für ein anderes Trimble-Connect-Projekt">
-            ⭳ Export
+            onClick={stammdatenExportieren} title="Ressourcen (alle Kategorien, Kürzel, Leistungswerte) als JSON-Datei exportieren — z.B. für ein anderes Trimble-Connect-Projekt">
+            ⭳ JSON
           </button>
           {!readOnly && (<>
             <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "3px 8px" }}
-              onClick={() => importInputRef.current?.click()} title="Ressourcen aus einer zuvor exportierten Datei importieren">
-              ⭱ Import
+              onClick={() => importInputRef.current?.click()} title="Ressourcen aus einer zuvor exportierten JSON-Datei importieren">
+              ⭱ JSON
             </button>
             <input ref={importInputRef} type="file" accept=".json" style={{ display: "none" }}
               onChange={e => e.target.files?.[0] && stammdatenImportieren(e.target.files[0])} />
+          </>)}
+          <span style={{ width: 1, alignSelf: "stretch", background: "var(--tc-border-light)", margin: "0 2px" }} />
+          <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "3px 8px" }}
+            disabled={stammdaten.gewerke.length === 0}
+            onClick={stammdatenExportierenCsv} title="Raten (Kürzel/LW/Personen/CHF/Formel) als CSV exportieren — in Excel bearbeitbar, danach wieder importierbar. Spalte „Gewerk-Schlüssel“ bitte nicht ändern.">
+            ⭳ CSV
+          </button>
+          {!readOnly && (<>
+            <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "3px 8px" }}
+              onClick={() => importCsvInputRef.current?.click()} title="Raten aus einer zuvor exportierten (in Excel bearbeiteten) CSV-Datei importieren">
+              ⭱ CSV
+            </button>
+            <input ref={importCsvInputRef} type="file" accept=".csv" style={{ display: "none" }}
+              onChange={e => e.target.files?.[0] && stammdatenImportierenCsv(e.target.files[0])} />
           </>)}
         </div>
       </div>
