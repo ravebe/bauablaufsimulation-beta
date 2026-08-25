@@ -1,6 +1,7 @@
 // stammdatenHelpers.ts — Kalkulations-Stammdaten (Leistungswerte/Personal je Bauteil-Kürzel) und
 // die Menge→Tage-Formel aus dem AVOR-Tool (Grundlage für Kalkulation/Ressourcen/Kosten-Tabs).
 import type { Task } from "../types";
+import { istGruppe } from "../types";
 
 export interface Rate {
   kuerzel: string;
@@ -50,21 +51,38 @@ export function parseStammdatenJson(text: string): Stammdaten {
   };
 }
 
-const CSV_HEADER = ["Gewerk-Schlüssel", "Gewerk", "Einheit", "Kranpflichtig", "Kürzel", "Bezeichnung", "LW [h/Einheit]", "Personen", "CHF/Einheit", "Formel", "Öffnungen ausschließen"];
+const CSV_HEADER = ["Gewerk-Schlüssel", "Gewerk", "Einheit", "Kranpflichtig", "Kürzel", "Bezeichnung", "LW [h/Einheit]", "Personen", "CHF/Einheit", "Formel", "Öffnungen ausschließen", "Menge Ist"];
 
 function csvZelle(v: string): string {
   return /[;"\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
 }
 
+/** Aktuelle Mengen-Ist-Summe eines Kürzels für ein Gewerk aus den Tasks — dieselbe Logik wie die
+ *  "Menge Ist"-Spalte in Tab Ressourcen. Nur zur Information beim CSV-Export, wird beim Reimport
+ *  ignoriert (siehe parseStammdatenCsv) — die App berechnet Mengen selbst aus den Tasks/Formeln. */
+function mengeIstText(kuerzel: string, gewerkKey: string, einheit: string, tasks: Task[]): string {
+  const tasksMitKuerzel = tasks.filter((t, i) => !t.isGroup && !istGruppe(tasks, i) && t.bauteilKuerzel === kuerzel);
+  if (tasksMitKuerzel.length === 0) return "";
+  let summe = 0, problem = false;
+  for (const t of tasksMitKuerzel) {
+    const menge = t.mengen?.[gewerkKey];
+    const quelle = t.mengenQuelle?.[gewerkKey];
+    if (quelle === "fehler" || menge === undefined || menge === null) problem = true;
+    else summe += menge;
+  }
+  return `${summe.toLocaleString("de-CH", { maximumFractionDigits: 2 })} ${einheit}${problem ? " (unvollständig)" : ""}`.trim();
+}
+
 /** Stammdaten als CSV-Text (Semikolon-getrennt, UTF-8-BOM für Excel) — eine Zeile je Kürzel, plus
  *  eine Leerzeile für Kategorien ohne Kürzel, damit sie beim Reimport erhalten bleiben. Die Spalte
  *  "Gewerk-Schlüssel" referenziert intern die Mengen in den Tasks (task.mengen[gewerk.key]) und
- *  sollte beim Bearbeiten in Excel nicht verändert werden — siehe parseStammdatenCsv(). */
-export function stammdatenAlsCsv(s: Stammdaten): string {
+ *  sollte beim Bearbeiten in Excel nicht verändert werden — siehe parseStammdatenCsv(). Die Spalte
+ *  "Menge Ist" ist nur zur Information (aktueller Stand aus den Tasks) und wird beim Import ignoriert. */
+export function stammdatenAlsCsv(s: Stammdaten, tasks: Task[]): string {
   const zeilen: string[][] = [CSV_HEADER];
   for (const g of s.gewerke) {
     if (g.raten.length === 0) {
-      zeilen.push([g.key, g.label, g.einheit, g.kranpflichtig ? "ja" : "nein", "", "", "", "", "", "", ""]);
+      zeilen.push([g.key, g.label, g.einheit, g.kranpflichtig ? "ja" : "nein", "", "", "", "", "", "", "", ""]);
       continue;
     }
     for (const r of g.raten) {
@@ -76,6 +94,7 @@ export function stammdatenAlsCsv(s: Stammdaten): string {
         r.chfProEinheit != null ? String(r.chfProEinheit) : "",
         r.formel ?? "",
         r.oeffnungenAusschliessen ? "ja" : "nein",
+        mengeIstText(r.kuerzel, g.key, g.einheit, tasks),
       ]);
     }
   }
@@ -112,7 +131,9 @@ function parseCsvZeilen(text: string): string[][] {
 /** Parst eine (in Excel bearbeitete) Stammdaten-CSV-Datei — ersetzt nur die Kategorien/Raten,
  *  Arbeitszeit/Umsatz/Öffnungsfilter bleiben von `bestehende` erhalten. Eine leere "Gewerk-Schlüssel"-
  *  Spalte wird über den Gewerk-Namen einem vorhandenen Gewerk zugeordnet, sonst neu angelegt — damit
- *  bereits erfasste Mengen (task.mengen[gewerk.key]) beim Reimport nicht verwaist. */
+ *  bereits erfasste Mengen (task.mengen[gewerk.key]) beim Reimport nicht verwaist. Die Export-Spalte
+ *  "Menge Ist" wird bewusst nicht gelesen — sie ist reine Information, die App berechnet Mengen immer
+ *  selbst aus Tasks/Formeln (Tab Kalkulation), ein Reimport würde sie sonst nur veralten lassen. */
 export function parseStammdatenCsv(text: string, bestehende: Stammdaten): Stammdaten {
   const zeilen = parseCsvZeilen(text.replace(/^﻿/, ""));
   if (zeilen.length === 0) throw new Error("Leere CSV-Datei");

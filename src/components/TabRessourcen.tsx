@@ -137,7 +137,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   // Anders als der JSON-Export ersetzt der CSV-Import nur die Kategorien/Raten, Arbeitszeit/Umsatz/
   // Öffnungsfilter bleiben unverändert (siehe parseStammdatenCsv in stammdatenHelpers.ts).
   function stammdatenExportierenCsv() {
-    const blob = new Blob([stammdatenAlsCsv(stammdaten)], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob([stammdatenAlsCsv(stammdaten, sim!.tasks)], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = `${sim!.name}_Ressourcen.csv`; a.click();
