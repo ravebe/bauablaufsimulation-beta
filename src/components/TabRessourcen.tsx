@@ -215,21 +215,36 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   }
 
   // Attribut-Quellen in Prioritätsreihenfolge: 1) aktuelle Viewer-Selektion (das, was gerade im
-  // Eigenschaften-Panel steht) — 2) bereits Tasks zugeordnete Bauteile (meist dieselbe Objektart wie
-  // die Formel adressieren soll) — 3) blinde Modell-Stichprobe als letzter Ausweg. Eine blinde
-  // Stichprobe allein trifft oft nur Hierarchie-Knoten (Site/Building/Storey) ohne die gesuchten
-  // Mengen-Attribute, siehe ladeAttributListe().
-  async function attrListeLaden() {
-    if (!api || !sim || attrListe || attrLaedt) return;
+  // Eigenschaften-Panel steht) — 2) bereits Tasks zugeordnete Bauteile — 3) blinde Modell-Stichprobe
+  // als letzter Ausweg. Eine blinde Stichprobe allein trifft oft nur Hierarchie-Knoten (Site/
+  // Building/Storey) ohne die gesuchten Mengen-Attribute, siehe ladeAttributListe().
+  //
+  // Bei (2) NICHT einfach der Task-Reihenfolge folgen: ein einzelner Task mit vielen Bauteilen würde
+  // sonst das ganze Stichproben-Budget verbrauchen, bevor überhaupt ein anderes Kürzel (z.B. Öffnungen,
+  // Decken, Stützen) an die Reihe kommt — genau das führte dazu, dass Attribute anderer Bauteiltypen
+  // im Picker fehlten. Stattdessen je Kürzel nur wenige Bauteile sammeln, dafür über alle Kürzel
+  // gestreut.
+  async function attrListeLaden(force = false) {
+    if (!api || !sim) return;
+    if (!force && (attrListe || attrLaedt)) return;
     setAttrLaedt(true);
     try {
       const guids = new Set<string>();
       if (selektion.length > 0 && aktivesModellId) {
         for (const rId of selektion.slice(0, 30)) guids.add(`${aktivesModellId}:::${rId}`);
       }
+      const proKuerzel = new Map<string, string[]>();
       for (const t of sim.tasks) {
-        if (guids.size >= 60) break;
-        for (const g of t.objektGuids) { guids.add(g); if (guids.size >= 60) break; }
+        const key = t.bauteilKuerzel ?? "";
+        let liste = proKuerzel.get(key);
+        if (!liste) { liste = []; proKuerzel.set(key, liste); }
+        for (const g of t.objektGuids) {
+          if (liste.length >= 4) break;
+          liste.push(g);
+        }
+      }
+      outer: for (const liste of proKuerzel.values()) {
+        for (const g of liste) { guids.add(g); if (guids.size >= 200) break outer; }
       }
 
       let ergebnis: AttrItem[] = [];
@@ -562,8 +577,14 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                   )}
                   {pickerOffenFuer === pickerKey && (
                     <div style={{ position: "absolute", top: "100%", left: 66, right: 0, marginTop: 2, background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 50, maxHeight: 220, overflowY: "auto" }}>
-                      <input autoFocus value={pickerQuery} onChange={e => setPickerQuery(e.target.value)} placeholder="Attribut suchen…"
-                        style={{ width: "100%", boxSizing: "border-box", fontSize: 10, padding: "5px 6px", border: "none", borderBottom: "1px solid var(--tc-border-light)" }} />
+                      <div style={{ display: "flex", alignItems: "center", borderBottom: "1px solid var(--tc-border-light)" }}>
+                        <input autoFocus value={pickerQuery} onChange={e => setPickerQuery(e.target.value)} placeholder="Attribut suchen…"
+                          style={{ flex: 1, minWidth: 0, boxSizing: "border-box", fontSize: 10, padding: "5px 6px", border: "none" }} />
+                        <span onClick={() => attrListeLaden(true)} title="Attribut-Liste neu laden — hilft, wenn ein gesuchtes Attribut fehlt (die Liste basiert nur auf einer Stichprobe der Bauteile)"
+                          style={{ cursor: "pointer", padding: "0 8px", fontSize: 11, color: "var(--tc-text-3)", flexShrink: 0 }}>
+                          ⟳
+                        </span>
+                      </div>
                       {attrLaedt && <div style={{ padding: 6, fontSize: 10, color: "var(--tc-text-3)" }}>⟳ Attribute laden…</div>}
                       {!attrLaedt && acItems.length === 0 && <div style={{ padding: 6, fontSize: 10, color: "var(--tc-text-3)" }}>Keine Treffer</div>}
                       {!attrLaedt && acItems.map(a => (
@@ -594,8 +615,14 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                     style={{ width: 100, fontSize: 10, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
                   {oeffnungPickerOffenFuer === pickerKey && (
                     <div style={{ position: "absolute", top: "100%", left: 46, marginTop: 2, background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 50, minWidth: 220, maxHeight: 220, overflowY: "auto" }}>
-                      <input autoFocus value={oeffnungPickerQuery} onChange={e => setOeffnungPickerQuery(e.target.value)} placeholder="Attribut suchen…"
-                        style={{ width: "100%", boxSizing: "border-box", fontSize: 10, padding: "5px 6px", border: "none", borderBottom: "1px solid var(--tc-border-light)" }} />
+                      <div style={{ display: "flex", alignItems: "center", borderBottom: "1px solid var(--tc-border-light)" }}>
+                        <input autoFocus value={oeffnungPickerQuery} onChange={e => setOeffnungPickerQuery(e.target.value)} placeholder="Attribut suchen…"
+                          style={{ flex: 1, minWidth: 0, boxSizing: "border-box", fontSize: 10, padding: "5px 6px", border: "none" }} />
+                        <span onClick={() => attrListeLaden(true)} title="Attribut-Liste neu laden — hilft, wenn ein gesuchtes Attribut fehlt (die Liste basiert nur auf einer Stichprobe der Bauteile)"
+                          style={{ cursor: "pointer", padding: "0 8px", fontSize: 11, color: "var(--tc-text-3)", flexShrink: 0 }}>
+                          ⟳
+                        </span>
+                      </div>
                       {attrLaedt && <div style={{ padding: 6, fontSize: 10, color: "var(--tc-text-3)" }}>⟳ Attribute laden…</div>}
                       {!attrLaedt && oeffnungAcItems.length === 0 && <div style={{ padding: 6, fontSize: 10, color: "var(--tc-text-3)" }}>Keine Treffer</div>}
                       {!attrLaedt && oeffnungAcItems.map(a => (
