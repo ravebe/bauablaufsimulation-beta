@@ -18,12 +18,14 @@ interface Props {
 const NEUE_RATE: Rate = { kuerzel: "", bezeichnung: "", leistungswertHProEinheit: null, anzahlPersonen: 1, chfProEinheit: null };
 
 // Grid-Spalten der Raten-Tabelle — verstellbar per Drag, siehe startResize (gleiches Prinzip wie
-// Tab Kalkulation). "aktion" fasst die fixen ƒx/⊘/×-Buttons am Zeilenende zusammen, nicht verstellbar.
+// Tab Kalkulation). "aktion" fasst die fixen ƒx/⊘/×-Buttons am Zeilenende zusammen, "total" ganz
+// rechts zeigt die aktuelle Mengen-Summe aus Tab Kalkulation — beide nicht verstellbar.
 const RATEN_SPALTEN = ["kuerzel", "bezeichnung", "lw", "personen", "chf"] as const;
 type RatenSpalte = typeof RATEN_SPALTEN[number];
 const RATEN_SPALTEN_LABEL: Record<RatenSpalte, string> = { kuerzel: "Kürzel", bezeichnung: "Bezeichnung", lw: "LW [h/Einh.]", personen: "Personen", chf: "CHF/Einh." };
 const RATEN_COL_DEFAULT: Record<RatenSpalte, number> = { kuerzel: 60, bezeichnung: 220, lw: 80, personen: 60, chf: 70 };
 const AKTION_BREITE = 78; // fx (26) + gap (6) + ⊘ Öffnungen ausschließen (22) + gap (6) + × (18)
+const TOTAL_BREITE = 100; // Mengen-Summe je Kürzel, rot bei fehlenden/fehlerhaften Mengen (siehe Tab Kalkulation)
 const LS_RATEN_COLW = "4d-ressourcen-raten-colw";
 
 export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion = [], aktivesModellId = null, projectId = null }: Props) {
@@ -60,7 +62,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp);
   }
 
-  const ratenGridTemplate = `${RATEN_SPALTEN.map(s => `${ratenColW[s]}px`).join(" ")} ${AKTION_BREITE}px`;
+  const ratenGridTemplate = `${RATEN_SPALTEN.map(s => `${ratenColW[s]}px`).join(" ")} ${AKTION_BREITE}px ${TOTAL_BREITE}px`;
 
   function formelUmschalten(key: string) {
     setFormelOffenFuer(prev => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
@@ -355,6 +357,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                 </div>
               ))}
               <span />
+              <span style={{ textAlign: "right" }} title="Aktuelle Mengen-Summe je Kürzel aus Tab Kalkulation — rot bei fehlenden oder fehlerhaften Mengen">Menge Ist</span>
             </div>
           </div>
           {gewerk.raten.map((r, ri) => {
@@ -371,6 +374,18 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
             const acItems = attrListe
               ? attrListe.filter(a => !pickerQuery || a.name.toLowerCase().includes(pickerQuery.toLowerCase()) || a.pset.toLowerCase().includes(pickerQuery.toLowerCase())).slice(0, 20)
               : [];
+
+            // Mengen-Summe dieses Kürzels für dieses Gewerk aus den Tasks (Tab Kalkulation) — rot,
+            // sobald mindestens ein zugeordneter Task keine oder eine fehlerhafte Menge hat
+            // (mengenQuelle "fehler", z.B. Elemente ohne auswertbaren Wert).
+            const tasksMitKuerzel = sim!.tasks.filter((t, i) => !t.isGroup && !istGruppe(sim!.tasks, i) && t.bauteilKuerzel === r.kuerzel);
+            let mengeSumme = 0, mengeProblem = false;
+            for (const t of tasksMitKuerzel) {
+              const menge = t.mengen?.[gewerk.key];
+              const quelle = t.mengenQuelle?.[gewerk.key];
+              if (quelle === "fehler" || menge === undefined || menge === null) mengeProblem = true;
+              else mengeSumme += menge;
+            }
             return (
             <div key={ri} style={{ padding: "3px 0", borderBottom: "1px solid var(--tc-border-light)" }}>
               <div style={{ display: "grid", gridTemplateColumns: ratenGridTemplate, alignItems: "center", columnGap: 6 }}>
@@ -419,6 +434,15 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                       ×
                     </button>
                   )}
+                </div>
+                <div style={{ textAlign: "right", fontSize: 10, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    color: tasksMitKuerzel.length === 0 ? "var(--tc-text-3)" : mengeProblem ? "var(--tc-red)" : "#333" }}
+                  title={
+                    tasksMitKuerzel.length === 0 ? "Keine Tasks mit diesem Kürzel"
+                      : mengeProblem ? "Mindestens ein Task mit diesem Kürzel hat für dieses Gewerk keine oder eine fehlerhafte Menge — siehe Tab Kalkulation"
+                        : `${tasksMitKuerzel.length} Task${tasksMitKuerzel.length === 1 ? "" : "s"}`
+                  }>
+                  {tasksMitKuerzel.length === 0 ? "–" : `${mengeSumme.toLocaleString("de-CH", { maximumFractionDigits: 2 })} ${gewerk.einheit}`}
                 </div>
               </div>
               {(!readOnly || r.formel) && formelOffenFuer.has(pickerKey) && (
