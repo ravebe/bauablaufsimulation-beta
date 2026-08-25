@@ -5,7 +5,7 @@ import type { SimProjekt, Task } from "../types";
 import { istGruppe, berechneNummern, nsKey } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { arbeitstageZwischen, LEERER_KALENDER } from "./kalenderHelpers";
-import { LEERE_STAMMDATEN, alleKuerzel, gewerkeFuerKuerzel, dauerBerechnetTask, bezeichnungFuerKuerzel, istOeffnungsObjekt } from "./stammdatenHelpers";
+import { LEERE_STAMMDATEN, alleKuerzel, gewerkeFuerKuerzel, dauerBerechnetTask, bezeichnungFuerKuerzel, ausschlussFilterListe, aktiveFilterIds, objektAusgeschlossen } from "./stammdatenHelpers";
 import { kuerzelVorschlag } from "./bauteilkatalogHelpers";
 import { StatTile, CategoryBarChart, CockpitAbschnitt, useEingeklappt, FARBEN } from "./cockpitCharts";
 import { ladeObjektAttribute, getModellObjekte } from "./modelHelpers";
@@ -109,6 +109,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     if (!api || !sim) return;
     setMengenLaeuft(true);
     setMengenErgebnis(null);
+    const alleFilter = ausschlussFilterListe(stammdaten);
     let autoCount = 0, fehlerCount = 0, taskCount = 0;
     const updatedTasks = [...sim.tasks];
     for (let i = 0; i < updatedTasks.length; i++) {
@@ -130,8 +131,9 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
       const mengenQuelle = { ...(t.mengenQuelle ?? {}) };
       const mengenInfo = { ...(t.mengenInfo ?? {}) };
       for (const { g, rate } of zuBerechnen) {
-        const basis = rate.oeffnungenAusschliessen
-          ? objektWerteListe.filter(w => !istOeffnungsObjekt(w, stammdaten.oeffnungsFilter))
+        const aktiveIds = aktiveFilterIds(rate);
+        const basis = aktiveIds.length > 0
+          ? objektWerteListe.filter(w => !objektAusgeschlossen(w, alleFilter, aktiveIds))
           : objektWerteListe;
         const erg = berechneMenge(rate.formel!, basis);
         if (erg.wert !== null) mengen[g.key] = erg.wert; else delete mengen[g.key];

@@ -3,8 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import type { SimProjekt } from "../types";
 import { istGruppe, nsKey } from "../types";
-import type { Gewerk, GewerkeKatalog, Rate, Stammdaten } from "./stammdatenHelpers";
-import { LEERE_STAMMDATEN, GEWERKE_KATALOGE, alleKuerzel, stammdatenAlsJson, parseStammdatenJson, stammdatenAlsCsv, parseStammdatenCsv, STANDARD_OEFFNUNGSFILTER } from "./stammdatenHelpers";
+import type { Gewerk, GewerkeKatalog, Rate, Stammdaten, AusschlussFilter } from "./stammdatenHelpers";
+import { LEERE_STAMMDATEN, GEWERKE_KATALOGE, alleKuerzel, stammdatenAlsJson, parseStammdatenJson, stammdatenAlsCsv, parseStammdatenCsv, ausschlussFilterListe, aktiveFilterIds } from "./stammdatenHelpers";
 import { StatTile } from "./cockpitCharts";
 import type { ApiInstance } from "../hooks/useApi";
 import { ladeAttributListe, ladeObjektAttribute, attrItemsAusWerten, keyZuAttrItem, type AttrItem } from "./modelHelpers";
@@ -18,13 +18,15 @@ interface Props {
 const NEUE_RATE: Rate = { kuerzel: "", bezeichnung: "", leistungswertHProEinheit: null, anzahlPersonen: 1, chfProEinheit: null };
 
 // Grid-Spalten der Raten-Tabelle — verstellbar per Drag, siehe startResize (gleiches Prinzip wie
-// Tab Kalkulation). "aktion" fasst die fixen ƒx/⊘/×-Buttons am Zeilenende zusammen, "total" ganz
-// rechts zeigt die aktuelle Mengen-Summe aus Tab Kalkulation — beide nicht verstellbar.
+// Tab Kalkulation). "aktion" fasst die fixen ƒx/×-Buttons am Zeilenende zusammen, "total" ganz
+// rechts zeigt die aktuelle Mengen-Summe aus Tab Kalkulation — beide nicht verstellbar. Die
+// Ausschlussfilter (welche Bauteile bei der Mengenermittlung ignoriert werden) sitzen nicht in
+// dieser Zeile, sondern im aufklappbaren Formel-Bereich, siehe weiter unten.
 const RATEN_SPALTEN = ["kuerzel", "bezeichnung", "lw", "personen", "chf"] as const;
 type RatenSpalte = typeof RATEN_SPALTEN[number];
 const RATEN_SPALTEN_LABEL: Record<RatenSpalte, string> = { kuerzel: "Kürzel", bezeichnung: "Bezeichnung", lw: "LW [h/Einh.]", personen: "Personen", chf: "CHF/Einh." };
 const RATEN_COL_DEFAULT: Record<RatenSpalte, number> = { kuerzel: 60, bezeichnung: 220, lw: 80, personen: 60, chf: 70 };
-const AKTION_BREITE = 78; // fx (26) + gap (6) + ⊘ Öffnungen ausschließen (22) + gap (6) + × (18)
+const AKTION_BREITE = 50; // fx (26) + gap (6) + × (18)
 const TOTAL_BREITE = 100; // Mengen-Summe je Kürzel, rot bei fehlenden/fehlerhaften Mengen (siehe Tab Kalkulation)
 const LS_RATEN_COLW = "4d-ressourcen-raten-colw";
 
@@ -44,7 +46,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   const [pickerQuery, setPickerQuery] = useState("");
   const pickerRef = useRef<HTMLDivElement>(null);
   const [formelOffenFuer, setFormelOffenFuer] = useState<Set<string>>(new Set()); // "gewerkIdx-rateIdx", eingeklappt per Default
-  const [oeffnungPickerOffenFuer, setOeffnungPickerOffenFuer] = useState<string | null>(null); // "gewerkIdx-rateIdx"
+  const [oeffnungPickerOffenFuer, setOeffnungPickerOffenFuer] = useState<string | null>(null); // "gewerkIdx-rateIdx-filterId"
   const [oeffnungPickerQuery, setOeffnungPickerQuery] = useState("");
   const oeffnungPickerRef = useRef<HTMLDivElement>(null);
   const lsRatenColwKey = nsKey(LS_RATEN_COLW, projectId);
@@ -179,6 +181,41 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
       ...stammdaten,
       gewerke: stammdaten.gewerke.map((g, gi) => gi !== gewerkIdx ? g : { ...g, raten: [...g.raten, { ...NEUE_RATE }] }),
     });
+  }
+
+  // Ausschlussfilter — allgemeiner Mechanismus, um Bauteile (nicht nur Öffnungen) anhand eines
+  // Attribut/Wert-Merkmals von der Mengenermittlung einzelner Leistungspositionen auszuschliessen.
+  // Die Filter-Liste ist global (Stammdaten.ausschlussFilter), je Rate wird nur ausgewählt, WELCHE
+  // Filter für sie greifen (Rate.ausschlussFilterIds) — siehe stammdatenHelpers.ts.
+  function filterAendern(filterId: string, patch: Partial<AusschlussFilter>) {
+    const aktuelle = ausschlussFilterListe(stammdaten);
+    speichern({ ...stammdaten, ausschlussFilter: aktuelle.map(f => f.id !== filterId ? f : { ...f, ...patch }), oeffnungsFilter: undefined });
+  }
+
+  function filterHinzufuegen(): string {
+    const aktuelle = ausschlussFilterListe(stammdaten);
+    const id = `filter_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    speichern({ ...stammdaten, ausschlussFilter: [...aktuelle, { id, attribut: "", wert: "" }], oeffnungsFilter: undefined });
+    return id;
+  }
+
+  function filterEntfernen(filterId: string) {
+    speichern({
+      ...stammdaten,
+      ausschlussFilter: ausschlussFilterListe(stammdaten).filter(f => f.id !== filterId),
+      oeffnungsFilter: undefined,
+      gewerke: stammdaten.gewerke.map(g => ({
+        ...g,
+        raten: g.raten.map(r => ({ ...r, ausschlussFilterIds: aktiveFilterIds(r).filter(id => id !== filterId), oeffnungenAusschliessen: undefined })),
+      })),
+    });
+  }
+
+  function filterToggelnFuerRate(gewerkIdx: number, rateIdx: number, filterId: string) {
+    const rate = stammdaten.gewerke[gewerkIdx].raten[rateIdx];
+    const aktuelle = aktiveFilterIds(rate);
+    const neu = aktuelle.includes(filterId) ? aktuelle.filter(id => id !== filterId) : [...aktuelle, filterId];
+    rateAendern(gewerkIdx, rateIdx, { ausschlussFilterIds: neu, oeffnungenAusschliessen: undefined });
   }
 
   /** Fügt Gewerke additiv hinzu — bestehende Gewerke (gleicher key) bleiben unberührt. */
@@ -524,24 +561,6 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                       ƒx
                     </button>
                   )}
-                  {!!r.formel?.trim() && (!readOnly || r.oeffnungenAusschliessen) && (
-                    <button className="tc-btn-ghost"
-                      title={
-                        r.oeffnungenAusschliessen
-                          ? "Öffnungen werden bei der Mengenermittlung dieser Position ausgeschlossen (Klick zum Deaktivieren)"
-                          : "Öffnungen bei der Mengenermittlung dieser Position ausschließen (Erkennungsmerkmal siehe unten im Formel-Bereich)"
-                      }
-                      onClick={() => rateAendern(gi, ri, { oeffnungenAusschliessen: !r.oeffnungenAusschliessen })}
-                      style={{ padding: "2px 5px", width: 22, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                        color: r.oeffnungenAusschliessen ? "var(--tc-blue)" : "var(--tc-text-3)",
-                        border: `1px solid ${r.oeffnungenAusschliessen ? "var(--tc-blue)" : "#d4dce4"}` }}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                        <rect x="3" y="3" width="18" height="18" rx="1" />
-                        <rect x="9" y="9" width="6" height="12" />
-                        {r.oeffnungenAusschliessen && <line x1="2" y1="22" x2="22" y2="2" />}
-                      </svg>
-                    </button>
-                  )}
                   {!readOnly && (
                     <button title="Entfernen" onClick={() => rateEntfernen(gi, ri)}
                       style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "var(--tc-text-3)", padding: 0, width: 18, flexShrink: 0, lineHeight: 1 }}>
@@ -597,45 +616,73 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                     </div>
                   )}
                 </div>
-                <div ref={oeffnungPickerOffenFuer === pickerKey ? oeffnungPickerRef : undefined}
-                  style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 4, paddingLeft: ratenColW.kuerzel + 6, position: "relative" }}>
-                  <span style={{ fontSize: 9, color: "var(--tc-text-3)", width: 40, flexShrink: 0 }}
-                    title="Bauteile mit diesem Attribut/Wert gelten als Öffnung (z.B. Tür-/Fensteraussparungen) — gilt für alle Leistungspositionen, je Position über den ⊘-Button ausschließbar">
-                    Öffnung
-                  </span>
-                  <button className="tc-btn-ghost" disabled={readOnly} style={{ fontSize: 10, padding: "2px 6px", flexShrink: 0 }}
-                    title="Standardmäßig voreingestellt auf „Reference Object||Common Type“ — bei Bedarf hier anpassen"
-                    onClick={() => { const opening = oeffnungPickerOffenFuer !== pickerKey; setOeffnungPickerOffenFuer(opening ? pickerKey : null); setOeffnungPickerQuery(""); if (opening) attrListeLaden(); }}>
-                    {keyZuAttrItem(stammdaten.oeffnungsFilter?.attribut ?? STANDARD_OEFFNUNGSFILTER.attribut).name}
-                  </button>
-                  <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>=</span>
-                  <input disabled={readOnly} value={stammdaten.oeffnungsFilter?.wert ?? STANDARD_OEFFNUNGSFILTER.wert} placeholder="z.B. Opening"
-                    onChange={e => speichern({ ...stammdaten, oeffnungsFilter: { attribut: stammdaten.oeffnungsFilter?.attribut ?? STANDARD_OEFFNUNGSFILTER.attribut, wert: e.target.value } })}
-                    style={{ width: 100, fontSize: 10, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
-                  {oeffnungPickerOffenFuer === pickerKey && (
-                    <div style={{ position: "absolute", top: "100%", left: 46, marginTop: 2, background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 50, minWidth: 220, maxHeight: 220, overflowY: "auto" }}>
-                      <div style={{ display: "flex", alignItems: "center", borderBottom: "1px solid var(--tc-border-light)" }}>
-                        <input autoFocus value={oeffnungPickerQuery} onChange={e => setOeffnungPickerQuery(e.target.value)} placeholder="Attribut suchen…"
-                          style={{ flex: 1, minWidth: 0, boxSizing: "border-box", fontSize: 10, padding: "5px 6px", border: "none" }} />
-                        <span onClick={() => attrListeLaden(true)} title="Attribut-Liste neu laden — hilft, wenn ein gesuchtes Attribut fehlt (die Liste basiert nur auf einer Stichprobe der Bauteile)"
-                          style={{ cursor: "pointer", padding: "0 8px", fontSize: 11, color: "var(--tc-text-3)", flexShrink: 0 }}>
-                          ⟳
-                        </span>
-                      </div>
-                      {attrLaedt && <div style={{ padding: 6, fontSize: 10, color: "var(--tc-text-3)" }}>⟳ Attribute laden…</div>}
-                      {!attrLaedt && oeffnungAcItems.length === 0 && <div style={{ padding: 6, fontSize: 10, color: "var(--tc-text-3)" }}>Keine Treffer</div>}
-                      {!attrLaedt && oeffnungAcItems.map(a => (
-                        <div key={a.key} onMouseDown={() => { speichern({ ...stammdaten, oeffnungsFilter: { attribut: a.key, wert: stammdaten.oeffnungsFilter?.wert ?? STANDARD_OEFFNUNGSFILTER.wert } }); setOeffnungPickerOffenFuer(null); setOeffnungPickerQuery(""); }}
-                          style={{ padding: "5px 8px", cursor: "pointer", fontSize: 10 }}
-                          onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")}
-                          onMouseLeave={e => (e.currentTarget.style.background = "")}>
-                          <div style={{ fontWeight: 500 }}>{a.name}</div>
-                          <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>{a.pset}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 5, paddingLeft: ratenColW.kuerzel + 6 }}
+                  title="Bauteile, auf die ein aktivierter Filter passt (z.B. Öffnungen, die keine Wand-Mengen tragen), werden bei der Mengenermittlung dieser Position ignoriert">
+                  Ausschlussfilter
                 </div>
+                {ausschlussFilterListe(stammdaten).map(filter => {
+                  const filterKey = `${gi}-${ri}-${filter.id}`;
+                  const aktiv = aktiveFilterIds(r).includes(filter.id);
+                  return (
+                    <div key={filter.id} ref={oeffnungPickerOffenFuer === filterKey ? oeffnungPickerRef : undefined}
+                      style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3, paddingLeft: ratenColW.kuerzel + 6, position: "relative" }}>
+                      <button className="tc-btn-ghost" disabled={readOnly}
+                        title={aktiv ? "Wird bei der Mengenermittlung dieser Position ausgeschlossen (Klick zum Deaktivieren)" : "Bei der Mengenermittlung dieser Position ausschließen"}
+                        onClick={() => filterToggelnFuerRate(gi, ri, filter.id)}
+                        style={{ padding: "2px 5px", width: 20, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                          color: aktiv ? "var(--tc-blue)" : "var(--tc-text-3)", border: `1px solid ${aktiv ? "var(--tc-blue)" : "#d4dce4"}` }}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                          <rect x="3" y="3" width="18" height="18" rx="1" />
+                          <rect x="9" y="9" width="6" height="12" />
+                          {aktiv && <line x1="2" y1="22" x2="22" y2="2" />}
+                        </svg>
+                      </button>
+                      <button className="tc-btn-ghost" disabled={readOnly} style={{ fontSize: 10, padding: "2px 6px", flexShrink: 0 }}
+                        onClick={() => { const opening = oeffnungPickerOffenFuer !== filterKey; setOeffnungPickerOffenFuer(opening ? filterKey : null); setOeffnungPickerQuery(""); if (opening) attrListeLaden(); }}>
+                        {filter.attribut ? keyZuAttrItem(filter.attribut).name : "Attribut wählen…"}
+                      </button>
+                      <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>=</span>
+                      <input disabled={readOnly} value={filter.wert} placeholder="z.B. Opening"
+                        onChange={e => filterAendern(filter.id, { wert: e.target.value })}
+                        style={{ width: 90, fontSize: 10, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
+                      {!readOnly && (
+                        <span onClick={() => filterEntfernen(filter.id)} title="Filter entfernen (für alle Positionen)"
+                          style={{ cursor: "pointer", fontSize: 12, color: "var(--tc-text-3)", padding: "0 3px", flexShrink: 0 }}>
+                          ×
+                        </span>
+                      )}
+                      {oeffnungPickerOffenFuer === filterKey && (
+                        <div style={{ position: "absolute", top: "100%", left: 24, marginTop: 2, background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 50, minWidth: 220, maxHeight: 220, overflowY: "auto" }}>
+                          <div style={{ display: "flex", alignItems: "center", borderBottom: "1px solid var(--tc-border-light)" }}>
+                            <input autoFocus value={oeffnungPickerQuery} onChange={e => setOeffnungPickerQuery(e.target.value)} placeholder="Attribut suchen…"
+                              style={{ flex: 1, minWidth: 0, boxSizing: "border-box", fontSize: 10, padding: "5px 6px", border: "none" }} />
+                            <span onClick={() => attrListeLaden(true)} title="Attribut-Liste neu laden — hilft, wenn ein gesuchtes Attribut fehlt (die Liste basiert nur auf einer Stichprobe der Bauteile)"
+                              style={{ cursor: "pointer", padding: "0 8px", fontSize: 11, color: "var(--tc-text-3)", flexShrink: 0 }}>
+                              ⟳
+                            </span>
+                          </div>
+                          {attrLaedt && <div style={{ padding: 6, fontSize: 10, color: "var(--tc-text-3)" }}>⟳ Attribute laden…</div>}
+                          {!attrLaedt && oeffnungAcItems.length === 0 && <div style={{ padding: 6, fontSize: 10, color: "var(--tc-text-3)" }}>Keine Treffer</div>}
+                          {!attrLaedt && oeffnungAcItems.map(a => (
+                            <div key={a.key} onMouseDown={() => { filterAendern(filter.id, { attribut: a.key }); setOeffnungPickerOffenFuer(null); setOeffnungPickerQuery(""); }}
+                              style={{ padding: "5px 8px", cursor: "pointer", fontSize: 10 }}
+                              onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")}
+                              onMouseLeave={e => (e.currentTarget.style.background = "")}>
+                              <div style={{ fontWeight: 500 }}>{a.name}</div>
+                              <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>{a.pset}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {!readOnly && (
+                  <button className="tc-btn-ghost" style={{ fontSize: 9, padding: "2px 6px", marginTop: 3, marginLeft: ratenColW.kuerzel + 6 }}
+                    onClick={() => { const id = filterHinzufuegen(); setOeffnungPickerOffenFuer(`${gi}-${ri}-${id}`); setOeffnungPickerQuery(""); attrListeLaden(); }}>
+                    + Attribut
+                  </button>
+                )}
                 </>
               )}
               {dupImGewerk && (

@@ -10,7 +10,9 @@ export interface Rate {
   anzahlPersonen: number;
   chfProEinheit: number | null;
   formel?: string; // Menge-Formel aus IFC-Attributen der zugeordneten Bauteile, siehe formelHelpers.ts
-  oeffnungenAusschliessen?: boolean; // Bauteile, die dem globalen Öffnungsfilter (Stammdaten.oeffnungsFilter) entsprechen, bei der Mengenermittlung dieser Rate ignorieren — siehe istOeffnungsObjekt()
+  ausschlussFilterIds?: string[]; // IDs der Ausschlussfilter (Stammdaten.ausschlussFilter), die bei der Mengenermittlung dieser Rate greifen — siehe objektAusgeschlossen()
+  /** @deprecated durch ausschlussFilterIds ersetzt — nur noch zum Migrieren alter Projekte gelesen, siehe aktiveFilterIds(). */
+  oeffnungenAusschliessen?: boolean;
 }
 export interface Gewerk {
   key: string;
@@ -19,21 +21,39 @@ export interface Gewerk {
   raten: Rate[];
   kranpflichtig?: boolean; // steuert, ob Tasks dieses Gewerks in die Kranauslastung (Tab AVOR) einfliessen
 }
-/** Erkennungsmerkmal für Öffnungen (z.B. Tür-/Fensteraussparungen in Wänden), die als eigene
- *  Bauteile zugeordnet sein können, aber nicht die Mengen-Attribute der Wand selbst tragen (z.B.
- *  Qto_WallBaseQuantities) — je Rate über "oeffnungenAusschliessen" abschaltbar, siehe istOeffnungsObjekt(). */
-export interface OeffnungsFilter { attribut: string; wert: string; }
-/** Default-Öffnungsfilter, solange nichts anderes konfiguriert ist — "Reference Object||Common Type"
- *  ist das Attribut, das ladeObjektAttribute() aus product.objectType befüllt (siehe modelHelpers.ts);
+/** Ein Ausschlussfilter erkennt Bauteile an einem Attribut/Wert (z.B. Öffnungen, aber genauso jedes
+ *  andere Element, das nicht in die Mengenermittlung einer Rate einfliessen soll) — je Rate einzeln
+ *  ein-/ausschaltbar über Rate.ausschlussFilterIds, siehe objektAusgeschlossen(). */
+export interface AusschlussFilter { id: string; attribut: string; wert: string; }
+/** Default-Filter, solange keine eigenen definiert sind — "Reference Object||Common Type" ist das
+ *  Attribut, das ladeObjektAttribute() aus product.objectType befüllt (siehe modelHelpers.ts);
  *  "Opening" ist der in der Praxis übliche IFC-Wert für Tür-/Fensteraussparungen. */
-export const STANDARD_OEFFNUNGSFILTER: OeffnungsFilter = { attribut: "Reference Object||Common Type", wert: "Opening" };
+export const STANDARD_AUSSCHLUSSFILTER: AusschlussFilter = { id: "standard", attribut: "Reference Object||Common Type", wert: "Opening" };
 export interface Stammdaten {
   arbeitszeitStdProTag: number;
   umsatzChfProMannstunde?: number; // für Ertragsoptik (Tab AVOR), Default 80
   gewerke: Gewerk[];
-  oeffnungsFilter?: OeffnungsFilter;
+  ausschlussFilter?: AusschlussFilter[];
+  /** @deprecated durch ausschlussFilter ersetzt — nur noch zum Migrieren alter Projekte gelesen, siehe ausschlussFilterListe(). */
+  oeffnungsFilter?: { attribut: string; wert: string };
 }
 export const LEERE_STAMMDATEN: Stammdaten = { arbeitszeitStdProTag: 8.5, gewerke: [] };
+
+/** Effektive Filterliste — eigene Filter falls vorhanden, sonst aus dem alten Einzelfeld migriert
+ *  (siehe Stammdaten.oeffnungsFilter), sonst der Default. Nie leer, damit Aufrufer nicht extra
+ *  auf "kein Filter definiert" prüfen müssen. */
+export function ausschlussFilterListe(s: Stammdaten): AusschlussFilter[] {
+  if (s.ausschlussFilter && s.ausschlussFilter.length > 0) return s.ausschlussFilter;
+  if (s.oeffnungsFilter) return [{ id: STANDARD_AUSSCHLUSSFILTER.id, attribut: s.oeffnungsFilter.attribut, wert: s.oeffnungsFilter.wert }];
+  return [STANDARD_AUSSCHLUSSFILTER];
+}
+
+/** Für eine Rate aktive Filter-IDs — migriert die alte "oeffnungenAusschliessen"-Checkbox auf den
+ *  Standard-Filter, damit bereits aktivierte Ausschlüsse aus älteren Projekten erhalten bleiben. */
+export function aktiveFilterIds(r: Rate): string[] {
+  if (r.ausschlussFilterIds) return r.ausschlussFilterIds;
+  return r.oeffnungenAusschliessen ? [STANDARD_AUSSCHLUSSFILTER.id] : [];
+}
 
 /** Stammdaten als JSON-Text für den Datei-Export — 1:1 Rohobjekt, damit der Import verlustfrei zurückspielt. */
 export function stammdatenAlsJson(s: Stammdaten): string {
@@ -50,12 +70,30 @@ export function parseStammdatenJson(text: string): Stammdaten {
     arbeitszeitStdProTag: typeof raw.arbeitszeitStdProTag === "number" ? raw.arbeitszeitStdProTag : 8.5,
     umsatzChfProMannstunde: typeof raw.umsatzChfProMannstunde === "number" ? raw.umsatzChfProMannstunde : undefined,
     gewerke: raw.gewerke,
+    ausschlussFilter: Array.isArray(raw.ausschlussFilter)
+      ? raw.ausschlussFilter.filter((f: unknown): f is AusschlussFilter =>
+          !!f && typeof f === "object" && typeof (f as any).id === "string" && typeof (f as any).attribut === "string" && typeof (f as any).wert === "string")
+      : undefined,
     oeffnungsFilter: raw.oeffnungsFilter && typeof raw.oeffnungsFilter.attribut === "string" && typeof raw.oeffnungsFilter.wert === "string"
       ? raw.oeffnungsFilter : undefined,
   };
 }
 
-const CSV_HEADER = ["Gewerk-Schlüssel", "Gewerk", "Einheit", "Kranpflichtig", "Kürzel", "Bezeichnung", "LW [h/Einheit]", "Personen", "CHF/Einheit", "Formel", "Öffnungen ausschließen", "Menge Ist"];
+const CSV_HEADER = ["Gewerk-Schlüssel", "Gewerk", "Einheit", "Kranpflichtig", "Kürzel", "Bezeichnung", "LW [h/Einheit]", "Personen", "CHF/Einheit", "Formel", "Ausschlussfilter", "Menge Ist"];
+
+/** Lesbare Zusammenfassung der für eine Rate aktiven Ausschlussfilter ("Common Type=Opening" o.ä.),
+ *  mehrere durch Komma getrennt. Nur zur Information beim CSV-Export, wird beim Reimport ignoriert
+ *  (siehe parseStammdatenCsv) — welche Filter greifen, wird ausschliesslich in Tab Ressourcen gepflegt. */
+function ausschlussFilterText(r: Rate, alleFilter: AusschlussFilter[]): string {
+  const ids = aktiveFilterIds(r);
+  if (ids.length === 0) return "";
+  return alleFilter.filter(f => ids.includes(f.id)).map(f => `${keyLetzterTeil(f.attribut)}=${f.wert}`).join(", ");
+}
+
+function keyLetzterTeil(key: string): string {
+  const sep = key.indexOf("||");
+  return sep === -1 ? key : key.slice(sep + 2);
+}
 
 function csvZelle(v: string): string {
   return /[;"\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
@@ -83,6 +121,7 @@ function mengeIstText(kuerzel: string, gewerkKey: string, einheit: string, tasks
  *  sollte beim Bearbeiten in Excel nicht verändert werden — siehe parseStammdatenCsv(). Die Spalte
  *  "Menge Ist" ist nur zur Information (aktueller Stand aus den Tasks) und wird beim Import ignoriert. */
 export function stammdatenAlsCsv(s: Stammdaten, tasks: Task[]): string {
+  const alleFilter = ausschlussFilterListe(s);
   const zeilen: string[][] = [CSV_HEADER];
   for (const g of s.gewerke) {
     if (g.raten.length === 0) {
@@ -97,7 +136,7 @@ export function stammdatenAlsCsv(s: Stammdaten, tasks: Task[]): string {
         String(r.anzahlPersonen),
         r.chfProEinheit != null ? String(r.chfProEinheit) : "",
         r.formel ?? "",
-        r.oeffnungenAusschliessen ? "ja" : "nein",
+        ausschlussFilterText(r, alleFilter),
         mengeIstText(r.kuerzel, g.key, g.einheit, tasks),
       ]);
     }
@@ -133,11 +172,11 @@ function parseCsvZeilen(text: string): string[][] {
 }
 
 /** Parst eine (in Excel bearbeitete) Stammdaten-CSV-Datei — ersetzt nur die Kategorien/Raten,
- *  Arbeitszeit/Umsatz/Öffnungsfilter bleiben von `bestehende` erhalten. Eine leere "Gewerk-Schlüssel"-
+ *  Arbeitszeit/Umsatz/Ausschlussfilter bleiben von `bestehende` erhalten. Eine leere "Gewerk-Schlüssel"-
  *  Spalte wird über den Gewerk-Namen einem vorhandenen Gewerk zugeordnet, sonst neu angelegt — damit
- *  bereits erfasste Mengen (task.mengen[gewerk.key]) beim Reimport nicht verwaist. Die Export-Spalte
- *  "Menge Ist" wird bewusst nicht gelesen — sie ist reine Information, die App berechnet Mengen immer
- *  selbst aus Tasks/Formeln (Tab Kalkulation), ein Reimport würde sie sonst nur veralten lassen. */
+ *  bereits erfasste Mengen (task.mengen[gewerk.key]) beim Reimport nicht verwaist. Die Export-Spalten
+ *  "Ausschlussfilter" und "Menge Ist" werden bewusst nicht gelesen — reine Information, welche Filter
+ *  je Rate greifen wird ausschliesslich in Tab Ressourcen gepflegt (siehe stammdatenAlsCsv). */
 export function parseStammdatenCsv(text: string, bestehende: Stammdaten): Stammdaten {
   const zeilen = parseCsvZeilen(text.replace(/^﻿/, ""));
   if (zeilen.length === 0) throw new Error("Leere CSV-Datei");
@@ -145,7 +184,7 @@ export function parseStammdatenCsv(text: string, bestehende: Stammdaten): Stammd
   const idx = (name: string) => header.findIndex(h => h.trim().toLowerCase() === name.toLowerCase());
   const iKey = idx("Gewerk-Schlüssel"), iLabel = idx("Gewerk"), iEinheit = idx("Einheit"), iKran = idx("Kranpflichtig"),
     iKuerzel = idx("Kürzel"), iBez = idx("Bezeichnung"), iLw = idx("LW [h/Einheit]"), iPers = idx("Personen"),
-    iChf = idx("CHF/Einheit"), iFormel = idx("Formel"), iOeff = idx("Öffnungen ausschließen");
+    iChf = idx("CHF/Einheit"), iFormel = idx("Formel");
   if (iLabel === -1 || iKuerzel === -1) throw new Error('Ungültiges CSV-Format — Spalten "Gewerk" und "Kürzel" erwartet');
 
   const parseNum = (s: string): number | null => {
@@ -155,6 +194,12 @@ export function parseStammdatenCsv(text: string, bestehende: Stammdaten): Stammd
     return isNaN(n) ? null : n;
   };
   const parseBool = (s: string) => /^(ja|true|1|x|wahr)$/i.test(s.trim());
+
+  // Bestehende Rate je (Gewerk-Key, Kürzel) nachschlagen, um ausschlussFilterIds beim Reimport zu
+  // erhalten — die CSV trägt diese Zuordnung nur informativ (Spalte "Ausschlussfilter"), sonst würde
+  // ein reiner LW/CHF-Reimport bereits gesetzte Filter-Aktivierungen stillschweigend löschen.
+  const bestehendeRaten = new Map<string, Rate>();
+  for (const g of bestehende.gewerke) for (const r of g.raten) bestehendeRaten.set(`${g.key} ${r.kuerzel}`, r);
 
   const gewerkeMap = new Map<string, Gewerk>();
   const keyNachLabel = new Map(bestehende.gewerke.map(g => [g.label.trim().toLowerCase(), g.key]));
@@ -181,21 +226,27 @@ export function parseStammdatenCsv(text: string, bestehende: Stammdaten): Stammd
       anzahlPersonen: (iPers !== -1 ? parseNum(z[iPers] ?? "") : null) ?? 1,
       chfProEinheit: iChf !== -1 ? parseNum(z[iChf] ?? "") : null,
       formel: iFormel !== -1 && (z[iFormel] ?? "").trim() ? z[iFormel].trim() : undefined,
-      oeffnungenAusschliessen: iOeff !== -1 ? parseBool(z[iOeff] ?? "") : undefined,
+      ausschlussFilterIds: bestehendeRaten.get(`${key} ${kuerzel}`)?.ausschlussFilterIds,
     });
   }
   if (gewerkeMap.size === 0) throw new Error("Keine gültigen Zeilen in der CSV-Datei gefunden");
   return { ...bestehende, gewerke: [...gewerkeMap.values()] };
 }
 
-/** Prüft anhand des globalen Öffnungsfilters, ob ein Bauteil (dessen flache Pset||Property-Attribute)
- *  als Öffnung gilt — Vergleich getrimmt/case-insensitiv, da IFC-Werte je nach Exporter unterschiedlich
+/** Prüft anhand EINES Ausschlussfilters, ob ein Bauteil (dessen flache Pset||Property-Attribute)
+ *  darauf passt — Vergleich getrimmt/case-insensitiv, da IFC-Werte je nach Exporter unterschiedlich
  *  geschrieben sind (z.B. "Opening" vs. "opening"). */
-export function istOeffnungsObjekt(werte: Record<string, string>, filter: OeffnungsFilter | undefined): boolean {
-  const f = filter ?? STANDARD_OEFFNUNGSFILTER;
-  if (!f.attribut || !f.wert.trim()) return false;
-  const wert = werte[f.attribut];
-  return typeof wert === "string" && wert.trim().toLowerCase() === f.wert.trim().toLowerCase();
+export function passtAufFilter(werte: Record<string, string>, filter: AusschlussFilter): boolean {
+  if (!filter.attribut || !filter.wert.trim()) return false;
+  const wert = werte[filter.attribut];
+  return typeof wert === "string" && wert.trim().toLowerCase() === filter.wert.trim().toLowerCase();
+}
+
+/** Prüft, ob ein Bauteil von der Mengenermittlung einer Rate ausgeschlossen ist — trifft zu, sobald
+ *  IRGENDEINER der für diese Rate aktiven Filter (siehe aktiveFilterIds) auf das Bauteil passt. */
+export function objektAusgeschlossen(werte: Record<string, string>, alleFilter: AusschlussFilter[], aktiveIds: string[]): boolean {
+  if (aktiveIds.length === 0) return false;
+  return alleFilter.some(f => aktiveIds.includes(f.id) && passtAufFilter(werte, f));
 }
 
 /** Dauer eines einzelnen Gewerks in Tagen: benötigte Personenstunden / verfügbare Personenstunden pro Tag. */
