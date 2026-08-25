@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import type { SimProjekt } from "../types";
 import { istGruppe, nsKey } from "../types";
 import type { Gewerk, GewerkeKatalog, Rate, Stammdaten, AusschlussFilter } from "./stammdatenHelpers";
-import { LEERE_STAMMDATEN, GEWERKE_KATALOGE, alleKuerzel, stammdatenAlsJson, parseStammdatenJson, stammdatenAlsCsv, parseStammdatenCsv, ausschlussFilterListe, aktiveFilterIds } from "./stammdatenHelpers";
+import { LEERE_STAMMDATEN, GEWERKE_KATALOGE, alleKuerzel, stammdatenAlsJson, parseStammdatenJson, stammdatenAlsCsv, parseStammdatenCsv, ausschlussFilterListe, aktiveFilterIds, einheitUmrechnungsfaktor } from "./stammdatenHelpers";
 import { StatTile } from "./cockpitCharts";
 import type { ApiInstance } from "../hooks/useApi";
 import { ladeAttributListe, ladeObjektAttribute, attrItemsAusWerten, keyZuAttrItem, type AttrItem } from "./modelHelpers";
@@ -49,6 +49,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   const [oeffnungPickerOffenFuer, setOeffnungPickerOffenFuer] = useState<string | null>(null); // "gewerkIdx-rateIdx-filterId"
   const [oeffnungPickerQuery, setOeffnungPickerQuery] = useState("");
   const oeffnungPickerRef = useRef<HTMLDivElement>(null);
+  const einheitFocusRef = useRef<Record<number, string>>({});
   const lsRatenColwKey = nsKey(LS_RATEN_COLW, projectId);
   const [ratenColW, setRatenColW] = useState<Record<RatenSpalte, number>>(() => {
     try {
@@ -181,6 +182,35 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
       ...stammdaten,
       gewerke: stammdaten.gewerke.map((g, gi) => gi !== gewerkIdx ? g : { ...g, raten: [...g.raten, { ...NEUE_RATE }] }),
     });
+  }
+
+  // Einheit wechseln (z.B. "t" → "kg"): LW/CHF-Sätze sind bisher auf die ALTE Einheit kalibriert und
+  // würden sonst unbemerkt um den Umrechnungsfaktor daneben liegen (z.B. Bewehrung: 3.5 h/t bleibt
+  // 3.5 h/kg stehen → Tage 1000× zu hoch). Bei erkanntem Einheiten-Paar (siehe einheitUmrechnungsfaktor)
+  // wird deshalb nachgefragt, ob die Sätze automatisch mit umgerechnet werden sollen.
+  function einheitAendern(gewerkIdx: number, alteEinheit: string, neueEinheit: string) {
+    const gewerk = stammdaten.gewerke[gewerkIdx];
+    const faktor = gewerk ? einheitUmrechnungsfaktor(alteEinheit, neueEinheit) : null;
+    if (faktor !== null && gewerk.raten.length > 0 && window.confirm(
+      `Einheit wird von "${alteEinheit}" auf "${neueEinheit}" geändert.\n\n` +
+      `Leistungswert und CHF/Einheit sind noch auf "${alteEinheit}" kalibriert — ohne Anpassung ` +
+      `würden Tage/Kosten für diese Kategorie um Faktor ${Math.round((1 / faktor) * 1000) / 1000} verzerrt.\n\n` +
+      `LW und CHF/Einheit aller Kürzel dieser Kategorie automatisch umrechnen (× ${faktor})?`
+    )) {
+      speichern({
+        ...stammdaten,
+        gewerke: stammdaten.gewerke.map((g, gi) => gi !== gewerkIdx ? g : {
+          ...g, einheit: neueEinheit,
+          raten: g.raten.map(r => ({
+            ...r,
+            leistungswertHProEinheit: r.leistungswertHProEinheit != null ? r.leistungswertHProEinheit * faktor : r.leistungswertHProEinheit,
+            chfProEinheit: r.chfProEinheit != null ? r.chfProEinheit * faktor : r.chfProEinheit,
+          })),
+        }),
+      });
+      return;
+    }
+    speichern({ ...stammdaten, gewerke: stammdaten.gewerke.map((g, gi) => gi !== gewerkIdx ? g : { ...g, einheit: neueEinheit }) });
   }
 
   // Ausschlussfilter — allgemeiner Mechanismus, um Bauteile (nicht nur Öffnungen) anhand eines
@@ -491,7 +521,13 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                 )}
                 <span>(</span>
                 <input disabled={readOnly} value={gewerk.einheit} title="Einheit (z.B. m², m³, m1, Stk.)"
+                  onFocus={() => { einheitFocusRef.current[gi] = gewerk.einheit; }}
                   onChange={e => speichern({ ...stammdaten, gewerke: stammdaten.gewerke.map((g, i) => i !== gi ? g : { ...g, einheit: e.target.value }) })}
+                  onBlur={e => {
+                    const start = einheitFocusRef.current[gi];
+                    delete einheitFocusRef.current[gi];
+                    if (start !== undefined && start !== e.target.value) einheitAendern(gi, start, e.target.value);
+                  }}
                   style={{ width: 44, fontSize: 10, fontWeight: 600, padding: "1px 3px", border: "1px solid #d4dce4", fontFamily: "inherit", color: "var(--tc-text-3)" }} />
                 <span>)</span>
               </div>

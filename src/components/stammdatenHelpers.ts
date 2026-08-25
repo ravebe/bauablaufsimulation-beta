@@ -249,6 +249,30 @@ export function objektAusgeschlossen(werte: Record<string, string>, alleFilter: 
   return alleFilter.some(f => aktiveIds.includes(f.id) && passtAufFilter(werte, f));
 }
 
+/** Bekannte Einheiten-Gruppen mit Umrechnungsfaktor zu einer Bezugsgrösse je Gruppe (Masse→kg,
+ *  Länge→m, Fläche→m², Volumen→m³) — Basis für einheitUmrechnungsfaktor(). */
+const EINHEIT_GRUPPEN: Record<string, number>[] = [
+  { t: 1000, kg: 1, g: 0.001 },
+  { km: 1000, m: 1, dm: 0.1, cm: 0.01, mm: 0.001 },
+  { "m²": 1, "m2": 1, "cm²": 0.0001, "cm2": 0.0001, "mm²": 0.000001, "mm2": 0.000001 },
+  { "m³": 1, "m3": 1, "l": 0.001 },
+];
+
+/** Faktor, um LW/CHF-Sätze (je Einheit) beim Wechsel von `alt` auf `neu` konsistent umzurechnen —
+ *  z.B. "t"→"kg" liefert 0.001 (ein Satz von 3.5 h/t entspricht 0.0035 h/kg). Nur für erkannte
+ *  Einheiten-Paare innerhalb derselben Grösse (siehe EINHEIT_GRUPPEN); sonst null (kein automatischer
+ *  Vorschlag, z.B. bei "Stk." oder frei erfundenen Einheiten). Achtung: DIESER Faktor gilt für die
+ *  RATE (h/Einheit, CHF/Einheit), nicht für eine Menge — eine Menge würde mit 1/Faktor umgerechnet. */
+export function einheitUmrechnungsfaktor(alt: string, neu: string): number | null {
+  const a = alt.trim().toLowerCase(), n = neu.trim().toLowerCase();
+  if (!a || !n || a === n) return null;
+  for (const gruppe of EINHEIT_GRUPPEN) {
+    const g = Object.fromEntries(Object.entries(gruppe).map(([k, v]) => [k.toLowerCase(), v]));
+    if (a in g && n in g) return g[n] / g[a];
+  }
+  return null;
+}
+
 /** Dauer eines einzelnen Gewerks in Tagen: benötigte Personenstunden / verfügbare Personenstunden pro Tag. */
 export function dauerGewerk(menge: number, rate: Rate | undefined, arbeitszeitStdProTag: number): number {
   if (!rate || !rate.leistungswertHProEinheit || !menge || !arbeitszeitStdProTag || !rate.anzahlPersonen) return 0;
