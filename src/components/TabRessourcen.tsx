@@ -365,7 +365,20 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
       )}
 
       <div style={{ overflowX: "auto" }}>
-      {stammdaten.gewerke.map((gewerk, gi) => (
+      {stammdaten.gewerke.map((gewerk, gi) => {
+        // Mengen-Ist-Total der ganzen Kategorie (alle Kürzel zusammen) für die Titelzeile — rot,
+        // sobald mindestens ein Task in dieser Kategorie keine oder eine fehlerhafte Menge hat.
+        const kuerzelDerKategorie = new Set(gewerk.raten.map(r => r.kuerzel));
+        let gewerkSumme = 0, gewerkProblem = false, gewerkTaskAnzahl = 0;
+        sim!.tasks.forEach((t, i) => {
+          if (t.isGroup || istGruppe(sim!.tasks, i) || !t.bauteilKuerzel || !kuerzelDerKategorie.has(t.bauteilKuerzel)) return;
+          gewerkTaskAnzahl++;
+          const menge = t.mengen?.[gewerk.key];
+          const quelle = t.mengenQuelle?.[gewerk.key];
+          if (quelle === "fehler" || menge === undefined || menge === null) gewerkProblem = true;
+          else gewerkSumme += menge;
+        });
+        return (
         <div key={gewerk.key} style={{ marginBottom: 18 }}>
           <div style={{ position: "sticky", top: 0, background: "#fff", zIndex: 2, paddingBottom: 3 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
@@ -376,6 +389,16 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                     padding: "1px 3px", border: "1px solid transparent", background: "transparent", fontFamily: "inherit", color: "var(--tc-text-3)" }}
                   onFocus={e => e.currentTarget.style.border = "1px solid #d4dce4"}
                   onBlur={e => e.currentTarget.style.border = "1px solid transparent"} />
+                {gewerkTaskAnzahl > 0 && (
+                  <span style={{ color: gewerkProblem ? "var(--tc-red)" : "var(--tc-text-3)" }}
+                    title={
+                      gewerkProblem
+                        ? "Mindestens ein Task in dieser Kategorie hat keine oder eine fehlerhafte Menge — siehe Tab Kalkulation"
+                        : `${gewerkTaskAnzahl} Task${gewerkTaskAnzahl === 1 ? "" : "s"} mit Kürzel aus dieser Kategorie`
+                    }>
+                    {gewerkSumme.toLocaleString("de-CH", { maximumFractionDigits: 2 })}
+                  </span>
+                )}
                 <span>(</span>
                 <input disabled={readOnly} value={gewerk.einheit} title="Einheit (z.B. m², m³, m1, Stk.)"
                   onChange={e => speichern({ ...stammdaten, gewerke: stammdaten.gewerke.map((g, i) => i !== gi ? g : { ...g, einheit: e.target.value }) })}
@@ -566,7 +589,8 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
             </button>
           )}
         </div>
-      ))}
+        );
+      })}
       </div>
       {!readOnly && (
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 14 }}>
