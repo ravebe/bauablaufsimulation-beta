@@ -5,7 +5,7 @@ import type { SimProjekt, Task } from "../types";
 import { istGruppe, berechneNummern, nsKey } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { arbeitstageZwischen, LEERER_KALENDER } from "./kalenderHelpers";
-import { LEERE_STAMMDATEN, alleKuerzel, gewerkeFuerKuerzel, dauerBerechnetTask, bezeichnungFuerKuerzel } from "./stammdatenHelpers";
+import { LEERE_STAMMDATEN, alleKuerzel, gewerkeFuerKuerzel, dauerBerechnetTask, bezeichnungFuerKuerzel, istOeffnungsObjekt } from "./stammdatenHelpers";
 import { kuerzelVorschlag } from "./bauteilkatalogHelpers";
 import { StatTile, CategoryBarChart, CockpitAbschnitt, useEingeklappt, FARBEN } from "./cockpitCharts";
 import { ladeObjektAttribute } from "./modelHelpers";
@@ -129,7 +129,10 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
       const mengenQuelle = { ...(t.mengenQuelle ?? {}) };
       const mengenInfo = { ...(t.mengenInfo ?? {}) };
       for (const { g, rate } of zuBerechnen) {
-        const erg = berechneMenge(rate.formel!, objektWerteListe);
+        const basis = rate.oeffnungenAusschliessen
+          ? objektWerteListe.filter(w => !istOeffnungsObjekt(w, stammdaten.oeffnungsFilter))
+          : objektWerteListe;
+        const erg = berechneMenge(rate.formel!, basis);
         if (erg.wert !== null) mengen[g.key] = erg.wert; else delete mengen[g.key];
 
         if (erg.wert !== null && erg.anzahlFehler === 0 && !erg.fehler) {

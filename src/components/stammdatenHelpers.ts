@@ -9,6 +9,7 @@ export interface Rate {
   anzahlPersonen: number;
   chfProEinheit: number | null;
   formel?: string; // Menge-Formel aus IFC-Attributen der zugeordneten Bauteile, siehe formelHelpers.ts
+  oeffnungenAusschliessen?: boolean; // Bauteile, die dem globalen Öffnungsfilter (Stammdaten.oeffnungsFilter) entsprechen, bei der Mengenermittlung dieser Rate ignorieren — siehe istOeffnungsObjekt()
 }
 export interface Gewerk {
   key: string;
@@ -17,10 +18,15 @@ export interface Gewerk {
   raten: Rate[];
   kranpflichtig?: boolean; // steuert, ob Tasks dieses Gewerks in die Kranauslastung (Tab AVOR) einfliessen
 }
+/** Erkennungsmerkmal für Öffnungen (z.B. Tür-/Fensteraussparungen in Wänden), die als eigene
+ *  Bauteile zugeordnet sein können, aber nicht die Mengen-Attribute der Wand selbst tragen (z.B.
+ *  Qto_WallBaseQuantities) — je Rate über "oeffnungenAusschliessen" abschaltbar, siehe istOeffnungsObjekt(). */
+export interface OeffnungsFilter { attribut: string; wert: string; }
 export interface Stammdaten {
   arbeitszeitStdProTag: number;
   umsatzChfProMannstunde?: number; // für Ertragsoptik (Tab AVOR), Default 80
   gewerke: Gewerk[];
+  oeffnungsFilter?: OeffnungsFilter;
 }
 export const LEERE_STAMMDATEN: Stammdaten = { arbeitszeitStdProTag: 8.5, gewerke: [] };
 
@@ -39,7 +45,18 @@ export function parseStammdatenJson(text: string): Stammdaten {
     arbeitszeitStdProTag: typeof raw.arbeitszeitStdProTag === "number" ? raw.arbeitszeitStdProTag : 8.5,
     umsatzChfProMannstunde: typeof raw.umsatzChfProMannstunde === "number" ? raw.umsatzChfProMannstunde : undefined,
     gewerke: raw.gewerke,
+    oeffnungsFilter: raw.oeffnungsFilter && typeof raw.oeffnungsFilter.attribut === "string" && typeof raw.oeffnungsFilter.wert === "string"
+      ? raw.oeffnungsFilter : undefined,
   };
+}
+
+/** Prüft anhand des globalen Öffnungsfilters, ob ein Bauteil (dessen flache Pset||Property-Attribute)
+ *  als Öffnung gilt — Vergleich getrimmt/case-insensitiv, da IFC-Werte je nach Exporter unterschiedlich
+ *  geschrieben sind (z.B. "Opening" vs. "opening"). */
+export function istOeffnungsObjekt(werte: Record<string, string>, filter: OeffnungsFilter | undefined): boolean {
+  if (!filter?.attribut || !filter.wert.trim()) return false;
+  const wert = werte[filter.attribut];
+  return typeof wert === "string" && wert.trim().toLowerCase() === filter.wert.trim().toLowerCase();
 }
 
 /** Dauer eines einzelnen Gewerks in Tagen: benötigte Personenstunden / verfügbare Personenstunden pro Tag. */
