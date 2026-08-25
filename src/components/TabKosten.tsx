@@ -27,6 +27,9 @@ export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }
   const { eingeklappt, toggle: toggleEingeklappt } = useEingeklappt(projectId, "kosten");
   const [heuteLaeuft, setHeuteLaeuft] = useState(false);
   const [heuteErgebnis, setHeuteErgebnis] = useState<string | null>(null);
+  // null = Stammdaten-Reihenfolge (wie Tab Ressourcen), sonst höchste/niedrigste Summe zuoberst —
+  // sortiert sowohl die Gewerk-Gruppen (nach Gesamtsumme) als auch die Kürzel-Zeilen darin.
+  const [kostenSortRichtung, setKostenSortRichtung] = useState<"desc" | "asc" | null>(null);
 
   if (!sim) return <div style={{ padding: 14, fontSize: 12, color: "var(--tc-text-3)" }}>Kein aktives Projekt ausgewählt</div>;
 
@@ -78,6 +81,18 @@ export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }
     });
     return { summe, anzahl };
   }
+
+  const gewerkeGruppiert = stammdaten.gewerke.filter(g => g.raten.length > 0).map(g => ({
+    g,
+    gewerkSumme: kostenProGewerk.get(g.key) ?? 0,
+    raten: g.raten.map(r => ({ r, ...kostenProGewerkKuerzel(g.key, r.kuerzel, r.chfProEinheit) })),
+  }));
+  const gewerkeAnzeige = !kostenSortRichtung ? gewerkeGruppiert : (() => {
+    const richt = kostenSortRichtung === "desc" ? -1 : 1;
+    return [...gewerkeGruppiert]
+      .map(e => ({ ...e, raten: [...e.raten].sort((a, b) => (a.summe - b.summe) * richt) }))
+      .sort((a, b) => (a.gewerkSumme - b.gewerkSumme) * richt);
+  })();
 
   // "Heute"-Bezug: Position im kumulierten Verlauf + 3D-Baufortschritt von heute.
   const { iso: heuteIso, datum: heute } = heuteIsoUndDatum();
@@ -149,31 +164,32 @@ export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }
         <span style={{ width: 60 }}>Kürzel</span>
         <span style={{ flex: 1 }}>Bezeichnung</span>
         <span style={{ width: 50, textAlign: "right" }}>Tasks</span>
-        <span style={{ width: 100, textAlign: "right" }}>Summe CHF</span>
+        <span style={{ width: 100, textAlign: "right", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3, cursor: "pointer", userSelect: "none" }}
+          onClick={() => setKostenSortRichtung(r => r === "desc" ? "asc" : r === "asc" ? null : "desc")}
+          title="Nach Summe sortieren (höchste zuoberst)">
+          Summe CHF
+          {kostenSortRichtung && <span style={{ fontSize: 8 }}>{kostenSortRichtung === "desc" ? "▼" : "▲"}</span>}
+        </span>
       </div>
-      {stammdaten.gewerke.filter(g => g.raten.length > 0).map(g => {
-        const gewerkSumme = kostenProGewerk.get(g.key) ?? 0;
-        return (
-          <div key={g.key} style={{ marginBottom: 10 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 0 3px", fontWeight: 700, fontSize: 12, borderBottom: "1px solid var(--tc-border)" }}>
-              <span>{g.label || "(ohne Namen)"}</span>
-              <span>{fmtChf(gewerkSumme)} CHF</span>
-            </div>
-            {g.raten.map(r => {
-              const { summe, anzahl } = kostenProGewerkKuerzel(g.key, r.kuerzel, r.chfProEinheit);
-              const leer = anzahl === 0;
-              return (
-                <div key={r.kuerzel} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 0", borderBottom: "1px solid var(--tc-border-light)", color: leer ? "#aaa" : undefined }}>
-                  <span style={{ width: 60, fontWeight: 600 }}>{r.kuerzel}</span>
-                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.bezeichnung}</span>
-                  <span style={{ width: 50, textAlign: "right", color: leer ? "#aaa" : "#888" }}>{anzahl}</span>
-                  <span style={{ width: 100, textAlign: "right" }}>{fmtChf(summe)}</span>
-                </div>
-              );
-            })}
+      {gewerkeAnzeige.map(({ g, gewerkSumme, raten }) => (
+        <div key={g.key} style={{ marginBottom: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 0 3px", fontWeight: 700, fontSize: 12, borderBottom: "1px solid var(--tc-border)" }}>
+            <span>{g.label || "(ohne Namen)"}</span>
+            <span>{fmtChf(gewerkSumme)} CHF</span>
           </div>
-        );
-      })}
+          {raten.map(({ r, summe, anzahl }) => {
+            const leer = anzahl === 0;
+            return (
+              <div key={r.kuerzel} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 0", borderBottom: "1px solid var(--tc-border-light)", color: leer ? "#aaa" : undefined }}>
+                <span style={{ width: 60, fontWeight: 600 }}>{r.kuerzel}</span>
+                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.bezeichnung}</span>
+                <span style={{ width: 50, textAlign: "right", color: leer ? "#aaa" : "#888" }}>{anzahl}</span>
+                <span style={{ width: 100, textAlign: "right" }}>{fmtChf(summe)}</span>
+              </div>
+            );
+          })}
+        </div>
+      ))}
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 0 0", fontWeight: 700 }}>
         <span style={{ flex: 1, textAlign: "right" }}>Gesamt</span>
         <span style={{ width: 100, textAlign: "right" }}>{fmtChf(gesamt)}</span>

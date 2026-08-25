@@ -52,6 +52,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   const [spaltenFilter, setSpaltenFilter] = useState<Partial<Record<SortSpalte, Set<string>>>>({});
   const [filterMenuOffen, setFilterMenuOffen] = useState<SortSpalte | null>(null);
   const [angezeigtTaskId, setAngezeigtTaskId] = useState<string | null>(null);
+  const [mengenSortModus, setMengenSortModus] = useState<"fehler" | "leer" | null>(null);
 
   const lsColwKey = nsKey(LS_COLW, projectId);
   const [colW, setColW] = useState<Record<Spalte, number>>(() => {
@@ -257,6 +258,17 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     return [...werte].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   }
 
+  // Priorität für den Mengen-Sortmodus (0 = zuoberst) — "fehler": mindestens ein Gewerk dieses
+  // Kürzels steht auf mengenQuelle "fehler"; "leer": kein Kürzel gewählt ODER mindestens ein
+  // anwendbares Gewerk hat noch gar keine Menge erfasst. Als stabiler Sortier-Pass NACH der
+  // Spalten-Sortierung angewendet, damit die bisherige Reihenfolge innerhalb der beiden Gruppen erhalten bleibt.
+  function mengenPrioritaet(z: Zeile): number {
+    if (!z.t.bauteilKuerzel) return mengenSortModus === "leer" ? 0 : 1;
+    const gewerke = gewerkeFuerKuerzel(stammdaten, z.t.bauteilKuerzel);
+    if (mengenSortModus === "fehler") return gewerke.some(g => z.t.mengenQuelle?.[g.key] === "fehler") ? 0 : 1;
+    return gewerke.some(g => z.t.mengen?.[g.key] === undefined) ? 0 : 1;
+  }
+
   function filterWertToggeln(spalte: SortSpalte, wert: string, alleWerte: string[]) {
     setSpaltenFilter(prev => {
       const aktuell = prev[spalte] ?? new Set(alleWerte);
@@ -286,6 +298,9 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
       if (sortSpalte === "kuerzel") return (a.t.bauteilKuerzel ?? "").localeCompare(b.t.bauteilKuerzel ?? "") * richt;
       return a.t.name.localeCompare(b.t.name) * richt;
     });
+  }
+  if (mengenSortModus) {
+    zeilenGefiltert = [...zeilenGefiltert].sort((a, b) => mengenPrioritaet(a) - mengenPrioritaet(b));
   }
 
   function headerKlick(spalte: SortSpalte) {
@@ -323,6 +338,18 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
             style={{ cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", color: suchQuery ? "var(--tc-blue)" : "var(--tc-text-3)" }}>
             <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="6.5" cy="6.5" r="5" /><line x1="10.2" y1="10.2" x2="14.5" y2="14.5" /></svg>
           </span>
+        )}
+        {spalte === "mengen" && (
+          <>
+            <span onClick={() => setMengenSortModus(m => m === "fehler" ? null : "fehler")} title="Fehlerhafte Felder zuoberst"
+              style={{ cursor: "pointer", flexShrink: 0, fontSize: 10, color: mengenSortModus === "fehler" ? "var(--tc-red)" : "var(--tc-text-3)" }}>
+              ⚠
+            </span>
+            <span onClick={() => setMengenSortModus(m => m === "leer" ? null : "leer")} title="Leere Felder zuoberst"
+              style={{ cursor: "pointer", flexShrink: 0, fontSize: 10, color: mengenSortModus === "leer" ? "var(--tc-blue)" : "var(--tc-text-3)" }}>
+              ◻
+            </span>
+          </>
         )}
         {sortSpalteTyp && filterMenuOffen === sortSpalteTyp && (
           <>
