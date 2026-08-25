@@ -16,13 +16,13 @@ interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; re
 // Grid-Spalten der Tabelle — feste Breiten statt Flex, damit kein Inhalt nachfolgende Spalten
 // verschiebt. Verstellbar per Drag, siehe startResize. Alle Zellen top-ausgerichtet (alignItems:
 // "start"), damit sie in einer Flucht stehen, auch wenn die Mengen-Zelle mehrzeilig ist.
-const ALLE_SPALTEN = ["nr", "task", "kuerzel", "mengen", "geplant", "berechnet", "differenz", "kranbereich"] as const;
+const ALLE_SPALTEN = ["nr", "task", "kuerzel", "mengen", "geplant", "berechnet", "differenz", "kranbereich", "auge"] as const;
 type Spalte = typeof ALLE_SPALTEN[number];
 const SPALTEN_LABEL: Record<Spalte, string> = {
   nr: "Nr.", task: "Task", kuerzel: "Kürzel", mengen: "Mengen", geplant: "Geplant", berechnet: "Berechnet",
-  differenz: "Differenz", kranbereich: "Kranbereich",
+  differenz: "Differenz", kranbereich: "Kranbereich", auge: "",
 };
-const DEFAULT_COL_W: Record<Spalte, number> = { nr: 30, task: 220, kuerzel: 64, mengen: 260, geplant: 76, berechnet: 88, differenz: 60, kranbereich: 110 };
+const DEFAULT_COL_W: Record<Spalte, number> = { nr: 30, task: 220, kuerzel: 64, mengen: 260, geplant: 76, berechnet: 88, differenz: 60, kranbereich: 110, auge: 30 };
 const LS_COLW = "4d-kalk-colw";
 
 // Spalten mit Sortier-/Filterfunktion im Header (Klick auf Titel = sortieren, ▾ = Filter-Popover).
@@ -51,6 +51,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   const [sortRichtung, setSortRichtung] = useState<"asc" | "desc">("asc");
   const [spaltenFilter, setSpaltenFilter] = useState<Partial<Record<SortSpalte, Set<string>>>>({});
   const [filterMenuOffen, setFilterMenuOffen] = useState<SortSpalte | null>(null);
+  const [angezeigtTaskId, setAngezeigtTaskId] = useState<string | null>(null);
 
   const lsColwKey = nsKey(LS_COLW, projectId);
   const [colW, setColW] = useState<Record<Spalte, number>>(() => {
@@ -163,6 +164,34 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     }
     setBulkLaeuft(false);
     setBulkErgebnis(`${zugeordnet} zugeordnet, ${uneindeutigN} uneindeutig, ${keinTreffer} ohne Treffer`);
+  }
+
+  function guidsZuBatch(guids: string[]): { modelId: string; objectRuntimeIds: number[] }[] {
+    const byModel = new Map<string, Set<number>>();
+    for (const g of guids) {
+      if (!g.includes(":::")) continue;
+      const sep = g.indexOf(":::"); const mid = g.slice(0, sep); const rId = Number(g.slice(sep + 3));
+      if (mid && !isNaN(rId)) { if (!byModel.has(mid)) byModel.set(mid, new Set()); byModel.get(mid)!.add(rId); }
+    }
+    return [...byModel.entries()].map(([modelId, rIds]) => ({ modelId, objectRuntimeIds: [...rIds] }));
+  }
+
+  // Blendet alle Objekte im Modell aus und zeigt/markiert nur die dem Task zugeordneten Bauteile
+  // (isolateEntities). Erneuter Klick auf dasselbe Auge setzt die 3D-Ansicht wieder zurück.
+  async function bauteileImModellZeigen(t: Task) {
+    if (!api) return;
+    if (angezeigtTaskId === t.id) {
+      try { await api.viewer.reset(); } catch { /* ignore */ }
+      setAngezeigtTaskId(null);
+      return;
+    }
+    const batch = guidsZuBatch(t.objektGuids);
+    if (batch.length === 0) return;
+    try {
+      await api.viewer.isolateEntities(batch);
+      await (api.viewer as any).setSelection({ modelObjectIds: batch }, "set");
+      setAngezeigtTaskId(t.id);
+    } catch { /* ignore */ }
   }
 
   if (kuerzelListe.length === 0) {
@@ -378,6 +407,21 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
           <input type="text" disabled={readOnly} value={z.t.kranbereich ?? ""} onChange={e => taskAendern(z.t.id, { kranbereich: e.target.value || undefined })}
             style={{ width: "90%", fontSize: 10, padding: "2px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
         );
+      case "auge": {
+        const hatBauteile = z.t.objektGuids.length > 0;
+        const aktiv = angezeigtTaskId === z.t.id;
+        const disabled = !api || !hatBauteile;
+        return (
+          <span onClick={() => !disabled && bauteileImModellZeigen(z.t)}
+            title={!api ? "3D-Modell nicht verbunden" : !hatBauteile ? "Keine Bauteile zugeordnet" : aktiv ? "3D-Ansicht zurücksetzen" : "Bauteile im 3D-Modell zeigen und markieren"}
+            style={{ display: "flex", alignItems: "center", justifyContent: "center", cursor: disabled ? "default" : "pointer", color: disabled ? "#c7d0d8" : aktiv ? "var(--tc-blue)" : "var(--tc-text-3)" }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" />
+              <circle cx="12" cy="12" r="3" fill={aktiv ? "currentColor" : "none"} />
+            </svg>
+          </span>
+        );
+      }
     }
   }
 
