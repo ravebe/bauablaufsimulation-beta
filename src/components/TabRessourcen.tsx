@@ -33,6 +33,10 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   const [importFehler, setImportFehler] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const importCsvInputRef = useRef<HTMLInputElement>(null);
+  const [exportMenuOffen, setExportMenuOffen] = useState(false);
+  const [importMenuOffen, setImportMenuOffen] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+  const importMenuRef = useRef<HTMLDivElement>(null);
   const [neueKategorieName, setNeueKategorieName] = useState("");
   const [attrListe, setAttrListe] = useState<AttrItem[] | null>(null);
   const [attrLaedt, setAttrLaedt] = useState(false);
@@ -86,6 +90,16 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     document.addEventListener("mousedown", onDocMouseDown);
     return () => document.removeEventListener("mousedown", onDocMouseDown);
   }, [oeffnungPickerOffenFuer]);
+
+  useEffect(() => {
+    if (!exportMenuOffen && !importMenuOffen) return;
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) setExportMenuOffen(false);
+      if (importMenuRef.current && !importMenuRef.current.contains(e.target as Node)) setImportMenuOffen(false);
+    };
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [exportMenuOffen, importMenuOffen]);
 
   if (!sim) return <div style={{ padding: 14, fontSize: 12, color: "var(--tc-text-3)" }}>Kein aktives Projekt ausgewählt</div>;
 
@@ -283,44 +297,58 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
 
   return (
     <div style={{ padding: 14, fontSize: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontWeight: 600 }}>Arbeitszeit pro Tag (h):</span>
-          {numInput(stammdaten.arbeitszeitStdProTag, v => speichern({ ...stammdaten, arbeitszeitStdProTag: v ?? 8.5 }), 60)}
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontWeight: 600 }}>Umsatz CHF/Mannstunde:</span>
-          {numInput(stammdaten.umsatzChfProMannstunde ?? 80, v => speichern({ ...stammdaten, umsatzChfProMannstunde: v ?? 80 }), 60)}
-        </div>
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, marginBottom: 10 }}>
+        <div ref={exportMenuRef} style={{ position: "relative" }}>
           <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "3px 8px" }}
             disabled={stammdaten.gewerke.length === 0}
-            onClick={stammdatenExportieren} title="Ressourcen (alle Kategorien, Kürzel, Leistungswerte) als JSON-Datei exportieren — z.B. für ein anderes Trimble-Connect-Projekt">
-            ⭳ JSON
+            onClick={() => setExportMenuOffen(o => !o)} title="Ressourcen exportieren">
+            ⭳ Export ▾
           </button>
-          {!readOnly && (<>
+          {exportMenuOffen && (
+            <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 2, background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 50, minWidth: 110 }}>
+              <div onClick={() => { stammdatenExportieren(); setExportMenuOffen(false); }}
+                style={{ padding: "6px 10px", cursor: "pointer", fontSize: 11 }}
+                onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")} onMouseLeave={e => (e.currentTarget.style.background = "")}
+                title="Alle Kategorien/Kürzel/Leistungswerte als JSON-Datei — z.B. für ein anderes Trimble-Connect-Projekt">
+                JSON
+              </div>
+              <div onClick={() => { stammdatenExportierenCsv(); setExportMenuOffen(false); }}
+                style={{ padding: "6px 10px", cursor: "pointer", fontSize: 11 }}
+                onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")} onMouseLeave={e => (e.currentTarget.style.background = "")}
+                title="Raten (Kürzel/LW/Personen/CHF/Formel) als CSV — in Excel bearbeitbar, danach wieder importierbar">
+                CSV
+              </div>
+            </div>
+          )}
+        </div>
+        {!readOnly && (
+          <div ref={importMenuRef} style={{ position: "relative" }}>
             <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "3px 8px" }}
-              onClick={() => importInputRef.current?.click()} title="Ressourcen aus einer zuvor exportierten JSON-Datei importieren">
-              ⭱ JSON
+              onClick={() => setImportMenuOffen(o => !o)} title="Ressourcen importieren">
+              ⭱ Import ▾
             </button>
+            {importMenuOffen && (
+              <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 2, background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 50, minWidth: 110 }}>
+                <div onClick={() => { importInputRef.current?.click(); setImportMenuOffen(false); }}
+                  style={{ padding: "6px 10px", cursor: "pointer", fontSize: 11 }}
+                  onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")} onMouseLeave={e => (e.currentTarget.style.background = "")}
+                  title="Aus einer zuvor exportierten JSON-Datei importieren">
+                  JSON
+                </div>
+                <div onClick={() => { importCsvInputRef.current?.click(); setImportMenuOffen(false); }}
+                  style={{ padding: "6px 10px", cursor: "pointer", fontSize: 11 }}
+                  onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")} onMouseLeave={e => (e.currentTarget.style.background = "")}
+                  title="Aus einer zuvor exportierten (in Excel bearbeiteten) CSV-Datei importieren">
+                  CSV
+                </div>
+              </div>
+            )}
             <input ref={importInputRef} type="file" accept=".json" style={{ display: "none" }}
               onChange={e => e.target.files?.[0] && stammdatenImportieren(e.target.files[0])} />
-          </>)}
-          <span style={{ width: 1, alignSelf: "stretch", background: "var(--tc-border-light)", margin: "0 2px" }} />
-          <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "3px 8px" }}
-            disabled={stammdaten.gewerke.length === 0}
-            onClick={stammdatenExportierenCsv} title="Raten (Kürzel/LW/Personen/CHF/Formel) als CSV exportieren — in Excel bearbeitbar, danach wieder importierbar. Spalte „Gewerk-Schlüssel“ bitte nicht ändern.">
-            ⭳ CSV
-          </button>
-          {!readOnly && (<>
-            <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "3px 8px" }}
-              onClick={() => importCsvInputRef.current?.click()} title="Raten aus einer zuvor exportierten (in Excel bearbeiteten) CSV-Datei importieren">
-              ⭱ CSV
-            </button>
             <input ref={importCsvInputRef} type="file" accept=".csv" style={{ display: "none" }}
               onChange={e => e.target.files?.[0] && stammdatenImportierenCsv(e.target.files[0])} />
-          </>)}
-        </div>
+          </div>
+        )}
       </div>
       {importFehler && <div className="alert err" style={{ marginBottom: 10 }}>! {importFehler}</div>}
 
@@ -335,6 +363,16 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
           <StatTile label="Elemente ohne Leistungswert" wert={String(kuerzelOhneLw.length)} status={kuerzelOhneLw.length > 0 ? "warning" : "good"} />
           <StatTile label="Elemente ohne Stammdaten" wert={String(kuerzelOhneRate.length)} status={kuerzelOhneRate.length > 0 ? "warning" : "good"} />
           <StatTile label="Unbenutzte Elemente" wert={String(kuerzelUnbenutzt.length)} />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontWeight: 600 }}>Arbeitszeit pro Tag (h):</span>
+            {numInput(stammdaten.arbeitszeitStdProTag, v => speichern({ ...stammdaten, arbeitszeitStdProTag: v ?? 8.5 }), 60)}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontWeight: 600 }}>Umsatz CHF/Mannstunde:</span>
+            {numInput(stammdaten.umsatzChfProMannstunde ?? 80, v => speichern({ ...stammdaten, umsatzChfProMannstunde: v ?? 80 }), 60)}
+          </div>
         </div>
         {(kuerzelOhneLw.length > 0 || kuerzelOhneRate.length > 0) && (
           <div style={{ marginBottom: 16, fontSize: 11 }}>
