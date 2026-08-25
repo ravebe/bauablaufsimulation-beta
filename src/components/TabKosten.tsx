@@ -63,6 +63,22 @@ export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }
   const topEintrag = zeilen[0];
   const topAnteilProzent = topEintrag && gesamt > 0 ? (topEintrag[1].summe / gesamt) * 100 : 0;
 
+  // Kosten je (Gewerk, Kürzel) für die gruppierte Liste unten — wie Tab Ressourcen: jede Kategorie mit
+  // Titel + Gesamtsumme, darunter JEDES dort konfigurierte Kürzel mit Bezeichnung, auch wenn dessen
+  // Summe (noch) 0 ist. Ein Kürzel, das in mehreren Gewerken eine Rate hat (z.B. "WB" in Schalung UND
+  // Beton), erscheint dadurch bewusst mehrfach — je Gewerk mit dem dortigen Teilbetrag.
+  function kostenProGewerkKuerzel(gewerkKey: string, kuerzel: string, chfProEinheit: number | null): { summe: number; anzahl: number } {
+    let summe = 0, anzahl = 0;
+    sim!.tasks.forEach((t, i) => {
+      if (t.isGroup || istGruppe(sim!.tasks, i) || t.bauteilKuerzel !== kuerzel) return;
+      const menge = t.mengen?.[gewerkKey];
+      if (!menge) return;
+      anzahl++;
+      if (chfProEinheit) summe += menge * chfProEinheit;
+    });
+    return { summe, anzahl };
+  }
+
   // "Heute"-Bezug: Position im kumulierten Verlauf + 3D-Baufortschritt von heute.
   const { iso: heuteIso, datum: heute } = heuteIsoUndDatum();
   const heuteIdxRoh = ertrag.findIndex(e => e.tag === heuteIso);
@@ -84,10 +100,10 @@ export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }
     setHeuteErgebnis(aktive.length > 0 ? `${aktive.length} Task${aktive.length === 1 ? "" : "s"} aktiv am ${heute.toLocaleDateString("de-CH")}` : `Keine aktiven Tasks am ${heute.toLocaleDateString("de-CH")}`);
   }
 
-  if (zeilen.length === 0) {
+  if (stammdaten.gewerke.length === 0) {
     return (
       <div style={{ padding: 14, fontSize: 12, color: "var(--tc-text-3)" }}>
-        Noch keine Kosten — im Tab Kalkulation Bauteil-Kürzel und Mengen erfassen (Stammdaten mit CHF/Einheit hinterlegt in Tab Ressourcen).
+        Noch keine Kosten — im Tab Ressourcen zuerst Kategorien/Kürzel mit CHF/Einheit anlegen, dann in Tab Kalkulation Bauteil-Kürzel und Mengen erfassen.
       </div>
     );
   }
@@ -135,14 +151,29 @@ export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }
         <span style={{ width: 50, textAlign: "right" }}>Tasks</span>
         <span style={{ width: 100, textAlign: "right" }}>Summe CHF</span>
       </div>
-      {zeilen.map(([kuerzel, e]) => (
-        <div key={kuerzel} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 0", borderBottom: "1px solid var(--tc-border-light)" }}>
-          <span style={{ width: 60, fontWeight: 600 }}>{kuerzel}</span>
-          <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.bezeichnung}</span>
-          <span style={{ width: 50, textAlign: "right", color: "#888" }}>{e.anzahl}</span>
-          <span style={{ width: 100, textAlign: "right" }}>{fmtChf(e.summe)}</span>
-        </div>
-      ))}
+      {stammdaten.gewerke.filter(g => g.raten.length > 0).map(g => {
+        const gewerkSumme = kostenProGewerk.get(g.key) ?? 0;
+        return (
+          <div key={g.key} style={{ marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 0 3px", fontWeight: 700, fontSize: 12, borderBottom: "1px solid var(--tc-border)" }}>
+              <span>{g.label || "(ohne Namen)"}</span>
+              <span>{fmtChf(gewerkSumme)} CHF</span>
+            </div>
+            {g.raten.map(r => {
+              const { summe, anzahl } = kostenProGewerkKuerzel(g.key, r.kuerzel, r.chfProEinheit);
+              const leer = anzahl === 0;
+              return (
+                <div key={r.kuerzel} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 0", borderBottom: "1px solid var(--tc-border-light)", color: leer ? "#aaa" : undefined }}>
+                  <span style={{ width: 60, fontWeight: 600 }}>{r.kuerzel}</span>
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.bezeichnung}</span>
+                  <span style={{ width: 50, textAlign: "right", color: leer ? "#aaa" : "#888" }}>{anzahl}</span>
+                  <span style={{ width: 100, textAlign: "right" }}>{fmtChf(summe)}</span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 0 0", fontWeight: 700 }}>
         <span style={{ flex: 1, textAlign: "right" }}>Gesamt</span>
         <span style={{ width: 100, textAlign: "right" }}>{fmtChf(gesamt)}</span>

@@ -23,6 +23,10 @@ export interface Gewerk {
  *  Bauteile zugeordnet sein können, aber nicht die Mengen-Attribute der Wand selbst tragen (z.B.
  *  Qto_WallBaseQuantities) — je Rate über "oeffnungenAusschliessen" abschaltbar, siehe istOeffnungsObjekt(). */
 export interface OeffnungsFilter { attribut: string; wert: string; }
+/** Default-Öffnungsfilter, solange nichts anderes konfiguriert ist — "Reference Object||Common Type"
+ *  ist das Attribut, das ladeObjektAttribute() aus product.objectType befüllt (siehe modelHelpers.ts);
+ *  "Opening" ist der in der Praxis übliche IFC-Wert für Tür-/Fensteraussparungen. */
+export const STANDARD_OEFFNUNGSFILTER: OeffnungsFilter = { attribut: "Reference Object||Common Type", wert: "Opening" };
 export interface Stammdaten {
   arbeitszeitStdProTag: number;
   umsatzChfProMannstunde?: number; // für Ertragsoptik (Tab AVOR), Default 80
@@ -188,9 +192,10 @@ export function parseStammdatenCsv(text: string, bestehende: Stammdaten): Stammd
  *  als Öffnung gilt — Vergleich getrimmt/case-insensitiv, da IFC-Werte je nach Exporter unterschiedlich
  *  geschrieben sind (z.B. "Opening" vs. "opening"). */
 export function istOeffnungsObjekt(werte: Record<string, string>, filter: OeffnungsFilter | undefined): boolean {
-  if (!filter?.attribut || !filter.wert.trim()) return false;
-  const wert = werte[filter.attribut];
-  return typeof wert === "string" && wert.trim().toLowerCase() === filter.wert.trim().toLowerCase();
+  const f = filter ?? STANDARD_OEFFNUNGSFILTER;
+  if (!f.attribut || !f.wert.trim()) return false;
+  const wert = werte[f.attribut];
+  return typeof wert === "string" && wert.trim().toLowerCase() === f.wert.trim().toLowerCase();
 }
 
 /** Dauer eines einzelnen Gewerks in Tagen: benötigte Personenstunden / verfügbare Personenstunden pro Tag. */

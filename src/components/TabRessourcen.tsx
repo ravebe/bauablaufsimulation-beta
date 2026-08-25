@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import type { SimProjekt } from "../types";
 import { istGruppe, nsKey } from "../types";
 import type { Gewerk, GewerkeKatalog, Rate, Stammdaten } from "./stammdatenHelpers";
-import { LEERE_STAMMDATEN, GEWERKE_KATALOGE, alleKuerzel, stammdatenAlsJson, parseStammdatenJson, stammdatenAlsCsv, parseStammdatenCsv } from "./stammdatenHelpers";
+import { LEERE_STAMMDATEN, GEWERKE_KATALOGE, alleKuerzel, stammdatenAlsJson, parseStammdatenJson, stammdatenAlsCsv, parseStammdatenCsv, STANDARD_OEFFNUNGSFILTER } from "./stammdatenHelpers";
 import { StatTile } from "./cockpitCharts";
 import type { ApiInstance } from "../hooks/useApi";
 import { ladeAttributListe, ladeObjektAttribute, attrItemsAusWerten, keyZuAttrItem, type AttrItem } from "./modelHelpers";
@@ -527,11 +527,9 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                   {!!r.formel?.trim() && (!readOnly || r.oeffnungenAusschliessen) && (
                     <button className="tc-btn-ghost"
                       title={
-                        !stammdaten.oeffnungsFilter?.attribut
-                          ? "Öffnungen bei der Mengenermittlung ausschließen — dafür oben zuerst \"Öffnungen erkennen an\" festlegen"
-                          : r.oeffnungenAusschliessen
-                            ? "Öffnungen werden bei der Mengenermittlung dieser Position ausgeschlossen (Klick zum Deaktivieren)"
-                            : "Öffnungen bei der Mengenermittlung dieser Position ausschließen"
+                        r.oeffnungenAusschliessen
+                          ? "Öffnungen werden bei der Mengenermittlung dieser Position ausgeschlossen (Klick zum Deaktivieren)"
+                          : "Öffnungen bei der Mengenermittlung dieser Position ausschließen (Erkennungsmerkmal siehe unten im Formel-Bereich)"
                       }
                       onClick={() => rateAendern(gi, ri, { oeffnungenAusschliessen: !r.oeffnungenAusschliessen })}
                       style={{ padding: "2px 5px", width: 22, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
@@ -606,12 +604,13 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                     Öffnung
                   </span>
                   <button className="tc-btn-ghost" disabled={readOnly} style={{ fontSize: 10, padding: "2px 6px", flexShrink: 0 }}
+                    title="Standardmäßig voreingestellt auf „Reference Object||Common Type“ — bei Bedarf hier anpassen"
                     onClick={() => { const opening = oeffnungPickerOffenFuer !== pickerKey; setOeffnungPickerOffenFuer(opening ? pickerKey : null); setOeffnungPickerQuery(""); if (opening) attrListeLaden(); }}>
-                    {stammdaten.oeffnungsFilter?.attribut ? keyZuAttrItem(stammdaten.oeffnungsFilter.attribut).name : "Attribut wählen…"}
+                    {keyZuAttrItem(stammdaten.oeffnungsFilter?.attribut ?? STANDARD_OEFFNUNGSFILTER.attribut).name}
                   </button>
                   <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>=</span>
-                  <input disabled={readOnly} value={stammdaten.oeffnungsFilter?.wert ?? ""} placeholder="z.B. Opening"
-                    onChange={e => speichern({ ...stammdaten, oeffnungsFilter: { attribut: stammdaten.oeffnungsFilter?.attribut ?? "", wert: e.target.value } })}
+                  <input disabled={readOnly} value={stammdaten.oeffnungsFilter?.wert ?? STANDARD_OEFFNUNGSFILTER.wert} placeholder="z.B. Opening"
+                    onChange={e => speichern({ ...stammdaten, oeffnungsFilter: { attribut: stammdaten.oeffnungsFilter?.attribut ?? STANDARD_OEFFNUNGSFILTER.attribut, wert: e.target.value } })}
                     style={{ width: 100, fontSize: 10, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
                   {oeffnungPickerOffenFuer === pickerKey && (
                     <div style={{ position: "absolute", top: "100%", left: 46, marginTop: 2, background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 50, minWidth: 220, maxHeight: 220, overflowY: "auto" }}>
@@ -626,7 +625,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                       {attrLaedt && <div style={{ padding: 6, fontSize: 10, color: "var(--tc-text-3)" }}>⟳ Attribute laden…</div>}
                       {!attrLaedt && oeffnungAcItems.length === 0 && <div style={{ padding: 6, fontSize: 10, color: "var(--tc-text-3)" }}>Keine Treffer</div>}
                       {!attrLaedt && oeffnungAcItems.map(a => (
-                        <div key={a.key} onMouseDown={() => { speichern({ ...stammdaten, oeffnungsFilter: { attribut: a.key, wert: stammdaten.oeffnungsFilter?.wert ?? "" } }); setOeffnungPickerOffenFuer(null); setOeffnungPickerQuery(""); }}
+                        <div key={a.key} onMouseDown={() => { speichern({ ...stammdaten, oeffnungsFilter: { attribut: a.key, wert: stammdaten.oeffnungsFilter?.wert ?? STANDARD_OEFFNUNGSFILTER.wert } }); setOeffnungPickerOffenFuer(null); setOeffnungPickerQuery(""); }}
                           style={{ padding: "5px 8px", cursor: "pointer", fontSize: 10 }}
                           onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")}
                           onMouseLeave={e => (e.currentTarget.style.background = "")}>
