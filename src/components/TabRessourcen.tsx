@@ -37,7 +37,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   const [pickerQuery, setPickerQuery] = useState("");
   const pickerRef = useRef<HTMLDivElement>(null);
   const [formelOffenFuer, setFormelOffenFuer] = useState<Set<string>>(new Set()); // "gewerkIdx-rateIdx", eingeklappt per Default
-  const [oeffnungPickerOffen, setOeffnungPickerOffen] = useState(false);
+  const [oeffnungPickerOffenFuer, setOeffnungPickerOffenFuer] = useState<string | null>(null); // "gewerkIdx-rateIdx"
   const [oeffnungPickerQuery, setOeffnungPickerQuery] = useState("");
   const oeffnungPickerRef = useRef<HTMLDivElement>(null);
   const lsRatenColwKey = nsKey(LS_RATEN_COLW, projectId);
@@ -76,13 +76,13 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   }, [pickerOffenFuer]);
 
   useEffect(() => {
-    if (!oeffnungPickerOffen) return;
+    if (!oeffnungPickerOffenFuer) return;
     const onDocMouseDown = (e: MouseEvent) => {
-      if (oeffnungPickerRef.current && !oeffnungPickerRef.current.contains(e.target as Node)) setOeffnungPickerOffen(false);
+      if (oeffnungPickerRef.current && !oeffnungPickerRef.current.contains(e.target as Node)) setOeffnungPickerOffenFuer(null);
     };
     document.addEventListener("mousedown", onDocMouseDown);
     return () => document.removeEventListener("mousedown", onDocMouseDown);
-  }, [oeffnungPickerOffen]);
+  }, [oeffnungPickerOffenFuer]);
 
   if (!sim) return <div style={{ padding: 14, fontSize: 12, color: "var(--tc-text-3)" }}>Kein aktives Projekt ausgewählt</div>;
 
@@ -255,7 +255,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
 
   return (
     <div style={{ padding: 14, fontSize: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 10, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontWeight: 600 }}>Arbeitszeit pro Tag (h):</span>
           {numInput(stammdaten.arbeitszeitStdProTag, v => speichern({ ...stammdaten, arbeitszeitStdProTag: v ?? 8.5 }), 60)}
@@ -263,36 +263,6 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontWeight: 600 }}>Umsatz CHF/Mannstunde:</span>
           {numInput(stammdaten.umsatzChfProMannstunde ?? 80, v => speichern({ ...stammdaten, umsatzChfProMannstunde: v ?? 80 }), 60)}
-        </div>
-        <div ref={oeffnungPickerRef} style={{ display: "flex", alignItems: "center", gap: 6, position: "relative" }}>
-          <span style={{ fontWeight: 600 }} title="Erkennungsmerkmal für Öffnungen (z.B. Tür-/Fensteraussparungen), die als eigene zugeordnete Bauteile auftauchen, aber nicht die Mengen-Attribute der Wand tragen — je Leistungsposition über den ⊘-Button ausschließbar">
-            Öffnungen erkennen an:
-          </span>
-          <button className="tc-btn-ghost" disabled={readOnly} style={{ fontSize: 11, padding: "4px 8px", border: "1px solid #d4dce4" }}
-            onClick={() => { const opening = !oeffnungPickerOffen; setOeffnungPickerOffen(opening); setOeffnungPickerQuery(""); if (opening) attrListeLaden(); }}>
-            {stammdaten.oeffnungsFilter?.attribut ? keyZuAttrItem(stammdaten.oeffnungsFilter.attribut).name : "Attribut wählen…"}
-          </button>
-          <span>=</span>
-          <input disabled={readOnly} value={stammdaten.oeffnungsFilter?.wert ?? ""} placeholder="z.B. Opening"
-            onChange={e => speichern({ ...stammdaten, oeffnungsFilter: { attribut: stammdaten.oeffnungsFilter?.attribut ?? "", wert: e.target.value } })}
-            style={{ width: 110, fontSize: 11, padding: "4px 6px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
-          {oeffnungPickerOffen && (
-            <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 2, background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 50, minWidth: 220, maxHeight: 220, overflowY: "auto" }}>
-              <input autoFocus value={oeffnungPickerQuery} onChange={e => setOeffnungPickerQuery(e.target.value)} placeholder="Attribut suchen…"
-                style={{ width: "100%", boxSizing: "border-box", fontSize: 10, padding: "5px 6px", border: "none", borderBottom: "1px solid var(--tc-border-light)" }} />
-              {attrLaedt && <div style={{ padding: 6, fontSize: 10, color: "var(--tc-text-3)" }}>⟳ Attribute laden…</div>}
-              {!attrLaedt && oeffnungAcItems.length === 0 && <div style={{ padding: 6, fontSize: 10, color: "var(--tc-text-3)" }}>Keine Treffer</div>}
-              {!attrLaedt && oeffnungAcItems.map(a => (
-                <div key={a.key} onMouseDown={() => { speichern({ ...stammdaten, oeffnungsFilter: { attribut: a.key, wert: stammdaten.oeffnungsFilter?.wert ?? "" } }); setOeffnungPickerOffen(false); setOeffnungPickerQuery(""); }}
-                  style={{ padding: "5px 8px", cursor: "pointer", fontSize: 10 }}
-                  onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")}
-                  onMouseLeave={e => (e.currentTarget.style.background = "")}>
-                  <div style={{ fontWeight: 500 }}>{a.name}</div>
-                  <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>{a.pset}</div>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
           <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "3px 8px" }}
@@ -452,6 +422,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                 </div>
               </div>
               {(!readOnly || r.formel) && formelOffenFuer.has(pickerKey) && (
+                <>
                 <div ref={pickerOffenFuer === pickerKey ? pickerRef : undefined}
                   style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3, paddingLeft: ratenColW.kuerzel + 6, position: "relative" }}>
                   <span style={{ fontSize: 9, color: "var(--tc-text-3)", width: 40, flexShrink: 0 }}>Formel</span>
@@ -482,6 +453,39 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                     </div>
                   )}
                 </div>
+                <div ref={oeffnungPickerOffenFuer === pickerKey ? oeffnungPickerRef : undefined}
+                  style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 4, paddingLeft: ratenColW.kuerzel + 6, position: "relative" }}>
+                  <span style={{ fontSize: 9, color: "var(--tc-text-3)", width: 40, flexShrink: 0 }}
+                    title="Bauteile mit diesem Attribut/Wert gelten als Öffnung (z.B. Tür-/Fensteraussparungen) — gilt für alle Leistungspositionen, je Position über den ⊘-Button ausschließbar">
+                    Öffnung
+                  </span>
+                  <button className="tc-btn-ghost" disabled={readOnly} style={{ fontSize: 10, padding: "2px 6px", flexShrink: 0 }}
+                    onClick={() => { const opening = oeffnungPickerOffenFuer !== pickerKey; setOeffnungPickerOffenFuer(opening ? pickerKey : null); setOeffnungPickerQuery(""); if (opening) attrListeLaden(); }}>
+                    {stammdaten.oeffnungsFilter?.attribut ? keyZuAttrItem(stammdaten.oeffnungsFilter.attribut).name : "Attribut wählen…"}
+                  </button>
+                  <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>=</span>
+                  <input disabled={readOnly} value={stammdaten.oeffnungsFilter?.wert ?? ""} placeholder="z.B. Opening"
+                    onChange={e => speichern({ ...stammdaten, oeffnungsFilter: { attribut: stammdaten.oeffnungsFilter?.attribut ?? "", wert: e.target.value } })}
+                    style={{ width: 100, fontSize: 10, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
+                  {oeffnungPickerOffenFuer === pickerKey && (
+                    <div style={{ position: "absolute", top: "100%", left: 46, marginTop: 2, background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 50, minWidth: 220, maxHeight: 220, overflowY: "auto" }}>
+                      <input autoFocus value={oeffnungPickerQuery} onChange={e => setOeffnungPickerQuery(e.target.value)} placeholder="Attribut suchen…"
+                        style={{ width: "100%", boxSizing: "border-box", fontSize: 10, padding: "5px 6px", border: "none", borderBottom: "1px solid var(--tc-border-light)" }} />
+                      {attrLaedt && <div style={{ padding: 6, fontSize: 10, color: "var(--tc-text-3)" }}>⟳ Attribute laden…</div>}
+                      {!attrLaedt && oeffnungAcItems.length === 0 && <div style={{ padding: 6, fontSize: 10, color: "var(--tc-text-3)" }}>Keine Treffer</div>}
+                      {!attrLaedt && oeffnungAcItems.map(a => (
+                        <div key={a.key} onMouseDown={() => { speichern({ ...stammdaten, oeffnungsFilter: { attribut: a.key, wert: stammdaten.oeffnungsFilter?.wert ?? "" } }); setOeffnungPickerOffenFuer(null); setOeffnungPickerQuery(""); }}
+                          style={{ padding: "5px 8px", cursor: "pointer", fontSize: 10 }}
+                          onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")}
+                          onMouseLeave={e => (e.currentTarget.style.background = "")}>
+                          <div style={{ fontWeight: 500 }}>{a.name}</div>
+                          <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>{a.pset}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                </>
               )}
               {dupImGewerk && (
                 <div style={{ fontSize: 9, color: "var(--tc-red)", marginTop: 2 }}>

@@ -26,7 +26,7 @@ export default function App() {
   const [aktTab, setAktTab] = useState<Tab>("projekte");
   const [tabGruppe, setTabGruppe] = useState<TabGruppe>("haupt");
   const lastHauptTab = useRef<Tab>("projekte");
-  const lastErweitertTab = useRef<Tab>("kalkulation");
+  const lastErweitertTab = useRef<Tab>("ressourcen");
   useEffect(() => {
     if (HAUPT_TABS.includes(aktTab)) lastHauptTab.current = aktTab;
     else lastErweitertTab.current = aktTab;
