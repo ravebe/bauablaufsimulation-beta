@@ -8,7 +8,7 @@ import { arbeitstageZwischen, LEERER_KALENDER } from "./kalenderHelpers";
 import { LEERE_STAMMDATEN, alleKuerzel, gewerkeFuerKuerzel, dauerBerechnetTask, bezeichnungFuerKuerzel, istOeffnungsObjekt } from "./stammdatenHelpers";
 import { kuerzelVorschlag } from "./bauteilkatalogHelpers";
 import { StatTile, CategoryBarChart, CockpitAbschnitt, useEingeklappt, FARBEN } from "./cockpitCharts";
-import { ladeObjektAttribute } from "./modelHelpers";
+import { ladeObjektAttribute, getModellObjekte } from "./modelHelpers";
 import { berechneMenge } from "./formelHelpers";
 
 interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; api?: ApiInstance | null; projectId?: string | null; }
@@ -179,8 +179,12 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     return [...byModel.entries()].map(([modelId, rIds]) => ({ modelId, objectRuntimeIds: [...rIds] }));
   }
 
-  // Blendet alle Objekte im Modell aus und zeigt/markiert nur die dem Task zugeordneten Bauteile
-  // (isolateEntities). Erneuter Klick auf dasselbe Auge setzt die 3D-Ansicht wieder zurück.
+  // Blendet alle Objekte in allen geladenen Modellen aus und zeigt/markiert danach nur die dem Task
+  // zugeordneten Bauteile — isolateEntities allein reichte nicht (blendete nichts sichtbar ein,
+  // vermutlich weil die Methode in der echten TC-Workspace-API anders heißt/anders wirkt als unser
+  // eigenes ApiInstance-Typinterface vermuten ließ); setObjectState ist dagegen an mehreren Stellen
+  // im Code (dreiDHeuteHelper.ts, TabTasks.tsx) nachweislich funktionsfähig. Erneuter Klick auf
+  // dasselbe Auge setzt die 3D-Ansicht wieder zurück.
   async function bauteileImModellZeigen(t: Task) {
     if (!api) return;
     if (angezeigtTaskId === t.id) {
@@ -191,7 +195,12 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     const batch = guidsZuBatch(t.objektGuids);
     if (batch.length === 0) return;
     try {
-      await api.viewer.isolateEntities(batch);
+      const modelle = await api.viewer.getModels();
+      for (const m of modelle) {
+        const alleIds = await getModellObjekte(api, m.id);
+        if (alleIds.length > 0) await api.viewer.setObjectState([{ modelId: m.id, objectRuntimeIds: alleIds }], { visible: false });
+      }
+      await api.viewer.setObjectState(batch, { visible: true });
       await (api.viewer as any).setSelection({ modelObjectIds: batch }, "set");
       setAngezeigtTaskId(t.id);
     } catch { /* ignore */ }
