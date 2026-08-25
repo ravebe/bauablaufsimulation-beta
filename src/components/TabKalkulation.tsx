@@ -426,51 +426,55 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   }
 
   return (
-    <div style={{ padding: 14, fontSize: 12 }}>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        <StatTile label="Total Abweichung" wert={`${gesamtAbweichungTage > 0 ? "+" : ""}${gesamtAbweichungTage}d`} status={gesamtAbweichungTage !== 0 ? "warning" : "good"} sub="Berechnet − Geplant, alle Tasks" />
-        <StatTile label="Tasks mit Kürzel" wert={`${tasksMitKuerzel}/${zeilen.length}`} />
-        <StatTile label="Tasks mit Abweichung" wert={String(anzahlAbweichung)} status={anzahlAbweichung > 0 ? "warning" : "good"} />
-        <StatTile label="Ø Abweichung" wert={`${durchschnAbweichungProzent.toFixed(0)}%`} />
-      </div>
-      {kuerzelKategorien.length > 0 && (
-        <CockpitAbschnitt titel="Geplant vs. berechnet je Kürzel" eingeklappt={!!eingeklappt["kuerzel-chart"]} onToggle={() => toggleEingeklappt("kuerzel-chart")}>
-          <CategoryBarChart einheit="Tage" kategorien={kuerzelKategorien}
-            serien={[
-              { key: "geplant", label: "Geplant", color: FARBEN.kategorial[0], werte: kuerzelKategorien.map(k => summeProKuerzel.get(k)!.geplant) },
-              { key: "berechnet", label: "Berechnet", color: FARBEN.kategorial[1], werte: kuerzelKategorien.map(k => summeProKuerzel.get(k)!.berechnet) },
-            ]} formatWert={v => v.toFixed(0)} />
-        </CockpitAbschnitt>
-      )}
-
-      {!readOnly && api && (
-        <div style={{ marginBottom: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }} disabled={bulkLaeuft} onClick={alleUnzugeordnetenZuordnen}>
-              {bulkLaeuft ? "Wird zugeordnet…" : "Alle unzugeordneten automatisch zuordnen"}
-            </button>
-            <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }} disabled={mengenLaeuft} onClick={mengenBerechnen}
-              title="Berechnet Mengen aus den Formeln in Tab Ressourcen für alle Bauteile je Task — manuell überschriebene Werte bleiben unangetastet">
-              {mengenLaeuft ? "Wird berechnet…" : "Mengen aus Bauteilen berechnen"}
-            </button>
-          </div>
-          {(bulkErgebnis || mengenErgebnis) && (
-            <div style={{ display: "flex", gap: 16, marginTop: 4, flexWrap: "wrap" }}>
-              {bulkErgebnis && <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>{bulkErgebnis}</span>}
-              {mengenErgebnis && <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>{mengenErgebnis}</span>}
-            </div>
-          )}
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", fontSize: 12 }}>
+      <div style={{ padding: "14px 14px 0", flexShrink: 0 }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          <StatTile label="Total Abweichung" wert={`${gesamtAbweichungTage > 0 ? "+" : ""}${gesamtAbweichungTage}d`} status={gesamtAbweichungTage !== 0 ? "warning" : "good"} sub="Berechnet − Geplant, alle Tasks" />
+          <StatTile label="Tasks mit Kürzel" wert={`${tasksMitKuerzel}/${zeilen.length}`} />
+          <StatTile label="Tasks mit Abweichung" wert={String(anzahlAbweichung)} status={anzahlAbweichung > 0 ? "warning" : "good"} />
+          <StatTile label="Ø Abweichung" wert={`${durchschnAbweichungProzent.toFixed(0)}%`} />
         </div>
-      )}
-      <div style={{ display: "flex", gap: 12, fontSize: 9, color: "var(--tc-text-3)", marginBottom: 6 }}>
-        <span><span style={{ color: "var(--tc-blue)", fontWeight: 700 }}>■</span> automatisch aus Formel</span>
-        <span><span style={{ color: "#333", fontWeight: 700 }}>■</span> manuell angepasst</span>
-        <span><span style={{ color: "var(--tc-red)", fontWeight: 700 }}>■</span> Fehler / fehlende Attribute</span>
+        {kuerzelKategorien.length > 0 && (
+          <CockpitAbschnitt titel="Geplant vs. berechnet je Kürzel" eingeklappt={!!eingeklappt["kuerzel-chart"]} onToggle={() => toggleEingeklappt("kuerzel-chart")}>
+            <CategoryBarChart einheit="Tage" kategorien={kuerzelKategorien}
+              serien={[
+                { key: "geplant", label: "Geplant", color: FARBEN.kategorial[0], werte: kuerzelKategorien.map(k => summeProKuerzel.get(k)!.geplant) },
+                { key: "berechnet", label: "Berechnet", color: FARBEN.kategorial[1], werte: kuerzelKategorien.map(k => summeProKuerzel.get(k)!.berechnet) },
+              ]} formatWert={v => v.toFixed(0)} />
+          </CockpitAbschnitt>
+        )}
+
+        {!readOnly && api && (
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }} disabled={bulkLaeuft} onClick={alleUnzugeordnetenZuordnen}>
+                {bulkLaeuft ? "Wird zugeordnet…" : "Alle unzugeordneten automatisch zuordnen"}
+              </button>
+              <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }} disabled={mengenLaeuft} onClick={mengenBerechnen}
+                title="Berechnet Mengen aus den Formeln in Tab Ressourcen für alle Bauteile je Task — manuell überschriebene Werte bleiben unangetastet">
+                {mengenLaeuft ? "Wird berechnet…" : "Mengen aus Bauteilen berechnen"}
+              </button>
+            </div>
+            {(bulkErgebnis || mengenErgebnis) && (
+              <div style={{ display: "flex", gap: 16, marginTop: 4, flexWrap: "wrap" }}>
+                {bulkErgebnis && <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>{bulkErgebnis}</span>}
+                {mengenErgebnis && <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>{mengenErgebnis}</span>}
+              </div>
+            )}
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 12, fontSize: 9, color: "var(--tc-text-3)", marginBottom: 6 }}>
+          <span><span style={{ color: "var(--tc-blue)", fontWeight: 700 }}>■</span> automatisch aus Formel</span>
+          <span><span style={{ color: "#333", fontWeight: 700 }}>■</span> manuell angepasst</span>
+          <span><span style={{ color: "var(--tc-red)", fontWeight: 700 }}>■</span> Fehler / fehlende Attribute</span>
+        </div>
       </div>
-      {/* overflowX:auto zwingt overflowY (auch wenn "visible" gesetzt) effektiv zu "auto" —
-          bei 0 Treffern schrumpft der Container sonst auf die Kopfzeile und schneidet das
-          absolut positionierte Such-/Filter-Popup ab. minHeight hält den Container groß genug. */}
-      <div style={{ overflowX: "auto", overflowY: "visible", minHeight: (suchOffen || filterMenuOffen) ? 260 : undefined }}>
+      {/* flex:1 + minHeight:0 macht diesen Bereich zum echten, höhenbegrenzten Scrollcontainer
+          (statt eines unbegrenzt mitwachsenden Blocks) — erst dadurch greift position:sticky auf
+          der Kopfzeile und fixiert sie beim Scrollen. overflow:"auto" deckt zugleich das breite
+          Grid horizontal ab; minHeight bei offenem Such-/Filterpopup verhindert, dass der Bereich
+          bei 0 Treffern auf die Kopfzeile schrumpft und das Popup abschneidet. */}
+      <div style={{ flex: 1, minHeight: (suchOffen || filterMenuOffen) ? 260 : 0, overflow: "auto", padding: "0 14px 14px" }}>
         <div style={{ display: "grid", gridTemplateColumns: gridTemplate, fontSize: 9, color: "var(--tc-text-3)", fontWeight: 600, padding: "4px 0", position: "sticky", top: 0, background: "#fff", zIndex: 3 }}>
           {ALLE_SPALTEN.map((s, i) => renderHeaderZelle(s, i))}
         </div>
