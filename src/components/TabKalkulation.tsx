@@ -204,7 +204,10 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
         if (alleIds.length > 0) await api.viewer.setObjectState([{ modelId: m.id, objectRuntimeIds: alleIds }], { visible: false });
       }
       await api.viewer.setObjectState(batch, { visible: true });
-      await (api.viewer as any).setSelection({ modelObjectIds: batch }, "set");
+      const viewerSetSelection = api.viewer as unknown as {
+        setSelection: (sel: { modelObjectIds: { modelId: string; objectRuntimeIds: number[] }[] }, mode: string) => Promise<void>;
+      };
+      await viewerSetSelection.setSelection({ modelObjectIds: batch }, "set");
       setAngezeigtTaskId(t.id);
     } catch { /* ignore */ }
   }
