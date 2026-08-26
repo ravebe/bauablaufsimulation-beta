@@ -16,7 +16,7 @@ interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; re
 // Grid-Spalten der Tabelle — feste Breiten statt Flex, damit kein Inhalt nachfolgende Spalten
 // verschiebt. Verstellbar per Drag, siehe startResize. Alle Zellen top-ausgerichtet (alignItems:
 // "start"), damit sie in einer Flucht stehen, auch wenn die Mengen-Zelle mehrzeilig ist.
-const ALLE_SPALTEN = ["nr", "task", "kuerzel", "mengen", "geplant", "berechnet", "differenz", "kranbereich", "auge"] as const;
+const ALLE_SPALTEN = ["nr", "auge", "task", "kuerzel", "mengen", "geplant", "berechnet", "differenz", "kranbereich"] as const;
 type Spalte = typeof ALLE_SPALTEN[number];
 const SPALTEN_LABEL: Record<Spalte, string> = {
   nr: "Nr.", task: "Task", kuerzel: "Kürzel", mengen: "Mengen", geplant: "Geplant", berechnet: "Berechnet",
@@ -520,7 +520,9 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
           {ALLE_SPALTEN.map((s, i) => renderHeaderZelle(s, i))}
         </div>
         {zeilenGefiltert.map(z => (
-          <div key={z.t.id} style={{ display: "grid", gridTemplateColumns: gridTemplate, alignItems: "start", padding: "6px 0", borderBottom: "1px solid var(--tc-border-light)" }}>
+          <div key={z.t.id} style={{ display: "grid", gridTemplateColumns: gridTemplate, alignItems: "start", padding: "6px 0", borderBottom: "1px solid var(--tc-border-light)" }}
+            onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")}
+            onMouseLeave={e => (e.currentTarget.style.background = "")}>
             {ALLE_SPALTEN.map((s, i) => (
               <div key={s} style={{ minWidth: 0, paddingLeft: i > 0 ? 8 : 0 }}>{renderZelle(s, z)}</div>
             ))}
