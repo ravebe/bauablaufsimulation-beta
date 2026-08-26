@@ -1,15 +1,16 @@
 // TabKalkulation.tsx — Menge→Tage-Kalkulation je Task (AVOR-Logik) mit Plausibilitätsvergleich
 // zur geplanten Dauer aus dem Bauablauf.
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, Fragment } from "react";
 import type { SimProjekt, Task } from "../types";
 import { istGruppe, berechneNummern, nsKey } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { arbeitstageZwischen, LEERER_KALENDER } from "./kalenderHelpers";
 import { LEERE_STAMMDATEN, alleKuerzel, gewerkeFuerKuerzel, dauerBerechnetTask, bezeichnungFuerKuerzel, ausschlussFilterListe, aktiveFilterIds, objektAusgeschlossen } from "./stammdatenHelpers";
+import type { Gewerk, Rate, Stammdaten } from "./stammdatenHelpers";
 import { kuerzelVorschlag } from "./bauteilkatalogHelpers";
 import { StatTile, CategoryBarChart, CockpitAbschnitt, useEingeklappt, FARBEN } from "./cockpitCharts";
 import { ladeObjektAttribute, getModellObjekte } from "./modelHelpers";
-import { berechneMenge } from "./formelHelpers";
+import { berechneMenge, mengeStatus } from "./formelHelpers";
 
 interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; api?: ApiInstance | null; projectId?: string | null; }
 
@@ -53,6 +54,15 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   const [filterMenuOffen, setFilterMenuOffen] = useState<SortSpalte | null>(null);
   const [angezeigtTaskId, setAngezeigtTaskId] = useState<string | null>(null);
   const [mengenSortModus, setMengenSortModus] = useState<"fehler" | "leer" | null>(null);
+  const [expandedGewerk, setExpandedGewerk] = useState<Set<string>>(new Set());
+
+  function gewerkExpandToggle(key: string) {
+    setExpandedGewerk(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
 
   const lsColwKey = nsKey(LS_COLW, projectId);
   const [colW, setColW] = useState<Record<Spalte, number>>(() => {
@@ -94,23 +104,30 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
 
   // Manuelle Eingabe überschreibt eine Formel-Menge (Status "manuell", schwarz statt blau) — Leeren
   // setzt den Status zurück, damit "Mengen berechnen" die Zelle wieder automatisch befüllen kann.
+  // Löscht auch etwaige Einzel-Bauteil-Überschreibungen (mengenObjekte) dieses Gewerks, da eine
+  // direkte Eingabe im Summenfeld die feinere Bauteil-Liste bewusst ersetzt.
   function mengeAendern(task: Task, gewerkKey: string, wert: number | null) {
     const mengen = { ...(task.mengen ?? {}) };
     const mengenQuelle = { ...(task.mengenQuelle ?? {}) };
     const mengenInfo = { ...(task.mengenInfo ?? {}) };
+    const mengenObjekte = { ...(task.mengenObjekte ?? {}) };
+    delete mengenObjekte[gewerkKey];
     if (wert === null || wert === 0) { delete mengen[gewerkKey]; delete mengenQuelle[gewerkKey]; delete mengenInfo[gewerkKey]; }
     else { mengen[gewerkKey] = wert; mengenQuelle[gewerkKey] = "manuell"; delete mengenInfo[gewerkKey]; }
-    taskAendern(task.id, { mengen, mengenQuelle, mengenInfo });
+    taskAendern(task.id, { mengen, mengenQuelle, mengenInfo, mengenObjekte });
   }
 
-  // Mengen aus Formeln (Tab Ressourcen) für alle Tasks berechnen — überspringt Gewerk-Keys, die
-  // manuell überschrieben wurden (mengenQuelle "manuell"), damit Nutzer-Korrekturen erhalten bleiben.
+  // Mengen aus Formeln (Tab Ressourcen) für alle Tasks berechnen. Ein Gewerk-Feld wird nur dann
+  // komplett übersprungen, wenn es als Ganzes manuell im Summenfeld gesetzt wurde (mengenQuelle
+  // "manuell" OHNE Einzel-Bauteil-Aufschlüsselung) — sobald mengenObjekte-Einträge existieren, läuft
+  // die Berechnung normal weiter: berechneMenge() übernimmt die überschriebenen Bauteile 1:1 und
+  // berechnet nur die übrigen (inkl. neu hinzugekommener Bauteile) neu.
   async function mengenBerechnen() {
     if (!api || !sim) return;
     setMengenLaeuft(true);
     setMengenErgebnis(null);
     const alleFilter = ausschlussFilterListe(stammdaten);
-    let autoCount = 0, fehlerCount = 0, taskCount = 0;
+    let autoCount = 0, fehlerCount = 0, manuellCount = 0, taskCount = 0;
     const updatedTasks = [...sim.tasks];
     for (let i = 0; i < updatedTasks.length; i++) {
       const t = updatedTasks[i];
@@ -118,13 +135,14 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
       const gewerkeMitFormel = gewerkeFuerKuerzel(stammdaten, t.bauteilKuerzel)
         .map(g => ({ g, rate: g.raten.find(r => r.kuerzel === t.bauteilKuerzel) }))
         .filter((e): e is { g: typeof e.g; rate: NonNullable<typeof e.rate> } => !!e.rate?.formel?.trim());
-      const zuBerechnen = gewerkeMitFormel.filter(e => t.mengenQuelle?.[e.g.key] !== "manuell");
+      const zuBerechnen = gewerkeMitFormel.filter(e =>
+        !(t.mengenQuelle?.[e.g.key] === "manuell" && !t.mengenObjekte?.[e.g.key]));
       if (zuBerechnen.length === 0) continue;
       taskCount++;
 
-      let objektWerteListe: Record<string, string>[] = [];
+      let objektWerteMap = new Map<string, Record<string, string>>();
       if (t.objektGuids.length > 0) {
-        try { objektWerteListe = [...(await ladeObjektAttribute(api, t.objektGuids)).values()]; } catch { /* unten als Fehler behandelt */ }
+        try { objektWerteMap = await ladeObjektAttribute(api, t.objektGuids); } catch { /* unten als Fehler behandelt */ }
       }
 
       const mengen = { ...(t.mengen ?? {}) };
@@ -132,27 +150,24 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
       const mengenInfo = { ...(t.mengenInfo ?? {}) };
       for (const { g, rate } of zuBerechnen) {
         const aktiveIds = aktiveFilterIds(rate);
-        const basis = aktiveIds.length > 0
-          ? objektWerteListe.filter(w => !objektAusgeschlossen(w, alleFilter, aktiveIds))
-          : objektWerteListe;
-        const erg = berechneMenge(rate.formel!, basis);
+        const eintraege = t.objektGuids
+          .map(guid => ({ guid, werte: objektWerteMap.get(guid) ?? {} }))
+          .filter(e => aktiveIds.length === 0 || !objektAusgeschlossen(e.werte, alleFilter, aktiveIds));
+        const overrides = t.mengenObjekte?.[g.key];
+        const erg = berechneMenge(rate.formel!, eintraege, overrides);
         if (erg.wert !== null) mengen[g.key] = erg.wert; else delete mengen[g.key];
 
-        if (erg.wert !== null && erg.anzahlFehler === 0 && !erg.fehler) {
-          mengenQuelle[g.key] = "auto"; delete mengenInfo[g.key]; autoCount++;
-        } else {
-          mengenQuelle[g.key] = "fehler";
-          mengenInfo[g.key] = erg.fehler ? `Formelfehler: ${erg.fehler}`
-            : erg.anzahlObjekte === 0 ? "Keine Bauteile zugeordnet"
-            : `${erg.anzahlFehler} von ${erg.anzahlObjekte} Bauteilen ohne Wert${erg.fehlendeAttribute.length > 0 ? ` für ${erg.fehlendeAttribute.join(", ")}` : ""}${erg.anzahlNull > 0 ? ` (davon ${erg.anzahlNull} mit Wert 0 — Attribut vermutlich nicht gepflegt)` : ""}`;
-          fehlerCount++;
-        }
+        const status = mengeStatus(erg, !!overrides && Object.keys(overrides).length > 0);
+        mengenQuelle[g.key] = status.quelle;
+        if (status.info) mengenInfo[g.key] = status.info; else delete mengenInfo[g.key];
+        if (status.quelle === "auto") autoCount++; else if (status.quelle === "fehler") fehlerCount++; else manuellCount++;
       }
       updatedTasks[i] = { ...t, mengen, mengenQuelle, mengenInfo };
     }
     updateSim({ ...sim, tasks: updatedTasks });
     setMengenLaeuft(false);
-    setMengenErgebnis(taskCount === 0 ? "Keine Leistungspositionen mit Formel gefunden" : `${taskCount} Tasks aktualisiert · ${autoCount} Mengen berechnet, ${fehlerCount} mit Fehlern`);
+    setMengenErgebnis(taskCount === 0 ? "Keine Leistungspositionen mit Formel gefunden"
+      : `${taskCount} Tasks aktualisiert · ${autoCount} Mengen berechnet, ${fehlerCount} mit Fehlern${manuellCount > 0 ? `, ${manuellCount} teilweise manuell` : ""}`);
   }
 
   async function alleUnzugeordnetenZuordnen() {
@@ -420,13 +435,22 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
               const quelle = z.t.mengenQuelle?.[g.key];
               const info = z.t.mengenInfo?.[g.key];
               const farbe = quelle === "auto" ? "var(--tc-blue)" : quelle === "fehler" ? "var(--tc-red)" : "#333";
+              const rate = g.raten.find(r => r.kuerzel === z.t.bauteilKuerzel);
+              const aufklappbar = !!rate?.formel?.trim();
+              const offen = aufklappbar && expandedGewerk.has(`${z.t.id}::${g.key}`);
               return (
-                <label key={g.key} title={info ? `${g.label} [${g.einheit}] — ${info}` : `${g.label} [${g.einheit}]`} style={{ fontSize: 9, color: "var(--tc-text-3)", display: "flex", alignItems: "center", gap: 3, minWidth: 0 }}>
-                  <span style={{ minWidth: 50, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.label}{quelle === "fehler" && " ⚠"}</span>
+                <div key={g.key} style={{ fontSize: 9, color: "var(--tc-text-3)", display: "flex", alignItems: "center", gap: 3, minWidth: 0 }}>
+                  <span
+                    title={aufklappbar ? "Bauteil-Liste anzeigen" : undefined}
+                    onClick={aufklappbar ? () => gewerkExpandToggle(`${z.t.id}::${g.key}`) : undefined}
+                    style={{ minWidth: 50, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: aufklappbar ? "pointer" : "default", textDecoration: aufklappbar ? "underline dotted" : "none" }}>
+                    {aufklappbar && (offen ? "▾ " : "▸ ")}{g.label}{quelle === "fehler" && " ⚠"}
+                  </span>
                   <input type="number" className="no-spinner" disabled={readOnly} value={z.t.mengen?.[g.key] ?? ""}
+                    title={info ? `${g.label} [${g.einheit}] — ${info}` : `${g.label} [${g.einheit}]`}
                     onChange={e => mengeAendern(z.t, g.key, e.target.value === "" ? null : Number(e.target.value))}
                     style={{ width: 50, minWidth: 0, flex: 1, fontSize: 10, padding: "2px 4px", border: `1px solid ${quelle === "fehler" ? "var(--tc-red)" : "#d4dce4"}`, fontFamily: "inherit", color: farbe, fontWeight: quelle ? 600 : 400 }} />
-                </label>
+                </div>
               );
             })}
             {gewerke.length === 0 && <span style={{ fontSize: 9, color: "var(--tc-text-3)" }}>Kürzel wählen…</span>}
@@ -522,16 +546,120 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
         <div style={{ display: "grid", gridTemplateColumns: gridTemplate, fontSize: 9, color: "var(--tc-text-3)", fontWeight: 600, padding: "4px 0", position: "sticky", top: 0, background: "#fff", zIndex: 3 }}>
           {ALLE_SPALTEN.map((s, i) => renderHeaderZelle(s, i))}
         </div>
-        {zeilenGefiltert.map(z => (
-          <div key={z.t.id} style={{ display: "grid", gridTemplateColumns: gridTemplate, alignItems: "start", padding: "6px 0", borderBottom: "1px solid var(--tc-border-light)" }}
-            onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")}
-            onMouseLeave={e => (e.currentTarget.style.background = "")}>
-            {ALLE_SPALTEN.map((s, i) => (
-              <div key={s} style={{ minWidth: 0, paddingLeft: i > 0 ? 8 : 0 }}>{renderZelle(s, z)}</div>
-            ))}
-          </div>
-        ))}
+        {zeilenGefiltert.map(z => {
+          const offeneGewerke = z.t.bauteilKuerzel
+            ? gewerkeFuerKuerzel(stammdaten, z.t.bauteilKuerzel).filter(g => expandedGewerk.has(`${z.t.id}::${g.key}`))
+            : [];
+          return (
+            <Fragment key={z.t.id}>
+              <div style={{ display: "grid", gridTemplateColumns: gridTemplate, alignItems: "start", padding: "6px 0", borderBottom: offeneGewerke.length > 0 ? "none" : "1px solid var(--tc-border-light)" }}
+                onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")}
+                onMouseLeave={e => (e.currentTarget.style.background = "")}>
+                {ALLE_SPALTEN.map((s, i) => (
+                  <div key={s} style={{ minWidth: 0, paddingLeft: i > 0 ? 8 : 0 }}>{renderZelle(s, z)}</div>
+                ))}
+              </div>
+              {offeneGewerke.map(g => (
+                <GewerkObjektListe key={`${z.t.id}::${g.key}`} t={z.t} gewerk={g}
+                  rate={g.raten.find(r => r.kuerzel === z.t.bauteilKuerzel)!} api={api} stammdaten={stammdaten}
+                  readOnly={readOnly} taskAendern={taskAendern} />
+              ))}
+              {offeneGewerke.length > 0 && <div style={{ borderBottom: "1px solid var(--tc-border-light)" }} />}
+            </Fragment>
+          );
+        })}
       </div>
+    </div>
+  );
+}
+
+// Aufklappbare Bauteil-Liste unter einem Gewerk-Feld (Klick auf z.B. "Beton") — zeigt für jedes
+// zugeordnete Bauteil den ausgewerteten Formel-Wert samt Einheit und erlaubt, ihn pro Bauteil
+// manuell zu übersteuern (task.mengenObjekte). Lädt die Attribute unabhängig vom Bulk-Lauf
+// "Mengen aus Bauteilen berechnen" neu, sobald sie geöffnet wird oder sich die zugeordneten
+// Bauteile ändern — damit neu hinzugekommene Bauteile sofort erscheinen.
+function GewerkObjektListe({ t, gewerk, rate, api, stammdaten, readOnly, taskAendern }: {
+  t: Task; gewerk: Gewerk; rate: Rate; api?: ApiInstance | null; stammdaten: Stammdaten; readOnly?: boolean;
+  taskAendern: (taskId: string, patch: Partial<Task>) => void;
+}) {
+  const [attrMap, setAttrMap] = useState<Map<string, Record<string, string>> | null>(null);
+  const [laden, setLaden] = useState(true);
+
+  useEffect(() => {
+    let abgebrochen = false;
+    // setLaden(true) direkt im Effekt (statt nur im .then()) ist hier bewusst: t.objektGuids kann
+    // sich ändern, während das Panel schon offen ist (z.B. neu zugeordnete Bauteile) — ohne diesen
+    // Reset bliebe kurz der alte, jetzt veraltete attrMap-Stand sichtbar, bevor die neuen Daten da sind.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLaden(true);
+    const promise = (!api || t.objektGuids.length === 0)
+      ? Promise.resolve(new Map<string, Record<string, string>>())
+      : ladeObjektAttribute(api, t.objektGuids).catch(() => new Map<string, Record<string, string>>());
+    promise.then(map => { if (!abgebrochen) { setAttrMap(map); setLaden(false); } });
+    return () => { abgebrochen = true; };
+  }, [api, t.objektGuids]);
+
+  const eintraege = useMemo(() => {
+    if (!attrMap) return [];
+    const alleFilter = ausschlussFilterListe(stammdaten);
+    const aktiveIds = aktiveFilterIds(rate);
+    return t.objektGuids
+      .map(guid => ({ guid, werte: attrMap.get(guid) ?? {} }))
+      .filter(e => aktiveIds.length === 0 || !objektAusgeschlossen(e.werte, alleFilter, aktiveIds));
+  }, [attrMap, t.objektGuids, rate, stammdaten]);
+
+  const overrides = t.mengenObjekte?.[gewerk.key];
+  const erg = useMemo(() => berechneMenge(rate.formel ?? "", eintraege, overrides), [eintraege, rate.formel, overrides]);
+
+  function overrideAendern(guid: string, wert: number | null) {
+    const neueOverrides = { ...(overrides ?? {}) };
+    if (wert === null) delete neueOverrides[guid]; else neueOverrides[guid] = wert;
+    const neuErg = berechneMenge(rate.formel ?? "", eintraege, neueOverrides);
+
+    const mengen = { ...(t.mengen ?? {}) };
+    const mengenQuelle = { ...(t.mengenQuelle ?? {}) };
+    const mengenInfo = { ...(t.mengenInfo ?? {}) };
+    const mengenObjekte = { ...(t.mengenObjekte ?? {}) };
+    if (Object.keys(neueOverrides).length === 0) delete mengenObjekte[gewerk.key]; else mengenObjekte[gewerk.key] = neueOverrides;
+
+    if (neuErg.wert !== null) mengen[gewerk.key] = neuErg.wert; else delete mengen[gewerk.key];
+    const status = mengeStatus(neuErg, Object.keys(neueOverrides).length > 0);
+    mengenQuelle[gewerk.key] = status.quelle;
+    if (status.info) mengenInfo[gewerk.key] = status.info; else delete mengenInfo[gewerk.key];
+
+    taskAendern(t.id, { mengen, mengenQuelle, mengenInfo, mengenObjekte });
+  }
+
+  return (
+    <div style={{ background: "#fafbfc", border: "1px solid var(--tc-border-light)", borderTop: "none", padding: "6px 14px 10px", fontSize: 10 }}>
+      {laden ? (
+        <div style={{ color: "var(--tc-text-3)", padding: "4px 0" }}>Lade Bauteile…</div>
+      ) : eintraege.length === 0 ? (
+        <div style={{ color: "var(--tc-text-3)", padding: "4px 0" }}>Keine Bauteile in der Auswertung von „{gewerk.label}".</div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 60px", columnGap: 10, rowGap: 3, alignItems: "center", maxWidth: 520 }}>
+          <div style={{ fontWeight: 600, color: "var(--tc-text-3)" }}>Bauteil</div>
+          <div style={{ fontWeight: 600, color: "var(--tc-text-3)" }}>Wert</div>
+          <div style={{ fontWeight: 600, color: "var(--tc-text-3)" }}>Einheit</div>
+          {erg.objekte.map(o => {
+            const werte = attrMap?.get(o.guid);
+            const name = werte?.["Product||Product Name"] || werte?.["Reference Object||Common Type"] || `Bauteil ${o.guid.split(":::")[1] ?? o.guid}`;
+            const farbe = o.quelle === "auto" ? "var(--tc-blue)" : o.quelle === "fehler" ? "var(--tc-red)" : "#333";
+            return (
+              <Fragment key={o.guid}>
+                <div title={o.grund} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: o.quelle === "fehler" ? "var(--tc-red)" : "var(--tc-text-2)" }}>
+                  {name}{o.quelle === "fehler" && " ⚠"}
+                </div>
+                <input type="number" className="no-spinner" disabled={readOnly} value={o.wert ?? ""}
+                  title={o.grund}
+                  onChange={e => overrideAendern(o.guid, e.target.value === "" ? null : Number(e.target.value))}
+                  style={{ width: 70, fontSize: 10, padding: "2px 4px", border: `1px solid ${o.quelle === "fehler" ? "var(--tc-red)" : "#d4dce4"}`, fontFamily: "inherit", color: farbe, fontWeight: o.quelle !== "auto" ? 600 : 400 }} />
+                <div style={{ color: "var(--tc-text-3)" }}>{gewerk.einheit}</div>
+              </Fragment>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

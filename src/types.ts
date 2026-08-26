@@ -20,6 +20,7 @@ export interface Task {
   mengen?: Record<string, number>; // Gewerk-key → Menge, für die Menge→Tage-Kalkulation
   mengenQuelle?: Record<string, "auto" | "manuell" | "fehler">; // Herkunft je Gewerk-key — steuert Farbe (blau/schwarz/rot) in Tab Kalkulation
   mengenInfo?: Record<string, string>; // Tooltip-Text bei Status "fehler" (z.B. fehlende Attribute), siehe formelHelpers.ts
+  mengenObjekte?: Record<string, Record<string, number>>; // Gewerk-key → Bauteil-GUID (objektGuids-Eintrag) → manuell gesetzter Einzelwert, überschreibt für genau dieses Bauteil den Formel-Wert — siehe Bauteil-Liste in Tab Kalkulation
   kranbereich?: string; // für Kranauslastung in Tab AVOR, siehe avorHelpers.ts
 }
 

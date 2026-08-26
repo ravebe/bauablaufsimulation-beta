@@ -220,36 +220,94 @@ export function auswerten(ast: Node, werte: Record<string, string>): Auswertungs
   return { wert, fehlendeAttribute: [] };
 }
 
-export interface MengeErgebnis {
-  wert: number | null;       // Summe über alle auswertbaren Bauteile, null wenn kein einziges auswertbar war
-  anzahlObjekte: number;     // Bauteile insgesamt (task.objektGuids.length)
-  anzahlFehler: number;      // davon ohne auswertbaren Wert ODER mit Ergebnis 0
-  anzahlNull: number;        // davon mit einem auswertbaren, aber auf 0 lautenden Ergebnis (z.B. Volumen=0 — meist ein Datenfehler im Attribut)
-  fehlendeAttribute: string[]; // eindeutige fehlende/ungültige Attribut-Keys, für Tooltip
-  fehler?: string;           // Formel-Syntaxfehler, falls die Formel selbst ungültig ist
+/** Ein einzelnes Bauteil im Ergebnis einer Mengenermittlung — Grundlage für die aufklappbare
+ *  Bauteil-Liste je Gewerk in Tab Kalkulation. */
+export interface ObjektMengeEintrag {
+  guid: string;
+  wert: number | null;
+  quelle: "auto" | "manuell" | "fehler";
+  grund?: string; // Tooltip bei "fehler", z.B. fehlendes Attribut oder Wert 0
 }
 
-/** Formel über alle Bauteil-Attribute eines Tasks auswerten und summieren. Jedes Element von
- *  `objektWerteListe` sind die flachen Attribute EINES zugeordneten Bauteils. Ein Bauteil, dessen
- *  Formel auswertbar ist, aber genau 0 ergibt (z.B. Volumen=0), zählt als Fehler statt als gültiger
- *  Wert — 0 deutet fast immer auf ein fehlerhaftes/nicht gepflegtes Attribut hin, nicht auf ein
- *  tatsächlich volumenloses Bauteil. */
-export function berechneMenge(formula: string, objektWerteListe: Record<string, string>[]): MengeErgebnis {
+export interface MengeErgebnis {
+  wert: number | null;       // Summe über alle Bauteile (auto + manuell), null wenn kein einziges einen Wert lieferte
+  anzahlObjekte: number;     // Bauteile insgesamt (nach Ausschlussfiltern)
+  anzahlFehler: number;      // davon ohne auswertbaren Wert ODER mit Ergebnis 0 (nur nicht-manuelle)
+  anzahlNull: number;        // davon mit einem auswertbaren, aber auf 0 lautenden Ergebnis (z.B. Volumen=0 — meist ein Datenfehler im Attribut)
+  fehlendeAttribute: string[]; // eindeutige fehlende/ungültige Attribut-Keys, für Tooltip
+  fehler?: string;           // Formel-Syntaxfehler, falls die Formel selbst ungültig ist UND nicht alle Bauteile manuell überschrieben sind
+  objekte: ObjektMengeEintrag[]; // Aufschlüsselung je Bauteil, für die Bauteil-Liste
+}
+
+/** Formel über die Attribute mehrerer Bauteile auswerten und summieren — Grundlage für Tab
+ *  Kalkulation (Gesamtsumme je Gewerk UND die aufklappbare Bauteil-Liste dahinter). `overrides`
+ *  (Bauteil-GUID → Wert) kommt aus task.mengenObjekte: für diese Bauteile wird die Formel nicht
+ *  ausgewertet, sondern der manuell gesetzte Wert direkt übernommen (Kategorie "manuell"). Ein
+ *  Bauteil, dessen Formel auswertbar ist, aber genau 0 ergibt (z.B. Volumen=0), zählt als Fehler
+ *  statt als gültiger Wert — 0 deutet fast immer auf ein fehlerhaftes/nicht gepflegtes Attribut hin,
+ *  nicht auf ein tatsächlich volumenloses Bauteil. */
+export function berechneMenge(
+  formula: string,
+  eintraege: { guid: string; werte: Record<string, string> }[],
+  overrides?: Record<string, number>
+): MengeErgebnis {
+  const ov = overrides ?? {};
   let ast: Node;
   try { ast = parseFormel(formula); }
   catch (e) {
-    return { wert: null, anzahlObjekte: objektWerteListe.length, anzahlFehler: objektWerteListe.length, anzahlNull: 0, fehlendeAttribute: [], fehler: e instanceof Error ? e.message : String(e) };
+    const msg = e instanceof Error ? e.message : String(e);
+    let summe = 0, ok = 0;
+    const objekte: ObjektMengeEintrag[] = eintraege.map(({ guid }) => {
+      const wert = ov[guid];
+      if (wert !== undefined) { summe += wert; ok++; return { guid, wert, quelle: "manuell" }; }
+      return { guid, wert: null, quelle: "fehler", grund: `Formelfehler: ${msg}` };
+    });
+    const anzahlFehler = eintraege.length - ok;
+    return {
+      wert: ok > 0 ? Math.round(summe * 1000) / 1000 : null,
+      anzahlObjekte: eintraege.length, anzahlFehler, anzahlNull: 0, fehlendeAttribute: [],
+      fehler: anzahlFehler > 0 ? msg : undefined, objekte,
+    };
   }
-  if (objektWerteListe.length === 0) return { wert: null, anzahlObjekte: 0, anzahlFehler: 0, anzahlNull: 0, fehlendeAttribute: [] };
+  if (eintraege.length === 0) return { wert: null, anzahlObjekte: 0, anzahlFehler: 0, anzahlNull: 0, fehlendeAttribute: [], objekte: [] };
 
   let summe = 0, ok = 0, anzahlNull = 0;
   const fehlend = new Set<string>();
-  for (const w of objektWerteListe) {
-    const { wert, fehlendeAttribute } = auswerten(ast, w);
-    if (wert === null) { fehlendeAttribute.forEach(a => fehlend.add(a)); continue; }
-    if (wert === 0) { anzahlNull++; continue; }
+  const objekte: ObjektMengeEintrag[] = [];
+  for (const { guid, werte } of eintraege) {
+    const override = ov[guid];
+    if (override !== undefined) { objekte.push({ guid, wert: override, quelle: "manuell" }); summe += override; ok++; continue; }
+    const { wert, fehlendeAttribute } = auswerten(ast, werte);
+    if (wert === null) {
+      fehlendeAttribute.forEach(a => fehlend.add(a));
+      objekte.push({ guid, wert: null, quelle: "fehler", grund: fehlendeAttribute.length > 0 ? `Attribut fehlt: ${fehlendeAttribute.join(", ")}` : "Kein auswertbarer Wert" });
+      continue;
+    }
+    if (wert === 0) {
+      anzahlNull++;
+      objekte.push({ guid, wert: 0, quelle: "fehler", grund: "Wert ist 0 — Attribut vermutlich nicht gepflegt" });
+      continue;
+    }
+    objekte.push({ guid, wert, quelle: "auto" });
     summe += wert; ok++;
   }
-  const anzahlFehler = objektWerteListe.length - ok;
-  return { wert: ok > 0 ? Math.round(summe * 1000) / 1000 : null, anzahlObjekte: objektWerteListe.length, anzahlFehler, anzahlNull, fehlendeAttribute: [...fehlend] };
+  const anzahlFehler = eintraege.length - ok;
+  return { wert: ok > 0 ? Math.round(summe * 1000) / 1000 : null, anzahlObjekte: eintraege.length, anzahlFehler, anzahlNull, fehlendeAttribute: [...fehlend], objekte };
+}
+
+/** Status/Farbe für das Summenfeld eines Gewerks aus einem MengeErgebnis ableiten — "Fehler geht
+ *  vor": rot, solange noch ein nicht manuell übersteuertes Bauteil einen Fehler hat; sonst schwarz,
+ *  wenn mindestens ein Bauteil manuell gesetzt wurde; sonst blau (voll automatisch). Gemeinsame
+ *  Logik für den Bulk-Lauf ("Mengen aus Bauteilen berechnen") und die Einzel-Bearbeitung in der
+ *  Bauteil-Liste, damit beide Wege exakt dieselbe Fehlermeldung erzeugen. */
+export function mengeStatus(erg: MengeErgebnis, hatManuelleObjekte: boolean): { quelle: "auto" | "manuell" | "fehler"; info?: string } {
+  if (erg.fehler) return { quelle: "fehler", info: `Formelfehler: ${erg.fehler}` };
+  if (erg.anzahlObjekte === 0) return { quelle: "fehler", info: "Keine Bauteile zugeordnet" };
+  if (erg.anzahlFehler > 0) {
+    return {
+      quelle: "fehler",
+      info: `${erg.anzahlFehler} von ${erg.anzahlObjekte} Bauteilen ohne Wert${erg.fehlendeAttribute.length > 0 ? ` für ${erg.fehlendeAttribute.join(", ")}` : ""}${erg.anzahlNull > 0 ? ` (davon ${erg.anzahlNull} mit Wert 0 — Attribut vermutlich nicht gepflegt)` : ""}`,
+    };
+  }
+  return { quelle: hatManuelleObjekte ? "manuell" : "auto" };
 }
