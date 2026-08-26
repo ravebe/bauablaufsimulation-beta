@@ -37,6 +37,25 @@ function toIso(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/** Enddatum, das ab `start` genau `dauerArbeitstage` Arbeitstage ergibt (mindestens 1) — die exakte
+ *  Umkehrung von arbeitstageZwischen(). Fällt `start` selbst auf einen Nicht-Arbeitstag, zählt er
+ *  nicht mit; das Enddatum verschiebt sich entsprechend nach hinten. */
+export function endDatumAusArbeitstagen(start: string, dauerArbeitstage: number, kalender: Kalender): string {
+  const s = parseDateUniversal(start);
+  if (!s) return start;
+  const dauer = Math.max(1, dauerArbeitstage);
+  const cur = new Date(s.getTime());
+  let count = 0;
+  let end = toIso(cur);
+  for (;;) {
+    const iso = toIso(cur);
+    if (istArbeitstag(iso, kalender)) { count++; end = iso; }
+    if (count >= dauer) break;
+    cur.setDate(cur.getDate() + 1);
+  }
+  return end;
+}
+
 /** Ostersonntag nach der Gauß'schen Osterformel. */
 function ostersonntag(jahr: number): Date {
   const a = jahr % 19;

@@ -5,6 +5,9 @@ import { parseDateUniversal, istGruppe, getKinder, getOutlineLevel, kaskadiereNa
   taskVerschieben as verschiebeTaskBlock, nsKey } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { getEchteBauteile, clearEchteBauteileCache } from "./modelHelpers";
+import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
+import { LEERER_KALENDER } from "./kalenderHelpers";
+import { pruefeZeitplanBereitschaft, berechneZeitplanUebernahme } from "./zeitplanUebernahmeHelpers";
 import TabTasks from "./TabTasks";
 import AttributeFilter from "./AttributeFilter";
 import GanttChart from "./GanttChart";
@@ -34,6 +37,8 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
   const [suchOffen, setSuchOffen] = useState(false);
   const [suchQuery, setSuchQuery] = useState("");
   const [plusMenuOffen, setPlusMenuOffen] = useState(false);
+  const [zeitplanHinweisOffen, setZeitplanHinweisOffen] = useState(false);
+  const [zeitplanBestaetigenOffen, setZeitplanBestaetigenOffen] = useState(false);
   const [neuInputOffen, setNeuInputOffen] = useState(false);
   const [neuTaskInput, setNeuTaskInput] = useState("");
   const [neuTyp, setNeuTyp] = useState<"task" | "gruppe">("task");
@@ -204,6 +209,22 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
     updateSim({ ...aktiveSim, tasks: verschiebeTaskBlock(aktiveSim.tasks, fromIdx, toIdx, selectedIds) });
   }
 
+  // "Berechnete Dauer übernehmen" — überträgt die Kalkulations-Dauer jedes Tasks auf den Bauablauf,
+  // siehe zeitplanUebernahmeHelpers.ts. Erst möglich, wenn Tab Kalkulation fehlerfrei ist (keine roten
+  // Mengen-Felder) und jeder Task ausser dem ersten einen Vorgänger hat.
+  const zeitplanStatus = aktiveSim ? pruefeZeitplanBereitschaft(aktiveSim.tasks) : null;
+  function zeitplanButtonKlick() {
+    if (!zeitplanStatus?.bereit) { setZeitplanHinweisOffen(o => !o); return; }
+    setZeitplanBestaetigenOffen(true);
+  }
+  function zeitplanUebernehmen() {
+    if (!aktiveSim) return;
+    const stammdaten = aktiveSim.stammdaten ?? LEERE_STAMMDATEN;
+    const kalender = aktiveSim.kalender ?? LEERER_KALENDER;
+    updateSim({ ...aktiveSim, tasks: berechneZeitplanUebernahme(aktiveSim.tasks, stammdaten, kalender) });
+    setZeitplanBestaetigenOffen(false);
+  }
+
   return (
     <div className="tasklist-wrap">
       {/* Suche + Toggle */}
@@ -245,21 +266,84 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
             </div>
           )}
         </>)}
-        <button className="tc-btn-secondary" style={{ fontSize: 12, padding: "4px 12px", fontWeight: 600, marginLeft: "auto" }}
-          onClick={() => {
-            const willOpen = !ganttOffen;
-            setGanttOffen(willOpen);
-            if (willOpen && sharedNadelTag && sharedNadelTag.current > 0 && minDate) {
-              const tag = Math.round((sharedNadelTag.current - minDate.getTime()) / 86400000);
-              if (tag >= 0 && tag <= totalTage) {
-                setGhostTag(tag);
-                setNadelTag(-1);
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: "auto" }}>
+          {!readOnly && aktiveSim && zeitplanStatus && (
+            <div style={{ position: "relative" }}>
+              <button
+                style={{
+                  fontSize: 12, padding: "4px 12px", fontWeight: 600, borderRadius: 0, cursor: "pointer",
+                  ...(zeitplanStatus.bereit
+                    ? { background: "var(--tc-blue-light)", color: "var(--tc-blue)", border: "1px solid var(--tc-blue)" }
+                    : { background: "#eef1f4", color: "#9aa5b0", border: "1px solid #d4dce4" }),
+                }}
+                title={zeitplanStatus.bereit ? "Berechnete Dauer aus Tab Kalkulation auf den Bauablauf übernehmen" : "Klicken für Details, was dafür noch fehlt"}
+                onClick={zeitplanButtonKlick}>
+                Berechnete Dauer übernehmen
+              </button>
+              {zeitplanHinweisOffen && !zeitplanStatus.bereit && (
+                <div style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, background: "#fff", border: "1px solid #d4dce4",
+                  boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, width: 280, padding: "10px 12px", fontSize: 11 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 6 }}>Noch nicht möglich — es fehlt:</div>
+                  {zeitplanStatus.keineTasks && <div style={{ color: "var(--tc-text-3)" }}>Keine Tasks im Bauablauf vorhanden.</div>}
+                  {zeitplanStatus.fehlerTasks.length > 0 && (
+                    <div style={{ marginBottom: 6 }}>
+                      <div style={{ color: "var(--tc-red)" }}>{zeitplanStatus.fehlerTasks.length} Task(s) mit Fehler in der Mengenermittlung (Tab Kalkulation):</div>
+                      <div style={{ color: "var(--tc-text-3)", marginTop: 2 }}>{zeitplanStatus.fehlerTasks.map(t => t.name).join(", ")}</div>
+                    </div>
+                  )}
+                  {zeitplanStatus.fehlendeVorgaenger.length > 0 && (
+                    <div>
+                      <div style={{ color: "var(--tc-red)" }}>{zeitplanStatus.fehlendeVorgaenger.length} Task(s) ohne Vorgänger:</div>
+                      <div style={{ color: "var(--tc-text-3)", marginTop: 2 }}>{zeitplanStatus.fehlendeVorgaenger.map(t => t.name).join(", ")}</div>
+                    </div>
+                  )}
+                  <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "3px 8px", marginTop: 8 }}
+                    onClick={() => setZeitplanHinweisOffen(false)}>Schliessen</button>
+                </div>
+              )}
+            </div>
+          )}
+          <button className="tc-btn-secondary" style={{ fontSize: 12, padding: "4px 12px", fontWeight: 600 }}
+            onClick={() => {
+              const willOpen = !ganttOffen;
+              setGanttOffen(willOpen);
+              if (willOpen && sharedNadelTag && sharedNadelTag.current > 0 && minDate) {
+                const tag = Math.round((sharedNadelTag.current - minDate.getTime()) / 86400000);
+                if (tag >= 0 && tag <= totalTage) {
+                  setGhostTag(tag);
+                  setNadelTag(-1);
+                }
               }
-            }
-          }}>
-          {ganttOffen ? "☰ Liste" : "▤ Gantt"}
-        </button>
+            }}>
+            {ganttOffen ? "☰ Liste" : "▤ Gantt"}
+          </button>
+        </div>
       </div>
+
+      {zeitplanBestaetigenOffen && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setZeitplanBestaetigenOffen(false)}>
+          <div style={{ background: "#fff", width: 420, maxWidth: "92vw", boxShadow: "0 8px 30px rgba(0,0,0,.25)", fontFamily: "var(--tc-font)" }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--tc-border-light)", fontSize: 16, fontWeight: 700, color: "var(--tc-text)" }}>
+              Berechnete Dauer übernehmen
+            </div>
+            <div style={{ padding: "16px 18px", fontSize: 12, color: "var(--tc-text-2)", lineHeight: 1.6 }}>
+              Für jeden Task wird die in Tab Kalkulation berechnete Dauer als neuer Start-/Endtermin
+              übernommen, entlang der bestehenden Vorgänger-Kette — bestehende Termine werden dabei
+              überschrieben. Das lässt sich nicht rückgängig machen.
+              <div style={{ marginTop: 10, fontWeight: 600 }}>
+                Empfehlung: Zuerst das komplette Projekt kopieren (⋮-Menü der Simulation), dann die
+                Übernahme in der Kopie durchführen.
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 6, padding: "0 18px 18px" }}>
+              <button className="tc-btn-primary" style={{ flex: 1 }} onClick={zeitplanUebernehmen}>Übernehmen</button>
+              <button className="tc-btn-secondary" onClick={() => setZeitplanBestaetigenOffen(false)}>Abbrechen</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {neuInputOffen && (
         <div style={{ display: "flex", gap: 4, padding: "4px 8px", alignItems: "center" }}>
