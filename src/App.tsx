@@ -253,7 +253,7 @@ export default function App() {
     if (current) {
       undoStack.current = [...undoStack.current.slice(-14), current];
       redoStack.current = [];
-      setUndoTick(t => t + 1);
+      setUndoLen(undoStack.current.length); setRedoLen(0);
     }
     setSims(prev => prev.map(s => s.id === updated.id ? updated : s));
   }
@@ -264,7 +264,7 @@ export default function App() {
     const current = sims.find(s => s.id === aktivId);
     if (current) redoStack.current.push(current);
     setSims(s => s.map(sim => sim.id === prev.id ? prev : sim));
-    setUndoTick(t => t + 1);
+    setUndoLen(undoStack.current.length); setRedoLen(redoStack.current.length);
   }
 
   function redo() {
@@ -273,7 +273,7 @@ export default function App() {
     const current = sims.find(s => s.id === aktivId);
     if (current) undoStack.current.push(current);
     setSims(s => s.map(sim => sim.id === next.id ? next : sim));
-    setUndoTick(t => t + 1);
+    setUndoLen(undoStack.current.length); setRedoLen(redoStack.current.length);
   }
 
   const [headerDropdown, setHeaderDropdown] = useState(false);
@@ -288,7 +288,10 @@ export default function App() {
   const [zugriffsManagerOffen, setZugriffsManagerOffen] = useState(false);
   const [kalenderManagerOffen, setKalenderManagerOffen] = useState(false);
   const [hilfeOffen, setHilfeOffen] = useState(false);
-  const [, setUndoTick] = useState(0);
+  // Spiegelt undoStack/redoStack.length als echten State (statt die Refs während des Renderns direkt
+  // zu lesen) — nur so ist garantiert, dass Undo-/Redo-Buttons nach jeder Änderung korrekt neu rendern.
+  const [undoLen, setUndoLen] = useState(0);
+  const [redoLen, setRedoLen] = useState(0);
 
   const appRef = useRef<HTMLDivElement>(null);
   const [maximiert, setMaximiert] = useState(false);
@@ -351,14 +354,14 @@ export default function App() {
             </div>
           </div>
           <div className="tc-header-org-actions">
-            <button className="tc-header-icon-btn" title="Rückgängig" disabled={undoStack.current.length === 0}
-              onClick={undo} style={{ opacity: undoStack.current.length === 0 ? 0.3 : 1 }}>
+            <button className="tc-header-icon-btn" title="Rückgängig" disabled={undoLen === 0}
+              onClick={undo} style={{ opacity: undoLen === 0 ? 0.3 : 1 }}>
               <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <path d="M4 10l4-4M4 10l4 4M5 10h9a3 3 0 0 1 0 6H12"/>
               </svg>
             </button>
-            <button className="tc-header-icon-btn" title="Wiederherstellen" disabled={redoStack.current.length === 0}
-              onClick={redo} style={{ opacity: redoStack.current.length === 0 ? 0.3 : 1 }}>
+            <button className="tc-header-icon-btn" title="Wiederherstellen" disabled={redoLen === 0}
+              onClick={redo} style={{ opacity: redoLen === 0 ? 0.3 : 1 }}>
               <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <path d="M16 10l-4-4M16 10l-4 4M15 10H6a3 3 0 0 0 0 6h3"/>
               </svg>

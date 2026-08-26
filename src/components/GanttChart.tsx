@@ -271,6 +271,11 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
     document.addEventListener("mouseup", onUp);
   }, [totalTage, onNadelClick, onSliderChange]);
 
+  // Muss vor dem frühen return stehen — Hooks dürfen nicht bedingt aufgerufen werden (React würde
+  // sonst bei einem Wechsel zwischen "keine Tasks" und "Tasks vorhanden" mit unterschiedlicher
+  // Hook-Anzahl pro Render abstürzen).
+  const nummern = useMemo(() => berechneNummern(tasks), [tasks]);
+
   if (!minDate || totalTage <= 0 || tasks.length === 0) return <div style={{ padding: 12, fontSize: 11, color: "#8a9baa", textAlign: "center" }}>Keine Tasks</div>;
 
   // Sortierung
@@ -298,7 +303,6 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
   const chartW = Math.max(totalTage * pxProTag, 200);
   const bodyH = sorted.length * ROW_H;
   const longDates = pxProTag >= 8;
-  const nummern = useMemo(() => berechneNummern(tasks), [tasks]);
 
   // Zoom-Stufen: welche Details zeigen?
   const showWeekLines = pxProTag >= 1.5;    // Wochen-Trennlinien

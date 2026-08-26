@@ -29,6 +29,40 @@ interface Props {
   onWechsel: (id: string) => void;
 }
 
+// Auf Modulebene definiert (nicht mehr innerhalb von ZugriffskontrollManager) — sonst entstünde bei
+// jedem Render der Elternkomponente ein neuer Komponenten-Typ, der React zwingt, dieses Dropdown
+// (und ein offen stehendes Menü) komplett neu zu mounten statt es nur zu aktualisieren.
+function AccessDropdown({ id, aktuell, onSelect, offenerDropdown, setOffenerDropdown }: {
+  id: string; aktuell: Zugriff; onSelect: (v: Zugriff) => void;
+  offenerDropdown: string | null; setOffenerDropdown: (v: string | null | ((prev: string | null) => string | null)) => void;
+}) {
+  const opt = OPTIONEN.find(o => o.key === aktuell)!;
+  const ref = useClickOutside<HTMLDivElement>(offenerDropdown === id, () => setOffenerDropdown(null));
+  return (
+    <div ref={ref} style={{ position: "relative" }} onClick={e => e.stopPropagation()}>
+      <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px", minWidth: 150, justifyContent: "space-between", display: "flex" }}
+        onClick={() => setOffenerDropdown(d => d === id ? null : id)}>
+        <span>{opt.icon} {opt.label}</span>
+        <span>{offenerDropdown === id ? "▲" : "▼"}</span>
+      </button>
+      {offenerDropdown === id && (
+        <div className="tc-header-dropdown" style={{ top: "100%", left: 0, right: "auto", minWidth: 230 }}>
+          {OPTIONEN.map(o => (
+            <div key={o.key} className={`tc-header-dropdown-item ${aktuell === o.key ? "active" : ""}`}
+              onClick={() => { onSelect(o.key); setOffenerDropdown(null); }}>
+              <div>
+                <div style={{ fontWeight: 500 }}>{o.icon} {o.label}</div>
+                <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>{o.desc}</div>
+              </div>
+              {aktuell === o.key && <span>✓</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ZugriffskontrollManager({ api, onClose, sims, aktivId, onWechsel }: Props) {
   const aktiveSim = sims.find(s => s.id === aktivId) ?? null;
   const [standard, setStandard] = useState<Zugriff>("read");
@@ -50,34 +84,6 @@ export default function ZugriffskontrollManager({ api, onClose, sims, aktivId, o
       }
     })();
   }, [api]);
-
-  function AccessDropdown({ id, aktuell, onSelect }: { id: string; aktuell: Zugriff; onSelect: (v: Zugriff) => void }) {
-    const opt = OPTIONEN.find(o => o.key === aktuell)!;
-    const ref = useClickOutside<HTMLDivElement>(offenerDropdown === id, () => setOffenerDropdown(null));
-    return (
-      <div ref={ref} style={{ position: "relative" }} onClick={e => e.stopPropagation()}>
-        <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px", minWidth: 150, justifyContent: "space-between", display: "flex" }}
-          onClick={() => setOffenerDropdown(d => d === id ? null : id)}>
-          <span>{opt.icon} {opt.label}</span>
-          <span>{offenerDropdown === id ? "▲" : "▼"}</span>
-        </button>
-        {offenerDropdown === id && (
-          <div className="tc-header-dropdown" style={{ top: "100%", left: 0, right: "auto", minWidth: 230 }}>
-            {OPTIONEN.map(o => (
-              <div key={o.key} className={`tc-header-dropdown-item ${aktuell === o.key ? "active" : ""}`}
-                onClick={() => { onSelect(o.key); setOffenerDropdown(null); }}>
-                <div>
-                  <div style={{ fontWeight: 500 }}>{o.icon} {o.label}</div>
-                  <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>{o.desc}</div>
-                </div>
-                {aktuell === o.key && <span>✓</span>}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}
@@ -122,7 +128,8 @@ export default function ZugriffskontrollManager({ api, onClose, sims, aktivId, o
               <div style={{ fontSize: 12, fontWeight: 600 }}>Standardzugriff</div>
               <div style={{ fontSize: 10, color: "var(--tc-text-3)" }}>Alle Projektmitglieder ohne eigene Regel</div>
             </div>
-            <AccessDropdown id="standard" aktuell={standard} onSelect={setStandard} />
+            <AccessDropdown id="standard" aktuell={standard} onSelect={setStandard}
+              offenerDropdown={offenerDropdown} setOffenerDropdown={setOffenerDropdown} />
           </div>
 
           <div style={{ fontSize: 9, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px", marginBottom: 6 }}>ZUGRIFF PRO MITGLIED</div>
@@ -137,7 +144,8 @@ export default function ZugriffskontrollManager({ api, onClose, sims, aktivId, o
                 {m.email && m.email !== m.name && <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>{m.email}</div>}
               </div>
               <AccessDropdown id={m.id} aktuell={m.zugriff}
-                onSelect={v => setMitglieder(prev => prev!.map(x => x.id === m.id ? { ...x, zugriff: v } : x))} />
+                onSelect={v => setMitglieder(prev => prev!.map(x => x.id === m.id ? { ...x, zugriff: v } : x))}
+                offenerDropdown={offenerDropdown} setOffenerDropdown={setOffenerDropdown} />
             </div>
           ))}
 
