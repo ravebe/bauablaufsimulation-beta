@@ -144,7 +144,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
           mengenQuelle[g.key] = "fehler";
           mengenInfo[g.key] = erg.fehler ? `Formelfehler: ${erg.fehler}`
             : erg.anzahlObjekte === 0 ? "Keine Bauteile zugeordnet"
-            : `${erg.anzahlFehler} von ${erg.anzahlObjekte} Bauteilen ohne Wert${erg.fehlendeAttribute.length > 0 ? ` für ${erg.fehlendeAttribute.join(", ")}` : ""}`;
+            : `${erg.anzahlFehler} von ${erg.anzahlObjekte} Bauteilen ohne Wert${erg.fehlendeAttribute.length > 0 ? ` für ${erg.fehlendeAttribute.join(", ")}` : ""}${erg.anzahlNull > 0 ? ` (davon ${erg.anzahlNull} mit Wert 0 — Attribut vermutlich nicht gepflegt)` : ""}`;
           fehlerCount++;
         }
       }

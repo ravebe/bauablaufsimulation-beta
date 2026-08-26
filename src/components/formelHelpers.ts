@@ -223,28 +223,33 @@ export function auswerten(ast: Node, werte: Record<string, string>): Auswertungs
 export interface MengeErgebnis {
   wert: number | null;       // Summe über alle auswertbaren Bauteile, null wenn kein einziges auswertbar war
   anzahlObjekte: number;     // Bauteile insgesamt (task.objektGuids.length)
-  anzahlFehler: number;      // davon ohne auswertbaren Wert
+  anzahlFehler: number;      // davon ohne auswertbaren Wert ODER mit Ergebnis 0
+  anzahlNull: number;        // davon mit einem auswertbaren, aber auf 0 lautenden Ergebnis (z.B. Volumen=0 — meist ein Datenfehler im Attribut)
   fehlendeAttribute: string[]; // eindeutige fehlende/ungültige Attribut-Keys, für Tooltip
   fehler?: string;           // Formel-Syntaxfehler, falls die Formel selbst ungültig ist
 }
 
 /** Formel über alle Bauteil-Attribute eines Tasks auswerten und summieren. Jedes Element von
- *  `objektWerteListe` sind die flachen Attribute EINES zugeordneten Bauteils. */
+ *  `objektWerteListe` sind die flachen Attribute EINES zugeordneten Bauteils. Ein Bauteil, dessen
+ *  Formel auswertbar ist, aber genau 0 ergibt (z.B. Volumen=0), zählt als Fehler statt als gültiger
+ *  Wert — 0 deutet fast immer auf ein fehlerhaftes/nicht gepflegtes Attribut hin, nicht auf ein
+ *  tatsächlich volumenloses Bauteil. */
 export function berechneMenge(formula: string, objektWerteListe: Record<string, string>[]): MengeErgebnis {
   let ast: Node;
   try { ast = parseFormel(formula); }
   catch (e) {
-    return { wert: null, anzahlObjekte: objektWerteListe.length, anzahlFehler: objektWerteListe.length, fehlendeAttribute: [], fehler: e instanceof Error ? e.message : String(e) };
+    return { wert: null, anzahlObjekte: objektWerteListe.length, anzahlFehler: objektWerteListe.length, anzahlNull: 0, fehlendeAttribute: [], fehler: e instanceof Error ? e.message : String(e) };
   }
-  if (objektWerteListe.length === 0) return { wert: null, anzahlObjekte: 0, anzahlFehler: 0, fehlendeAttribute: [] };
+  if (objektWerteListe.length === 0) return { wert: null, anzahlObjekte: 0, anzahlFehler: 0, anzahlNull: 0, fehlendeAttribute: [] };
 
-  let summe = 0, ok = 0;
+  let summe = 0, ok = 0, anzahlNull = 0;
   const fehlend = new Set<string>();
   for (const w of objektWerteListe) {
     const { wert, fehlendeAttribute } = auswerten(ast, w);
     if (wert === null) { fehlendeAttribute.forEach(a => fehlend.add(a)); continue; }
+    if (wert === 0) { anzahlNull++; continue; }
     summe += wert; ok++;
   }
   const anzahlFehler = objektWerteListe.length - ok;
-  return { wert: ok > 0 ? Math.round(summe * 1000) / 1000 : null, anzahlObjekte: objektWerteListe.length, anzahlFehler, fehlendeAttribute: [...fehlend] };
+  return { wert: ok > 0 ? Math.round(summe * 1000) / 1000 : null, anzahlObjekte: objektWerteListe.length, anzahlFehler, anzahlNull, fehlendeAttribute: [...fehlend] };
 }
