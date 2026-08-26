@@ -28,7 +28,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
     ausgewaehlt: Set<string>;
   } | null>(null);
   const [kopierDialog, setKopierDialog] = useState<{
-    simId: string; name: string; tasks: boolean; kalkulation: boolean; modelle: boolean; stammdaten: boolean; kalender: boolean;
+    simId: string; name: string; tasks: boolean; kalkulation: boolean; mengenWerte: boolean; modelle: boolean; stammdaten: boolean; kalender: boolean;
   } | null>(null);
   // modelId → in TC verfügbare, aber noch nicht geladene Versions-ID (neue Revision abgelegt)
   const [neueVersionen, setNeueVersionen] = useState<Record<string, string>>({});
@@ -190,7 +190,14 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
       tasks = structuredClone(orig.tasks);
       if (!kopierDialog.kalkulation) {
         for (const t of tasks) {
-          delete t.bauteilKuerzel; delete t.mengen; delete t.mengenQuelle; delete t.mengenInfo; delete t.kranbereich;
+          delete t.bauteilKuerzel; delete t.kranbereich;
+          delete t.mengen; delete t.mengenQuelle; delete t.mengenInfo; delete t.mengenObjekte;
+        }
+      } else if (!kopierDialog.mengenWerte) {
+        // Bauteil-Kürzel/Kranbereich bleiben erhalten, aber Mengen-Werte (berechnet + manuell
+        // gesetzt) NICHT — die Kopie berechnet sie über "Mengen aus Bauteilen berechnen" neu.
+        for (const t of tasks) {
+          delete t.mengen; delete t.mengenQuelle; delete t.mengenInfo; delete t.mengenObjekte;
         }
       }
     }
@@ -302,7 +309,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                   <SimKebabMenu
                     sim={sim}
                     istErsteller={istErsteller}
-                    onKopieren={() => setKopierDialog({ simId: sim.id, name: `${sim.name} (Kopie)`, tasks: true, kalkulation: true, modelle: true, stammdaten: true, kalender: true })}
+                    onKopieren={() => setKopierDialog({ simId: sim.id, name: `${sim.name} (Kopie)`, tasks: true, kalkulation: true, mengenWerte: true, modelle: true, stammdaten: true, kalender: true })}
                     onZugriffAendern={(key: Zugriff) => setSims(prev => prev.map(s => s.id === sim.id ? {
                       ...s,
                       zugriff: { ...(s.zugriff || {}), __default__: key }
@@ -490,14 +497,15 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
 
               <div style={{ fontSize: 9, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px", marginBottom: 8 }}>ZU KOPIERENDE INHALTE</div>
               {([
-                { key: "tasks", label: "Bauablauf (Tasks, Termine, Struktur)", indent: false, disabled: false },
-                { key: "kalkulation", label: "Bauteil-Kürzel & Mengen (Kalkulation)", indent: true, disabled: !kopierDialog.tasks },
-                { key: "modelle", label: "Zugewiesene Modelle", indent: false, disabled: false },
-                { key: "stammdaten", label: "Stammdaten (Ressourcen)", indent: false, disabled: false },
-                { key: "kalender", label: "Kalender (Arbeitstage/Feiertage/Ferien)", indent: false, disabled: false },
+                { key: "tasks", label: "Bauablauf (Tasks, Termine, Struktur)", indent: 0, disabled: false },
+                { key: "kalkulation", label: "Bauteil-Kürzel & Kranbereich (Kalkulation-Zuordnung)", indent: 1, disabled: !kopierDialog.tasks },
+                { key: "mengenWerte", label: "Berechnete & manuelle Mengen-Werte je Task", indent: 2, disabled: !kopierDialog.tasks || !kopierDialog.kalkulation },
+                { key: "modelle", label: "Zugewiesene Modelle", indent: 0, disabled: false },
+                { key: "stammdaten", label: "Stammdaten (Ressourcen)", indent: 0, disabled: false },
+                { key: "kalender", label: "Kalender (Arbeitstage/Feiertage/Ferien)", indent: 0, disabled: false },
               ] as const).map(opt => (
                 <label key={opt.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0",
-                  paddingLeft: opt.indent ? 20 : 0, fontSize: 12,
+                  paddingLeft: opt.indent * 20, fontSize: 12,
                   cursor: opt.disabled ? "default" : "pointer", opacity: opt.disabled ? 0.4 : 1 }}>
                   <input type="checkbox" disabled={opt.disabled}
                     checked={opt.disabled ? false : kopierDialog[opt.key]}
