@@ -295,7 +295,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                     <rect x="3" y="10" width="3" height="7" rx="0.5" fill="#c4cdd6"/><rect x="8.5" y="6" width="3" height="11" rx="0.5" fill="#a0adb8"/><rect x="14" y="3" width="3" height="14" rx="0.5" fill="#8a9baa"/>
                   </svg>
                 </span>
-                <div>
+                <div className="sim-card-name-wrap">
                   <div className="sim-card-name">{sim.name}</div>
                   <div className="sim-card-meta">
                     {fmt(sim.erstelltAm)} · {sim.tasks.length} Tasks

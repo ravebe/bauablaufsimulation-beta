@@ -309,6 +309,7 @@
 .sim-card-left {
   display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;
 }
+.sim-card-name-wrap { min-width: 0; flex: 1; overflow: hidden; }
 .sim-card-name {
   font-weight: 600; color: var(--tc-text); font-size: 13px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

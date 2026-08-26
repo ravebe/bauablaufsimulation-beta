@@ -328,7 +328,7 @@ export default function App() {
         <div className="tc-header-org-top">
           <div style={{ flex: 1 }}>
             <div className="tc-header-org-title">
-              <span className="tc-logo">4D</span> Simulationen
+              <span className="tc-logo">{tabGruppe === "erweitert" ? "5D" : "4D"}</span> Simulationen
             </div>
             <div ref={headerDropdownRef}>
             <div className="tc-header-org-sub" onClick={e => { e.stopPropagation(); setHeaderDropdown(d => !d); setSortDropdown(false); }}>
