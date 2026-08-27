@@ -10,6 +10,37 @@ export function clearEchteBauteileCache() {
   Object.keys(echteBauteileCache).forEach(k => delete echteBauteileCache[k]);
 }
 
+/** Bauteil-GUIDs (Format "modelId:::runtimeId") in die vom Viewer erwarteten Batches je Modell
+ *  gruppieren — gemeinsame Grundlage für alle "Auge"-Buttons (ganzer Task oder einzelnes Bauteil). */
+export function guidsZuBatch(guids: string[]): { modelId: string; objectRuntimeIds: number[] }[] {
+  const byModel = new Map<string, Set<number>>();
+  for (const g of guids) {
+    if (!g.includes(":::")) continue;
+    const sep = g.indexOf(":::"); const mid = g.slice(0, sep); const rId = Number(g.slice(sep + 3));
+    if (mid && !isNaN(rId)) { if (!byModel.has(mid)) byModel.set(mid, new Set()); byModel.get(mid)!.add(rId); }
+  }
+  return [...byModel.entries()].map(([modelId, rIds]) => ({ modelId, objectRuntimeIds: [...rIds] }));
+}
+
+/** Blendet alle Objekte in allen geladenen Modellen aus und zeigt/markiert danach nur `batch` — für
+ *  die "Auge"-Buttons in Tab Kalkulation (ganzer Task oder ein einzelnes Bauteil in der aufklappbaren
+ *  Liste). isolateEntities allein reichte nicht (blendete nichts sichtbar ein, vermutlich weil die
+ *  Methode in der echten TC-Workspace-API anders heißt/anders wirkt als unser eigenes
+ *  ApiInstance-Typinterface vermuten ließ); setObjectState ist dagegen an mehreren Stellen im Code
+ *  nachweislich funktionsfähig. */
+export async function zeigeBauteileImModell(api: ApiInstance, batch: { modelId: string; objectRuntimeIds: number[] }[]): Promise<void> {
+  const modelle = await api.viewer.getModels();
+  for (const m of modelle) {
+    const alleIds = await getModellObjekte(api, m.id);
+    if (alleIds.length > 0) await api.viewer.setObjectState([{ modelId: m.id, objectRuntimeIds: alleIds }], { visible: false });
+  }
+  await api.viewer.setObjectState(batch, { visible: true });
+  const viewerSetSelection = api.viewer as unknown as {
+    setSelection: (sel: { modelObjectIds: { modelId: string; objectRuntimeIds: number[] }[] }, mode: string) => Promise<void>;
+  };
+  await viewerSetSelection.setSelection({ modelObjectIds: batch }, "set");
+}
+
 export async function getModellObjekte(api: ApiInstance, mid: string): Promise<number[]> {
   try {
     const result = await (api.viewer as any).getObjects({ modelObjectIds: [{ modelId: mid }] }) as any[];

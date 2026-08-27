@@ -1,19 +1,20 @@
 // zeitplanUebernahmeHelpers.ts — "Berechnete Dauer übernehmen" (Tab Bauteile): überträgt die in Tab
 // Kalkulation ermittelte Dauer jedes Tasks in den tatsächlichen Bauablauf (Start/Ende), entlang der
-// bestehenden Vorgänger-Kette. Nur möglich, wenn die Mengenermittlung fehlerfrei ist UND jeder Task
-// (außer dem ersten) einen Vorgänger hat — siehe pruefeZeitplanBereitschaft().
+// bestehenden Vorgänger-Kette. Nur möglich, wenn die Mengenermittlung fehlerfrei ist — siehe
+// pruefeZeitplanBereitschaft(). Ein fehlender Vorgänger ist dabei kein Ausschlusskriterium mehr:
+// berechneZeitplanUebernahme() verankert einen Task ohne predecessorId einfach an seinem bisherigen
+// Startdatum (siehe loese() unten), das funktioniert unabhängig von der Vorgänger-Kette.
 import type { Task } from "../types";
 import { istGruppe, datumPlusTage } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
-import { dauerBerechnetTask } from "./stammdatenHelpers";
+import { dauerBerechnetTask, gewerkeFuerKuerzel } from "./stammdatenHelpers";
 import type { Kalender } from "./kalenderHelpers";
 import { endDatumAusArbeitstagen } from "./kalenderHelpers";
 
 export interface ZeitplanBereitschaft {
   bereit: boolean;
-  fehlerTasks: { id: string; name: string }[];       // Tasks mit mind. einem Gewerk auf mengenQuelle "fehler"
-  fehlendeVorgaenger: { id: string; name: string }[]; // Tasks (ausser dem ersten) ohne predecessorId
-  keineTasks: boolean;                                // kein einziger (nicht-Gruppen-)Task vorhanden
+  fehlerTasks: { id: string; name: string }[]; // Tasks mit mind. einem für ihr aktuelles Kürzel relevanten Gewerk auf mengenQuelle "fehler"
+  keineTasks: boolean;                          // kein einziger (nicht-Gruppen-)Task vorhanden
 }
 
 /** Nur "echte" Tasks zählen (keine Gruppen — deren Zeitraum leitet sich aus den Kindern ab, siehe
@@ -22,22 +23,27 @@ function echteTasks(tasks: Task[]): Task[] {
   return tasks.filter((t, i) => !t.isGroup && !istGruppe(tasks, i));
 }
 
-/** Prüft, ob "Berechnete Dauer übernehmen" ausgeführt werden darf. */
-export function pruefeZeitplanBereitschaft(tasks: Task[]): ZeitplanBereitschaft {
+/** Prüft, ob "Berechnete Dauer übernehmen" ausgeführt werden darf. Ein Task gilt nur dann als
+ *  fehlerhaft, wenn ein für sein AKTUELLES Kürzel relevantes Gewerk auf "fehler" steht — genau die
+ *  Gewerke, die Tab Kalkulation auch tatsächlich anzeigt (siehe renderZelle "mengen" dort). Ohne
+ *  diesen Abgleich blieben veraltete mengenQuelle-Einträge (z.B. von einem zuvor gewählten Kürzel
+ *  oder einem inzwischen entfernten Gewerk) unsichtbar in Tab Kalkulation, aber blockierten hier
+ *  trotzdem — Tasks ohne Kürzel, ohne Menge oder mit rein manuellen Eingaben erzeugen so nie einen
+ *  Fehler. */
+export function pruefeZeitplanBereitschaft(tasks: Task[], stammdaten: Stammdaten): ZeitplanBereitschaft {
   const echte = echteTasks(tasks);
-  const ersterId = echte[0]?.id;
 
   const fehlerTasks = echte
-    .filter(t => Object.values(t.mengenQuelle ?? {}).includes("fehler"))
-    .map(t => ({ id: t.id, name: t.name }));
-
-  const fehlendeVorgaenger = echte
-    .filter(t => t.id !== ersterId && !t.predecessorId)
+    .filter(t => {
+      if (!t.bauteilKuerzel) return false;
+      const relevanteKeys = new Set(gewerkeFuerKuerzel(stammdaten, t.bauteilKuerzel).map(g => g.key));
+      return Object.entries(t.mengenQuelle ?? {}).some(([key, quelle]) => quelle === "fehler" && relevanteKeys.has(key));
+    })
     .map(t => ({ id: t.id, name: t.name }));
 
   return {
-    bereit: echte.length > 0 && fehlerTasks.length === 0 && fehlendeVorgaenger.length === 0,
-    fehlerTasks, fehlendeVorgaenger, keineTasks: echte.length === 0,
+    bereit: echte.length > 0 && fehlerTasks.length === 0,
+    fehlerTasks, keineTasks: echte.length === 0,
   };
 }
 

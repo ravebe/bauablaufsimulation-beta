@@ -5,11 +5,11 @@ import type { SimProjekt, Task } from "../types";
 import { istGruppe, berechneNummern, nsKey } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { arbeitstageZwischen, LEERER_KALENDER } from "./kalenderHelpers";
-import { LEERE_STAMMDATEN, alleKuerzel, gewerkeFuerKuerzel, dauerBerechnetTask, bezeichnungFuerKuerzel, ausschlussFilterListe, aktiveFilterIds, objektAusgeschlossen } from "./stammdatenHelpers";
+import { LEERE_STAMMDATEN, alleKuerzel, gewerkeFuerKuerzel, dauerBerechnetTask, bezeichnungFuerKuerzel, ausschlussFilterListe, aktiveFilterIds, objektAusgeschlossen, mengenRelevanteSignatur } from "./stammdatenHelpers";
 import type { Gewerk, Rate, Stammdaten } from "./stammdatenHelpers";
 import { kuerzelVorschlag } from "./bauteilkatalogHelpers";
 import { StatTile, CategoryBarChart, CockpitAbschnitt, useEingeklappt, FARBEN } from "./cockpitCharts";
-import { ladeObjektAttribute, getModellObjekte } from "./modelHelpers";
+import { ladeObjektAttribute, guidsZuBatch, zeigeBauteileImModell } from "./modelHelpers";
 import { berechneMenge, mengeStatus } from "./formelHelpers";
 
 interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; api?: ApiInstance | null; projectId?: string | null; }
@@ -55,6 +55,9 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   const [angezeigtTaskId, setAngezeigtTaskId] = useState<string | null>(null);
   const [mengenSortModus, setMengenSortModus] = useState<"fehler" | "leer" | null>(null);
   const [expandedGewerk, setExpandedGewerk] = useState<Set<string>>(new Set());
+  // Eingefrorene Zeilen-Reihenfolge (Task-IDs), während in einem Mengen-Feld getippt wird — siehe
+  // Freeze-Block weiter unten, direkt vor der Zeilen-Ausgabe.
+  const [bearbeitungEingefroren, setBearbeitungEingefroren] = useState<string[] | null>(null);
 
   function gewerkExpandToggle(key: string) {
     setExpandedGewerk(prev => {
@@ -74,6 +77,15 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   useEffect(() => {
     try { localStorage.setItem(lsColwKey, JSON.stringify(colW)); } catch { /* ignore */ }
   }, [colW, lsColwKey]);
+
+  // Baseline für den "Mengen veraltet"-Hinweis (siehe unten) einmalig setzen, falls noch keine
+  // existiert (neues oder älteres Projekt ohne dieses Feld) — ohne Baseline gäbe es sonst sofort
+  // einen falschen Alarm, obwohl noch gar keine Ressourcen-Änderung stattgefunden hat.
+  useEffect(() => {
+    if (sim && sim.mengenBerechnetSignatur === undefined) {
+      updateSim({ ...sim, mengenBerechnetSignatur: mengenRelevanteSignatur(sim.stammdaten ?? LEERE_STAMMDATEN) });
+    }
+  }, [sim, updateSim]);
 
   const { eingeklappt, toggle: toggleEingeklappt } = useEingeklappt(projectId, "kalkulation");
 
@@ -97,6 +109,9 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     return { k, label: bez ? `${k} – ${bez}` : k };
   });
   const nummern = berechneNummern(sim.tasks);
+  // true, sobald sich Formeln/Ausschlussfilter in Tab Ressourcen seit dem letzten Lauf von
+  // "Mengen aus Bauteilen berechnen" geändert haben — siehe mengenRelevanteSignatur().
+  const mengenVeraltet = sim.mengenBerechnetSignatur !== undefined && sim.mengenBerechnetSignatur !== mengenRelevanteSignatur(stammdaten);
 
   function taskAendern(taskId: string, patch: Partial<Task>) {
     updateSim({ ...sim!, tasks: sim!.tasks.map(t => t.id === taskId ? { ...t, ...patch } : t) });
@@ -164,7 +179,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
       }
       updatedTasks[i] = { ...t, mengen, mengenQuelle, mengenInfo };
     }
-    updateSim({ ...sim, tasks: updatedTasks });
+    updateSim({ ...sim, tasks: updatedTasks, mengenBerechnetSignatur: mengenRelevanteSignatur(stammdaten) });
     setMengenLaeuft(false);
     setMengenErgebnis(taskCount === 0 ? "Keine Leistungspositionen mit Formel gefunden"
       : `${taskCount} Tasks aktualisiert · ${autoCount} Mengen berechnet, ${fehlerCount} mit Fehlern${manuellCount > 0 ? `, ${manuellCount} teilweise manuell` : ""}`);
@@ -187,22 +202,8 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     setBulkErgebnis(`${zugeordnet} zugeordnet, ${uneindeutigN} uneindeutig, ${keinTreffer} ohne Treffer`);
   }
 
-  function guidsZuBatch(guids: string[]): { modelId: string; objectRuntimeIds: number[] }[] {
-    const byModel = new Map<string, Set<number>>();
-    for (const g of guids) {
-      if (!g.includes(":::")) continue;
-      const sep = g.indexOf(":::"); const mid = g.slice(0, sep); const rId = Number(g.slice(sep + 3));
-      if (mid && !isNaN(rId)) { if (!byModel.has(mid)) byModel.set(mid, new Set()); byModel.get(mid)!.add(rId); }
-    }
-    return [...byModel.entries()].map(([modelId, rIds]) => ({ modelId, objectRuntimeIds: [...rIds] }));
-  }
-
-  // Blendet alle Objekte in allen geladenen Modellen aus und zeigt/markiert danach nur die dem Task
-  // zugeordneten Bauteile — isolateEntities allein reichte nicht (blendete nichts sichtbar ein,
-  // vermutlich weil die Methode in der echten TC-Workspace-API anders heißt/anders wirkt als unser
-  // eigenes ApiInstance-Typinterface vermuten ließ); setObjectState ist dagegen an mehreren Stellen
-  // im Code (dreiDHeuteHelper.ts, TabTasks.tsx) nachweislich funktionsfähig. Erneuter Klick auf
-  // dasselbe Auge setzt die 3D-Ansicht wieder zurück.
+  // Erneuter Klick auf dasselbe Auge setzt die 3D-Ansicht wieder zurück. zeigeBauteileImModell()
+  // (modelHelpers.ts) blendet dafür alle Objekte aus und markiert danach nur den Task-Batch.
   async function bauteileImModellZeigen(t: Task) {
     if (!api) return;
     if (angezeigtTaskId === t.id) {
@@ -213,16 +214,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     const batch = guidsZuBatch(t.objektGuids);
     if (batch.length === 0) return;
     try {
-      const modelle = await api.viewer.getModels();
-      for (const m of modelle) {
-        const alleIds = await getModellObjekte(api, m.id);
-        if (alleIds.length > 0) await api.viewer.setObjectState([{ modelId: m.id, objectRuntimeIds: alleIds }], { visible: false });
-      }
-      await api.viewer.setObjectState(batch, { visible: true });
-      const viewerSetSelection = api.viewer as unknown as {
-        setSelection: (sel: { modelObjectIds: { modelId: string; objectRuntimeIds: number[] }[] }, mode: string) => Promise<void>;
-      };
-      await viewerSetSelection.setSelection({ modelObjectIds: batch }, "set");
+      await zeigeBauteileImModell(api, batch);
       setAngezeigtTaskId(t.id);
     } catch { /* ignore */ }
   }
@@ -321,6 +313,29 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   }
   if (mengenSortModus) {
     zeilenGefiltert = [...zeilenGefiltert].sort((a, b) => mengenPrioritaet(a) - mengenPrioritaet(b));
+  }
+  const zeilenSortiert = zeilenGefiltert; // natürliche, aktuelle Sortierung — Basis für den Freeze-Snapshot unten
+
+  // Solange in einem Mengen-Feld (Summenfeld oder Bauteil-Liste) getippt wird, bleibt die einmal
+  // beim Fokussieren erfasste Reihenfolge bestehen, statt bei jedem Tastendruck neu zu sortieren —
+  // sonst springt z.B. ein gerade korrigierter Fehler bei aktivem "nach Fehler sortieren" sofort aus
+  // der Fehlergruppe und der Nutzer verliert Scrollposition/Kontext mitten in der Eingabe. Erst
+  // mengenBearbeitungEnde() (Blur/Enter/Wechsel des Feldes) gibt die Sortierung wieder frei.
+  function mengenBearbeitungStart() {
+    setBearbeitungEingefroren(prev => prev ?? zeilenSortiert.map(z => z.t.id));
+  }
+  function mengenBearbeitungEnde() {
+    setBearbeitungEingefroren(null);
+  }
+  function mengenEnterCommit(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") e.currentTarget.blur();
+  }
+  if (bearbeitungEingefroren) {
+    const byId = new Map(zeilenGefiltert.map(z => [z.t.id, z] as const));
+    const geordnet: Zeile[] = [];
+    for (const id of bearbeitungEingefroren) { const z = byId.get(id); if (z) { geordnet.push(z); byId.delete(id); } }
+    geordnet.push(...byId.values());
+    zeilenGefiltert = geordnet;
   }
 
   function headerKlick(spalte: SortSpalte) {
@@ -449,6 +464,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
                   <input type="number" className="no-spinner" disabled={readOnly} value={z.t.mengen?.[g.key] ?? ""}
                     title={info ? `${g.label} [${g.einheit}] — ${info}` : `${g.label} [${g.einheit}]`}
                     onChange={e => mengeAendern(z.t, g.key, e.target.value === "" ? null : Number(e.target.value))}
+                    onFocus={mengenBearbeitungStart} onBlur={mengenBearbeitungEnde} onKeyDown={mengenEnterCommit}
                     style={{ width: 50, minWidth: 0, flex: 1, fontSize: 10, padding: "2px 4px", border: `1px solid ${quelle === "fehler" ? "var(--tc-red)" : "#d4dce4"}`, fontFamily: "inherit", color: farbe, fontWeight: quelle ? 600 : 400 }} />
                 </div>
               );
@@ -522,6 +538,12 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
                 title="Berechnet Mengen aus den Formeln in Tab Ressourcen für alle Bauteile je Task — manuell überschriebene Werte bleiben unangetastet">
                 {mengenLaeuft ? "Wird berechnet…" : "Mengen aus Bauteilen berechnen"}
               </button>
+              {mengenVeraltet && (
+                <span title="Formeln/Ausschlussfilter in Tab Ressourcen wurden seit der letzten Berechnung geändert — Mengen sind veraltet"
+                  style={{ fontSize: 10, color: "#d9622b" }}>
+                  ⚠
+                </span>
+              )}
             </div>
             {(bulkErgebnis || mengenErgebnis) && (
               <div style={{ display: "flex", gap: 16, marginTop: 4, flexWrap: "wrap" }}>
@@ -562,7 +584,8 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
               {offeneGewerke.map(g => (
                 <GewerkObjektListe key={`${z.t.id}::${g.key}`} t={z.t} gewerk={g}
                   rate={g.raten.find(r => r.kuerzel === z.t.bauteilKuerzel)!} api={api} stammdaten={stammdaten}
-                  readOnly={readOnly} taskAendern={taskAendern} />
+                  readOnly={readOnly} taskAendern={taskAendern}
+                  mengenBearbeitungStart={mengenBearbeitungStart} mengenBearbeitungEnde={mengenBearbeitungEnde} mengenEnterCommit={mengenEnterCommit} />
               ))}
               {offeneGewerke.length > 0 && <div style={{ borderBottom: "1px solid var(--tc-border-light)" }} />}
             </Fragment>
@@ -578,12 +601,14 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
 // manuell zu übersteuern (task.mengenObjekte). Lädt die Attribute unabhängig vom Bulk-Lauf
 // "Mengen aus Bauteilen berechnen" neu, sobald sie geöffnet wird oder sich die zugeordneten
 // Bauteile ändern — damit neu hinzugekommene Bauteile sofort erscheinen.
-function GewerkObjektListe({ t, gewerk, rate, api, stammdaten, readOnly, taskAendern }: {
+function GewerkObjektListe({ t, gewerk, rate, api, stammdaten, readOnly, taskAendern, mengenBearbeitungStart, mengenBearbeitungEnde, mengenEnterCommit }: {
   t: Task; gewerk: Gewerk; rate: Rate; api?: ApiInstance | null; stammdaten: Stammdaten; readOnly?: boolean;
   taskAendern: (taskId: string, patch: Partial<Task>) => void;
+  mengenBearbeitungStart: () => void; mengenBearbeitungEnde: () => void; mengenEnterCommit: (e: React.KeyboardEvent<HTMLInputElement>) => void;
 }) {
   const [attrMap, setAttrMap] = useState<Map<string, Record<string, string>> | null>(null);
   const [laden, setLaden] = useState(true);
+  const [angezeigtGuid, setAngezeigtGuid] = useState<string | null>(null);
 
   useEffect(() => {
     let abgebrochen = false;
@@ -630,14 +655,33 @@ function GewerkObjektListe({ t, gewerk, rate, api, stammdaten, readOnly, taskAen
     taskAendern(t.id, { mengen, mengenQuelle, mengenInfo, mengenObjekte });
   }
 
+  // Auge pro Bauteil-Zeile — dieselbe Zeigen/Zurücksetzen-Logik wie das Auge in der "auge"-Spalte
+  // (bauteileImModellZeigen), nur für ein einzelnes Bauteil statt aller Bauteile des Tasks.
+  async function bauteilImModellZeigen(guid: string) {
+    if (!api) return;
+    if (angezeigtGuid === guid) {
+      try { await api.viewer.reset(); } catch { /* ignore */ }
+      setAngezeigtGuid(null);
+      return;
+    }
+    const batch = guidsZuBatch([guid]);
+    if (batch.length === 0) return;
+    try {
+      await zeigeBauteileImModell(api, batch);
+      setAngezeigtGuid(guid);
+    } catch { /* ignore */ }
+  }
+
   return (
     <div style={{ background: "#fafbfc", border: "1px solid var(--tc-border-light)", borderTop: "none", padding: "6px 14px 10px", fontSize: 10 }}>
+      <div style={{ fontWeight: 600, color: "var(--tc-text-2)", marginBottom: 6 }}>Bauteile {gewerk.label}</div>
       {laden ? (
         <div style={{ color: "var(--tc-text-3)", padding: "4px 0" }}>Lade Bauteile…</div>
       ) : eintraege.length === 0 ? (
         <div style={{ color: "var(--tc-text-3)", padding: "4px 0" }}>Keine Bauteile in der Auswertung von „{gewerk.label}".</div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 60px", columnGap: 10, rowGap: 3, alignItems: "center", maxWidth: 520 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "16px 1fr 90px 60px", columnGap: 10, rowGap: 3, alignItems: "center", maxWidth: 540 }}>
+          <div />
           <div style={{ fontWeight: 600, color: "var(--tc-text-3)" }}>Bauteil</div>
           <div style={{ fontWeight: 600, color: "var(--tc-text-3)" }}>Wert</div>
           <div style={{ fontWeight: 600, color: "var(--tc-text-3)" }}>Einheit</div>
@@ -645,14 +689,25 @@ function GewerkObjektListe({ t, gewerk, rate, api, stammdaten, readOnly, taskAen
             const werte = attrMap?.get(o.guid);
             const name = werte?.["Product||Product Name"] || werte?.["Reference Object||Common Type"] || `Bauteil ${o.guid.split(":::")[1] ?? o.guid}`;
             const farbe = o.quelle === "auto" ? "var(--tc-blue)" : o.quelle === "fehler" ? "var(--tc-red)" : "#333";
+            const augeAktiv = angezeigtGuid === o.guid;
+            const augeDisabled = !api;
             return (
               <Fragment key={o.guid}>
+                <span onClick={() => !augeDisabled && bauteilImModellZeigen(o.guid)}
+                  title={augeDisabled ? "3D-Modell nicht verbunden" : augeAktiv ? "3D-Ansicht zurücksetzen" : "Bauteil im 3D-Modell zeigen und markieren"}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "center", cursor: augeDisabled ? "default" : "pointer", color: augeDisabled ? "#c7d0d8" : augeAktiv ? "var(--tc-blue)" : "var(--tc-text-3)" }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" />
+                    <circle cx="12" cy="12" r="3" fill={augeAktiv ? "currentColor" : "none"} />
+                  </svg>
+                </span>
                 <div title={o.grund} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: o.quelle === "fehler" ? "var(--tc-red)" : "var(--tc-text-2)" }}>
                   {name}{o.quelle === "fehler" && " ⚠"}
                 </div>
                 <input type="number" className="no-spinner" disabled={readOnly} value={o.wert ?? ""}
                   title={o.grund}
                   onChange={e => overrideAendern(o.guid, e.target.value === "" ? null : Number(e.target.value))}
+                  onFocus={mengenBearbeitungStart} onBlur={mengenBearbeitungEnde} onKeyDown={mengenEnterCommit}
                   style={{ width: 70, fontSize: 10, padding: "2px 4px", border: `1px solid ${o.quelle === "fehler" ? "var(--tc-red)" : "#d4dce4"}`, fontFamily: "inherit", color: farbe, fontWeight: o.quelle !== "auto" ? 600 : 400 }} />
                 <div style={{ color: "var(--tc-text-3)" }}>{gewerk.einheit}</div>
               </Fragment>

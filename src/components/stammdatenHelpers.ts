@@ -55,6 +55,22 @@ export function aktiveFilterIds(r: Rate): string[] {
   return r.oeffnungenAusschliessen ? [STANDARD_AUSSCHLUSSFILTER.id] : [];
 }
 
+/** Signatur aus allen Stammdaten-Feldern, die in die Mengenermittlung (berechneMenge() in
+ *  formelHelpers.ts) einfliessen — Formeln je Rate sowie die (effektiv wirksamen) Ausschlussfilter.
+ *  Andere Stammdaten-Felder (Leistungswerte, Personal, CHF/Einheit) wirken sich nur auf Dauer/Kosten
+ *  aus und ändern die Signatur bewusst NICHT. Grundlage für den "Mengen veraltet"-Hinweis neben dem
+ *  Button "Mengen aus Bauteilen berechnen" in Tab Kalkulation: weicht die aktuelle Signatur von der
+ *  beim letzten Lauf gespeicherten (SimProjekt.mengenBerechnetSignatur) ab, wurde seither etwas an
+ *  den Formeln/Filtern in Tab Ressourcen geändert. */
+export function mengenRelevanteSignatur(s: Stammdaten): string {
+  const filter = ausschlussFilterListe(s).map(f => ({ id: f.id, attribut: f.attribut, wert: f.wert }));
+  const gewerke = s.gewerke.map(g => ({
+    key: g.key,
+    raten: g.raten.map(r => ({ kuerzel: r.kuerzel, formel: r.formel ?? "", filter: [...aktiveFilterIds(r)].sort() })),
+  }));
+  return JSON.stringify({ filter, gewerke });
+}
+
 /** Stammdaten als JSON-Text für den Datei-Export — 1:1 Rohobjekt, damit der Import verlustfrei zurückspielt. */
 export function stammdatenAlsJson(s: Stammdaten): string {
   return JSON.stringify(s, null, 2);

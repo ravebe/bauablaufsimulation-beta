@@ -211,8 +211,8 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
 
   // "Berechnete Dauer übernehmen" — überträgt die Kalkulations-Dauer jedes Tasks auf den Bauablauf,
   // siehe zeitplanUebernahmeHelpers.ts. Erst möglich, wenn Tab Kalkulation fehlerfrei ist (keine roten
-  // Mengen-Felder) und jeder Task ausser dem ersten einen Vorgänger hat.
-  const zeitplanStatus = aktiveSim ? pruefeZeitplanBereitschaft(aktiveSim.tasks) : null;
+  // Mengen-Felder).
+  const zeitplanStatus = aktiveSim ? pruefeZeitplanBereitschaft(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN) : null;
   function zeitplanButtonKlick() {
     if (!zeitplanStatus?.bereit) { setZeitplanHinweisOffen(o => !o); return; }
     setZeitplanBestaetigenOffen(true);
@@ -286,15 +286,9 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
                   <div style={{ fontWeight: 600, marginBottom: 6 }}>Noch nicht möglich — es fehlt:</div>
                   {zeitplanStatus.keineTasks && <div style={{ color: "var(--tc-text-3)" }}>Keine Tasks im Bauablauf vorhanden.</div>}
                   {zeitplanStatus.fehlerTasks.length > 0 && (
-                    <div style={{ marginBottom: 6 }}>
+                    <div>
                       <div style={{ color: "var(--tc-red)" }}>{zeitplanStatus.fehlerTasks.length} Task(s) mit Fehler in der Mengenermittlung (Tab Kalkulation):</div>
                       <div style={{ color: "var(--tc-text-3)", marginTop: 2 }}>{zeitplanStatus.fehlerTasks.map(t => t.name).join(", ")}</div>
-                    </div>
-                  )}
-                  {zeitplanStatus.fehlendeVorgaenger.length > 0 && (
-                    <div>
-                      <div style={{ color: "var(--tc-red)" }}>{zeitplanStatus.fehlendeVorgaenger.length} Task(s) ohne Vorgänger:</div>
-                      <div style={{ color: "var(--tc-text-3)", marginTop: 2 }}>{zeitplanStatus.fehlendeVorgaenger.map(t => t.name).join(", ")}</div>
                     </div>
                   )}
                   <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "3px 8px", marginTop: 8 }}

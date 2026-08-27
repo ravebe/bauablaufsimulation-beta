@@ -45,6 +45,7 @@ export interface SimProjekt {
   modelle: SimModell[];
   kalender?: Kalender; // Arbeitstage-Kalender (Feiertage) dieses Projekts
   stammdaten?: Stammdaten; // Leistungswerte/Personal/CHF für die Kalkulation, siehe stammdatenHelpers.ts
+  mengenBerechnetSignatur?: string; // Signatur der Stammdaten (Formeln/Ausschlussfilter) zum Zeitpunkt des letzten "Mengen aus Bauteilen berechnen" — siehe mengenRelevanteSignatur() in stammdatenHelpers.ts; weicht sie vom aktuellen Stand ab, sind die Mengen veraltet
 }
 
 // TC API Typen
