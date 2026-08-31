@@ -4,7 +4,7 @@ import type { Task } from "../types";
 import { parseDateUniversal } from "../types";
 import type { Kalender } from "./kalenderHelpers";
 import { istArbeitstag, arbeitstageZwischen } from "./kalenderHelpers";
-import type { Stammdaten, Gewerk } from "./stammdatenHelpers";
+import type { Stammdaten, Gewerk, Rate } from "./stammdatenHelpers";
 
 export interface TagWert { tag: string; werte: Record<string, number> }
 
@@ -87,8 +87,10 @@ export function kranauslastung(tasks: Task[], stammdaten: Stammdaten, kalender: 
   return ergebnis;
 }
 
-/** Menge/Tag für ein Gewerk, gleichmässig über die Arbeitstage jedes Tasks verteilt. */
-export function mengenProTag(tasks: Task[], gewerkKey: string, kalender: Kalender): { tag: string; menge: number }[] {
+/** Menge/Tag für ein Gewerk ("durchschnittlich nötige Tagesleistung"), gleichmässig über die
+ *  Arbeitstage jedes Tasks verteilt. Mit kuerzel eingeschränkt auf Tasks dieses Bauteil-Kürzels
+ *  (z.B. "BPL"), analog den kürzelweisen Filterblättern im AVOR-Excel-Tool. */
+export function mengenProTag(tasks: Task[], gewerkKey: string, kalender: Kalender, kuerzel?: string): { tag: string; menge: number }[] {
   const zeitraum = projektzeitraum(tasks);
   if (!zeitraum) return [];
   const ergebnis: { tag: string; menge: number }[] = [];
@@ -99,6 +101,7 @@ export function mengenProTag(tasks: Task[], gewerkKey: string, kalender: Kalende
     if (istArbeitstag(iso, kalender)) {
       for (const t of tasks) {
         if (t.isGroup) continue;
+        if (kuerzel && t.bauteilKuerzel !== kuerzel) continue;
         const m = t.mengen?.[gewerkKey];
         if (!m || iso < t.start || iso > t.end) continue;
         menge += m / arbeitstageZwischen(t.start, t.end, kalender);
@@ -108,6 +111,16 @@ export function mengenProTag(tasks: Task[], gewerkKey: string, kalender: Kalende
     cur.setDate(cur.getDate() + 1);
   }
   return ergebnis;
+}
+
+/** "Optimal ausgelastete Tagesleistung" einer Rate: Menge, die eine voll ausgelastete Kolonne
+ *  (anzahlPersonen Personen, arbeitszeitStdProTag Std./Tag) bei ihrem Leistungswert an einem
+ *  Arbeitstag schafft — analog der roten Referenzzeile im AVOR-Excel-Tool
+ *  ("=(1/Leistungswert)*AnzahlPersonen*ArbeitszeitProTag"). null wenn kein Leistungswert
+ *  hinterlegt ist (im Excel-Tool als "-" dargestellt). */
+export function optimaleTagesleistung(rate: Rate, arbeitszeitStdProTag: number): number | null {
+  if (!rate.leistungswertHProEinheit) return null;
+  return (1 / rate.leistungswertHProEinheit) * rate.anzahlPersonen * arbeitszeitStdProTag;
 }
 
 /** Kumulierte Ertrags-/Kostenkurve über die Zeit (Ertragsoptik). */
