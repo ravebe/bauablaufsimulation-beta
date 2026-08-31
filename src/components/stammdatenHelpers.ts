@@ -415,185 +415,246 @@ function leer(kuerzel: string, bezeichnung: string): Rate {
   return { kuerzel, bezeichnung, leistungswertHProEinheit: null, anzahlPersonen: 1, chfProEinheit: null };
 }
 
-/**
- * Gerüst-Vorlage Innenausbau — nur Gewerke/Kürzel/Einheiten angelegt, KEINE realen Leistungswerte/
- * CHF-Sätze (anders als standardStammdaten(), die aus einer echten AVOR-Excel stammt). Über
- * "Innenausbau hinzufügen" additiv zu bestehenden Stammdaten zumischbar; Werte danach in Tab
- * Ressourcen selbst eintragen.
- */
-export function innenausbauGewerke(): Gewerk[] {
-  return [
-    { key: "trockenbau", label: "Trockenbau", einheit: "m²", raten: [
-      leer("TB", "Trockenbauwand"),
-      leer("TBD", "Trockenbau-Decke"),
-    ] },
-    { key: "bodenbelaege", label: "Bodenbeläge", einheit: "m²", raten: [
-      leer("BOD", "Bodenbelag"),
-    ] },
-    { key: "maler", label: "Maler-/Beschichtungsarbeiten", einheit: "m²", raten: [
-      leer("MAL", "Malerarbeiten"),
-    ] },
-    { key: "tueren_fenster_innen", label: "Türen/Fenster innen", einheit: "Stk.", raten: [
-      leer("TUE", "Türen/Fenster einbauen"),
-    ] },
-    { key: "schreiner", label: "Schreinerarbeiten", einheit: "m²", raten: [
-      leer("SCHR", "Schreinerarbeiten/Einbaumöbel"),
-    ] },
-  ];
+/** Erzeugt Gewerke aus offiziellen eBKP-Elementgruppen (Code, Bezeichnung, Start-Einheit). Kürzel
+ *  ist bewusst der echte eBKP-Code (statt einer erfundenen Abkürzung), damit er sich in Kostenplänen
+ *  und Reporting wiedererkennen lässt. Die Einheit ist ein praxisüblicher Startwert — keine normierte
+ *  CRB-Bezugsgrösse (die Norm definiert Bezugsgrössen nur zur Kostenkennwertbildung, nicht als
+ *  verbindliche Mengeneinheit) — und in Tab Ressourcen frei überschreibbar, ebenso wie Kategorie- und
+ *  Kürzel-Bezeichnungen. */
+function ebkp(eintraege: [code: string, bezeichnung: string, einheit: string][]): Gewerk[] {
+  return eintraege.map(([code, bezeichnung, einheit]) => ({
+    key: code, label: `${code} ${bezeichnung}`, einheit, raten: [leer(code, bezeichnung)],
+  }));
 }
 
-/** Gerüst-Vorlage HLKSSE (Heizung/Lüftung/Klima/Sanitär/Sprinkler/Elektro) — siehe innenausbauGewerke(). */
-export function hlksseGewerke(): Gewerk[] {
-  return [
-    { key: "heizung", label: "Heizung", einheit: "m1", raten: [
-      leer("HZ", "Heizungsleitungen"),
-    ] },
-    { key: "lueftung", label: "Lüftung", einheit: "m1", raten: [
-      leer("LUE", "Lüftungskanäle"),
-    ] },
-    { key: "klima", label: "Klima", einheit: "Stk.", raten: [
-      leer("KLI", "Klimageräte"),
-    ] },
-    { key: "sanitaer", label: "Sanitär", einheit: "Stk.", raten: [
-      leer("SAN", "Sanitärapparate/-installation"),
-    ] },
-    { key: "sprinkler", label: "Sprinkler", einheit: "m1", raten: [
-      leer("SPR", "Sprinklerleitungen"),
-    ] },
-    { key: "elektro", label: "Elektro", einheit: "m1", raten: [
-      leer("EL", "Elektroinstallation/Kabeltrassen"),
-    ] },
-  ];
+/** eBKP-H Hauptgruppe B «Vorbereitung» — Elementgruppen nach SN 506 511:2020. */
+export function ebkpHVorbereitungGewerke(): Gewerk[] {
+  return ebkp([
+    ["B01", "Untersuchung, Aufnahme, Messung", "psch"],
+    ["B02", "Baustelleneinrichtung", "psch"],
+    ["B03", "Provisorium", "psch"],
+    ["B04", "Erschliessung durch Werkleitungen", "m1"],
+    ["B05", "Rodung, Rückbau", "m³"],
+    ["B06", "Baugrube", "m³"],
+    ["B07", "Baugrundverbesserung, Bauwerkssicherung", "m²"],
+    ["B08", "Gerüst", "m²"],
+    ["B09", "Anpassung angrenzendes Bauwerk", "psch"],
+  ]);
 }
 
-/** Gerüst-Vorlage Tiefbau — siehe innenausbauGewerke(). Bewusst ohne Überschneidung zu den in
- *  standardStammdaten() bereits vorhandenen Gewerken (aushub, kanalisation, folien). */
-export function tiefbauGewerke(): Gewerk[] {
-  return [
-    { key: "baugrubensicherung", label: "Baugrubensicherung", einheit: "m²", raten: [
-      leer("BGS", "Baugrubensicherung/Verbau"),
-    ] },
-    { key: "werkleitungen_tiefbau", label: "Werkleitungen (Tiefbau)", einheit: "m1", raten: [
-      leer("WLT", "Werkleitungen verlegen"),
-    ] },
-    { key: "kanalbau", label: "Kanalbau", einheit: "m1", raten: [
-      leer("KANB", "Kanalbau/Schächte"),
-    ] },
-    { key: "strassenbau", label: "Strassenbau", einheit: "m²", raten: [
-      leer("STR", "Strassenbau/Beläge"),
-    ] },
-    { key: "humusierung", label: "Humusierung/Umgebung", einheit: "m²", raten: [
-      leer("HUM", "Humusierung/Umgebungsarbeiten"),
-    ] },
-  ];
+/** eBKP-H Hauptgruppe C «Konstruktion Gebäude» — Elementgruppen nach SN 506 511:2020. */
+export function ebkpHKonstruktionGewerke(): Gewerk[] {
+  return ebkp([
+    ["C01", "Fundament, Bodenplatte", "m²"],
+    ["C02", "Wandkonstruktion", "m²"],
+    ["C03", "Stützenkonstruktion", "Stk."],
+    ["C04", "Deckenkonstruktion, Dachkonstruktion", "m²"],
+    ["C05", "Ergänzende Leistung zu Konstruktion", "psch"],
+  ]);
 }
 
-/** Gerüst-Vorlage Vorbereitungsarbeiten (eBKP-H Hauptgruppe B) — siehe innenausbauGewerke(). */
-export function vorbereitungGewerke(): Gewerk[] {
-  return [
-    { key: "baustelleneinrichtung", label: "Baustelleneinrichtung", einheit: "psch", raten: [
-      leer("BE", "Baustelleneinrichtung"),
-    ] },
-    { key: "abbruch", label: "Abbrucharbeiten", einheit: "m³", raten: [
-      leer("ABBR", "Abbrucharbeiten"),
-    ] },
-    { key: "altlasten", label: "Altlastensanierung", einheit: "m³", raten: [
-      leer("ALT", "Altlastensanierung"),
-    ] },
-  ];
+/** eBKP-H Hauptgruppe D «Technik Gebäude» — Elementgruppen nach SN 506 511:2020. */
+export function ebkpHTechnikGewerke(): Gewerk[] {
+  return ebkp([
+    ["D01", "Elektroanlage", "m1"],
+    ["D02", "Gebäudeautomation", "Stk."],
+    ["D03", "Sicherheitsanlage", "Stk."],
+    ["D04", "Technische Brandschutzanlage", "Stk."],
+    ["D05", "Wärmetechnische Anlage", "Stk."],
+    ["D06", "Kältetechnische Anlage", "Stk."],
+    ["D07", "Lufttechnische Anlage", "m1"],
+    ["D08", "Wassertechnische Anlage", "m1"],
+    ["D09", "Abwassertechnische Anlage", "m1"],
+    ["D10", "Gastechnische Anlage", "m1"],
+    ["D11", "Anlage für Spezialmedien", "m1"],
+    ["D12", "Beförderungsanlage", "Stk."],
+  ]);
 }
 
-/** Gerüst-Vorlage Fassade (eBKP-H Hauptgruppe E, Äussere Wandbekleidung Gebäude) — siehe innenausbauGewerke(). */
-export function fassadeGewerke(): Gewerk[] {
-  return [
-    { key: "fassadenverkleidung", label: "Fassadenverkleidung", einheit: "m²", kranpflichtig: true, raten: [
-      leer("FAS", "Fassadenverkleidung"),
-    ] },
-    { key: "fenster_aussen", label: "Fenster/Aussentüren", einheit: "Stk.", raten: [
-      leer("FEA", "Fenster/Aussentüren einbauen"),
-    ] },
-    { key: "sonnenschutz", label: "Sonnenschutz", einheit: "m²", raten: [
-      leer("SOS", "Sonnenschutzanlagen"),
-    ] },
-  ];
+/** eBKP-H Hauptgruppe E «Äussere Wandbekleidung Gebäude» — Elementgruppen nach SN 506 511:2020. */
+export function ebkpHFassadeGewerke(): Gewerk[] {
+  return ebkp([
+    ["E01", "Äussere Wandbekleidung unter Terrain", "m²"],
+    ["E02", "Äussere Wandbekleidung über Terrain", "m²"],
+    ["E03", "Element in Aussenwand", "Stk."],
+  ]);
 }
 
-/** Gerüst-Vorlage Bedachung (eBKP-H Hauptgruppe F) — siehe innenausbauGewerke(). */
-export function bedachungGewerke(): Gewerk[] {
-  return [
-    { key: "dachabdichtung", label: "Dachabdichtung", einheit: "m²", raten: [
-      leer("DAB", "Dachabdichtung"),
-    ] },
-    { key: "spenglerarbeiten", label: "Spenglerarbeiten", einheit: "m1", raten: [
-      leer("SPG", "Spenglerarbeiten"),
-    ] },
-    { key: "dacheindeckung", label: "Dacheindeckung", einheit: "m²", raten: [
-      leer("DEI", "Dacheindeckung"),
-    ] },
-  ];
+/** eBKP-H Hauptgruppe F «Bedachung Gebäude» — Elementgruppen nach SN 506 511:2020. */
+export function ebkpHBedachungGewerke(): Gewerk[] {
+  return ebkp([
+    ["F01", "Dachhaut", "m²"],
+    ["F02", "Element zu Dach", "m²"],
+  ]);
 }
 
-/** Gerüst-Vorlage Umgebung (eBKP-H Hauptgruppe I, Umgebung Gebäude) — siehe innenausbauGewerke(). */
-export function umgebungGewerke(): Gewerk[] {
-  return [
-    { key: "umgebungsgestaltung", label: "Umgebungsgestaltung", einheit: "m²", raten: [
-      leer("UMG", "Umgebungsgestaltung"),
-    ] },
-    { key: "wege_plaetze", label: "Wege/Plätze", einheit: "m²", raten: [
-      leer("WEG", "Wege/Plätze"),
-    ] },
-    { key: "bepflanzung", label: "Bepflanzung", einheit: "m²", raten: [
-      leer("BEP", "Bepflanzung"),
-    ] },
-  ];
+/** eBKP-H Hauptgruppe G «Ausbau Gebäude» — Elementgruppen nach SN 506 511:2020. */
+export function ebkpHAusbauGewerke(): Gewerk[] {
+  return ebkp([
+    ["G01", "Trennwand, Innentür, Innentor", "Stk."],
+    ["G02", "Bodenbelag", "m²"],
+    ["G03", "Wandbekleidung", "m²"],
+    ["G04", "Deckenbekleidung", "m²"],
+    ["G05", "Einbauten, Schutzeinrichtung zu Ausbau", "Stk."],
+    ["G06", "Ergänzende Leistung zu Ausbau", "psch"],
+  ]);
 }
 
-/** Gerüst-Vorlage Untertagbau (eBKP-T Hauptgruppe N) — siehe innenausbauGewerke(). */
-export function untertagbauGewerke(): Gewerk[] {
-  return [
-    { key: "tunnelbau", label: "Tunnelbau", einheit: "m1", raten: [
-      leer("TUN", "Tunnelbau/Vortrieb"),
-    ] },
-    { key: "stollenbau", label: "Stollenbau", einheit: "m1", raten: [
-      leer("STO", "Stollenbau"),
-    ] },
-  ];
+/** eBKP-H Hauptgruppe H «Nutzungsspezifische Anlage Gebäude» — Elementgruppen nach SN 506 511:2020. */
+export function ebkpHNutzungsspezifischGewerke(): Gewerk[] {
+  return ebkp([
+    ["H01", "Produktionsanlage", "psch"],
+    ["H02", "Laboranlage", "psch"],
+    ["H03", "Grossküche", "psch"],
+    ["H04", "Wäscherei-, Reinigungsanlage", "psch"],
+    ["H05", "Anlage für Gesundheit", "psch"],
+    ["H06", "Anlage für Bildung, Kultur", "psch"],
+    ["H07", "Sportanlage, Freizeitanlage", "psch"],
+    ["H08", "Anlage für Erholung", "psch"],
+    ["H09", "Weitere nutzungsspezifische Anlage", "psch"],
+  ]);
 }
 
-/** Gerüst-Vorlage Kunstbauten (eBKP-T Hauptgruppe O, Konstruktion Kunstbauten) — siehe innenausbauGewerke(). */
-export function kunstbautenGewerke(): Gewerk[] {
-  return [
-    { key: "brueckenbau", label: "Brückenbau", einheit: "m²", raten: [
-      leer("BRU", "Brückenbau"),
-    ] },
-    { key: "stuetzmauern", label: "Stützmauern", einheit: "m²", raten: [
-      leer("STM", "Stützmauern"),
-    ] },
-  ];
+/** eBKP-H Hauptgruppe I «Umgebung Gebäude» — Elementgruppen nach SN 506 511:2020. */
+export function ebkpHUmgebungGewerke(): Gewerk[] {
+  return ebkp([
+    ["I01", "Umgebungsgestaltung", "m²"],
+    ["I02", "Bauwerk in der Umgebung", "Stk."],
+    ["I03", "Grünfläche", "m²"],
+    ["I04", "Hartfläche", "m²"],
+    ["I05", "Technik Umgebung", "psch"],
+    ["I06", "Ausstattung Umgebung", "Stk."],
+  ]);
 }
 
-/** Gerüst-Vorlage Leitungsbau (eBKP-T Hauptgruppe Q) — siehe innenausbauGewerke(). */
-export function leitungsbauGewerke(): Gewerk[] {
-  return [
-    { key: "gas_wasserleitungen", label: "Gas-/Wasserleitungen", einheit: "m1", raten: [
-      leer("GWL", "Gas-/Wasserleitungen verlegen"),
-    ] },
-    { key: "fernwaerme", label: "Fernwärmeleitungen", einheit: "m1", raten: [
-      leer("FWL", "Fernwärmeleitungen verlegen"),
-    ] },
-  ];
+/** eBKP-H Hauptgruppe J «Ausstattung Gebäude» — Elementgruppen nach SN 506 511:2020. */
+export function ebkpHAusstattungGewerke(): Gewerk[] {
+  return ebkp([
+    ["J01", "Mobiliar", "Stk."],
+    ["J02", "Kleininventar", "Stk."],
+    ["J03", "Textilien", "Stk."],
+    ["J04", "Kunst am Bau", "Stk."],
+  ]);
 }
 
-/** Gerüst-Vorlage Betriebs-/Sicherheitsanlagen (eBKP-T Hauptgruppe S) — siehe innenausbauGewerke(). */
-export function betriebssicherheitGewerke(): Gewerk[] {
-  return [
-    { key: "signalanlagen", label: "Signalanlagen", einheit: "Stk.", raten: [
-      leer("SIG", "Signalanlagen"),
-    ] },
-    { key: "beleuchtung_tiefbau", label: "Beleuchtung", einheit: "Stk.", raten: [
-      leer("BEL", "Beleuchtung"),
-    ] },
-  ];
+/** eBKP-T Hauptgruppe L «Vorbereitung Tiefbau» — Elementgruppen nach SN 506 512:2026. */
+export function ebkpTVorbereitungGewerke(): Gewerk[] {
+  return ebkp([
+    ["L01", "Untersuchung, Aufnahme, Messung", "psch"],
+    ["L02", "Baustelleneinrichtung", "psch"],
+    ["L03", "Provisorium", "psch"],
+    ["L04", "Rückbau Bauwerk", "m³"],
+    ["L05", "Wiederherstellung, Schadensbehebung", "psch"],
+    ["L06", "Gerüst", "m²"],
+  ]);
+}
+
+/** eBKP-T Hauptgruppe M «Erdbau, Spezialtiefbau» — Elementgruppen nach SN 506 512:2026. */
+export function ebkpTErdbauGewerke(): Gewerk[] {
+  return ebkp([
+    ["M01", "Erdbewegung", "m³"],
+    ["M02", "Grabenloser Leitungsbau", "m1"],
+    ["M03", "Materialbewirtschaftung", "m³"],
+    ["M04", "Belasteter Standort", "m³"],
+    ["M05", "Erdbausicherung", "m²"],
+    ["M06", "Baugrundverbesserung", "m²"],
+    ["M07", "Sicherung, Verbauung", "m²"],
+    ["M08", "Landschaftsgestaltung", "m²"],
+  ]);
+}
+
+/** eBKP-T Hauptgruppe N «Untertagbau» — Elementgruppen nach SN 506 512:2026. */
+export function ebkpTUntertagbauGewerke(): Gewerk[] {
+  return ebkp([
+    ["N01", "Vortrieb Untertagbau", "m1"],
+    ["N02", "Sicherung Untertagbau", "m1"],
+    ["N03", "Ausbau Untertagbau", "m1"],
+    ["N04", "Innenausbau, Kabelrohranlage Untertagbau", "m1"],
+  ]);
+}
+
+/** eBKP-T Hauptgruppe O «Konstruktion Kunstbauten» — Elementgruppen nach SN 506 512:2026. */
+export function ebkpTKunstbautenGewerke(): Gewerk[] {
+  return ebkp([
+    ["O01", "Fundament", "m³"],
+    ["O02", "Wand, Stütze, Stützenreihe", "m³"],
+    ["O03", "Platte, Träger", "m³"],
+    ["O04", "Unterbau Brücke", "m²"],
+    ["O05", "Überbau Brücke", "m²"],
+    ["O06", "Brückenlager, Fahrbahnübergang", "Stk."],
+    ["O07", "Spezialkonstruktion", "psch"],
+    ["O08", "Ergänzung zu Konstruktion Kunstbauten", "psch"],
+  ]);
+}
+
+/** eBKP-T Hauptgruppe P «Hülle, Ausbau» — Elementgruppen nach SN 506 512:2026. */
+export function ebkpTHuelleAusbauGewerke(): Gewerk[] {
+  return ebkp([
+    ["P01", "Oberfläche aussen", "m²"],
+    ["P02", "Oberfläche innen", "m²"],
+    ["P03", "Einbaute aussen", "Stk."],
+    ["P04", "Einbaute innen", "Stk."],
+    ["P05", "Ergänzung zu Ausbau", "psch"],
+  ]);
+}
+
+/** eBKP-T Hauptgruppe Q «Leitungsbau» — Elementgruppen nach SN 506 512:2026. */
+export function ebkpTLeitungsbauGewerke(): Gewerk[] {
+  return ebkp([
+    ["Q01", "Entwässerung", "m1"],
+    ["Q02", "Kanalisation", "m1"],
+    ["Q03", "Wasserversorgung", "m1"],
+    ["Q04", "Gasversorgung", "m1"],
+    ["Q05", "Fernwärme, Fernkälte", "m1"],
+    ["Q06", "Rohrblock", "m1"],
+    ["Q07", "Kabelkanal", "m1"],
+    ["Q08", "Bauwerke zu Kabelanlage", "Stk."],
+    ["Q09", "Rohrleitungsanlage", "m1"],
+  ]);
+}
+
+/** eBKP-T Hauptgruppe R «Fahrbahn» — Elementgruppen nach SN 506 512:2026. */
+export function ebkpTFahrbahnGewerke(): Gewerk[] {
+  return ebkp([
+    ["R01", "Oberbau Strasse", "m²"],
+    ["R02", "Markierung, Signal", "m1"],
+    ["R03", "Bahntrasse", "m1"],
+    ["R04", "Fahrleitung", "m1"],
+    ["R05", "Sicherungsanlage", "Stk."],
+    ["R06", "Rückhaltesystem", "m1"],
+    ["R07", "Ergänzung zu Fahrbahn", "psch"],
+    ["R08", "Ausstattung Umgebung", "Stk."],
+    ["R09", "Kunst am Bau", "Stk."],
+  ]);
+}
+
+/** eBKP-T Hauptgruppe S «Betriebs-, Sicherheitsanlage» — Elementgruppen nach SN 506 512:2026. */
+export function ebkpTBetriebssicherheitGewerke(): Gewerk[] {
+  return ebkp([
+    ["S01", "Energieversorgung", "m1"],
+    ["S02", "Beleuchtung", "Stk."],
+    ["S03", "Lufttechnische Anlage", "m1"],
+    ["S04", "Verkehrsbeeinflussung", "Stk."],
+    ["S05", "Überwachungsanlage", "Stk."],
+    ["S06", "Automation, Kommunikations-, Leitanlage", "Stk."],
+    ["S07", "Sicherheitsanlage", "Stk."],
+    ["S08", "Brandschutz", "Stk."],
+    ["S09", "Beförderungsanlage", "Stk."],
+  ]);
+}
+
+/** eBKP-T Hauptgruppe T «Ausrüstung» — Elementgruppen nach SN 506 512:2026. */
+export function ebkpTAusruestungGewerke(): Gewerk[] {
+  return ebkp([
+    ["T01", "Elektroanlage", "m1"],
+    ["T02", "Wärmetechnische Anlage", "Stk."],
+    ["T03", "Kältetechnische Anlage", "Stk."],
+    ["T04", "Lufttechnische Anlage Gebäude", "m1"],
+    ["T05", "Wassertechnische Anlage", "m1"],
+    ["T06", "Abwassertechnische Anlage", "m1"],
+    ["T07", "Gastechnische Anlage", "m1"],
+    ["T08", "Anlage für Spezialmedien", "m1"],
+  ]);
 }
 
 export interface GewerkeKatalog {
@@ -602,22 +663,32 @@ export interface GewerkeKatalog {
   gewerke: () => Gewerk[];
 }
 
-/** Alle per Dropdown wählbaren Gerüst-Vorlagen — additiv zu bestehenden Stammdaten zumischbar
- * (siehe gewerkeHinzufuegen in TabRessourcen.tsx). Rohbau enthält reale Referenzwerte aus der
- * AVOR-Excel, alle anderen sind bewusst leere Gerüste nach eBKP-H/eBKP-T-Logik (Hauptgruppen-
- * Bezeichnungen ohne Ziffern-Codes, siehe CRB-Standard). Nach dem Hinzufügen ist der Kategorie-
- * Titel in Tab Ressourcen frei umbenennbar. */
+/** Alle per Dropdown wählbaren Vorlagen — additiv zu bestehenden Stammdaten zumischbar (siehe
+ * gewerkeHinzufuegen in TabRessourcen.tsx). "Rohbau" enthält reale Referenzwerte aus der AVOR-Excel;
+ * alle eBKP-Vorlagen bilden die offiziellen Hauptgruppen B–J (eBKP-H, Hochbau, SN 506 511:2020) bzw.
+ * L–T (eBKP-T, Tiefbau, SN 506 512:2026) ab — je Elementgruppe ein Gewerk mit dem echten eBKP-Code
+ * als Kürzel, ohne reale Leistungswerte/CHF-Sätze (siehe ebkp()). Die rein finanziellen/administrativen
+ * Hauptgruppen A/V/W/Y/Z (Grundstück, Planungskosten, Nebenkosten, Reserve, MWST) sind bewusst
+ * ausgeklammert, da sie keine im Bauablauf terminierbaren Bauteile/Leistungen darstellen. Nach dem
+ * Hinzufügen ist der Kategorie-Titel in Tab Ressourcen frei umbenennbar. */
 export const GEWERKE_KATALOGE: GewerkeKatalog[] = [
   { key: "rohbau", label: "Rohbau", gewerke: () => standardStammdaten().gewerke },
-  { key: "vorbereitung", label: "Vorbereitungsarbeiten", gewerke: vorbereitungGewerke },
-  { key: "innenausbau", label: "Innenausbau", gewerke: innenausbauGewerke },
-  { key: "fassade", label: "Fassade", gewerke: fassadeGewerke },
-  { key: "bedachung", label: "Bedachung", gewerke: bedachungGewerke },
-  { key: "hlksse", label: "HLKSSE", gewerke: hlksseGewerke },
-  { key: "umgebung", label: "Umgebung", gewerke: umgebungGewerke },
-  { key: "tiefbau", label: "Tiefbau", gewerke: tiefbauGewerke },
-  { key: "untertagbau", label: "Untertagbau", gewerke: untertagbauGewerke },
-  { key: "kunstbauten", label: "Kunstbauten", gewerke: kunstbautenGewerke },
-  { key: "leitungsbau", label: "Leitungsbau", gewerke: leitungsbauGewerke },
-  { key: "betriebssicherheit", label: "Betriebs-/Sicherheitsanlagen", gewerke: betriebssicherheitGewerke },
+  { key: "ebkph_b", label: "eBKP-H · B Vorbereitung", gewerke: ebkpHVorbereitungGewerke },
+  { key: "ebkph_c", label: "eBKP-H · C Konstruktion Gebäude", gewerke: ebkpHKonstruktionGewerke },
+  { key: "ebkph_d", label: "eBKP-H · D Technik Gebäude", gewerke: ebkpHTechnikGewerke },
+  { key: "ebkph_e", label: "eBKP-H · E Äussere Wandbekleidung Gebäude", gewerke: ebkpHFassadeGewerke },
+  { key: "ebkph_f", label: "eBKP-H · F Bedachung Gebäude", gewerke: ebkpHBedachungGewerke },
+  { key: "ebkph_g", label: "eBKP-H · G Ausbau Gebäude", gewerke: ebkpHAusbauGewerke },
+  { key: "ebkph_h", label: "eBKP-H · H Nutzungsspezifische Anlage Gebäude", gewerke: ebkpHNutzungsspezifischGewerke },
+  { key: "ebkph_i", label: "eBKP-H · I Umgebung Gebäude", gewerke: ebkpHUmgebungGewerke },
+  { key: "ebkph_j", label: "eBKP-H · J Ausstattung Gebäude", gewerke: ebkpHAusstattungGewerke },
+  { key: "ebkpt_l", label: "eBKP-T · L Vorbereitung Tiefbau", gewerke: ebkpTVorbereitungGewerke },
+  { key: "ebkpt_m", label: "eBKP-T · M Erdbau, Spezialtiefbau", gewerke: ebkpTErdbauGewerke },
+  { key: "ebkpt_n", label: "eBKP-T · N Untertagbau", gewerke: ebkpTUntertagbauGewerke },
+  { key: "ebkpt_o", label: "eBKP-T · O Konstruktion Kunstbauten", gewerke: ebkpTKunstbautenGewerke },
+  { key: "ebkpt_p", label: "eBKP-T · P Hülle, Ausbau", gewerke: ebkpTHuelleAusbauGewerke },
+  { key: "ebkpt_q", label: "eBKP-T · Q Leitungsbau", gewerke: ebkpTLeitungsbauGewerke },
+  { key: "ebkpt_r", label: "eBKP-T · R Fahrbahn", gewerke: ebkpTFahrbahnGewerke },
+  { key: "ebkpt_s", label: "eBKP-T · S Betriebs-, Sicherheitsanlage", gewerke: ebkpTBetriebssicherheitGewerke },
+  { key: "ebkpt_t", label: "eBKP-T · T Ausrüstung", gewerke: ebkpTAusruestungGewerke },
 ];
