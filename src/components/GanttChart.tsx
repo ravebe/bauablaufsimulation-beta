@@ -431,6 +431,7 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
                     <div style={{ height: 2, background: "#2d7dbd", margin: "0 4px" }} />
                   )}
                   <div
+                    onMouseDown={(e) => { if (e.shiftKey || e.ctrlKey || e.metaKey) e.preventDefault(); }}
                     onClick={(e) => onTaskClick?.(origIdx, { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey })}
                     onMouseEnter={() => setHoverIdx(i)}
                     onMouseLeave={() => setHoverIdx(null)}
