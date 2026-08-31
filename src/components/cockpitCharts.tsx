@@ -187,6 +187,17 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
     const frei = kalender ? !istArbeitstag(tage[i], kalender) : (d.getDay() === 0 || d.getDay() === 6);
     if (frei) weekendBands.push({ x: x(i), w: pxProTag });
   }
+  // Zu eng stehende Achsenticks weglassen statt überlappenden Text zu zeichnen — sonst laufen sich
+  // bei einem langen Projektzeitraum und geringem Zoom die Monatslabels ineinander.
+  const entzerrt = (ticks: { x: number; label: string }[], mindestabstand: number) => {
+    const out: typeof ticks = [];
+    let letztesX = -Infinity;
+    for (const t of ticks) { if (t.x - letztesX >= mindestabstand) { out.push(t); letztesX = t.x; } }
+    return out;
+  };
+  const monatTicksAnzeige = entzerrt(monatTicks, 42);
+  const wochenTicksAnzeige = entzerrt(wochenTicks, 32);
+  const tagTicksAnzeige = entzerrt(tagTicks, 14);
 
   const zeigeLegende = serien.length >= 2;
 
@@ -211,13 +222,13 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
             <line x1={ML} y1={hoehe - MB} x2={VBW - MR} y2={hoehe - MB} stroke={FARBEN.achse} strokeWidth={1} />
             <text x={ML - 4} y={y(maxY) + 3} textAnchor="end" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>{fmt(maxY)}</text>
             <text x={ML - 4} y={hoehe - MB} textAnchor="end" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>0</text>
-            {tagTicks.map((t, i) => (
+            {tagTicksAnzeige.map((t, i) => (
               <text key={`t${i}`} x={t.x + pxProTag / 2} y={hoehe - 4} textAnchor="middle" fontSize={8} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>{t.label}</text>
             ))}
-            {!zeigeTage && wochenTicks.map((t, i) => (
+            {!zeigeTage && wochenTicksAnzeige.map((t, i) => (
               <text key={`w${i}`} x={t.x} y={hoehe - 4} textAnchor="middle" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>{t.label}</text>
             ))}
-            {!zeigeWochen && monatTicks.map((t, i) => (
+            {!zeigeWochen && monatTicksAnzeige.map((t, i) => (
               <text key={`m${i}`} x={t.x} y={hoehe - 4} textAnchor="middle" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>{t.label}</text>
             ))}
             {zeigeWochen && monatTicks.map((t, i) => (
