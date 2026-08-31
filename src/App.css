@@ -68,6 +68,8 @@
 }
 .tc-header-icon-btn:hover { background: #f0f0f0; color: var(--tc-text); }
 .tc-header-icon-btn.active-filter { color: var(--tc-blue); }
+.tc-header-icon-btn:disabled { cursor: default; }
+.tc-header-icon-btn:disabled:hover { background: none; color: #555; }
 .tc-header-org-info {
   display: flex; align-items: center; gap: 8px; margin-top: 4px; padding-top: 4px;
 }
@@ -209,6 +211,8 @@
   display: flex; align-items: center; justify-content: center;
 }
 .tc-btn-ghost:hover { background: var(--tc-bg-hover); color: var(--tc-blue); border-color: var(--tc-blue); }
+.tc-btn-ghost:disabled { opacity: .5; cursor: default; }
+.tc-btn-ghost:disabled:hover { background: #fff; color: #888; border-color: var(--tc-border); }
 
 .tc-btn-secondary {
   background: #fff; border: 1px solid var(--tc-border); color: #888; padding: 4px 8px;
@@ -216,6 +220,8 @@
   display: flex; align-items: center; justify-content: center;
 }
 .tc-btn-secondary:hover { color: var(--tc-blue); border-color: var(--tc-blue); }
+.tc-btn-secondary:disabled { opacity: .5; cursor: default; }
+.tc-btn-secondary:disabled:hover { color: #888; border-color: var(--tc-border); }
 
 /* === SEARCH BUTTON === */
 .sb2 {
@@ -298,13 +304,13 @@
 
 /* === SIMULATION CARDS (TabProjekte) === */
 .sim-card {
-  margin: 6px 10px; border: 1px solid var(--tc-border); background: #fff; cursor: pointer;
+  margin: 6px 10px; border: 1px solid var(--tc-border); background: #fff;
 }
 .sim-card.aktiv {
   border-color: var(--tc-blue); border-left: 3px solid var(--tc-blue);
 }
 .sim-card-header {
-  padding: 7px 8px; display: flex; align-items: center; gap: 6px;
+  padding: 7px 8px; display: flex; align-items: center; gap: 6px; cursor: pointer;
 }
 .sim-card-left {
   display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;
