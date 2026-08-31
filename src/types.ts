@@ -332,15 +332,15 @@ export function taskVerschieben(tasks: Task[], fromIdx: number, toIdx: number, s
     : remaining[insertAt - 1] ? getOutlineLevel(remaining[insertAt - 1])
     : 1;
 
-  if (istMultiDrag) {
-    moving.forEach(m => { if (!m.isGroup) m.outlineLevel = neuesLevel; });
-  } else {
-    const delta = neuesLevel - getOutlineLevel(moving[0]);
-    moving.forEach(m => { m.outlineLevel = Math.max(1, getOutlineLevel(m) + delta); });
-  }
+  const movingNeu = istMultiDrag
+    ? moving.map(m => m.isGroup ? m : { ...m, outlineLevel: neuesLevel })
+    : (() => {
+        const delta = neuesLevel - getOutlineLevel(moving[0]);
+        return moving.map(m => ({ ...m, outlineLevel: Math.max(1, getOutlineLevel(m) + delta) }));
+      })();
   if (targetIstGruppe) insertAt += 1;
 
-  remaining.splice(insertAt, 0, ...moving);
+  remaining.splice(insertAt, 0, ...movingNeu);
   return remaining;
 }
 

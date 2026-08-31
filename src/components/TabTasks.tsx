@@ -445,12 +445,14 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
             // Gruppen: eingeklappte Kinder ausblenden — bei aktiver Suche übersprungen,
             // damit Treffer aus eingeklappten Gruppen trotzdem angezeigt werden
             const sichtbar = istSuche ? tasksWithIdx : tasksWithIdx.filter(({ idx }) => {
-              const level = getOutlineLevel(aktiveSim.tasks[idx]);
-              // Prüfen ob ein Eltern-Gruppe zugeklappt ist
+              let level = getOutlineLevel(aktiveSim.tasks[idx]);
+              // Prüfen ob irgendeine Eltern-Gruppe (auf jeder Ebene) zugeklappt ist
               for (let p = idx - 1; p >= 0; p--) {
                 const pLevel = getOutlineLevel(aktiveSim.tasks[p]);
-                if (pLevel < level && collapsedGroups.has(aktiveSim.tasks[p].id)) return false;
-                if (pLevel < level) break;
+                if (pLevel < level) {
+                  if (collapsedGroups.has(aktiveSim.tasks[p].id)) return false;
+                  level = pLevel;
+                }
               }
               return true;
             });

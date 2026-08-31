@@ -291,11 +291,13 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
   // Collapse-Filter: Kinder eingeklappter Gruppen ausblenden — bei aktiver Suche übersprungen,
   // damit Treffer aus eingeklappten Gruppen trotzdem angezeigt werden
   const sorted = istSuche ? allSorted : allSorted.filter(({ origIdx }) => {
-    const level = getOutlineLevel(tasks[origIdx]);
+    let level = getOutlineLevel(tasks[origIdx]);
     for (let p = origIdx - 1; p >= 0; p--) {
       const pLevel = getOutlineLevel(tasks[p]);
-      if (pLevel < level && ganttCollapsed.has(tasks[p].id)) return false;
-      if (pLevel < level) break;
+      if (pLevel < level) {
+        if (ganttCollapsed.has(tasks[p].id)) return false;
+        level = pLevel;
+      }
     }
     return true;
   });

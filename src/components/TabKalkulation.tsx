@@ -192,11 +192,15 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     setBulkLaeuft(true);
     setBulkErgebnis(null);
     let zugeordnet = 0, uneindeutigN = 0, keinTreffer = 0;
+    const zuordnungen = new Map<string, string>();
     for (const t of kandidaten) {
       const { kuerzel, uneindeutig } = await kuerzelVorschlag(api, t.objektGuids);
-      if (kuerzel) { taskAendern(t.id, { bauteilKuerzel: kuerzel }); zugeordnet++; }
+      if (kuerzel) { zuordnungen.set(t.id, kuerzel); zugeordnet++; }
       else if (uneindeutig.length > 0) uneindeutigN++;
       else keinTreffer++;
+    }
+    if (zuordnungen.size > 0) {
+      updateSim({ ...sim!, tasks: sim!.tasks.map(t => zuordnungen.has(t.id) ? { ...t, bauteilKuerzel: zuordnungen.get(t.id) } : t) });
     }
     setBulkLaeuft(false);
     setBulkErgebnis(`${zugeordnet} zugeordnet, ${uneindeutigN} uneindeutig, ${keinTreffer} ohne Treffer`);
