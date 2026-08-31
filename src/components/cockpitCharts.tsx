@@ -114,14 +114,23 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
     return () => el.removeEventListener("wheel", handler);
   }, [pxProTag, onPxProTagChange, onScrollChange, n]);
 
-  // Scrollposition synchron zum gemeinsamen scrollTag halten (auch bei manuellem Scrollen anderer Charts)
+  // Scrollposition synchron zum gemeinsamen scrollTag halten (auch bei manuellem Scrollen anderer
+  // Charts). Das programmatische Setzen von scrollLeft löst selbst ein "scroll"-Event aus — ohne
+  // suppressScroll würde onChartScroll das als Nutzeraktion werten, onScrollChange erneut aufrufen
+  // und so alle Charts endlos gegenseitig aufschaukeln (sichtbares "Zittern" beim Scrollen).
+  const suppressScroll = useRef(false);
   useEffect(() => {
     const el = scrollRef.current; if (!el) return;
     const ziel = Math.max(0, scrollTag * pxProTag);
-    if (Math.abs(el.scrollLeft - ziel) > 0.5) el.scrollLeft = ziel;
+    if (Math.abs(el.scrollLeft - ziel) > 0.5) {
+      suppressScroll.current = true;
+      el.scrollLeft = ziel;
+      setTimeout(() => { suppressScroll.current = false; }, 50);
+    }
   }, [scrollTag, pxProTag]);
 
   function onChartScroll() {
+    if (suppressScroll.current) return;
     const el = scrollRef.current; if (!el) return;
     onScrollChange(el.scrollLeft / pxProTag);
   }
