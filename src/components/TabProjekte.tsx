@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { SimProjekt, Task, Zugriff } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import GanttImport from "./GanttImport";
@@ -33,6 +33,11 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
   // modelId → in TC verfügbare, aber noch nicht geladene Versions-ID (neue Revision abgelegt)
   const [neueVersionen, setNeueVersionen] = useState<Record<string, string>>({});
   const [updateDialog, setUpdateDialog] = useState<{ simId: string; modellId: string; modellName: string; neueVersionId: string } | null>(null);
+  // Immer aktueller Stand für das Polling-Interval unten — verhindert, dass dessen Closure einen
+  // veralteten sims-Stand aus dem Render beim Effekt-Setup festhält (Intervall wird bewusst NICHT
+  // bei jeder sims-Änderung neu gestartet, siehe exhaustive-deps-Kommentar dort).
+  const simsRef = useRef(sims);
+  useEffect(() => { simsRef.current = sims; }, [sims]);
 
   // Vergleicht die in TC aktuell verfügbare Versions-ID jedes zugewiesenen Modells mit der
   // gepinnten Version in der Simulation — bei Abweichung (neue Revision abgelegt) wird das
@@ -61,7 +66,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
   useEffect(() => {
     if (!aufgeklappt || !api) return;
     const iv = setInterval(() => {
-      const sim = sims.find(s => s.id === aufgeklappt);
+      const sim = simsRef.current.find(s => s.id === aufgeklappt);
       if (sim) pruefeNeueVersionen(sim);
     }, 60000);
     return () => clearInterval(iv);

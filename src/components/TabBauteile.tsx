@@ -117,6 +117,7 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
   useEffect(() => {
     if (!api || !aktiveSim || aktiveSim.modelle.length === 0) { setTotalObjekte(null); return; }
     clearEchteBauteileCache();
+    let abgebrochen = false;
     (async () => {
       let gesamt = 0;
       for (const modell of aktiveSim.modelle) {
@@ -124,8 +125,10 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
         const echte = await getEchteBauteile(api, aktiveSim.id, modell.id);
         gesamt += echte.length;
       }
+      if (abgebrochen) return;
       setTotalObjekte(gesamt > 0 ? gesamt : null);
     })();
+    return () => { abgebrochen = true; };
   }, [aktiveSim?.id, api]);
 
   // Selektion alle 1.5s pollen → mid:::rId Set bauen

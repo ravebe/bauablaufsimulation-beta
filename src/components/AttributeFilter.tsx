@@ -55,6 +55,14 @@ export default function AttributeFilter({ api, aktiveSim, aktivTask, aktivesMode
 
   const modellId = aktiveSim?.modelle[0]?.id ?? aktivesModellId ?? null;
 
+  // Attribut-Cache invalidieren wenn sich das Modell ändert — sonst bleiben Autocomplete-Vorschläge
+  // und Werte vom vorherigen Modell stehen (ladeAttr() lädt nur nach, wenn allAttrs leer ist)
+  useEffect(() => {
+    ladeAttrGen.current++;
+    setAllAttrs([]);
+    setAttrMap({});
+  }, [modellId]);
+
   async function ladeAttr() {
     if (!api || !modellId) return;
     setAttrLaedt(true);

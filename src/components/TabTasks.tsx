@@ -80,6 +80,28 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
     return { total: ids.length, groups, ids };
   }, [selectedIds, aktivTask, aktiveSim.tasks]);
 
+  // Für die Detail-Ansicht: ist der aktive Task strukturell eine Gruppe (Flag oder Kinder-Hierarchie)?
+  const aktivIsGroup = useMemo(() => {
+    if (!aktivTask) return false;
+    const idx = aktiveSim.tasks.findIndex(t => t.id === aktivTask.id);
+    return idx >= 0 && (!!aktivTask.isGroup || istGruppe(aktiveSim.tasks, idx));
+  }, [aktivTask, aktiveSim.tasks]);
+  // Bei Gruppen/Untergruppen: Bauteile aller (rekursiv) untergeordneten Tasks aggregieren, damit
+  // das Detail-Panel beim Anwählen einer Gruppe die zugewiesenen Bauteile anzeigt statt leer zu bleiben.
+  const bauteilGuids = useMemo(() => {
+    if (!aktivTask) return [];
+    if (!aktivIsGroup) return aktivTask.objektGuids;
+    const idx = aktiveSim.tasks.findIndex(t => t.id === aktivTask.id);
+    if (idx < 0) return aktivTask.objektGuids;
+    const level = getOutlineLevel(aktivTask);
+    const ids = [...aktivTask.objektGuids];
+    for (let ci = idx + 1; ci < aktiveSim.tasks.length; ci++) {
+      if (getOutlineLevel(aktiveSim.tasks[ci]) <= level) break;
+      ids.push(...aktiveSim.tasks[ci].objektGuids);
+    }
+    return [...new Set(ids)];
+  }, [aktivTask, aktivIsGroup, aktiveSim.tasks]);
+
   useEffect(() => {
     if (!predPickerTaskId) return;
     const onDocMouseDown = (e: MouseEvent) => {
@@ -163,7 +185,8 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
     setVerfuegbareAttrs([]);
     setLoeschenBestaetigen(false);
     setLoeschDialogOffen(false);
-    if (!api || !aktivTask?.objektGuids.length) return;
+    if (!api || bauteilGuids.length === 0) return;
+    let abgebrochen = false;
     (async () => {
       const werte = new Map<string, ObjWerte>();
       const allKeys = new Set<string>();
@@ -188,7 +211,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
       // Nach Modell gruppieren: getLayers/convertToObjectIds/getObjectProperties je Modell nur einmal
       // (gebatcht statt bisher pro Objekt) statt sequentiell für jedes einzelne Objekt aufzurufen
       const nachModell = new Map<string, { g: string; rId: number }[]>();
-      for (const g of aktivTask.objektGuids) {
+      for (const g of bauteilGuids) {
         if (!g.includes(":::")) continue;
         const sep = g.indexOf(":::");
         const mid = g.slice(0, sep); const rId = Number(g.slice(sep + 3));
@@ -244,10 +267,12 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
         } catch {}
       }
 
+      if (abgebrochen) return;
       setGuidWerte(werte);
       setVerfuegbareAttrs([...allKeys].sort());
     })();
-  }, [aktivTask?.id, aktivTask?.objektGuids.length, api]);
+    return () => { abgebrochen = true; };
+  }, [aktivTask?.id, bauteilGuids, api]);
 
   function saveDisplayConfig(cfg: { zeile1: string; zeile2: string }) {
     setDisplayConfig(cfg);
@@ -659,12 +684,12 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
       {aktivTask ? (
         <div className="detail-section">
           <div className="detail-header">
-            {!aktivTask.isGroup && <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: aktivTask.typ === "neubau" ? "#22C55E" : aktivTask.typ === "abbruch" ? "#EAB308" : aktivTask.typ === "temporaer" ? "#a0522d" : "#999" }} />}
-            {aktivTask.isGroup && <span style={{ fontSize: 11, color: "#555", marginRight: 2 }}>📁</span>}
+            {!aktivIsGroup && <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: aktivTask.typ === "neubau" ? "#22C55E" : aktivTask.typ === "abbruch" ? "#EAB308" : aktivTask.typ === "temporaer" ? "#a0522d" : "#999" }} />}
+            {aktivIsGroup && <span style={{ fontSize: 11, color: "#555", marginRight: 2 }}>📁</span>}
             <span className="detail-task-name">{aktivTask.name}</span>
-            {!aktivTask.isGroup && <span style={{ fontSize: 9, color: "var(--tc-blue)", fontWeight: 500 }}>
-              {totalObjekte != null ? `⬡ ${aktivTask.objektGuids.length} / ${totalObjekte}` : `⬡ ${aktivTask.objektGuids.length}`}
-            </span>}
+            <span style={{ fontSize: 9, color: "var(--tc-blue)", fontWeight: 500 }}>
+              {!aktivIsGroup && totalObjekte != null ? `⬡ ${bauteilGuids.length} / ${totalObjekte}` : `⬡ ${bauteilGuids.length}`}
+            </span>
             {!readOnly && <button className="tc-btn-ghost" style={{ color: "#333", fontSize: 12, padding: "0 4px", marginLeft: "auto" }}
               title="Löschen"
               onClick={e => {
@@ -692,12 +717,12 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
           )}
 
           {/* Objekte hinzufügen — immer sichtbar, ohne Titel/Klappbereich */}
-          {!readOnly && !aktivTask.isGroup && (
+          {!readOnly && !aktivIsGroup && (
             <SelectionTools aktivTask={aktivTask} aktiveSim={aktiveSim} api={api} updateSim={updateSim} selGuids={selGuids} />
           )}
 
           {/* Task-Typ — nur für Tasks, nicht Gruppen */}
-          {!readOnly && !aktivTask.isGroup && (
+          {!readOnly && !aktivIsGroup && (
           <div className="detail-block">
             <div className="detail-block-title" style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
               onClick={() => setTypOffen(o => !o)}>
@@ -726,20 +751,19 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
           </div>
           )}
 
-          {/* Zugewiesene Bauteile — nur für Tasks */}
-          {!aktivTask.isGroup && (
+          {/* Zugewiesene Bauteile — bei Gruppen/Untergruppen aggregiert aus allen Kindern */}
           <div className="detail-block">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
               <div className="detail-block-title" style={{ margin: 0, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
                 onClick={() => setBauteileOffen(o => !o)}>
                 <span style={{ display: "inline-block", transform: `scaleX(1.6) rotate(${bauteileOffen ? 0 : -90}deg)`, transition: "transform .15s", fontSize: 9 }}>▼</span>
-                {aktivTask.objektGuids.length > 0 ? `${aktivTask.objektGuids.length} Bauteile zugewiesen` : "Noch keine Bauteile zugewiesen"}
+                {bauteilGuids.length > 0 ? `${bauteilGuids.length} Bauteile zugewiesen` : "Noch keine Bauteile zugewiesen"}
               </div>
               <div style={{ display: "flex", gap: 4 }}>
-                {aktivTask.objektGuids.length > 0 && (
+                {bauteilGuids.length > 0 && (
                   <>
-                    <button className="tc-btn-primary" title="Nur diese anzeigen" style={{ fontSize: 10, padding: "3px 8px" }} onClick={() => nurAnzeigen(aktivTask.objektGuids)}>👁 Nur diese</button>
-                    {!readOnly && <button className="tc-btn-ghost" style={{ color: "#333" }} onClick={() => setLoeschenBestaetigen(true)}><svg width="12" height="12" viewBox="0 0 16 16" fill="#333" stroke="none"><path d="M5 1h6v1H5zM2 3h12v1H2zm1.5 1l.8 11h7.4l.8-11h-9zm2.5 2h1v7H6zm3 0h1v7H9z"/></svg></button>}
+                    <button className="tc-btn-primary" title="Nur diese anzeigen" style={{ fontSize: 10, padding: "3px 8px" }} onClick={() => nurAnzeigen(bauteilGuids)}>👁 Nur diese</button>
+                    {!readOnly && !aktivIsGroup && <button className="tc-btn-ghost" style={{ color: "#333" }} onClick={() => setLoeschenBestaetigen(true)}><svg width="12" height="12" viewBox="0 0 16 16" fill="#333" stroke="none"><path d="M5 1h6v1H5zM2 3h12v1H2zm1.5 1l.8 11h7.4l.8-11h-9zm2.5 2h1v7H6zm3 0h1v7H9z"/></svg></button>}
                   </>
                 )}
                 <button className="tc-btn-ghost" title="Anzeige-Einstellungen" style={{ fontSize: 12 }}
@@ -749,10 +773,10 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
 
             {bauteileOffen && (<>
             {/* Lösch-Bestätigung */}
-            {loeschenBestaetigen && (
+            {loeschenBestaetigen && !aktivIsGroup && (
               <div style={{ background: "#FEF2F2", border: "1px solid #FCA5A5", padding: 8, marginBottom: 6, fontSize: 11 }}>
                 <div style={{ fontWeight: 600, color: "#DC2626", marginBottom: 4 }}>
-                  ⚠ Alle {aktivTask.objektGuids.length} Bauteile von „{aktivTask.name}" entfernen?
+                  ⚠ Alle {bauteilGuids.length} Bauteile von „{aktivTask.name}" entfernen?
                 </div>
                 <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
                   <button className="tc-btn-primary" style={{ flex: 1, background: "#DC2626", borderColor: "#DC2626", fontSize: 11 }}
@@ -821,9 +845,9 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
             )}
 
             {/* Objekt-Liste — kompakt, klickbar */}
-            {aktivTask.objektGuids.length > 0 && (
+            {bauteilGuids.length > 0 && (
               <div className="guid-list">
-                {aktivTask.objektGuids.map((g, i) => {
+                {bauteilGuids.map((g, i) => {
                   const w = guidWerte.get(g);
                   const val1 = w?.[displayConfig.zeile1] ?? "";
                   const val2 = displayConfig.zeile2 ? (w?.[displayConfig.zeile2] ?? "") : "";
@@ -839,7 +863,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                         {val1 || `Objekt ${g.split(":::")[1] ?? i}`}
                         {val2 && <span style={{ fontSize: 9, opacity: 0.5, marginLeft: 6 }}>{val2}</span>}
                       </div>
-                      {!readOnly && <button className="guid-row-x" style={{ fontSize: 12 }} onClick={e => { e.stopPropagation(); guidEntfernen(aktivTask.id, g); }}>✕</button>}
+                      {!readOnly && !aktivIsGroup && <button className="guid-row-x" style={{ fontSize: 12 }} onClick={e => { e.stopPropagation(); guidEntfernen(aktivTask.id, g); }}>✕</button>}
                     </div>
                   );
                 })}
@@ -847,7 +871,6 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
             )}
             </>)}
           </div>
-          )}
         </div>
       ) : (
         <div className="detail-empty">↑ Task anklicken</div>
