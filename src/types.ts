@@ -333,7 +333,12 @@ export function taskVerschieben(tasks: Task[], fromIdx: number, toIdx: number, s
 
   const target = remaining[insertAt];
   const targetIstGruppe = !!target && (target.isGroup || istGruppe(remaining, insertAt));
-  const neuesLevel = targetIstGruppe ? getOutlineLevel(target) + 1
+  // Nur in eine LEERE Gruppe wird per Drop automatisch hineingehängt (einzige Möglichkeit, ihr
+  // überhaupt ein erstes Kind zuzuweisen) — bei einer Gruppe mit Kindern legt der Drop stattdessen
+  // als Geschwister DAVOR ab, sonst ließe sich per Drag&Drop nie mehr etwas zwischen zwei Gruppen
+  // einsortieren (Ziel wäre immer schon die nächste Gruppe → landete immer in ihr statt davor).
+  const targetIstLeereGruppe = targetIstGruppe && getKinder(remaining, insertAt).length === 0;
+  const neuesLevel = targetIstLeereGruppe ? getOutlineLevel(target) + 1
     : target ? getOutlineLevel(target)
     : remaining[insertAt - 1] ? getOutlineLevel(remaining[insertAt - 1])
     : 1;
@@ -344,7 +349,7 @@ export function taskVerschieben(tasks: Task[], fromIdx: number, toIdx: number, s
         const delta = neuesLevel - getOutlineLevel(moving[0]);
         return moving.map(m => ({ ...m, outlineLevel: Math.max(1, getOutlineLevel(m) + delta) }));
       })();
-  if (targetIstGruppe) insertAt += 1;
+  if (targetIstLeereGruppe) insertAt += 1;
 
   remaining.splice(insertAt, 0, ...movingNeu);
   return remaining;

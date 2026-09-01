@@ -554,9 +554,6 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
                         : `${dauer}d`
                     }</span>
                   </div>
-                  {isGrp && showDropLine && (
-                    <div style={{ height: 2, background: "#2d7dbd", margin: "0 4px" }} />
-                  )}
                 </div>
               );
             })}

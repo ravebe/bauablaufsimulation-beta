@@ -101,6 +101,12 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
     }
     return [...new Set(ids)];
   }, [aktivTask, aktivIsGroup, aktiveSim.tasks]);
+  // Inhaltsstabiler Schlüssel statt der Array-Referenz von bauteilGuids für Effekt-Deps unten — sonst
+  // liefert aktivTask (z.B. das in TabBauteile.tsx bei jedem Render neu gebaute combinedTask-Objekt)
+  // bei jedem Elternrender ein neues bauteilGuids-Array mit IDENTISCHEM Inhalt, der Effekt feuert
+  // dadurch unnötig neu und setzt u.a. loeschDialogOffen sofort wieder zurück — das Lösch-Menü klappte
+  // dadurch direkt nach dem Öffnen wieder zu.
+  const bauteilGuidsKey = bauteilGuids.join(",");
 
   useEffect(() => {
     if (!predPickerTaskId) return;
@@ -272,7 +278,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
       setVerfuegbareAttrs([...allKeys].sort());
     })();
     return () => { abgebrochen = true; };
-  }, [aktivTask?.id, bauteilGuids, api]);
+  }, [aktivTask?.id, bauteilGuidsKey, api]);
 
   function saveDisplayConfig(cfg: { zeile1: string; zeile2: string }) {
     setDisplayConfig(cfg);
@@ -640,9 +646,6 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                       : <span style={{ color: "#d4dce4" }}>∅</span>}
                 </span>
               </div>
-              {isGroup && istDropTarget && dragIdx !== null && dragIdx !== idx && (
-                <div style={{ height: 2, background: "#2d7dbd", margin: "0 10px" }} />
-              )}
             </div>
             );
           });
