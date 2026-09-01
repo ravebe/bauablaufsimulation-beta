@@ -94,7 +94,7 @@ export default function SelectionTools({ aktivTask, aktiveSim, api, updateSim, s
     <div className="detail-block">
 
       {entfernenBestaetigen ? (
-        <div style={{ background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: 0, padding: 8, fontSize: 11 }}>
+        <div style={{ background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: 3, padding: 8, fontSize: 11 }}>
           <div style={{ fontWeight: 600, color: "#DC2626", marginBottom: 4 }}>
             ⚠ {selCount} markierte Bauteile aus allen Tasks entfernen?
           </div>

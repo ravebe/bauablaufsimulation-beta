@@ -230,7 +230,7 @@ export default function AutoVerknuepfung({ api, sim, onUpdate, done }: Props) {
                   style={{
                     padding: "2px 8px", fontSize: 10, cursor: "pointer", fontFamily: "inherit",
                     background: aktiv ? "#2d7dbd" : "#fff", color: aktiv ? "#fff" : "#555",
-                    border: `1px solid ${aktiv ? "#2d7dbd" : "#d4dce4"}`,
+                    border: `1px solid ${aktiv ? "#2d7dbd" : "#d4dce4"}`, borderRadius: 3,
                   }}>
                   {aktiv ? "✓ " : ""}{s}
                 </button>

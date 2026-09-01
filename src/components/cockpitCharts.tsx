@@ -19,7 +19,7 @@ const HEAD_H = 30; // Höhe der Datums-Kopfzeile (Monat/Jahr + KW bzw. Tageszahl
  *  „?"-Icon. */
 export function ZoomControls({ onZoomIn, onZoomOut }: { onZoomIn: () => void; onZoomOut: () => void }) {
   const [hilfeOffen, setHilfeOffen] = useState(false);
-  const btnStyle: React.CSSProperties = { width: 20, height: 20, lineHeight: "18px", padding: 0, border: "1px solid #d4dce4", background: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#555", borderRadius: 2 };
+  const btnStyle: React.CSSProperties = { width: 20, height: 20, lineHeight: "18px", padding: 0, border: "1px solid #d4dce4", background: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#555", borderRadius: 3 };
   return (
     <div style={{ position: "absolute", right: 18, bottom: 18, display: "flex", alignItems: "center", gap: 3, zIndex: 6 }}
       onMouseEnter={() => setHilfeOffen(true)} onMouseLeave={() => setHilfeOffen(false)}>

@@ -404,7 +404,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                             cursor: disabled ? "not-allowed" : "pointer",
                             background: disabled ? "#f3f4f6" : aktiv ? "#2d7dbd" : "#fff",
                             color: disabled ? "#aaa" : aktiv ? "#fff" : "#555",
-                            border: `1px solid ${disabled ? "#e4e7ea" : aktiv ? "#2d7dbd" : "#d4dce4"}`,
+                            border: `1px solid ${disabled ? "#e4e7ea" : aktiv ? "#2d7dbd" : "#d4dce4"}`, borderRadius: 3,
                           }}>
                           {label}
                         </button>

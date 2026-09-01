@@ -183,31 +183,35 @@
 }
 .guid-row-x:hover { color: var(--tc-blue); }
 
-/* === BUTTONS === */
+/* === BUTTONS ===
+   Einheitliche Höhe (28px) + ganz leicht abgerundete Ecken für alle Standard-Buttons, damit
+   nebeneinander stehende Buttons unterschiedlicher Klassen (z.B. Such-/Plus-/Werkzeug-/Gantt-Toggle-
+   Button in einer Toolbar-Zeile) exakt gleich hoch wirken, unabhängig von Innentext/-icon. */
 .tc-btn-primary {
-  padding: 6px 12px; background: var(--tc-blue); color: #fff; border: 1px solid var(--tc-blue);
-  font-size: 12px; cursor: pointer; font-weight: 600; font-family: var(--tc-font); border-radius: 0;
+  height: 28px; padding: 0 12px; background: var(--tc-blue); color: #fff; border: 1px solid var(--tc-blue);
+  font-size: 12px; cursor: pointer; font-weight: 600; font-family: var(--tc-font); border-radius: 3px;
+  display: flex; align-items: center; justify-content: center;
 }
 .tc-btn-primary:hover { background: #256da8; }
 .tc-btn-primary:disabled { opacity: .5; cursor: default; }
 
 .tc-btn-green {
-  padding: 7px; background: var(--tc-blue); color: #fff; border: none;
+  height: 28px; padding: 0 7px; background: var(--tc-blue); color: #fff; border: none;
   font-size: 13px; cursor: pointer; font-weight: 600; text-align: center; font-family: var(--tc-font);
-  display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: 0;
+  display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: 3px;
 }
 .tc-btn-green:hover { background: #2570a8; }
 .tc-btn-green:disabled { opacity: .5; cursor: default; }
 
 .tc-btn-danger {
-  padding: 7px; background: var(--tc-red); color: #fff; border: none;
+  height: 28px; padding: 0 7px; background: var(--tc-red); color: #fff; border: none;
   font-size: 13px; cursor: pointer; font-weight: 600; text-align: center; font-family: var(--tc-font);
-  border-radius: 0;
+  display: flex; align-items: center; justify-content: center; border-radius: 3px;
 }
 
 .tc-btn-ghost {
-  background: #fff; border: 1px solid var(--tc-border); color: #888; padding: 4px 8px;
-  cursor: pointer; font-family: var(--tc-font); font-size: 12px; border-radius: 0;
+  height: 28px; background: #fff; border: 1px solid var(--tc-border); color: #888; padding: 0 8px;
+  cursor: pointer; font-family: var(--tc-font); font-size: 12px; border-radius: 3px;
   display: flex; align-items: center; justify-content: center;
 }
 .tc-btn-ghost:hover { background: var(--tc-bg-hover); color: var(--tc-blue); border-color: var(--tc-blue); }
@@ -215,8 +219,8 @@
 .tc-btn-ghost:disabled:hover { background: #fff; color: #888; border-color: var(--tc-border); }
 
 .tc-btn-secondary {
-  background: #fff; border: 1px solid var(--tc-border); color: #888; padding: 4px 8px;
-  cursor: pointer; font-family: var(--tc-font); border-radius: 0;
+  height: 28px; background: #fff; border: 1px solid var(--tc-border); color: #888; padding: 0 8px;
+  cursor: pointer; font-family: var(--tc-font); border-radius: 3px;
   display: flex; align-items: center; justify-content: center;
 }
 .tc-btn-secondary:hover { color: var(--tc-blue); border-color: var(--tc-blue); }
