@@ -5,6 +5,7 @@ import { parseDateUniversal, istGruppe, getKinder, getOutlineLevel, kaskadiereNa
   taskVerschieben as verschiebeTaskBlock, nsKey } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { getEchteBauteile, clearEchteBauteileCache } from "./modelHelpers";
+import { useClickOutside } from "../hooks/useClickOutside";
 import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import { pruefeZeitplanBereitschaft, berechneZeitplanUebernahme, zeitplanHatAenderungen } from "./zeitplanUebernahmeHelpers";
@@ -37,6 +38,7 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
   const [suchOffen, setSuchOffen] = useState(false);
   const [suchQuery, setSuchQuery] = useState("");
   const [plusMenuOffen, setPlusMenuOffen] = useState(false);
+  const [werkzeugOffen, setWerkzeugOffen] = useState(false);
   const [zeitplanHinweisOffen, setZeitplanHinweisOffen] = useState(false);
   const [zeitplanBestaetigenOffen, setZeitplanBestaetigenOffen] = useState(false);
   const [neuInputOffen, setNeuInputOffen] = useState(false);
@@ -48,6 +50,7 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
   });
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastClickIdx = useRef<number>(-1);
+  const werkzeugRef = useClickOutside<HTMLDivElement>(werkzeugOffen, () => { setWerkzeugOffen(false); setZeitplanHinweisOffen(false); });
 
   const aktivTaskId = selectedIds.length > 0 ? selectedIds[selectedIds.length - 1] : null;
   const aktivTask = aktiveSim?.tasks.find(t => t.id === aktivTaskId) ?? null;
@@ -290,52 +293,59 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
               )}
             </div>
           )}
-        </>)}
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: "auto" }}>
-          {!readOnly && aktiveSim && aktiveSim.tasks.length > 1 && (
-            <button className="tc-btn-secondary" style={{ fontSize: 12, padding: "4px 12px", fontWeight: 600 }}
-              title="Verteilt die Vorgänger automatisch der Reihenfolge nach: Task 2 erhält Task 1 als Vorgänger, Task 3 erhält Task 2 usw. — Gruppen bekommen dieselbe Verkettung untereinander."
-              onClick={autoVorgaenger}>
-              Auto-Vorgänger
-            </button>
-          )}
-          {!readOnly && aktiveSim && zeitplanStatus && (
-            <div style={{ position: "relative" }}>
-              <button
-                className={zeitplanStatus.bereit && !zeitplanAenderungen ? "tc-btn-secondary" : undefined}
-                style={{
-                  fontSize: 12, padding: "4px 12px", fontWeight: 600, borderRadius: 0, cursor: "pointer",
-                  ...(!zeitplanStatus.bereit
-                    ? { background: "#eef1f4", color: "#9aa5b0", border: "1px solid #d4dce4" }
-                    : zeitplanAenderungen
-                      ? { background: "var(--tc-blue-light)", color: "var(--tc-blue)", border: "1px solid var(--tc-blue)" }
-                      : {}),
-                }}
-                title={
-                  !zeitplanStatus.bereit ? "Klicken für Details, was dafür noch fehlt"
-                    : zeitplanAenderungen ? "Berechnete Dauer aus Tab Kalkulation auf den Bauablauf übernehmen"
-                      : "Bauablauf entspricht bereits der berechneten Dauer — nichts zu übernehmen"
-                }
-                onClick={zeitplanButtonKlick}>
-                Berechnete Dauer übernehmen
+          {!readOnly && aktiveSim && (
+            <div ref={werkzeugRef} style={{ position: "relative", display: "inline-flex" }}>
+              <button className="tc-btn-secondary" style={{ fontSize: 13, padding: "2px 8px", color: "#000" }}
+                title="Werkzeuge" onClick={() => { setWerkzeugOffen(o => !o); setZeitplanHinweisOffen(false); }}>
+                🔧
               </button>
-              {zeitplanHinweisOffen && !zeitplanStatus.bereit && (
-                <div style={{ position: "absolute", right: 0, top: "100%", marginTop: 4, background: "#fff", border: "1px solid #d4dce4",
-                  boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, width: 280, padding: "10px 12px", fontSize: 11 }}>
-                  <div style={{ fontWeight: 600, marginBottom: 6 }}>Noch nicht möglich — es fehlt:</div>
-                  {zeitplanStatus.keineTasks && <div style={{ color: "var(--tc-text-3)" }}>Keine Tasks im Bauablauf vorhanden.</div>}
-                  {zeitplanStatus.fehlerTasks.length > 0 && (
+              {werkzeugOffen && (
+                <div style={{ position: "absolute", left: 0, top: "100%", marginTop: 2, background: "#fff", border: "0.5px solid var(--tc-border)", borderRadius: 5, boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, minWidth: 230 }}>
+                  {aktiveSim.tasks.length > 1 && (
+                    <button
+                      style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", fontSize: 11, cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
+                      title="Verteilt die Vorgänger automatisch der Reihenfolge nach: Task 2 erhält Task 1 als Vorgänger, Task 3 erhält Task 2 usw. — Gruppen bekommen dieselbe Verkettung untereinander."
+                      onClick={() => { autoVorgaenger(); setWerkzeugOffen(false); }}>
+                      Auto-Vorgänger
+                    </button>
+                  )}
+                  {zeitplanStatus && (
                     <div>
-                      <div style={{ color: "var(--tc-red)" }}>{zeitplanStatus.fehlerTasks.length} Task(s) mit Fehler in der Mengenermittlung (Tab Kalkulation):</div>
-                      <div style={{ color: "var(--tc-text-3)", marginTop: 2 }}>{zeitplanStatus.fehlerTasks.map(t => t.name).join(", ")}</div>
+                      <button
+                        style={{
+                          display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none",
+                          textAlign: "left", fontSize: 11, cursor: "pointer",
+                          color: !zeitplanStatus.bereit ? "#9aa5b0" : zeitplanAenderungen ? "var(--tc-blue)" : "inherit",
+                          fontWeight: zeitplanStatus.bereit && zeitplanAenderungen ? 600 : 400,
+                        }}
+                        title={
+                          !zeitplanStatus.bereit ? "Klicken für Details, was dafür noch fehlt"
+                            : zeitplanAenderungen ? "Berechnete Dauer aus Tab Kalkulation auf den Bauablauf übernehmen"
+                              : "Bauablauf entspricht bereits der berechneten Dauer — nichts zu übernehmen"
+                        }
+                        onClick={() => { zeitplanButtonKlick(); if (zeitplanStatus.bereit) setWerkzeugOffen(false); }}>
+                        Berechnete Dauer übernehmen
+                      </button>
+                      {zeitplanHinweisOffen && !zeitplanStatus.bereit && (
+                        <div style={{ padding: "8px 14px 10px", fontSize: 11, borderTop: "0.5px solid #eef1f4" }}>
+                          <div style={{ fontWeight: 600, marginBottom: 6 }}>Noch nicht möglich — es fehlt:</div>
+                          {zeitplanStatus.keineTasks && <div style={{ color: "var(--tc-text-3)" }}>Keine Tasks im Bauablauf vorhanden.</div>}
+                          {zeitplanStatus.fehlerTasks.length > 0 && (
+                            <div>
+                              <div style={{ color: "var(--tc-red)" }}>{zeitplanStatus.fehlerTasks.length} Task(s) mit Fehler in der Mengenermittlung (Tab Kalkulation):</div>
+                              <div style={{ color: "var(--tc-text-3)", marginTop: 2 }}>{zeitplanStatus.fehlerTasks.map(t => t.name).join(", ")}</div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
-                  <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "3px 8px", marginTop: 8 }}
-                    onClick={() => setZeitplanHinweisOffen(false)}>Schliessen</button>
                 </div>
               )}
             </div>
           )}
+        </>)}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: "auto" }}>
           <button className="tc-btn-secondary" style={{ fontSize: 12, padding: "4px 12px", fontWeight: 600 }}
             onClick={() => {
               const willOpen = !ganttOffen;
