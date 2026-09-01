@@ -295,36 +295,40 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
           )}
           {!readOnly && aktiveSim && (
             <div ref={werkzeugRef} style={{ position: "relative", display: "inline-flex" }}>
-              <button className="tc-btn-secondary" style={{ fontSize: 13, padding: "2px 8px", color: "#000" }}
+              <button className="tc-btn-secondary" style={{ fontSize: 12, padding: "2px 6px" }}
                 title="Werkzeuge" onClick={() => { setWerkzeugOffen(o => !o); setZeitplanHinweisOffen(false); }}>
-                🔧
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+                </svg>
               </button>
               {werkzeugOffen && (
                 <div style={{ position: "absolute", left: 0, top: "100%", marginTop: 2, background: "#fff", border: "0.5px solid var(--tc-border)", borderRadius: 5, boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, minWidth: 230 }}>
                   {aktiveSim.tasks.length > 1 && (
                     <button
-                      style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", fontSize: 11, cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
-                      title="Verteilt die Vorgänger automatisch der Reihenfolge nach: Task 2 erhält Task 1 als Vorgänger, Task 3 erhält Task 2 usw. — Gruppen bekommen dieselbe Verkettung untereinander."
+                      style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
                       onClick={() => { autoVorgaenger(); setWerkzeugOffen(false); }}>
-                      Auto-Vorgänger
+                      <div style={{ fontSize: 11, fontWeight: 500, color: "var(--tc-text)" }}>Auto-Vorgänger</div>
+                      <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 2 }}>
+                        Verkettet Tasks und Gruppen automatisch der Reihenfolge nach: Task 2 erhält Task 1 als Vorgänger, Task 3 erhält Task 2 usw. — Gruppen bekommen dieselbe Verkettung untereinander.
+                      </div>
                     </button>
                   )}
                   {zeitplanStatus && (
                     <div>
                       <button
-                        style={{
-                          display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none",
-                          textAlign: "left", fontSize: 11, cursor: "pointer",
-                          color: !zeitplanStatus.bereit ? "#9aa5b0" : zeitplanAenderungen ? "var(--tc-blue)" : "inherit",
-                          fontWeight: zeitplanStatus.bereit && zeitplanAenderungen ? 600 : 400,
-                        }}
-                        title={
-                          !zeitplanStatus.bereit ? "Klicken für Details, was dafür noch fehlt"
-                            : zeitplanAenderungen ? "Berechnete Dauer aus Tab Kalkulation auf den Bauablauf übernehmen"
-                              : "Bauablauf entspricht bereits der berechneten Dauer — nichts zu übernehmen"
-                        }
+                        style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", cursor: "pointer" }}
                         onClick={() => { zeitplanButtonKlick(); if (zeitplanStatus.bereit) setWerkzeugOffen(false); }}>
-                        Berechnete Dauer übernehmen
+                        <div style={{
+                          fontSize: 11, fontWeight: zeitplanStatus.bereit && zeitplanAenderungen ? 600 : 500,
+                          color: !zeitplanStatus.bereit ? "#9aa5b0" : zeitplanAenderungen ? "var(--tc-blue)" : "var(--tc-text)",
+                        }}>
+                          Berechnete Dauer übernehmen
+                        </div>
+                        <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 2 }}>
+                          {!zeitplanStatus.bereit ? "Klicken für Details, was dafür noch fehlt."
+                            : zeitplanAenderungen ? "Überträgt die in Tab Kalkulation berechnete Dauer als neue Start-/Endtermine auf den Bauablauf."
+                              : "Bauablauf entspricht bereits der berechneten Dauer — nichts zu übernehmen."}
+                        </div>
                       </button>
                       {zeitplanHinweisOffen && !zeitplanStatus.bereit && (
                         <div style={{ padding: "8px 14px 10px", fontSize: 11, borderTop: "0.5px solid #eef1f4" }}>
