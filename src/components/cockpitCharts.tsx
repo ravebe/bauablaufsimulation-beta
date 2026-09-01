@@ -11,23 +11,24 @@ const MONAT_KURZ = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Se
 const WE_BG = "#f2f3f5"; // Wochenende/Feiertag-Hintergrund, wie im Gantt
 const HEAD_H = 30; // Höhe der Datums-Kopfzeile (Monat/Jahr + KW bzw. Tageszahlen), wie im GanttChart
 
-/** Kleine Zoom-Bedienung (Lupe +/− sowie Hilfe-Tooltip zum Strg-Mausrad-Zoom), unten rechts über
- *  einem Zeitachsen-Diagramm platziert — gemeinsam genutzt von TimeSeriesChart und GanttChart. */
+/** Kleine Zoom-Bedienung (Lupe +/−), unten rechts über einem Zeitachsen-Diagramm platziert —
+ *  gemeinsam genutzt von TimeSeriesChart und GanttChart. right/bottom sind bewusst größer als der
+ *  Button selbst, damit die Gruppe nicht auf dem nativen Scrollbar (horizontal am Diagramm-Fuß,
+ *  vertikal am Tab-Rand) sitzt, sondern knapp oberhalb/links davon mit etwas Luft dazu endet. Der
+ *  Hilfe-Tooltip zum Strg-Mausrad-Zoom erscheint jetzt beim Hover über +/− statt über einem eigenen
+ *  „?"-Icon. */
 export function ZoomControls({ onZoomIn, onZoomOut }: { onZoomIn: () => void; onZoomOut: () => void }) {
   const [hilfeOffen, setHilfeOffen] = useState(false);
   const btnStyle: React.CSSProperties = { width: 20, height: 20, lineHeight: "18px", padding: 0, border: "1px solid #d4dce4", background: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#555", borderRadius: 2 };
   return (
-    <div style={{ position: "absolute", right: 6, bottom: 6, display: "flex", alignItems: "center", gap: 3, zIndex: 6 }}>
-      <div style={{ position: "relative" }} onMouseEnter={() => setHilfeOffen(true)} onMouseLeave={() => setHilfeOffen(false)}>
-        <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, borderRadius: "50%",
-          border: "1px solid #d4dce4", background: "#fff", color: "#8a9baa", fontSize: 11, fontWeight: 700 }}>?</span>
-        {hilfeOffen && (
-          <div style={{ position: "absolute", bottom: "125%", right: 0, background: "#333", color: "#fff", fontSize: 10,
-            padding: "5px 8px", borderRadius: 4, whiteSpace: "nowrap", boxShadow: "0 2px 6px rgba(0,0,0,.25)", zIndex: 10 }}>
-            Strg + Mausrad zum Zoomen
-          </div>
-        )}
-      </div>
+    <div style={{ position: "absolute", right: 18, bottom: 18, display: "flex", alignItems: "center", gap: 3, zIndex: 6 }}
+      onMouseEnter={() => setHilfeOffen(true)} onMouseLeave={() => setHilfeOffen(false)}>
+      {hilfeOffen && (
+        <div style={{ position: "absolute", bottom: "125%", right: 0, background: "#333", color: "#fff", fontSize: 10,
+          padding: "5px 8px", borderRadius: 4, whiteSpace: "nowrap", boxShadow: "0 2px 6px rgba(0,0,0,.25)", zIndex: 10 }}>
+          Strg + Mausrad zum Zoomen
+        </div>
+      )}
       <button type="button" onClick={onZoomOut} title="Verkleinern" style={btnStyle}>−</button>
       <button type="button" onClick={onZoomIn} title="Vergrößern" style={btnStyle}>+</button>
     </div>
