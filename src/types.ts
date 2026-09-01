@@ -22,7 +22,10 @@ export interface Task {
   mengenInfo?: Record<string, string>; // Tooltip-Text bei Status "fehler" (z.B. fehlende Attribute), siehe formelHelpers.ts
   mengenObjekte?: Record<string, Record<string, number>>; // Gewerk-key → Bauteil-GUID (objektGuids-Eintrag) → manuell gesetzter Einzelwert, überschreibt für genau dieses Bauteil den Formel-Wert — siehe Bauteil-Liste in Tab Kalkulation
   kranbereich?: string; // für Kranauslastung in Tab AVOR, siehe avorHelpers.ts
+  attrGruppe?: Record<string, string>; // Attribut-Werte-Kombination (pset||name → Wert), die diesen Task bei der Attribut-Task-Erzeugung ergeben hat — dient beim erneuten Generieren dazu, denselben Task (inkl. Termine) wiederzuerkennen statt neu anzulegen, siehe AttributTaskErzeugung.tsx
 }
+
+export interface AttrRef { pset: string; name: string; key: string; } // gleiche Form wie AttrItem in modelHelpers.ts
 
 export interface SimModell {
   id: string;   // modelId aus TC (über alle Versionen hinweg stabil)
@@ -41,6 +44,9 @@ export interface SimProjekt {
   zugriff?: Record<string, Zugriff>; // userId → Zugriff (default: "read")
   autoVerknuepft?: boolean; // true wenn Auto-Verknüpfung durchgeführt
   ganttImport?: { dateiname: string; version: number }; // Metadaten des zuletzt importierten Gantt (version zählt Importe hoch)
+  verknuepfungsModus?: "auto" | "attribut"; // welche der beiden Verknüpfungsarten aktiv ist (Auto-Verknüpfung vs. Attribut-Task-Erzeugung) — nur eine der beiden gleichzeitig, siehe TabProjekte.tsx
+  attributTasksErzeugt?: boolean; // true wenn die Attribut-Task-Erzeugung mind. einmal durchgeführt wurde
+  attributKonfig?: { tasknameAttr: AttrRef; zusatzAttrs: AttrRef[] }; // zuletzt verwendete Attribut-Auswahl der Attribut-Task-Erzeugung, für Vorbelegung beim erneuten Öffnen
   tasks: Task[];
   modelle: SimModell[];
   kalender?: Kalender; // Arbeitstage-Kalender (Feiertage) dieses Projekts

@@ -3,6 +3,7 @@ import type { SimProjekt, Task, Zugriff } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import GanttImport from "./GanttImport";
 import AutoVerknuepfung from "./AutoVerknuepfung";
+import AttributTaskErzeugung from "./AttributTaskErzeugung";
 import SimKebabMenu from "./SimKebabMenu";
 
 interface Props {
@@ -385,7 +386,30 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                   ganttInfo={sim.ganttImport}
                 />
 
-                {sim.tasks.length > 0 && sim.modelle.length > 0 && (
+                {sim.modelle.length > 0 && (
+                  <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
+                    {([
+                      { modus: "auto" as const, label: "🔗 Auto-Verknüpfung" },
+                      { modus: "attribut" as const, label: "🏷️ Attribut-Tasks" },
+                    ]).map(({ modus, label }) => {
+                      const aktiv = (sim.verknuepfungsModus ?? "auto") === modus;
+                      return (
+                        <button key={modus} onClick={() => setSims(prev =>
+                            prev.map(s => s.id === sim.id ? { ...s, verknuepfungsModus: modus } : s)
+                          )}
+                          style={{
+                            flex: 1, padding: "3px 6px", fontSize: 10, cursor: "pointer", fontFamily: "inherit",
+                            background: aktiv ? "#2d7dbd" : "#fff", color: aktiv ? "#fff" : "#555",
+                            border: `1px solid ${aktiv ? "#2d7dbd" : "#d4dce4"}`,
+                          }}>
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {(sim.verknuepfungsModus ?? "auto") === "auto" && sim.tasks.length > 0 && sim.modelle.length > 0 && (
                   <AutoVerknuepfung
                     api={api}
                     sim={sim}
@@ -393,6 +417,17 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                       prev.map(s => s.id === sim.id ? { ...s, tasks, autoVerknuepft: true } : s)
                     )}
                     done={sim.autoVerknuepft}
+                  />
+                )}
+
+                {sim.verknuepfungsModus === "attribut" && sim.modelle.length > 0 && (
+                  <AttributTaskErzeugung
+                    api={api}
+                    sim={sim}
+                    onUpdate={(tasks, konfig) => setSims(prev =>
+                      prev.map(s => s.id === sim.id ? { ...s, tasks, attributTasksErzeugt: true, attributKonfig: konfig } : s)
+                    )}
+                    done={sim.attributTasksErzeugt}
                   />
                 )}
 
