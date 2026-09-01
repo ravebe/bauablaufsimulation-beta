@@ -389,23 +389,32 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                 {sim.modelle.length > 0 && (
                   <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
                     {([
-                      { modus: "auto" as const, label: "🔗 Auto-Verknüpfung" },
-                      { modus: "attribut" as const, label: "🏷️ Attribut-Tasks" },
-                    ]).map(({ modus, label }) => {
+                      { modus: "auto" as const, label: "🔗 Auto-Verknüpfung", disabled: sim.tasks.length === 0 },
+                      { modus: "attribut" as const, label: "🏷️ Attribut-Tasks", disabled: false },
+                    ]).map(({ modus, label, disabled }) => {
                       const aktiv = (sim.verknuepfungsModus ?? "auto") === modus;
                       return (
-                        <button key={modus} onClick={() => setSims(prev =>
+                        <button key={modus} disabled={disabled}
+                          onClick={() => setSims(prev =>
                             prev.map(s => s.id === sim.id ? { ...s, verknuepfungsModus: modus } : s)
                           )}
                           style={{
-                            flex: 1, padding: "3px 6px", fontSize: 10, cursor: "pointer", fontFamily: "inherit",
-                            background: aktiv ? "#2d7dbd" : "#fff", color: aktiv ? "#fff" : "#555",
-                            border: `1px solid ${aktiv ? "#2d7dbd" : "#d4dce4"}`,
+                            flex: 1, padding: "3px 6px", fontSize: 10, fontFamily: "inherit",
+                            cursor: disabled ? "not-allowed" : "pointer",
+                            background: disabled ? "#f3f4f6" : aktiv ? "#2d7dbd" : "#fff",
+                            color: disabled ? "#aaa" : aktiv ? "#fff" : "#555",
+                            border: `1px solid ${disabled ? "#e4e7ea" : aktiv ? "#2d7dbd" : "#d4dce4"}`,
                           }}>
                           {label}
                         </button>
                       );
                     })}
+                  </div>
+                )}
+
+                {(sim.verknuepfungsModus ?? "auto") === "auto" && sim.tasks.length === 0 && sim.modelle.length > 0 && (
+                  <div className="alert info" style={{ marginTop: 6 }}>
+                    ℹ Bitte zuerst einen Gantt-Zeitplan importieren, oder mit "Attribut-Tasks" weiterarbeiten.
                   </div>
                 )}
 
