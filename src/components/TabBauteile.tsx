@@ -191,7 +191,9 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
   function neuErstellen() {
     if (!aktiveSim || !neuTaskInput.trim()) return;
     const heute = new Date().toISOString().slice(0, 10);
-    const idx = aktivTaskId ? aktiveSim.tasks.findIndex(t => t.id === aktivTaskId) : aktiveSim.tasks.length;
+    const idx = aktivTaskId
+      ? aktiveSim.tasks.findIndex(t => t.id === aktivTaskId)
+      : (neuTyp === "gruppe" ? 0 : aktiveSim.tasks.length);
     const refTask = idx >= 0 ? aktiveSim.tasks[idx] : null;
     const refLevel = refTask ? getOutlineLevel(refTask) : 1;
     const neuerTask: Task = {
