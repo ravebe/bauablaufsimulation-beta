@@ -316,6 +316,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                     sim={sim}
                     istErsteller={istErsteller}
                     onKopieren={() => setKopierDialog({ simId: sim.id, name: `${sim.name} (Kopie)`, tasks: true, kalkulation: true, mengenWerte: true, modelle: true, stammdaten: true, kalender: true })}
+                    onUmbenennen={(neuerName: string) => setSims(prev => prev.map(s => s.id === sim.id ? { ...s, name: neuerName } : s))}
                     onZugriffAendern={(key: Zugriff) => setSims(prev => prev.map(s => s.id === sim.id ? {
                       ...s,
                       zugriff: { ...(s.zugriff || {}), __default__: key }

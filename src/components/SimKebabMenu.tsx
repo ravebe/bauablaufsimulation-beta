@@ -9,6 +9,7 @@ interface Props {
   sim: SimProjekt;
   istErsteller: boolean;
   onKopieren: () => void;
+  onUmbenennen: (neuerName: string) => void;
   onZugriffAendern: (key: Zugriff) => void;
   onLoeschen: () => void;
 }
@@ -36,18 +37,26 @@ const ZUGRIFF_OPTIONEN = [
   { key: "none" as const, label: "Kein Zugriff", desc: "Projekt wird ausgeblendet" },
 ];
 
-export default function SimKebabMenu({ sim, istErsteller, onKopieren, onZugriffAendern, onLoeschen }: Props) {
+export default function SimKebabMenu({ sim, istErsteller, onKopieren, onUmbenennen, onZugriffAendern, onLoeschen }: Props) {
   const [offen, setOffen] = useState(false);
   const [exportSubOffen, setExportSubOffen] = useState(false);
-  const ref = useClickOutside<HTMLDivElement>(offen, () => { setOffen(false); setExportSubOffen(false); });
+  const [umbenennOffen, setUmbenennOffen] = useState(false);
+  const [neuerName, setNeuerName] = useState("");
+  const ref = useClickOutside<HTMLDivElement>(offen, () => { setOffen(false); setExportSubOffen(false); setUmbenennOffen(false); });
 
   const aktDefault = sim.zugriff?.["__default__"] ?? "read";
+
+  function speichernUmbenennen() {
+    if (neuerName.trim()) onUmbenennen(neuerName.trim());
+    setUmbenennOffen(false);
+    setOffen(false);
+  }
 
   return (
     <div ref={ref} style={{ position: "relative" }} onClick={e => e.stopPropagation()}>
       <button
         style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "var(--tc-text-3)", padding: "0 4px" }}
-        onClick={() => { setOffen(o => !o); setExportSubOffen(false); }}
+        onClick={() => { setOffen(o => !o); setExportSubOffen(false); setUmbenennOffen(false); }}
       >⋮</button>
       {offen && (
         <div style={{
@@ -55,6 +64,28 @@ export default function SimKebabMenu({ sim, istErsteller, onKopieren, onZugriffA
           border: "0.5px solid var(--tc-border)", borderRadius: 5,
           boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, minWidth: 200,
         }}>
+          {istErsteller && (
+            umbenennOffen ? (
+              <div style={{ padding: "8px 14px", borderBottom: "0.5px solid #eef1f4" }}>
+                <input className="tc-input" style={{ width: "100%", fontSize: 11, boxSizing: "border-box" }} autoFocus
+                  value={neuerName}
+                  onChange={e => setNeuerName(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") speichernUmbenennen(); if (e.key === "Escape") setUmbenennOffen(false); }}
+                />
+                <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                  <button className="tc-btn-primary" style={{ flex: 1, fontSize: 10, padding: "4px 8px" }}
+                    onClick={speichernUmbenennen}>Speichern</button>
+                  <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "4px 8px" }}
+                    onClick={() => setUmbenennOffen(false)}>Abbrechen</button>
+                </div>
+              </div>
+            ) : (
+              <button
+                style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", fontSize: 11, cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
+                onClick={() => { setNeuerName(sim.name); setUmbenennOffen(true); }}
+              >Simulation umbenennen</button>
+            )
+          )}
           {istErsteller && (
             <button
               style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", fontSize: 11, cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
