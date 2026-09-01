@@ -273,7 +273,7 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
           </button>
           {!readOnly && (
             <div style={{ position: "relative", display: "inline-flex" }}>
-              <button className="tc-btn-primary" style={{ fontSize: 16, padding: "2px 10px", fontWeight: 700, lineHeight: 1 }}
+              <button className="tc-btn-primary" style={{ fontSize: 16, fontWeight: 700 }}
                 onClick={() => setPlusMenuOffen(m => !m)}>+</button>
               {plusMenuOffen && (
                 <div style={{ position: "absolute", left: 0, top: "100%", marginTop: 2, background: "#fff", border: "1px solid #d4dce4", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, minWidth: 140, fontSize: 11 }}>
