@@ -233,6 +233,23 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
     setZeitplanBestaetigenOffen(false);
   }
 
+  // "Auto-Vorgänger" — verkettet Tasks und Gruppen jeweils streng der Anzeige-Reihenfolge nach
+  // (Task 2 ← Task 1, Task 3 ← Task 2, …), Gruppen dabei als eigene, separate Kette von Gruppen
+  // untereinander (nicht mit den Tasks vermischt — eine Gruppe trägt kein eigenes Start-/Enddatum,
+  // siehe berechneZeitplanUebernahme(), das würde die Terminkaskade sonst mit veralteten Werten füttern).
+  function autoVorgaenger() {
+    if (!aktiveSim) return;
+    const tasks = aktiveSim.tasks;
+    const gruppenIds = tasks.filter((_, i) => istGruppe(tasks, i)).map(t => t.id);
+    const echteIds = tasks.filter((_, i) => !istGruppe(tasks, i)).map(t => t.id);
+    const vorgaengerMap = new Map<string, string | undefined>();
+    for (const ids of [gruppenIds, echteIds]) {
+      ids.forEach((id, i) => vorgaengerMap.set(id, i === 0 ? undefined : ids[i - 1]));
+    }
+    const neueTasks = tasks.map(t => vorgaengerMap.has(t.id) ? { ...t, predecessorId: vorgaengerMap.get(t.id) } : t);
+    updateSim({ ...aktiveSim, tasks: neueTasks });
+  }
+
   return (
     <div className="tasklist-wrap">
       {/* Suche + Toggle */}
@@ -275,6 +292,13 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
           )}
         </>)}
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: "auto" }}>
+          {!readOnly && aktiveSim && aktiveSim.tasks.length > 1 && (
+            <button className="tc-btn-secondary" style={{ fontSize: 12, padding: "4px 12px", fontWeight: 600 }}
+              title="Verteilt die Vorgänger automatisch der Reihenfolge nach: Task 2 erhält Task 1 als Vorgänger, Task 3 erhält Task 2 usw. — Gruppen bekommen dieselbe Verkettung untereinander."
+              onClick={autoVorgaenger}>
+              Auto-Vorgänger
+            </button>
+          )}
           {!readOnly && aktiveSim && zeitplanStatus && (
             <div style={{ position: "relative" }}>
               <button
