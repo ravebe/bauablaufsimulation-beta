@@ -7,7 +7,7 @@ import type { ApiInstance } from "../hooks/useApi";
 import { getEchteBauteile, clearEchteBauteileCache } from "./modelHelpers";
 import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
 import { LEERER_KALENDER } from "./kalenderHelpers";
-import { pruefeZeitplanBereitschaft, berechneZeitplanUebernahme } from "./zeitplanUebernahmeHelpers";
+import { pruefeZeitplanBereitschaft, berechneZeitplanUebernahme, zeitplanHatAenderungen } from "./zeitplanUebernahmeHelpers";
 import TabTasks from "./TabTasks";
 import AttributeFilter from "./AttributeFilter";
 import GanttChart from "./GanttChart";
@@ -216,6 +216,9 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
   // siehe zeitplanUebernahmeHelpers.ts. Erst möglich, wenn Tab Kalkulation fehlerfrei ist (keine roten
   // Mengen-Felder).
   const zeitplanStatus = aktiveSim ? pruefeZeitplanBereitschaft(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN) : null;
+  const zeitplanAenderungen = aktiveSim && zeitplanStatus?.bereit
+    ? zeitplanHatAenderungen(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN, aktiveSim.kalender ?? LEERER_KALENDER)
+    : false;
   function zeitplanButtonKlick() {
     if (!zeitplanStatus?.bereit) { setZeitplanHinweisOffen(o => !o); return; }
     setZeitplanBestaetigenOffen(true);
@@ -273,13 +276,20 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
           {!readOnly && aktiveSim && zeitplanStatus && (
             <div style={{ position: "relative" }}>
               <button
+                className={zeitplanStatus.bereit && !zeitplanAenderungen ? "tc-btn-secondary" : undefined}
                 style={{
                   fontSize: 12, padding: "4px 12px", fontWeight: 600, borderRadius: 0, cursor: "pointer",
-                  ...(zeitplanStatus.bereit
-                    ? { background: "var(--tc-blue-light)", color: "var(--tc-blue)", border: "1px solid var(--tc-blue)" }
-                    : { background: "#eef1f4", color: "#9aa5b0", border: "1px solid #d4dce4" }),
+                  ...(!zeitplanStatus.bereit
+                    ? { background: "#eef1f4", color: "#9aa5b0", border: "1px solid #d4dce4" }
+                    : zeitplanAenderungen
+                      ? { background: "var(--tc-blue-light)", color: "var(--tc-blue)", border: "1px solid var(--tc-blue)" }
+                      : {}),
                 }}
-                title={zeitplanStatus.bereit ? "Berechnete Dauer aus Tab Kalkulation auf den Bauablauf übernehmen" : "Klicken für Details, was dafür noch fehlt"}
+                title={
+                  !zeitplanStatus.bereit ? "Klicken für Details, was dafür noch fehlt"
+                    : zeitplanAenderungen ? "Berechnete Dauer aus Tab Kalkulation auf den Bauablauf übernehmen"
+                      : "Bauablauf entspricht bereits der berechneten Dauer — nichts zu übernehmen"
+                }
                 onClick={zeitplanButtonKlick}>
                 Berechnete Dauer übernehmen
               </button>

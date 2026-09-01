@@ -84,3 +84,11 @@ export function berechneZeitplanUebernahme(tasks: Task[], stammdaten: Stammdaten
     return { ...t, start, end };
   });
 }
+
+/** true, wenn berechneZeitplanUebernahme() gegenüber den aktuellen Start-/Endterminen tatsächlich
+ *  etwas ändern würde — steuert, ob der Button "Berechnete Dauer übernehmen" hervorgehoben wird
+ *  oder (bei bereits übernommenem Stand) neutral/grau bleibt. */
+export function zeitplanHatAenderungen(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender): boolean {
+  const neu = berechneZeitplanUebernahme(tasks, stammdaten, kalender);
+  return neu.some((t, i) => t.start !== tasks[i].start || t.end !== tasks[i].end);
+}
