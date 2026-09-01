@@ -4,11 +4,35 @@
 import { useState, useEffect, useRef } from "react";
 import { nsKey } from "../types";
 import type { Kalender } from "./kalenderHelpers";
-import { istArbeitstag } from "./kalenderHelpers";
+import { istArbeitstag, getKW } from "./kalenderHelpers";
 
 const MIN_PX_TAG = 0.3, MAX_PX_TAG = 40;
 const MONAT_KURZ = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
 const WE_BG = "#f2f3f5"; // Wochenende/Feiertag-Hintergrund, wie im Gantt
+const HEAD_H = 30; // Höhe der Datums-Kopfzeile (Monat/Jahr + KW bzw. Tageszahlen), wie im GanttChart
+
+/** Kleine Zoom-Bedienung (Lupe +/− sowie Hilfe-Tooltip zum Strg-Mausrad-Zoom), unten rechts über
+ *  einem Zeitachsen-Diagramm platziert — gemeinsam genutzt von TimeSeriesChart und GanttChart. */
+export function ZoomControls({ onZoomIn, onZoomOut }: { onZoomIn: () => void; onZoomOut: () => void }) {
+  const [hilfeOffen, setHilfeOffen] = useState(false);
+  const btnStyle: React.CSSProperties = { width: 20, height: 20, lineHeight: "18px", padding: 0, border: "1px solid #d4dce4", background: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#555", borderRadius: 2 };
+  return (
+    <div style={{ position: "absolute", right: 6, bottom: 6, display: "flex", alignItems: "center", gap: 3, zIndex: 6 }}>
+      <div style={{ position: "relative" }} onMouseEnter={() => setHilfeOffen(true)} onMouseLeave={() => setHilfeOffen(false)}>
+        <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, borderRadius: "50%",
+          border: "1px solid #d4dce4", background: "#fff", color: "#8a9baa", fontSize: 11, fontWeight: 700 }}>?</span>
+        {hilfeOffen && (
+          <div style={{ position: "absolute", bottom: "125%", right: 0, background: "#333", color: "#fff", fontSize: 10,
+            padding: "5px 8px", borderRadius: 4, whiteSpace: "nowrap", boxShadow: "0 2px 6px rgba(0,0,0,.25)", zIndex: 10 }}>
+            Strg + Mausrad zum Zoomen
+          </div>
+        )}
+      </div>
+      <button type="button" onClick={onZoomOut} title="Verkleinern" style={btnStyle}>−</button>
+      <button type="button" onClick={onZoomIn} title="Vergrößern" style={btnStyle}>+</button>
+    </div>
+  );
+}
 
 /** ISO-Datum (YYYY-MM-DD) ohne UTC-Verschiebung in ein lokales Date parsen. */
 function parseIsoLocal(iso: string): Date {
@@ -75,6 +99,7 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [outerRef, viewportW] = useMeasuredWidth<HTMLDivElement>(1000);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
   const fmt = formatWert ?? ((v: number) => v.toLocaleString("de-CH", { maximumFractionDigits: 1 }));
 
   const n = tage.length;
@@ -97,10 +122,12 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
   const innerH = hoehe - MT - MB;
   const x = (i: number) => ML + i * pxProTag;
 
-  // Mausrad = Zoom zum Cursor (wie GanttChart)
+  // Mausrad + Strg = Zoom zum Cursor (wie GanttChart); ohne Strg scrollt das Rad normal, statt den
+  // Zeitmaßstab zu verstellen.
   useEffect(() => {
     const el = scrollRef.current; if (!el || n === 0) return;
     const handler = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
       e.preventDefault();
       const rect = el.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
@@ -114,6 +141,16 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
     return () => el.removeEventListener("wheel", handler);
   }, [pxProTag, onPxProTagChange, onScrollChange, n]);
 
+  // Zoom-Buttons: wie Mausrad-Zoom, aber zentriert auf die Mitte des sichtbaren Ausschnitts
+  function zoomBy(factor: number) {
+    const el = scrollRef.current; if (!el) return;
+    const centerX = el.clientWidth / 2;
+    const tagAmZentrum = (el.scrollLeft + centerX) / pxProTag;
+    const neuPx = Math.max(MIN_PX_TAG, Math.min(MAX_PX_TAG, pxProTag * factor));
+    onPxProTagChange(neuPx);
+    onScrollChange(tagAmZentrum - centerX / neuPx);
+  }
+
   // Scrollposition synchron zum gemeinsamen scrollTag halten (auch bei manuellem Scrollen anderer
   // Charts). Das programmatische Setzen von scrollLeft löst selbst ein "scroll"-Event aus — ohne
   // suppressScroll würde onChartScroll das als Nutzeraktion werten, onScrollChange erneut aufrufen
@@ -125,11 +162,13 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
     if (Math.abs(el.scrollLeft - ziel) > 0.5) {
       suppressScroll.current = true;
       el.scrollLeft = ziel;
+      if (headerRef.current) headerRef.current.scrollLeft = ziel;
       setTimeout(() => { suppressScroll.current = false; }, 50);
     }
   }, [scrollTag, pxProTag]);
 
   function onChartScroll() {
+    if (headerRef.current && scrollRef.current) headerRef.current.scrollLeft = scrollRef.current.scrollLeft;
     if (suppressScroll.current) return;
     const el = scrollRef.current; if (!el) return;
     onScrollChange(el.scrollLeft / pxProTag);
@@ -182,7 +221,7 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
   for (let i = 0; i < n; i++) {
     const d = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate() + i);
     if (i === 0 || d.getDate() === 1) monatTicks.push({ x: x(i), label: `${MONAT_KURZ[d.getMonth()]} ${String(d.getFullYear()).slice(2)}` });
-    if (zeigeWochen && d.getDay() === 1) wochenTicks.push({ x: x(i), label: `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}` });
+    if (zeigeWochen && d.getDay() === 1) wochenTicks.push({ x: x(i), label: `KW ${getKW(d)}` });
     if (zeigeTage) tagTicks.push({ x: x(i), label: String(d.getDate()) });
     const frei = kalender ? !istArbeitstag(tage[i], kalender) : (d.getDay() === 0 || d.getDay() === 6);
     if (frei) weekendBands.push({ x: x(i), w: pxProTag });
@@ -214,6 +253,23 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
         </div>
       )}
       <div style={{ position: "relative" }}>
+        {/* Kopfzeile: Monat/Jahr + KW bzw. Tageszahlen, wie im GanttChart — eigener Scroll-Container,
+            synchron zum Diagramm gehalten (siehe onChartScroll/scrollTag-Effekt oben). */}
+        <div ref={headerRef} style={{ overflow: "hidden", background: "#f5f7f9", borderBottom: `1px solid ${FARBEN.gridline}` }}>
+          <svg width={VBW} height={HEAD_H} style={{ display: "block" }}>
+            {monatTicks.map((t, i) => (
+              <line key={`hml${i}`} x1={t.x} y1={0} x2={t.x} y2={HEAD_H} stroke="#aab4bd" strokeWidth={1.4} />
+            ))}
+            {monatTicksAnzeige.map((t, i) => (
+              <text key={`hm${i}`} x={t.x + 4} y={13} fontSize={10} fontWeight={600} fontFamily="var(--tc-font)" fill={FARBEN.textSekundaer}>{t.label}</text>
+            ))}
+            {zeigeTage ? tagTicksAnzeige.map((t, i) => (
+              <text key={`ht${i}`} x={t.x + pxProTag / 2} y={HEAD_H - 4} textAnchor="middle" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>{t.label}</text>
+            )) : wochenTicksAnzeige.map((t, i) => (
+              <text key={`hw${i}`} x={t.x + 2} y={HEAD_H - 4} fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>{t.label}</text>
+            ))}
+          </svg>
+        </div>
         <div ref={scrollRef} onScroll={onChartScroll} style={{ overflowX: "auto", overflowY: "hidden" }}>
           <svg width={VBW} height={hoehe} viewBox={`0 0 ${VBW} ${hoehe}`}
             onMouseMove={onMove} onMouseLeave={() => setHoverIdx(null)} style={{ display: "block", cursor: "crosshair" }}>
@@ -222,17 +278,9 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
             <line x1={ML} y1={hoehe - MB} x2={VBW - MR} y2={hoehe - MB} stroke={FARBEN.achse} strokeWidth={1} />
             <text x={ML - 4} y={y(maxY) + 3} textAnchor="end" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>{fmt(maxY)}</text>
             <text x={ML - 4} y={hoehe - MB} textAnchor="end" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>0</text>
-            {tagTicksAnzeige.map((t, i) => (
-              <text key={`t${i}`} x={t.x + pxProTag / 2} y={hoehe - 4} textAnchor="middle" fontSize={8} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>{t.label}</text>
-            ))}
-            {!zeigeTage && wochenTicksAnzeige.map((t, i) => (
-              <text key={`w${i}`} x={t.x} y={hoehe - 4} textAnchor="middle" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>{t.label}</text>
-            ))}
-            {!zeigeWochen && monatTicksAnzeige.map((t, i) => (
-              <text key={`m${i}`} x={t.x} y={hoehe - 4} textAnchor="middle" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>{t.label}</text>
-            ))}
-            {zeigeWochen && monatTicks.map((t, i) => (
-              <line key={`ml${i}`} x1={t.x} y1={MT} x2={t.x} y2={hoehe - MB} stroke={FARBEN.achse} strokeWidth={1} strokeDasharray="1 2" />
+            {/* Monats-Linien durchgehend dicker als sonstige Hilfslinien, damit der Monatswechsel auffällt */}
+            {monatTicks.map((t, i) => (
+              <line key={`ml${i}`} x1={t.x} y1={MT} x2={t.x} y2={hoehe - MB} stroke="#aab4bd" strokeWidth={1.4} />
             ))}
             {referenzlinie && (<>
               <line x1={ML} y1={y(referenzlinie.wert)} x2={VBW - MR} y2={y(referenzlinie.wert)}
@@ -280,6 +328,7 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
             )}
           </div>
         )}
+        <ZoomControls onZoomIn={() => zoomBy(1.3)} onZoomOut={() => zoomBy(1 / 1.3)} />
       </div>
     </div>
   );

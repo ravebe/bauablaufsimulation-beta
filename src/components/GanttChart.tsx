@@ -3,9 +3,10 @@ import { createPortal } from "react-dom";
 import type { Task } from "../types";
 import { parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks, nsKey } from "../types";
 import type { Kalender } from "./kalenderHelpers";
-import { istArbeitstag, LEERER_KALENDER } from "./kalenderHelpers";
+import { istArbeitstag, LEERER_KALENDER, getKW } from "./kalenderHelpers";
 import DatePicker from "./DatePicker";
 import { useDoppelklickHinweis } from "../hooks/useDoppelklickHinweis";
+import { ZoomControls } from "./cockpitCharts";
 
 interface Props {
   projectId?: string | null;
@@ -51,12 +52,6 @@ function fmtDatum(d: Date, lang: boolean): string {
   return `${d.getDate()}.${d.getMonth()+1}`;
 }
 function fmtDMY(d: Date): string { return `${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`; }
-function getKW(d: Date): number {
-  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));
-  const y = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
-  return Math.ceil(((t.getTime() - y.getTime()) / 86400000 + 1) / 7);
-}
 
 export default function GanttChart({ projectId = null, tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selectedIds = [], selGuids, taskSort, height, editable, onDateChange, onTaskReorder, onTaskRename, onSetPredecessor, showObjektCount, suchQuery = "", nadelStil = "normal", dateColor = "#2d7dbd", kalender = LEERER_KALENDER }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -169,10 +164,12 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
     setPxProTag(Math.max(MIN_PX, Math.min(10, bodyRef.current.clientWidth / totalTage)));
   }, [totalTage]);
 
-  // Wheel = zoom zum Mauszeiger (wie Google Maps)
+  // Wheel + Strg = Zoom zum Mauszeiger (wie Google Maps); ohne Strg scrollt das Mausrad normal,
+  // damit man mit dem Rad nicht versehentlich statt der Seite den Zeitmaßstab verstellt.
   useEffect(() => {
     const el = bodyRef.current; if (!el) return;
     const handler = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
       e.preventDefault();
       scrollLock.current = true;
       const rect = el.getBoundingClientRect();
@@ -191,6 +188,23 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
     };
     el.addEventListener("wheel", handler, { passive: false });
     return () => el.removeEventListener("wheel", handler);
+  }, []);
+
+  // Zoom-Buttons: wie Mausrad-Zoom, aber zentriert auf die Mitte des sichtbaren Ausschnitts
+  const zoomBy = useCallback((factor: number) => {
+    const el = bodyRef.current; if (!el) return;
+    scrollLock.current = true;
+    const centerX = el.clientWidth / 2;
+    const curPx = pxRef.current;
+    const dayAtCenter = (el.scrollLeft + centerX) / curPx;
+    const newPx = Math.max(MIN_PX, Math.min(MAX_PX, curPx * factor));
+    pxRef.current = newPx;
+    setPxProTag(newPx);
+    requestAnimationFrame(() => {
+      el.scrollLeft = Math.max(0, dayAtCenter * newPx - centerX);
+      if (headerRef.current) headerRef.current.scrollLeft = el.scrollLeft;
+      setTimeout(() => { scrollLock.current = false; }, 100);
+    });
   }, []);
 
   // Needle centering — nur wenn die Nadel den sichtbaren Bereich verlässt (nicht bei jedem
@@ -378,7 +392,7 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
             {/* Wochenend-Hintergrund im Header */}
             {weekendBands.map((b, i) => <rect key={`weh${i}`} x={b.x} y={0} width={b.w} height={HEAD_H} fill={WE_BG} />)}
             {/* Monats-Labels */}
-            {hLabels.map((m, i) => (<g key={`h${i}`}><line x1={m.x} y1={0} x2={m.x} y2={HEAD_H} stroke="#d4dce4" strokeWidth={0.6} /><text x={m.x + 4} y={14} fontSize={11} fontWeight={600} fill="#555">{m.label}</text></g>))}
+            {hLabels.map((m, i) => (<g key={`h${i}`}><line x1={m.x} y1={0} x2={m.x} y2={HEAD_H} stroke="#aab4bd" strokeWidth={1.4} /><text x={m.x + 4} y={14} fontSize={11} fontWeight={600} fill="#555">{m.label}</text></g>))}
             {/* KW-Labels */}
             {kwMarkers.map((m, i) => <text key={`kw${i}`} x={m.x + 2} y={27} fontSize={9} fill="#8a9baa">{m.label}</text>)}
             {/* Tages-Nummern */}
@@ -571,8 +585,8 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
             onClick={handleChartClick}>
             {/* Wochenend-Bänder */}
             {weekendBands.map((b, i) => <rect key={`we${i}`} x={b.x} y={0} width={b.w} height={bodyH} fill={WE_BG} />)}
-            {/* Monats-Linien */}
-            {rawM.map((m, i) => <line key={`ml${i}`} x1={m.x} y1={0} x2={m.x} y2={bodyH} stroke="#d4dce4" strokeWidth={0.6} />)}
+            {/* Monats-Linien (dicker als Wochen-/Tageslinien, damit der Monatswechsel auffällt) */}
+            {rawM.map((m, i) => <line key={`ml${i}`} x1={m.x} y1={0} x2={m.x} y2={bodyH} stroke="#aab4bd" strokeWidth={1.4} />)}
             {/* Wochen-Trennlinien */}
             {weekLines.map((x, i) => <line key={`wl${i}`} x1={x} y1={0} x2={x} y2={bodyH} stroke="#e4e7ea" strokeWidth={0.5} />)}
             {/* Tages-Trennlinien */}
@@ -686,6 +700,8 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
         </div>,
         document.body
       )}
+
+      <ZoomControls onZoomIn={() => zoomBy(1.3)} onZoomOut={() => zoomBy(1 / 1.3)} />
     </div>
   );
 }

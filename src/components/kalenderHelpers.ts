@@ -7,6 +7,14 @@ export type Ferienzeitraum = { von: string; bis: string; name: string }; // YYYY
 export type Kalender = { feiertage: Feiertag[]; ferien?: Ferienzeitraum[] };
 export const LEERER_KALENDER: Kalender = { feiertage: [], ferien: [] };
 
+/** ISO-8601-Kalenderwoche (Mo–So, KW1 enthält den ersten Donnerstag des Jahres). */
+export function getKW(d: Date): number {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));
+  const y = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return Math.ceil(((t.getTime() - y.getTime()) / 86400000 + 1) / 7);
+}
+
 /** Ist dieses Datum ein Arbeitstag (kein Wochenende, kein Feiertag, keine Ferien im Kalender)? */
 export function istArbeitstag(datum: string, kalender: Kalender): boolean {
   const d = parseDateUniversal(datum);
