@@ -390,7 +390,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                 {sim.modelle.length > 0 && (
                   <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
                     {([
-                      { modus: "auto" as const, label: "🔗 Auto-Verknüpfung", disabled: sim.tasks.length === 0 },
+                      { modus: "auto" as const, label: "🔗 Auto-Verknüpfung", disabled: !sim.ganttImport },
                       { modus: "attribut" as const, label: "🏷️ Attribut-Tasks", disabled: false },
                     ]).map(({ modus, label, disabled }) => {
                       const aktiv = (sim.verknuepfungsModus ?? "auto") === modus;
@@ -413,13 +413,13 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                   </div>
                 )}
 
-                {(sim.verknuepfungsModus ?? "auto") === "auto" && sim.tasks.length === 0 && sim.modelle.length > 0 && (
+                {(sim.verknuepfungsModus ?? "auto") === "auto" && !sim.ganttImport && sim.modelle.length > 0 && (
                   <div className="alert info" style={{ marginTop: 6 }}>
                     ℹ Bitte zuerst einen Gantt-Zeitplan importieren, oder mit "Attribut-Tasks" weiterarbeiten.
                   </div>
                 )}
 
-                {(sim.verknuepfungsModus ?? "auto") === "auto" && sim.tasks.length > 0 && sim.modelle.length > 0 && (
+                {(sim.verknuepfungsModus ?? "auto") === "auto" && !!sim.ganttImport && sim.tasks.length > 0 && sim.modelle.length > 0 && (
                   <AutoVerknuepfung
                     api={api}
                     sim={sim}
