@@ -53,7 +53,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   const [spaltenFilter, setSpaltenFilter] = useState<Partial<Record<SortSpalte, Set<string>>>>({});
   const [filterMenuOffen, setFilterMenuOffen] = useState<SortSpalte | null>(null);
   const [angezeigtTaskId, setAngezeigtTaskId] = useState<string | null>(null);
-  const [mengenSortModus, setMengenSortModus] = useState<"fehler" | "leer" | null>(null);
+  const [mengenSortModus, setMengenSortModus] = useState<"fehler" | "leer" | "auto" | "manuell" | null>(null);
   const [expandedGewerk, setExpandedGewerk] = useState<Set<string>>(new Set());
   // Eingefrorene Zeilen-Reihenfolge (Task-IDs), während in einem Mengen-Feld getippt wird — siehe
   // Freeze-Block weiter unten, direkt vor der Zeilen-Ausgabe.
@@ -274,15 +274,16 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     return [...werte].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   }
 
-  // Priorität für den Mengen-Sortmodus (0 = zuoberst) — "fehler": mindestens ein Gewerk dieses
-  // Kürzels steht auf mengenQuelle "fehler"; "leer": kein Kürzel gewählt ODER mindestens ein
-  // anwendbares Gewerk hat noch gar keine Menge erfasst. Als stabiler Sortier-Pass NACH der
-  // Spalten-Sortierung angewendet, damit die bisherige Reihenfolge innerhalb der beiden Gruppen erhalten bleibt.
+  // Priorität für den Mengen-Sortmodus (0 = zuoberst), ausgelöst per Klick auf die Legende unter der
+  // Tabelle (siehe unten) — "fehler"/"auto"/"manuell": mindestens ein Gewerk dieses Kürzels steht auf
+  // der jeweiligen mengenQuelle; "leer": kein Kürzel gewählt ODER mindestens ein anwendbares Gewerk hat
+  // noch gar keine Menge erfasst. Als stabiler Sortier-Pass NACH der Spalten-Sortierung angewendet,
+  // damit die bisherige Reihenfolge innerhalb der beiden Gruppen erhalten bleibt.
   function mengenPrioritaet(z: Zeile): number {
     if (!z.t.bauteilKuerzel) return mengenSortModus === "leer" ? 0 : 1;
     const gewerke = gewerkeFuerKuerzel(stammdaten, z.t.bauteilKuerzel);
-    if (mengenSortModus === "fehler") return gewerke.some(g => z.t.mengenQuelle?.[g.key] === "fehler") ? 0 : 1;
-    return gewerke.some(g => z.t.mengen?.[g.key] === undefined) ? 0 : 1;
+    if (mengenSortModus === "leer") return gewerke.some(g => z.t.mengen?.[g.key] === undefined) ? 0 : 1;
+    return gewerke.some(g => z.t.mengenQuelle?.[g.key] === mengenSortModus) ? 0 : 1;
   }
 
   function filterWertToggeln(spalte: SortSpalte, wert: string, alleWerte: string[]) {
@@ -377,18 +378,6 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
             style={{ cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", color: suchQuery ? "var(--tc-blue)" : "var(--tc-text-3)" }}>
             <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="6.5" cy="6.5" r="5" /><line x1="10.2" y1="10.2" x2="14.5" y2="14.5" /></svg>
           </span>
-        )}
-        {spalte === "mengen" && (
-          <>
-            <span onClick={() => setMengenSortModus(m => m === "fehler" ? null : "fehler")} title="Fehlerhafte Felder zuoberst"
-              style={{ cursor: "pointer", flexShrink: 0, fontSize: 10, color: mengenSortModus === "fehler" ? "var(--tc-red)" : "var(--tc-text-3)" }}>
-              ⚠
-            </span>
-            <span onClick={() => setMengenSortModus(m => m === "leer" ? null : "leer")} title="Leere Felder zuoberst"
-              style={{ cursor: "pointer", flexShrink: 0, fontSize: 10, color: mengenSortModus === "leer" ? "var(--tc-blue)" : "var(--tc-text-3)" }}>
-              ◻
-            </span>
-          </>
         )}
         {sortSpalteTyp && filterMenuOffen === sortSpalteTyp && (
           <>
@@ -558,9 +547,22 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
           </div>
         )}
         <div style={{ display: "flex", gap: 12, fontSize: 9, color: "var(--tc-text-3)", marginBottom: 6 }}>
-          <span><span style={{ color: "var(--tc-blue)", fontWeight: 700 }}>■</span> automatisch aus Formel</span>
-          <span><span style={{ color: "#333", fontWeight: 700 }}>■</span> manuell angepasst</span>
-          <span><span style={{ color: "var(--tc-red)", fontWeight: 700 }}>■</span> Fehler / fehlende Attribute</span>
+          <span onClick={() => setMengenSortModus(m => m === "auto" ? null : "auto")} title="Automatisch berechnete Felder zuoberst"
+            style={{ cursor: "pointer", fontWeight: mengenSortModus === "auto" ? 700 : 400, color: mengenSortModus === "auto" ? "var(--tc-blue)" : "var(--tc-text-3)" }}>
+            <span style={{ color: "var(--tc-blue)", fontWeight: 700 }}>■</span> automatisch aus Formel
+          </span>
+          <span onClick={() => setMengenSortModus(m => m === "manuell" ? null : "manuell")} title="Manuell angepasste Felder zuoberst"
+            style={{ cursor: "pointer", fontWeight: mengenSortModus === "manuell" ? 700 : 400, color: mengenSortModus === "manuell" ? "#333" : "var(--tc-text-3)" }}>
+            <span style={{ color: "#333", fontWeight: 700 }}>■</span> manuell angepasst
+          </span>
+          <span onClick={() => setMengenSortModus(m => m === "fehler" ? null : "fehler")} title="Fehlerhafte Felder zuoberst"
+            style={{ cursor: "pointer", fontWeight: mengenSortModus === "fehler" ? 700 : 400, color: mengenSortModus === "fehler" ? "var(--tc-red)" : "var(--tc-text-3)" }}>
+            <span style={{ color: "var(--tc-red)", fontWeight: 700 }}>■</span> Fehler / fehlende Attribute
+          </span>
+          <span onClick={() => setMengenSortModus(m => m === "leer" ? null : "leer")} title="Leere Felder zuoberst"
+            style={{ cursor: "pointer", fontWeight: mengenSortModus === "leer" ? 700 : 400, color: mengenSortModus === "leer" ? "var(--tc-blue)" : "var(--tc-text-3)" }}>
+            <span style={{ display: "inline-block", width: 7, height: 7, background: "#fff", border: "1px solid #999", verticalAlign: "middle" }} /> Leere Felder
+          </span>
         </div>
       </div>
       {/* flex:1 + minHeight:0 macht diesen Bereich zum echten, höhenbegrenzten Scrollcontainer
