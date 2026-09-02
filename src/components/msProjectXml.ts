@@ -89,7 +89,7 @@ export function istMsProjectXml(text: string): boolean {
   return /<Project[\s>]/.test(text) && text.includes("schemas.microsoft.com/project");
 }
 
-const GUELTIGE_TYPEN: TaskTyp[] = ["neubau", "bestand", "abbruch", "temporaer"];
+const GUELTIGE_TYPEN: TaskTyp[] = ["neubau", "bestand", "abbruch", "temporaer", "baustelleneinrichtung", "drittprojekt"];
 
 export function parseMsProjectXml(text: string): Task[] {
   const doc = new DOMParser().parseFromString(text, "text/xml");

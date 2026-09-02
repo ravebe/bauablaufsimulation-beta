@@ -21,7 +21,9 @@ const GANTT_VORLAGE_BEISPIEL = [
   ["Bestandswand", "01.01.2025", "01.01.2025", "bestand", "", "", "BA1", "EG", "", "Wand Beton", "Bestand"],
   ["Abbruch Altbau", "16.01.2025", "20.01.2025", "abbruch", "1", "0", "BA1", "EG", "1", "Altbau Wand", "Abbruch"],
   ["Rohbau EG", "21.01.2025", "15.02.2025", "neubau", "3", "2", "BA1", "EG", "2", "Decke Beton", "Rohbau"],
-  ["Gerüst", "01.02.2025", "28.02.2025", "temporaer", "", "", "BA1", "EG", "2", "Gerüst", "Temporär"],
+  ["Gerüst", "01.02.2025", "28.02.2025", "temporaer", "", "", "BA1", "EG", "2", "Gerüst", "Bauhilfsmassnahme"],
+  ["Baustellenkran", "01.01.2025", "28.02.2025", "baustelleneinrichtung", "", "", "BA1", "-", "", "Kran", "Baustelleneinrichtung"],
+  ["Nachbargebäude", "01.01.2025", "28.02.2025", "drittprojekt", "", "", "BA1", "-", "", "Nachbarbau", "Drittprojekt"],
 ];
 
 function downloadGanttVorlage() {

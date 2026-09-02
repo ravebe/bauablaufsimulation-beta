@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import type { SimProjekt, Task, TaskTyp } from "../types";
 import { formatDatum, normalizeDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, getKinder,
   berechneNummern, gueltigeVorgaenger, verschiebeAufStart, kaskadiereNachfolger, datumPlusTage,
-  taskVerschieben as verschiebeTaskBlock, sucheSortiereTasks, nsKey } from "../types";
+  taskVerschieben as verschiebeTaskBlock, sucheSortiereTasks, nsKey, TASK_TYP_LISTE, TASK_TYP_LABEL, TASK_TYP_FARBE } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { batchGetProperties, batchConvertToObjectIds } from "../hooks/useApi";
 import DatePicker from "./DatePicker";
@@ -544,7 +544,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                     <span onClick={e => { e.stopPropagation(); setCollapsedGroups(s => { const n = new Set(s); if (n.has(task.id)) n.delete(task.id); else n.add(task.id); return n; }); }}
                       style={{ display: "inline-block", transform: `scaleX(1.6) rotate(${collapsed ? -90 : 0}deg)`, transition: "transform .15s", fontSize: 9, cursor: "pointer", color: "#555" }}>▼</span>
                   ) : (
-                    <span style={{ width: 9, height: 9, borderRadius: "50%", background: task.typ === "neubau" ? "#6cc07a" : task.typ === "abbruch" ? "#edb94c" : task.typ === "temporaer" ? "#a0522d" : "#888" }} />
+                    <span style={{ width: 9, height: 9, borderRadius: "50%", background: task.typ === "neubau" ? "#6cc07a" : task.typ === "abbruch" ? "#edb94c" : task.typ === "bestand" ? "#888" : TASK_TYP_FARBE[task.typ] }} />
                   )}
                 </span>
                 {!readOnly && editingNameId === task.id ? (
@@ -701,7 +701,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
       {aktivTask ? (
         <div className="detail-section">
           <div className="detail-header">
-            {!aktivIsGroup && <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: aktivTask.typ === "neubau" ? "#22C55E" : aktivTask.typ === "abbruch" ? "#EAB308" : aktivTask.typ === "temporaer" ? "#a0522d" : "#999" }} />}
+            {!aktivIsGroup && <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: aktivTask.typ === "neubau" ? "#22C55E" : aktivTask.typ === "abbruch" ? "#EAB308" : aktivTask.typ === "bestand" ? "#999" : TASK_TYP_FARBE[aktivTask.typ] }} />}
             {aktivIsGroup && <span style={{ fontSize: 11, color: "#555", marginRight: 2 }}>📁</span>}
             <span className="detail-task-name">{aktivTask.name}</span>
             <span style={{ fontSize: 9, color: "var(--tc-blue)", fontWeight: 500 }}>
@@ -748,8 +748,8 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
             </div>
             {typOffen && (
             <div className="typ-btns">
-              {(["neubau", "bestand", "abbruch", "temporaer"] as TaskTyp[]).map(typ => {
-                const farbe = typ === "neubau" ? "#6cc07a" : typ === "bestand" ? "#888" : typ === "abbruch" ? "#edb94c" : "#a0522d";
+              {TASK_TYP_LISTE.map(typ => {
+                const farbe = typ === "bestand" ? "#888" : TASK_TYP_FARBE[typ];
                 const istAktiv = aktivTask.typ === typ;
                 return (
                   <button key={typ} onClick={() => typAendern(aktivTask.id, typ)}
@@ -759,7 +759,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                       background: istAktiv ? farbe : "#fff",
                       color: istAktiv ? "#fff" : "#555", fontFamily: "inherit",
                     }}>
-                    {typ}
+                    {TASK_TYP_LABEL[typ]}
                   </button>
                 );
               })}

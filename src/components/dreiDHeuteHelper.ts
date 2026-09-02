@@ -4,10 +4,10 @@
 // "Heute"-Button in Tab Kosten) direkt in den 3D-Baufortschritt eines Tages springen können, ohne
 // den Abspielen-Player-State (Playback-Loop, Event-Tracking, Farbmodus-Toggle) mit anzufassen.
 import type { Task } from "../types";
-import { parseDateUniversal } from "../types";
+import { parseDateUniversal, TASK_TYP_FARBE } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 
-export const TYP_FARBEN = { neubau: "#6cc07a", bestand: "#999999", abbruch: "#edb94c", temporaer: "#a0522d" };
+export const TYP_FARBEN = TASK_TYP_FARBE;
 
 export function tagVonDatum(datum: string, min: Date): number {
   const d = parseDateUniversal(datum);
@@ -53,6 +53,8 @@ export async function dreiDZustandAufTagSetzen(api: ApiInstance, tasks: Task[], 
   const colorAbbruch: string[] = [];
   const colorNeubau: string[] = [];
   const colorTemp: string[] = [];
+  const colorBaustelleneinrichtung: string[] = [];
+  const colorDrittprojekt: string[] = [];
   const selGuidsLocal: string[] = [];
   const aktive: Task[] = [];
 
@@ -75,6 +77,12 @@ export async function dreiDZustandAufTagSetzen(api: ApiInstance, tasks: Task[], 
     } else if (t.typ === "temporaer") {
       if (tag > e) hideGuids.push(...t.objektGuids);
       else { showGuids.push(...t.objektGuids); if (farbeEin && tag >= s) colorTemp.push(...t.objektGuids); if (tag >= s) aktive.push(t); }
+    } else if (t.typ === "baustelleneinrichtung") {
+      if (tag > e) hideGuids.push(...t.objektGuids);
+      else { showGuids.push(...t.objektGuids); if (farbeEin && tag >= s) colorBaustelleneinrichtung.push(...t.objektGuids); if (tag >= s) aktive.push(t); }
+    } else if (t.typ === "drittprojekt") {
+      if (tag > e) hideGuids.push(...t.objektGuids);
+      else { showGuids.push(...t.objektGuids); if (farbeEin && tag >= s) colorDrittprojekt.push(...t.objektGuids); if (tag >= s) aktive.push(t); }
     }
   }
 
@@ -84,6 +92,8 @@ export async function dreiDZustandAufTagSetzen(api: ApiInstance, tasks: Task[], 
   if (colorAbbruch.length > 0) setzeZustandAsync(api, colorAbbruch, { color: TYP_FARBEN.abbruch });
   if (colorNeubau.length > 0) setzeZustandAsync(api, colorNeubau, { color: TYP_FARBEN.neubau });
   if (colorTemp.length > 0) setzeZustandAsync(api, colorTemp, { color: TYP_FARBEN.temporaer });
+  if (colorBaustelleneinrichtung.length > 0) setzeZustandAsync(api, colorBaustelleneinrichtung, { color: TYP_FARBEN.baustelleneinrichtung });
+  if (colorDrittprojekt.length > 0) setzeZustandAsync(api, colorDrittprojekt, { color: TYP_FARBEN.drittprojekt });
   if (selGuidsLocal.length > 0) await selektieren(api, selGuidsLocal);
 
   return aktive;

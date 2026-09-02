@@ -41,6 +41,9 @@ export default function GanttImport({ onImport, taskCount, ganttInfo }: Props) {
     const s = String(v ?? "").toLowerCase().trim();
     if (s === "bestand") return "bestand";
     if (s === "abbruch") return "abbruch";
+    if (s === "temporaer" || s === "temporär" || s === "bauhilfsmassnahme" || s === "bauhilfsmaßnahme") return "temporaer";
+    if (s === "baustelleneinrichtung") return "baustelleneinrichtung";
+    if (s === "drittprojekt") return "drittprojekt";
     return "neubau";
   }
 

@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import type { Task } from "../types";
-import { parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks, nsKey } from "../types";
+import { parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks, nsKey, TASK_TYP_FARBE } from "../types";
 import type { Kalender } from "./kalenderHelpers";
 import { istArbeitstag, LEERER_KALENDER, getKW } from "./kalenderHelpers";
 import DatePicker from "./DatePicker";
@@ -35,7 +35,7 @@ interface Props {
   kalender?: Kalender;
 }
 
-const FARBEN: Record<string, string> = { neubau: "#6cc07a", bestand: "#999", abbruch: "#edb94c", temporaer: "#a0522d" };
+const FARBEN: Record<string, string> = TASK_TYP_FARBE;
 const ROW_H = 28;
 const HEAD_H = 34;
 const MIN_PX = 0.3;

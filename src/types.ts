@@ -2,7 +2,23 @@ import type { Kalender } from "./components/kalenderHelpers";
 import { arbeitstageZwischen, LEERER_KALENDER } from "./components/kalenderHelpers";
 import type { Stammdaten } from "./components/stammdatenHelpers";
 
-export type TaskTyp = "neubau" | "bestand" | "abbruch" | "temporaer";
+export type TaskTyp = "neubau" | "bestand" | "abbruch" | "temporaer" | "baustelleneinrichtung" | "drittprojekt";
+
+// Anzeige-Reihenfolge + deutsches Label je Typ — "temporaer" heisst intern weiterhin so (bestehende
+// Simulationsdaten speichern diesen Key), wird aber überall als "Bauhilfsmassnahme" angezeigt (Begriff
+// aus buildingSMART UCM #3509). Einzige Stelle für Typ-Labels, damit eine künftige Umbenennung nicht an
+// einzelnen Stellen vergessen werden kann.
+export const TASK_TYP_LISTE: TaskTyp[] = ["neubau", "bestand", "abbruch", "temporaer", "baustelleneinrichtung", "drittprojekt"];
+export const TASK_TYP_LABEL: Record<TaskTyp, string> = {
+  neubau: "Neubau", bestand: "Bestand", abbruch: "Abbruch", temporaer: "Bauhilfsmassnahme",
+  baustelleneinrichtung: "Baustelleneinrichtung", drittprojekt: "Drittprojekt",
+};
+// Gemeinsame Farbpalette für GanttChart/TabAbspielen/dreiDHeuteHelper (waren zuvor drei identische,
+// unabhängig gepflegte Kopien).
+export const TASK_TYP_FARBE: Record<TaskTyp, string> = {
+  neubau: "#6cc07a", bestand: "#999999", abbruch: "#edb94c", temporaer: "#a0522d",
+  baustelleneinrichtung: "#4a90d9", drittprojekt: "#9b8ec4",
+};
 
 export interface Task {
   id: string;

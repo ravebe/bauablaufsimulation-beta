@@ -2,14 +2,19 @@ import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import type { SimProjekt, Task } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
-import { formatDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, nsKey, sucheSortiereTasks } from "../types";
+import { formatDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, nsKey, sucheSortiereTasks, TASK_TYP_FARBE, TASK_TYP_LABEL } from "../types";
 import { arbeitstageZwischen, LEERER_KALENDER } from "./kalenderHelpers";
 import GanttChart from "./GanttChart";
 import { useDoppelklickHinweis } from "../hooks/useDoppelklickHinweis";
 
 interface Props { api: ApiInstance | null; projectId?: string | null; aktiveSim: SimProjekt | null; aktivesModellId: string | null; taskSort?: "gantt" | "datum" | "aktiv" | "name" | "nummer"; sharedNadelTag?: React.MutableRefObject<number>; }
 
-const FARBEN = { neubau: "#6cc07a", bestand: "#999999", abbruch: "#edb94c", temporaer: "#a0522d" };
+const FARBEN = TASK_TYP_FARBE;
+// Typen mit demselben Zeit-Verhalten wie "temporaer" (sichtbar von Start bis Ende, dann ausgeblendet) —
+// baustelleneinrichtung/drittprojekt teilen sich diese Logik überall unten.
+function istZeitlichWieTemporaer(typ: Task["typ"]): boolean {
+  return typ === "temporaer" || typ === "baustelleneinrichtung" || typ === "drittprojekt";
+}
 
 function tagVonDatum(s: string, min: Date): number {
   const d = parseDateUniversal(s);
@@ -161,7 +166,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
     for (const t of alleTasks) {
       if (t.typ === "bestand" && t.objektGuids.length > 0)
         await setzeZustand(t.objektGuids, { visible: true, color: FARBEN.bestand });
-      else if ((t.typ === "abbruch" || t.typ === "temporaer") && t.objektGuids.length > 0)
+      else if ((t.typ === "abbruch" || istZeitlichWieTemporaer(t.typ)) && t.objektGuids.length > 0)
         await setzeZustand(t.objektGuids, { visible: true });
     }
     setCurrentTag(0); currentTagRef.current = 0;
@@ -181,6 +186,8 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
     const colorAbbruch: string[] = [];
     const colorNeubau: string[] = [];
     const colorTemp: string[] = [];
+    const colorBaustelleneinrichtung: string[] = [];
+    const colorDrittprojekt: string[] = [];
     const selGuidsLocal: string[] = [];
 
     for (const t of alleTasks) {
@@ -199,16 +206,24 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
       } else if (t.typ === "temporaer") {
         if (tag > e) hideGuids.push(...t.objektGuids);
         else { showGuids.push(...t.objektGuids); if (farbeEin && tag >= s) colorTemp.push(...t.objektGuids); }
+      } else if (t.typ === "baustelleneinrichtung") {
+        if (tag > e) hideGuids.push(...t.objektGuids);
+        else { showGuids.push(...t.objektGuids); if (farbeEin && tag >= s) colorBaustelleneinrichtung.push(...t.objektGuids); }
+      } else if (t.typ === "drittprojekt") {
+        if (tag > e) hideGuids.push(...t.objektGuids);
+        else { showGuids.push(...t.objektGuids); if (farbeEin && tag >= s) colorDrittprojekt.push(...t.objektGuids); }
       }
     }
 
-    // Max 7 gebatchte API-Calls statt 610+
+    // Max 9 gebatchte API-Calls statt 610+
     if (hideGuids.length > 0) await setzeZustand(hideGuids, { visible: false });
     if (showGuids.length > 0) await setzeZustand(showGuids, { visible: true });
     if (colorBestand.length > 0) setzeZustandAsync(colorBestand, { color: FARBEN.bestand });
     if (colorAbbruch.length > 0) setzeZustandAsync(colorAbbruch, { color: FARBEN.abbruch });
     if (colorNeubau.length > 0) setzeZustandAsync(colorNeubau, { color: FARBEN.neubau });
     if (colorTemp.length > 0) setzeZustandAsync(colorTemp, { color: FARBEN.temporaer });
+    if (colorBaustelleneinrichtung.length > 0) setzeZustandAsync(colorBaustelleneinrichtung, { color: FARBEN.baustelleneinrichtung });
+    if (colorDrittprojekt.length > 0) setzeZustandAsync(colorDrittprojekt, { color: FARBEN.drittprojekt });
     if (selGuidsLocal.length > 0) await selektieren(selGuidsLocal);
 
     const aktive = alleTasks.filter(t => t.objektGuids.length > 0 && istAktiv(t, tag));
@@ -221,9 +236,12 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
     setFarbModusAktiv(neu);
     farbModusRef.current = neu; // sofort setzen, damit ein laufendes Playback (rAF-Loop) es ohne Verzögerung sieht
     if (!api || !aktiveSim || !minDate) return;
-    // Aktuell sichtbare neubau/temporaer-Objekte sofort ein- bzw. zurückfärben (bestand/abbruch bleiben unverändert)
+    // Aktuell sichtbare neubau/temporaer/baustelleneinrichtung/drittprojekt-Objekte sofort ein- bzw.
+    // zurückfärben (bestand/abbruch bleiben unverändert)
     const colorNeubau: string[] = [];
     const colorTemp: string[] = [];
+    const colorBaustelleneinrichtung: string[] = [];
+    const colorDrittprojekt: string[] = [];
     const tag = currentTagRef.current;
     for (const t of aktiveSim.tasks) {
       if (t.objektGuids.length === 0) continue;
@@ -231,9 +249,13 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
       const e = t.end ? tagVonDatum(t.end, minDate) : s;
       if (t.typ === "neubau" && tag >= s) colorNeubau.push(...t.objektGuids);
       else if (t.typ === "temporaer" && tag >= s && tag <= e) colorTemp.push(...t.objektGuids);
+      else if (t.typ === "baustelleneinrichtung" && tag >= s && tag <= e) colorBaustelleneinrichtung.push(...t.objektGuids);
+      else if (t.typ === "drittprojekt" && tag >= s && tag <= e) colorDrittprojekt.push(...t.objektGuids);
     }
     if (colorNeubau.length > 0) setzeZustandAsync(colorNeubau, { color: neu ? FARBEN.neubau : "reset" });
     if (colorTemp.length > 0) setzeZustandAsync(colorTemp, { color: neu ? FARBEN.temporaer : "reset" });
+    if (colorBaustelleneinrichtung.length > 0) setzeZustandAsync(colorBaustelleneinrichtung, { color: neu ? FARBEN.baustelleneinrichtung : "reset" });
+    if (colorDrittprojekt.length > 0) setzeZustandAsync(colorDrittprojekt, { color: neu ? FARBEN.drittprojekt : "reset" });
   }
 
   // --- Pre-computed Events (sortiert nach Tag) ---
@@ -287,8 +309,8 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
         } else if (t.typ === "abbruch") {
           // Abbruch wird erst bei End-Event ausgeblendet
           setzeZustandAsync(t.objektGuids, { color: FARBEN.abbruch });
-        } else if (t.typ === "temporaer") {
-          if (farbModusRef.current) setzeZustandAsync(t.objektGuids, { color: FARBEN.temporaer });
+        } else if (istZeitlichWieTemporaer(t.typ)) {
+          if (farbModusRef.current) setzeZustandAsync(t.objektGuids, { color: FARBEN[t.typ] });
           selektierenAsync(t.objektGuids);
           setTimeout(() => { (api!.viewer as any).setSelection({ modelObjectIds: [] }, "set").catch(() => {}); }, 1000);
         }
@@ -303,7 +325,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
         statusChanged = true;
         if (t.typ === "abbruch") {
           hideGuids.push(...t.objektGuids);
-        } else if (t.typ === "temporaer") {
+        } else if (istZeitlichWieTemporaer(t.typ)) {
           selektierenAsync(t.objektGuids);
           const batch = zuBatch(t.objektGuids); const viewer = api!.viewer;
           setTimeout(() => {
@@ -429,7 +451,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
 
   const aktuellesDatum = minDate ? datumBeiTag(minDate, currentTag) : "";
   const dot = (typ: string) => ({ width: 8, height: 8, borderRadius: "50%" as const, display: "inline-block" as const, marginRight: 6, flexShrink: 0 as const,
-    background: typ === "neubau" ? FARBEN.neubau : typ === "abbruch" ? FARBEN.abbruch : typ === "temporaer" ? FARBEN.temporaer : FARBEN.bestand });
+    background: (FARBEN as Record<string, string>)[typ] ?? FARBEN.bestand });
 
   return (
     <div className="tc-setup-content">
@@ -612,10 +634,12 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
       </div>
 
       <div style={{ padding: "4px 0", fontSize: 10, color: "var(--tc-text-3)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <span><span style={{ ...dot("neubau"), width: 6, height: 6, marginRight: 3 }} />Neubau</span>
-        <span><span style={{ ...dot("bestand"), width: 6, height: 6, marginRight: 3 }} />Bestand</span>
-        <span><span style={{ ...dot("abbruch"), width: 6, height: 6, marginRight: 3 }} />Abbruch</span>
-        <span><span style={{ ...dot("temporaer"), width: 6, height: 6, marginRight: 3 }} />Temporär</span>
+        <span><span style={{ ...dot("neubau"), width: 6, height: 6, marginRight: 3 }} />{TASK_TYP_LABEL.neubau}</span>
+        <span><span style={{ ...dot("bestand"), width: 6, height: 6, marginRight: 3 }} />{TASK_TYP_LABEL.bestand}</span>
+        <span><span style={{ ...dot("abbruch"), width: 6, height: 6, marginRight: 3 }} />{TASK_TYP_LABEL.abbruch}</span>
+        <span><span style={{ ...dot("temporaer"), width: 6, height: 6, marginRight: 3 }} />{TASK_TYP_LABEL.temporaer}</span>
+        <span><span style={{ ...dot("baustelleneinrichtung"), width: 6, height: 6, marginRight: 3 }} />{TASK_TYP_LABEL.baustelleneinrichtung}</span>
+        <span><span style={{ ...dot("drittprojekt"), width: 6, height: 6, marginRight: 3 }} />{TASK_TYP_LABEL.drittprojekt}</span>
         <button className="tc-btn-ghost" style={{ marginLeft: "auto", padding: "1px 4px", color: farbModusAktiv ? "var(--tc-blue)" : "#8a9baa", flexShrink: 0 }}
           title={farbModusAktiv ? "Typ-Einfärbung deaktivieren" : "Bauteile nach Typ einfärben"}
           onClick={toggleFarbModus}>
