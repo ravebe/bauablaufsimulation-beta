@@ -601,7 +601,7 @@ export default function App() {
       </div>
 
       {zugriffsManagerOffen && <ZugriffskontrollManager api={api} onClose={() => setZugriffsManagerOffen(false)}
-        sims={sims} aktivId={aktivId} onWechsel={setAktivId} />}
+        sims={sims} setSims={setSims} aktivId={aktivId} onWechsel={setAktivId} userId={userId} />}
       {kalenderManagerOffen && aktiveSim && <KalenderManager sim={aktiveSim} updateSim={updateSim} onClose={() => setKalenderManagerOffen(false)} />}
       {hilfeOffen && <HilfeManager initialTab={aktTab} onClose={() => setHilfeOffen(false)} />}
     </div>

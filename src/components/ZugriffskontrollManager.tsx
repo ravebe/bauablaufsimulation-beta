@@ -1,14 +1,17 @@
 // ZugriffskontrollManager.tsx — Fenster im Organizer-Design zur Zugriffskontrolle pro Projektmitglied.
 // Trimble Connect stellt über die Workspace-API keine Connect-Gruppen bereit (Gruppen leben in der separaten
 // Core-REST-API, die einen eigenen OAuth-Login bräuchte) — echte Connect-Gruppen sind einzelnen Nutzern
-// (project.getMembers()) gewichen. Auswahl wird aktuell nur lokal gehalten, noch nicht gespeichert/durchgesetzt.
+// (project.getMembers()) gewichen.
+// Einzige noch verbliebene Zugriffskontroll-UI der App (das frühere ⋮-Menü "Zugriff für Projektmitglieder"
+// je Simulations-Karte wurde entfernt, siehe SimKebabMenu.tsx) — schreibt direkt in sim.zugriff über setSims,
+// dieselbe Datenstruktur, die App.tsx's getZugriff() zur Durchsetzung liest.
 import { useState, useEffect } from "react";
 import type { ApiInstance, TcProjectMember } from "../hooks/useApi";
 import type { SimProjekt } from "../types";
 import { useClickOutside } from "../hooks/useClickOutside";
 
 type Zugriff = "edit" | "read" | "none";
-interface Zeile { id: string; name: string; email?: string; zugriff: Zugriff; }
+interface Mitglied { id: string; name: string; email?: string; }
 
 const OPTIONEN = [
   { key: "edit" as const, label: "Zugriff bearbeiten", icon: "✏", desc: "Inhalt hinzufügen, bearbeiten oder entfernen" },
@@ -25,19 +28,29 @@ interface Props {
   api: ApiInstance | null;
   onClose: () => void;
   sims: SimProjekt[];
+  setSims: React.Dispatch<React.SetStateAction<SimProjekt[]>>;
   aktivId: string | null;
   onWechsel: (id: string) => void;
+  userId?: string | null;
 }
 
 // Auf Modulebene definiert (nicht mehr innerhalb von ZugriffskontrollManager) — sonst entstünde bei
 // jedem Render der Elternkomponente ein neuer Komponenten-Typ, der React zwingt, dieses Dropdown
 // (und ein offen stehendes Menü) komplett neu zu mounten statt es nur zu aktualisieren.
-function AccessDropdown({ id, aktuell, onSelect, offenerDropdown, setOffenerDropdown }: {
+function AccessDropdown({ id, aktuell, onSelect, offenerDropdown, setOffenerDropdown, disabled }: {
   id: string; aktuell: Zugriff; onSelect: (v: Zugriff) => void;
   offenerDropdown: string | null; setOffenerDropdown: (v: string | null | ((prev: string | null) => string | null)) => void;
+  disabled: boolean;
 }) {
   const opt = OPTIONEN.find(o => o.key === aktuell)!;
   const ref = useClickOutside<HTMLDivElement>(offenerDropdown === id, () => setOffenerDropdown(null));
+  if (disabled) {
+    return (
+      <div style={{ fontSize: 11, padding: "5px 10px", color: "var(--tc-text-3)", minWidth: 150 }}>
+        {opt.icon} {opt.label}
+      </div>
+    );
+  }
   return (
     <div ref={ref} style={{ position: "relative" }} onClick={e => e.stopPropagation()}>
       <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px", minWidth: 150, justifyContent: "space-between", display: "flex" }}
@@ -63,10 +76,10 @@ function AccessDropdown({ id, aktuell, onSelect, offenerDropdown, setOffenerDrop
   );
 }
 
-export default function ZugriffskontrollManager({ api, onClose, sims, aktivId, onWechsel }: Props) {
+export default function ZugriffskontrollManager({ api, onClose, sims, setSims, aktivId, onWechsel, userId }: Props) {
   const aktiveSim = sims.find(s => s.id === aktivId) ?? null;
-  const [standard, setStandard] = useState<Zugriff>("read");
-  const [mitglieder, setMitglieder] = useState<Zeile[] | null>(null);
+  const [mitglieder, setMitglieder] = useState<Mitglied[] | null>(null);
+  const [istAdmin, setIstAdmin] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
   const [offenerDropdown, setOffenerDropdown] = useState<string | null>(null);
   const [simDropdownOffen, setSimDropdownOffen] = useState(false);
@@ -78,12 +91,26 @@ export default function ZugriffskontrollManager({ api, onClose, sims, aktivId, o
       try {
         const liste = await api.project.getMembers!();
         const aktive = liste.filter(m => m.status !== "REMOVED");
-        setMitglieder(aktive.map(m => ({ id: m.id, name: mitgliedName(m), email: m.email, zugriff: "read" as Zugriff })));
+        setMitglieder(aktive.map(m => ({ id: m.id, name: mitgliedName(m), email: m.email })));
+        // "Admin" = Trimble-Connect-Projektrolle enthält "admin" (z.B. "Project Administrator") — die API
+        // liefert role als freien String ohne dokumentierte Literale, daher bewusst case-insensitiver
+        // Teilstring-Vergleich statt exaktem Abgleich.
+        const eigenes = liste.find(m => m.id === userId);
+        setIstAdmin(!!eigenes?.role && eigenes.role.toLowerCase().includes("admin"));
       } catch {
         setFehler("Projektmitglieder konnten nicht geladen werden");
       }
     })();
-  }, [api]);
+  }, [api, userId]);
+
+  const istErsteller = !!aktiveSim && !!userId && aktiveSim.erstellerId === userId;
+  const darfBearbeiten = !!aktiveSim && (istAdmin || istErsteller);
+  const standard: Zugriff = (aktiveSim?.zugriff?.["__default__"] as Zugriff) ?? "read";
+
+  function zugriffSetzen(key: string, wert: Zugriff) {
+    if (!aktiveSim) return;
+    setSims(prev => prev.map(s => s.id === aktiveSim.id ? { ...s, zugriff: { ...(s.zugriff || {}), [key]: wert } } : s));
+  }
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}
@@ -121,6 +148,12 @@ export default function ZugriffskontrollManager({ api, onClose, sims, aktivId, o
             Für ein Mitglied angewendete Zugriffskontrolle setzt den Standardzugriff außer Kraft.
           </div>
 
+          {aktiveSim && !darfBearbeiten && (
+            <div style={{ fontSize: 11, color: "var(--tc-text-3)", background: "var(--tc-bg-hover)", border: "1px solid var(--tc-border-light)", padding: "6px 10px", marginBottom: 12 }}>
+              Nur der Ersteller dieser Simulation oder Projekt-Administratoren können die Zugriffsrechte ändern.
+            </div>
+          )}
+
           <div style={{ fontSize: 9, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px", marginBottom: 6 }}>STANDARDZUGRIFF</div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px",
             border: "1px solid var(--tc-border-light)", marginBottom: 16, background: "var(--tc-bg-hover)" }}>
@@ -128,8 +161,8 @@ export default function ZugriffskontrollManager({ api, onClose, sims, aktivId, o
               <div style={{ fontSize: 12, fontWeight: 600 }}>Standardzugriff</div>
               <div style={{ fontSize: 10, color: "var(--tc-text-3)" }}>Alle Projektmitglieder ohne eigene Regel</div>
             </div>
-            <AccessDropdown id="standard" aktuell={standard} onSelect={setStandard}
-              offenerDropdown={offenerDropdown} setOffenerDropdown={setOffenerDropdown} />
+            <AccessDropdown id="standard" aktuell={standard} onSelect={v => zugriffSetzen("__default__", v)}
+              offenerDropdown={offenerDropdown} setOffenerDropdown={setOffenerDropdown} disabled={!darfBearbeiten} />
           </div>
 
           <div style={{ fontSize: 9, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px", marginBottom: 6 }}>ZUGRIFF PRO MITGLIED</div>
@@ -143,15 +176,11 @@ export default function ZugriffskontrollManager({ api, onClose, sims, aktivId, o
                 <div style={{ fontSize: 12, fontWeight: 500 }}>👤 {m.name}</div>
                 {m.email && m.email !== m.name && <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>{m.email}</div>}
               </div>
-              <AccessDropdown id={m.id} aktuell={m.zugriff}
-                onSelect={v => setMitglieder(prev => prev!.map(x => x.id === m.id ? { ...x, zugriff: v } : x))}
-                offenerDropdown={offenerDropdown} setOffenerDropdown={setOffenerDropdown} />
+              <AccessDropdown id={m.id} aktuell={(aktiveSim?.zugriff?.[m.id] as Zugriff) ?? standard}
+                onSelect={v => zugriffSetzen(m.id, v)}
+                offenerDropdown={offenerDropdown} setOffenerDropdown={setOffenerDropdown} disabled={!darfBearbeiten} />
             </div>
           ))}
-
-          <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 14, fontStyle: "italic" }}>
-            Einstellungen werden noch nicht gespeichert oder durchgesetzt — Vorschau.
-          </div>
         </div>
       </div>
     </div>

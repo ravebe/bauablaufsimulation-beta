@@ -1,7 +1,9 @@
-// SimKebabMenu.tsx — ⋮-Menü der Simulationskarte: Gantt-Vorlage/-Export, Kopieren, Zugriff, Löschen
+// SimKebabMenu.tsx — ⋮-Menü der Simulationskarte: Gantt-Vorlage/-Export, Kopieren, Löschen
+// Zugriffskontrolle liegt nicht mehr hier, sondern zentral im Zugriffskontrollmanager (App-Header, ⋮),
+// siehe ZugriffskontrollManager.tsx — nur dort einstellbar, für Admins/Ersteller.
 import { useState } from "react";
 import * as XLSX from "xlsx";
-import type { SimProjekt, Zugriff } from "../types";
+import type { SimProjekt } from "../types";
 import { EXPORT_FORMATE } from "./ganttExportFormate";
 import { useClickOutside } from "../hooks/useClickOutside";
 
@@ -10,7 +12,6 @@ interface Props {
   istErsteller: boolean;
   onKopieren: () => void;
   onUmbenennen: (neuerName: string) => void;
-  onZugriffAendern: (key: Zugriff) => void;
   onLoeschen: () => void;
 }
 
@@ -31,20 +32,12 @@ function downloadGanttVorlage() {
   XLSX.writeFile(wb, "4D_Gantt_Vorlage.xlsx");
 }
 
-const ZUGRIFF_OPTIONEN = [
-  { key: "edit" as const, label: "Zugriff bearbeiten", desc: "Inhalt hinzufügen, bearbeiten" },
-  { key: "read" as const, label: "Schreibgeschützt", desc: "Nur Anzeigen von Inhalt" },
-  { key: "none" as const, label: "Kein Zugriff", desc: "Projekt wird ausgeblendet" },
-];
-
-export default function SimKebabMenu({ sim, istErsteller, onKopieren, onUmbenennen, onZugriffAendern, onLoeschen }: Props) {
+export default function SimKebabMenu({ sim, istErsteller, onKopieren, onUmbenennen, onLoeschen }: Props) {
   const [offen, setOffen] = useState(false);
   const [exportSubOffen, setExportSubOffen] = useState(false);
   const [umbenennOffen, setUmbenennOffen] = useState(false);
   const [neuerName, setNeuerName] = useState("");
   const ref = useClickOutside<HTMLDivElement>(offen, () => { setOffen(false); setExportSubOffen(false); setUmbenennOffen(false); });
-
-  const aktDefault = sim.zugriff?.["__default__"] ?? "read";
 
   function speichernUmbenennen() {
     if (neuerName.trim()) onUmbenennen(neuerName.trim());
@@ -113,25 +106,6 @@ export default function SimKebabMenu({ sim, istErsteller, onKopieren, onUmbenenn
             style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", fontSize: 11, cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
             onClick={() => { onKopieren(); setOffen(false); }}
           >Projekt kopieren</button>
-          {istErsteller && (
-          <>
-          <div style={{ padding: "6px 14px", fontSize: 12, color: "var(--tc-text-3)", fontWeight: 600, borderBottom: "1px solid #eef1f4" }}>
-            Zugriff für Projektmitglieder
-          </div>
-          {ZUGRIFF_OPTIONEN.map(opt => {
-            const istAktiv = aktDefault === opt.key;
-            return (
-            <button key={opt.key}
-              style={{ display: "block", width: "100%", padding: "6px 14px", background: istAktiv ? "#f0f7ff" : "none", border: "none", textAlign: "left", fontSize: 11, cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
-              onClick={() => { onZugriffAendern(opt.key); setOffen(false); }}
-            >
-              <div style={{ fontWeight: 500 }}>{opt.label} {istAktiv && "✓"}</div>
-              {opt.desc && <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>{opt.desc}</div>}
-            </button>
-            );
-          })}
-          </>
-          )}
           {istErsteller && (
           <button
             style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", fontSize: 11, cursor: "pointer" }}
