@@ -7,7 +7,7 @@
 import type { Task } from "../types";
 import { istGruppe, datumPlusTage } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
-import { dauerBerechnetTask, gewerkeFuerKuerzel } from "./stammdatenHelpers";
+import { dauerBerechnetTask, gewerkeFuerKuerzel, hatKalkulationsWerte } from "./stammdatenHelpers";
 import type { Kalender } from "./kalenderHelpers";
 import { endDatumAusArbeitstagen } from "./kalenderHelpers";
 
@@ -51,7 +51,9 @@ export function pruefeZeitplanBereitschaft(tasks: Task[], stammdaten: Stammdaten
  *  erste Task behält sein bestehendes Startdatum (Anker der Kette), alle anderen starten am Ende
  *  ihres Vorgängers + Wartetage (dieselbe Logik wie kaskadiereNachfolger/ganttSetPredecessor). Geht
  *  rekursiv/memoisiert vor, damit die Reihenfolge im Array keine Rolle spielt. Gruppen werden nicht
- *  verändert, ihre Anzeige leitet sich weiterhin aus den (hier aktualisierten) Kind-Tasks ab. */
+ *  verändert, ihre Anzeige leitet sich weiterhin aus den (hier aktualisierten) Kind-Tasks ab.
+ *  Tasks ohne hinterlegte Kalkulationswerte (hatKalkulationsWerte() false) bleiben unangetastet —
+ *  sonst würde "berechnete Dauer" 0 Tage ergeben und den Task fälschlich auf Start=Ende zusammenziehen. */
 export function berechneZeitplanUebernahme(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender): Task[] {
   const byId = new Map(tasks.map(t => [t.id, t]));
   const ersterId = echteTasks(tasks)[0]?.id;
@@ -66,13 +68,18 @@ export function berechneZeitplanUebernahme(tasks: Task[], stammdaten: Stammdaten
     if (inArbeit.has(id)) return { start: t.start, end: t.end }; // Zyklus-Schutz (sollte durch istZirkular() nie vorkommen)
     inArbeit.add(id);
 
-    const dauer = dauerBerechnetTask(t, stammdaten);
-    const start = (id === ersterId || !t.predecessorId)
-      ? t.start
-      : (() => { const v = loese(t.predecessorId!); return v.end ? datumPlusTage(v.end, t.lagDays ?? 0) : t.start; })();
-    const end = endDatumAusArbeitstagen(start, dauer, kalender);
+    let result: { start: string; end: string };
+    if (!hatKalkulationsWerte(t, stammdaten)) {
+      result = { start: t.start, end: t.end };
+    } else {
+      const start = (id === ersterId || !t.predecessorId)
+        ? t.start
+        : (() => { const v = loese(t.predecessorId!); return v.end ? datumPlusTage(v.end, t.lagDays ?? 0) : t.start; })();
+      const dauer = dauerBerechnetTask(t, stammdaten);
+      const end = endDatumAusArbeitstagen(start, dauer, kalender);
+      result = { start, end };
+    }
 
-    const result = { start, end };
     geloest.set(id, result);
     inArbeit.delete(id);
     return result;

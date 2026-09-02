@@ -178,6 +178,20 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
     if (el) el.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [aktivTaskId]);
 
+  // Mausrad scrollt zeilenweise (wie im Gantt), statt in großen, browserabhängigen Pixel-Sprüngen
+  useEffect(() => {
+    const el = scrollRef.current; if (!el) return;
+    const handler = (e: WheelEvent) => {
+      if (e.deltaY === 0 || e.deltaX !== 0) return;
+      e.preventDefault();
+      const row = el.querySelector<HTMLElement>(".task-row");
+      const rowH = row ? row.getBoundingClientRect().height : 29;
+      el.scrollTop += (e.deltaY > 0 ? 1 : -1) * rowH;
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, []);
+
   useEffect(() => { localStorage.setItem(lsBauteilListHKey, String(bauteilListHeight)); }, [lsBauteilListHKey, bauteilListHeight]);
 
   // Display-Config neu laden wenn Sim wechselt

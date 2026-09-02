@@ -164,27 +164,34 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
     setPxProTag(Math.max(MIN_PX, Math.min(10, bodyRef.current.clientWidth / totalTage)));
   }, [totalTage]);
 
-  // Wheel + Strg = Zoom zum Mauszeiger (wie Google Maps); ohne Strg scrollt das Mausrad normal,
-  // damit man mit dem Rad nicht versehentlich statt der Seite den Zeitmaßstab verstellt.
+  // Wheel + Strg = Zoom zum Mauszeiger (wie Google Maps); ohne Strg scrollt das Mausrad
+  // vertikal in festen Zeilen-Schritten (ROW_H), statt in großen, browserabhängigen
+  // Pixel-Sprüngen, damit pro Rad-Tick jeweils genau eine Zeile hinzukommt.
   useEffect(() => {
     const el = bodyRef.current; if (!el) return;
     const handler = (e: WheelEvent) => {
-      if (!e.ctrlKey) return;
-      e.preventDefault();
-      scrollLock.current = true;
-      const rect = el.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const curPx = pxRef.current;
-      const dayAtCursor = (el.scrollLeft + mouseX) / curPx;
-      const factor = e.deltaY < 0 ? 1.15 : 0.87;
-      const newPx = Math.max(MIN_PX, Math.min(MAX_PX, curPx * factor));
-      pxRef.current = newPx;
-      setPxProTag(newPx);
-      requestAnimationFrame(() => {
-        el.scrollLeft = Math.max(0, dayAtCursor * newPx - mouseX);
-        if (headerRef.current) headerRef.current.scrollLeft = el.scrollLeft;
-        setTimeout(() => { scrollLock.current = false; }, 100);
-      });
+      if (e.ctrlKey) {
+        e.preventDefault();
+        scrollLock.current = true;
+        const rect = el.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const curPx = pxRef.current;
+        const dayAtCursor = (el.scrollLeft + mouseX) / curPx;
+        const factor = e.deltaY < 0 ? 1.15 : 0.87;
+        const newPx = Math.max(MIN_PX, Math.min(MAX_PX, curPx * factor));
+        pxRef.current = newPx;
+        setPxProTag(newPx);
+        requestAnimationFrame(() => {
+          el.scrollLeft = Math.max(0, dayAtCursor * newPx - mouseX);
+          if (headerRef.current) headerRef.current.scrollLeft = el.scrollLeft;
+          setTimeout(() => { scrollLock.current = false; }, 100);
+        });
+        return;
+      }
+      if (e.deltaY !== 0 && e.deltaX === 0) {
+        e.preventDefault();
+        el.scrollTop += (e.deltaY > 0 ? 1 : -1) * ROW_H;
+      }
     };
     el.addEventListener("wheel", handler, { passive: false });
     return () => el.removeEventListener("wheel", handler);
@@ -227,6 +234,18 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
     const b = bodyRef.current, h = headerRef.current, l = labelRef.current;
     if (b && h) h.scrollLeft = b.scrollLeft;
     if (b && l) l.scrollTop = b.scrollTop;
+  }, []);
+
+  // Gleiche Zeilen-weise Scroll-Schrittweite wie im Chart-Body, wenn über der Label-Spalte gescrollt wird
+  useEffect(() => {
+    const el = labelRef.current; if (!el) return;
+    const handler = (e: WheelEvent) => {
+      if (e.deltaY === 0 || e.deltaX !== 0) return;
+      e.preventDefault();
+      el.scrollTop += (e.deltaY > 0 ? 1 : -1) * ROW_H;
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
   }, []);
 
   const startResize = useCallback((e: React.MouseEvent) => {

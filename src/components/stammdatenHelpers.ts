@@ -306,6 +306,14 @@ function rateFuerKuerzel(gewerk: Gewerk, kuerzel: string): Rate | undefined {
   return gewerk.raten.find(r => r.kuerzel === kuerzel);
 }
 
+/** true, wenn für den Task mindestens ein Mengen-Wert hinterlegt ist, der in dauerBerechnetTask()
+ *  tatsächlich einfließt — ohne das wäre "berechnete Dauer" nicht wirklich berechnet, sondern schlicht 0
+ *  (siehe berechneZeitplanUebernahme() in zeitplanUebernahmeHelpers.ts, das solche Tasks deshalb unangetastet lässt). */
+export function hatKalkulationsWerte(task: Task, stammdaten: Stammdaten): boolean {
+  if (!task.bauteilKuerzel || !task.mengen) return false;
+  return stammdaten.gewerke.some(gewerk => !!task.mengen![gewerk.key]);
+}
+
 /** Berechnete Dauer eines Tasks: Summe über alle Gewerke mit hinterlegter Menge, gerundet. */
 export function dauerBerechnetTask(task: Task, stammdaten: Stammdaten): number {
   if (!task.bauteilKuerzel || !task.mengen) return 0;
