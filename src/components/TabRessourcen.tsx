@@ -381,6 +381,22 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
 
   return (
     <div style={{ padding: 14, fontSize: 12 }}>
+      {importFehler && <div className="alert err" style={{ marginBottom: 10 }}>! {importFehler}</div>}
+
+      {stammdaten.gewerke.length === 0 && (
+        <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
+          Noch keine Stammdaten hinterlegt — über einen der Lade-Buttons starten oder Gewerke manuell anlegen.
+        </div>
+      )}
+
+      {stammdaten.gewerke.length > 0 && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          <StatTile label="Elemente ohne Leistungswert" wert={String(kuerzelOhneLw.length)} status={kuerzelOhneLw.length > 0 ? "warning" : "good"} />
+          <StatTile label="Elemente ohne Stammdaten" wert={String(kuerzelOhneRate.length)} status={kuerzelOhneRate.length > 0 ? "warning" : "good"} />
+          <StatTile label="Unbenutzte Elemente" wert={String(kuerzelUnbenutzt.length)} />
+        </div>
+      )}
+
       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, marginBottom: 10 }}>
         <div ref={exportMenuRef} style={{ position: "relative" }}>
           <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "3px 8px" }}
@@ -434,20 +450,8 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
           </div>
         )}
       </div>
-      {importFehler && <div className="alert err" style={{ marginBottom: 10 }}>! {importFehler}</div>}
-
-      {stammdaten.gewerke.length === 0 && (
-        <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
-          Noch keine Stammdaten hinterlegt — über einen der Lade-Buttons starten oder Gewerke manuell anlegen.
-        </div>
-      )}
 
       {stammdaten.gewerke.length > 0 && (<>
-        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-          <StatTile label="Elemente ohne Leistungswert" wert={String(kuerzelOhneLw.length)} status={kuerzelOhneLw.length > 0 ? "warning" : "good"} />
-          <StatTile label="Elemente ohne Stammdaten" wert={String(kuerzelOhneRate.length)} status={kuerzelOhneRate.length > 0 ? "warning" : "good"} />
-          <StatTile label="Unbenutzte Elemente" wert={String(kuerzelUnbenutzt.length)} />
-        </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontWeight: 600 }}>Arbeitszeit pro Tag (h):</span>
