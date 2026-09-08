@@ -1,6 +1,6 @@
 // TabKalkulation.tsx — Menge→Tage-Kalkulation je Task (AVOR-Logik) mit Plausibilitätsvergleich
 // zur geplanten Dauer aus dem Bauablauf.
-import { useState, useEffect, useMemo, Fragment } from "react";
+import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import type { SimProjekt, Task } from "../types";
 import { istGruppe, berechneNummern, nsKey } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
@@ -11,6 +11,7 @@ import { kuerzelVorschlag } from "./bauteilkatalogHelpers";
 import { StatTile, CategoryBarChart, CockpitAbschnitt, useEingeklappt, FARBEN } from "./cockpitCharts";
 import { ladeObjektAttribute, guidsZuBatch, zeigeBauteileImModell } from "./modelHelpers";
 import { berechneMenge, mengeStatus } from "./formelHelpers";
+import { kalkulationAlsCsv, parseKalkulationCsv, kalkulationAlsJson, parseKalkulationJson } from "./kalkulationExportHelpers";
 
 interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; api?: ApiInstance | null; projectId?: string | null; }
 
@@ -58,6 +59,27 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   // Eingefrorene Zeilen-Reihenfolge (Task-IDs), während in einem Mengen-Feld getippt wird — siehe
   // Freeze-Block weiter unten, direkt vor der Zeilen-Ausgabe.
   const [bearbeitungEingefroren, setBearbeitungEingefroren] = useState<string[] | null>(null);
+
+  // Export/Import der Kalkulations-Zuordnungen (Kürzel/Kranbereich/Mengen je Task), siehe
+  // kalkulationExportHelpers.ts — gleiches UI-Muster wie Export/Import in Tab Ressourcen.
+  const [exportMenuOffen, setExportMenuOffen] = useState(false);
+  const [importMenuOffen, setImportMenuOffen] = useState(false);
+  const [importErgebnis, setImportErgebnis] = useState<string | null>(null);
+  const [importFehler, setImportFehler] = useState<string | null>(null);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+  const importMenuRef = useRef<HTMLDivElement>(null);
+  const importCsvInputRef = useRef<HTMLInputElement>(null);
+  const importJsonInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!exportMenuOffen && !importMenuOffen) return;
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) setExportMenuOffen(false);
+      if (importMenuRef.current && !importMenuRef.current.contains(e.target as Node)) setImportMenuOffen(false);
+    };
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [exportMenuOffen, importMenuOffen]);
 
   function gewerkExpandToggle(key: string) {
     setExpandedGewerk(prev => {
@@ -130,6 +152,48 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     if (wert === null || wert === 0) { delete mengen[gewerkKey]; delete mengenQuelle[gewerkKey]; delete mengenInfo[gewerkKey]; }
     else { mengen[gewerkKey] = wert; mengenQuelle[gewerkKey] = "manuell"; delete mengenInfo[gewerkKey]; }
     taskAendern(task.id, { mengen, mengenQuelle, mengenInfo, mengenObjekte });
+  }
+
+  function kalkulationExportierenCsv() {
+    const blob = new Blob([kalkulationAlsCsv(sim!.tasks, stammdaten)], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `${sim!.name}_Kalkulation.csv`; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function kalkulationExportierenJson() {
+    const blob = new Blob([kalkulationAlsJson(sim!.tasks)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `${sim!.name}_Kalkulation.json`; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function kalkulationImportierenCsv(file: File) {
+    setImportFehler(null); setImportErgebnis(null);
+    try {
+      const erg = parseKalkulationCsv(await file.text(), sim!.tasks, stammdaten);
+      updateSim({ ...sim!, tasks: erg.tasks });
+      const teile = [`${erg.aktualisiert} Task${erg.aktualisiert === 1 ? "" : "s"} aktualisiert`];
+      if (erg.nichtGefunden.length > 0) teile.push(`${erg.nichtGefunden.length} nicht gefunden: ${erg.nichtGefunden.slice(0, 5).join(", ")}${erg.nichtGefunden.length > 5 ? "…" : ""}`);
+      if (erg.mehrdeutig.length > 0) teile.push(`${erg.mehrdeutig.length} mehrdeutiger Name${erg.mehrdeutig.length === 1 ? "" : "n"} (nur 1. Treffer aktualisiert): ${erg.mehrdeutig.slice(0, 5).join(", ")}${erg.mehrdeutig.length > 5 ? "…" : ""}`);
+      setImportErgebnis(teile.join(" · "));
+    } catch (e) {
+      setImportFehler(e instanceof Error ? e.message : "Import fehlgeschlagen");
+    }
+  }
+
+  async function kalkulationImportierenJson(file: File) {
+    setImportFehler(null); setImportErgebnis(null);
+    try {
+      if (!confirm("Kürzel/Kranbereich/Mengen der passenden Tasks werden vollständig durch den Inhalt der Datei ersetzt. Fortfahren?")) return;
+      const erg = parseKalkulationJson(await file.text(), sim!.tasks);
+      updateSim({ ...sim!, tasks: erg.tasks });
+      setImportErgebnis(`${erg.aktualisiert} Task${erg.aktualisiert === 1 ? "" : "s"} aktualisiert${erg.nichtGefunden > 0 ? ` · ${erg.nichtGefunden} Einträge ohne passenden Task ignoriert` : ""}`);
+    } catch (e) {
+      setImportFehler(e instanceof Error ? e.message : "Import fehlgeschlagen");
+    }
   }
 
   // Mengen aus Formeln (Tab Ressourcen) für alle Tasks berechnen. Ein Gewerk-Feld wird nur dann
@@ -546,6 +610,62 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
             )}
           </div>
         )}
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+          <div ref={exportMenuRef} style={{ position: "relative" }}>
+            <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }}
+              onClick={() => setExportMenuOffen(o => !o)} title="Kalkulation exportieren (Kürzel/Kranbereich/Mengen je Task)">
+              Export ▾
+            </button>
+            {exportMenuOffen && (
+              <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 2, background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 50, minWidth: 110 }}>
+                <div onClick={() => { kalkulationExportierenCsv(); setExportMenuOffen(false); }}
+                  style={{ padding: "6px 10px", cursor: "pointer", fontSize: 11 }}
+                  onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")} onMouseLeave={e => (e.currentTarget.style.background = "")}
+                  title="Kürzel/Kranbereich/Mengen je Task als CSV — in Excel bearbeitbar, Reimport ordnet über den Tasknamen zu">
+                  CSV
+                </div>
+                <div onClick={() => { kalkulationExportierenJson(); setExportMenuOffen(false); }}
+                  style={{ padding: "6px 10px", cursor: "pointer", fontSize: 11 }}
+                  onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")} onMouseLeave={e => (e.currentTarget.style.background = "")}
+                  title="Kürzel/Kranbereich/Mengen je Task als JSON — für einen exakten Restore über die Task-ID (z.B. vor einem Bulk-Vorgang)">
+                  JSON
+                </div>
+              </div>
+            )}
+          </div>
+          {!readOnly && (
+            <div ref={importMenuRef} style={{ position: "relative" }}>
+              <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }}
+                onClick={() => setImportMenuOffen(o => !o)} title="Kalkulation importieren">
+                Import ▾
+              </button>
+              {importMenuOffen && (
+                <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 2, background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 50, minWidth: 110 }}>
+                  <div onClick={() => { importCsvInputRef.current?.click(); setImportMenuOffen(false); }}
+                    style={{ padding: "6px 10px", cursor: "pointer", fontSize: 11 }}
+                    onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")} onMouseLeave={e => (e.currentTarget.style.background = "")}
+                    title="Aus einer zuvor exportierten (in Excel bearbeiteten) CSV-Datei importieren — Zuordnung über den Tasknamen">
+                    CSV
+                  </div>
+                  <div onClick={() => { importJsonInputRef.current?.click(); setImportMenuOffen(false); }}
+                    style={{ padding: "6px 10px", cursor: "pointer", fontSize: 11 }}
+                    onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")} onMouseLeave={e => (e.currentTarget.style.background = "")}
+                    title="Aus einer zuvor exportierten JSON-Datei importieren — Zuordnung über die Task-ID">
+                    JSON
+                  </div>
+                </div>
+              )}
+              <input ref={importCsvInputRef} type="file" accept=".csv" style={{ display: "none" }}
+                onChange={e => e.target.files?.[0] && kalkulationImportierenCsv(e.target.files[0])} />
+              <input ref={importJsonInputRef} type="file" accept=".json" style={{ display: "none" }}
+                onChange={e => e.target.files?.[0] && kalkulationImportierenJson(e.target.files[0])} />
+            </div>
+          )}
+          {importFehler && <span style={{ fontSize: 10, color: "var(--tc-red)" }}>! {importFehler}</span>}
+          {importErgebnis && <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>{importErgebnis}</span>}
+        </div>
+
         <div style={{ display: "flex", gap: 12, fontSize: 9, color: "var(--tc-text-3)", marginBottom: 6 }}>
           <span onClick={() => setMengenSortModus(m => m === "auto" ? null : "auto")} title="Automatisch berechnete Felder zuoberst"
             style={{ cursor: "pointer", fontWeight: mengenSortModus === "auto" ? 700 : 400, color: mengenSortModus === "auto" ? "var(--tc-blue)" : "var(--tc-text-3)" }}>

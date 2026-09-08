@@ -114,7 +114,8 @@ function keyLetzterTeil(key: string): string {
   return sep === -1 ? key : key.slice(sep + 2);
 }
 
-function csvZelle(v: string): string {
+/** CSV-Zellen-Escaping (Semikolon-getrennt) — auch von kalkulationExportHelpers.ts genutzt. */
+export function csvZelle(v: string): string {
   return /[;"\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
 }
 
@@ -164,8 +165,9 @@ export function stammdatenAlsCsv(s: Stammdaten, tasks: Task[]): string {
 }
 
 /** Minimaler RFC4180-Parser (Semikolon statt Komma) — versteht Anführungszeichen mit eingebetteten
- *  Semikolons/Zeilenumbrüchen/escapten „"" (wie sie Excel beim Speichern erzeugt). */
-function parseCsvZeilen(text: string): string[][] {
+ *  Semikolons/Zeilenumbrüchen/escapten „"" (wie sie Excel beim Speichern erzeugt). Auch von
+ *  kalkulationExportHelpers.ts genutzt. */
+export function parseCsvZeilen(text: string): string[][] {
   const zeilen: string[][] = [];
   let zeile: string[] = [];
   let feld = "";
