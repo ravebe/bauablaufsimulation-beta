@@ -424,13 +424,13 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   function renderZelle(spalte: Spalte, z: Zeile) {
     switch (spalte) {
       case "nr":
-        return <span style={{ fontSize: 10, color: "#666" }}>{nummern.get(z.t.id)}</span>;
+        return <span style={{ fontSize: 12, color: "#666" }}>{nummern.get(z.t.id)}</span>;
       case "task":
         return <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 6 }}>{z.t.name}</span>;
       case "kuerzel":
         return (
           <select disabled={readOnly} value={z.t.bauteilKuerzel ?? ""} onChange={e => taskAendern(z.t.id, { bauteilKuerzel: e.target.value || undefined })}
-            style={{ width: "90%", fontSize: 11, padding: "3px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }}>
+            style={{ width: "90%", fontSize: 12, padding: "3px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }}>
             <option value="">–</option>
             {kuerzelOptionen.map(o => <option key={o.k} value={o.k}>{o.label}</option>)}
           </select>
@@ -438,7 +438,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
       case "mengen": {
         const gewerke = z.t.bauteilKuerzel ? gewerkeFuerKuerzel(stammdaten, z.t.bauteilKuerzel) : [];
         return (
-          <div style={{ display: "grid", gridTemplateColumns: gewerke.length >= 3 ? "1fr 1fr" : "1fr", columnGap: 10, rowGap: 3, minWidth: 0, paddingRight: 6 }}>
+          <div style={{ display: "flex", flexDirection: "column", rowGap: 4, minWidth: 0, paddingRight: 6 }}>
             {gewerke.map(g => {
               const quelle = z.t.mengenQuelle?.[g.key];
               const info = z.t.mengenInfo?.[g.key];
@@ -447,42 +447,42 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
               const aufklappbar = !!rate?.formel?.trim();
               const offen = aufklappbar && expandedGewerk.has(`${z.t.id}::${g.key}`);
               return (
-                <div key={g.key} style={{ fontSize: 9, color: "var(--tc-text-3)", display: "flex", alignItems: "center", gap: 3, minWidth: 0 }}>
+                <div key={g.key} style={{ fontSize: 12, color: "var(--tc-text-3)", display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                   <span
                     title={aufklappbar ? "Bauteil-Liste anzeigen" : undefined}
                     onClick={aufklappbar ? () => gewerkExpandToggle(`${z.t.id}::${g.key}`) : undefined}
-                    style={{ minWidth: 50, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: aufklappbar ? "pointer" : "default", textDecoration: aufklappbar ? "underline dotted" : "none" }}>
+                    style={{ width: 76, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: aufklappbar ? "pointer" : "default", textDecoration: aufklappbar ? "underline dotted" : "none" }}>
                     {aufklappbar && (offen ? "▾ " : "▸ ")}{g.label}{quelle === "fehler" && " ⚠"}
                   </span>
                   <input type="number" className="no-spinner" disabled={readOnly} value={z.t.mengen?.[g.key] ?? ""}
                     title={info ? `${g.label} [${g.einheit}] — ${info}` : `${g.label} [${g.einheit}]`}
                     onChange={e => mengeAendern(z.t, g.key, e.target.value === "" ? null : Number(e.target.value))}
                     onFocus={mengenBearbeitungStart} onBlur={mengenBearbeitungEnde} onKeyDown={mengenEnterCommit}
-                    style={{ width: 50, minWidth: 0, flex: 1, fontSize: 10, padding: "2px 4px", border: `1px solid ${quelle === "fehler" ? "var(--tc-red)" : "#d4dce4"}`, fontFamily: "inherit", color: farbe, fontWeight: quelle ? 600 : 400 }} />
+                    style={{ minWidth: 0, flex: 1, fontSize: 12, padding: "2px 4px", border: `1px solid ${quelle === "fehler" ? "var(--tc-red)" : "#d4dce4"}`, fontFamily: "inherit", color: farbe, fontWeight: quelle ? 600 : 400 }} />
                 </div>
               );
             })}
-            {gewerke.length === 0 && <span style={{ fontSize: 9, color: "var(--tc-text-3)" }}>Kürzel wählen…</span>}
+            {gewerke.length === 0 && <span style={{ fontSize: 12, color: "var(--tc-text-3)" }}>Kürzel wählen…</span>}
           </div>
         );
       }
       case "geplant":
-        return <span style={{ fontSize: 11, color: "#888", paddingTop: 3 }}>{z.geplant}d</span>;
+        return <span style={{ fontSize: 12, color: "#888", paddingTop: 3 }}>{z.geplant}d</span>;
       case "berechnet":
         return (
-          <span style={{ fontSize: 11, fontWeight: 600, color: z.abweichung ? "#d9622b" : "#333", paddingTop: 3 }}
+          <span style={{ fontSize: 12, fontWeight: 600, color: z.abweichung ? "#d9622b" : "#333", paddingTop: 3 }}
             title={z.abweichung ? "Deutliche Abweichung von der geplanten Dauer" : ""}>
             {z.berechnet}d
           </span>
         );
       case "differenz": {
         const farbe = z.differenz > 0 ? "#d9622b" : z.differenz < 0 ? "#2e8b57" : "#888";
-        return <span style={{ fontSize: 11, fontWeight: 600, color: farbe, paddingTop: 3 }}>{z.differenz > 0 ? "+" : ""}{z.differenz}d</span>;
+        return <span style={{ fontSize: 12, fontWeight: 600, color: farbe, paddingTop: 3 }}>{z.differenz > 0 ? "+" : ""}{z.differenz}d</span>;
       }
       case "kranbereich":
         return (
           <input type="text" disabled={readOnly} value={z.t.kranbereich ?? ""} onChange={e => taskAendern(z.t.id, { kranbereich: e.target.value || undefined })}
-            style={{ width: "90%", fontSize: 10, padding: "2px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
+            style={{ width: "90%", fontSize: 12, padding: "2px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
         );
       case "auge": {
         const hatBauteile = z.t.objektGuids.length > 0;

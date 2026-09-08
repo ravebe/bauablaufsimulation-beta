@@ -27,7 +27,7 @@ type RatenSpalte = typeof RATEN_SPALTEN[number];
 const RATEN_SPALTEN_LABEL: Record<RatenSpalte, string> = { kuerzel: "Kürzel", bezeichnung: "Bezeichnung", lw: "LW [h/Einh.]", personen: "Personen", chf: "CHF/Einh." };
 const RATEN_COL_DEFAULT: Record<RatenSpalte, number> = { kuerzel: 60, bezeichnung: 220, lw: 80, personen: 60, chf: 70 };
 const AKTION_BREITE = 50; // fx (26) + gap (6) + × (18)
-const TOTAL_BREITE = 100; // Mengen-Summe je Kürzel, rot bei fehlenden/fehlerhaften Mengen (siehe Tab Kalkulation)
+const TOTAL_BREITE = 110; // Mengen-Summe je Kürzel, rot bei fehlenden/fehlerhaften Mengen (siehe Tab Kalkulation)
 const LS_RATEN_COLW = "4d-ressourcen-raten-colw";
 
 export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion = [], aktivesModellId = null, projectId = null }: Props) {
@@ -343,7 +343,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   const numInput = (val: number | null, onChange: (v: number | null) => void, width: number | string = "100%") => (
     <input type="number" disabled={readOnly} value={val ?? ""} placeholder="—"
       onChange={e => onChange(e.target.value === "" ? null : Number(e.target.value))}
-      style={{ width, minWidth: 0, fontSize: 11, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
+      style={{ width, minWidth: 0, fontSize: 12, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
   );
 
   // Cockpit: Kürzel ohne Leistungswert, Kreuzcheck Stammdaten ↔ tatsächlich verwendete Kürzel
@@ -580,10 +580,10 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
               <div style={{ display: "grid", gridTemplateColumns: ratenGridTemplate, alignItems: "center", columnGap: 6 }}>
                 <input disabled={readOnly} value={r.kuerzel} onChange={e => rateAendern(gi, ri, { kuerzel: e.target.value })}
                   title={kuerzelTitle}
-                  style={{ width: "100%", minWidth: 0, fontSize: 11, padding: "3px 5px", fontFamily: "inherit",
+                  style={{ width: "100%", minWidth: 0, fontSize: 12, padding: "3px 5px", fontFamily: "inherit",
                     border: `1px solid ${dupImGewerk ? "var(--tc-red)" : andereGewerkeMitKuerzel.length > 0 ? "var(--tc-blue)" : "#d4dce4"}` }} />
                 <input disabled={readOnly} value={r.bezeichnung} onChange={e => rateAendern(gi, ri, { bezeichnung: e.target.value })}
-                  style={{ width: "100%", minWidth: 0, fontSize: 11, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
+                  style={{ width: "100%", minWidth: 0, fontSize: 12, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
                 {numInput(r.leistungswertHProEinheit, v => rateAendern(gi, ri, { leistungswertHProEinheit: v }))}
                 {numInput(r.anzahlPersonen, v => rateAendern(gi, ri, { anzahlPersonen: v ?? 1 }))}
                 {numInput(r.chfProEinheit, v => rateAendern(gi, ri, { chfProEinheit: v }))}
@@ -604,7 +604,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                     </button>
                   )}
                 </div>
-                <div style={{ textAlign: "right", fontSize: 10, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                <div style={{ textAlign: "right", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     color: tasksMitKuerzel.length === 0 ? "var(--tc-text-3)" : mengeProblem ? "var(--tc-red)" : "#333" }}
                   title={
                     tasksMitKuerzel.length === 0 ? "Keine Tasks mit diesem Kürzel"
