@@ -451,8 +451,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
                   <span
                     title={aufklappbar ? "Bauteil-Liste anzeigen" : undefined}
                     onClick={aufklappbar ? () => gewerkExpandToggle(`${z.t.id}::${g.key}`) : undefined}
-                    style={{ width: 76, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: aufklappbar ? "pointer" : "default", textDecoration: aufklappbar ? "underline dotted" : "none",
-                      fontSize: quelle === "fehler" ? 13 : undefined, fontWeight: quelle === "fehler" ? 700 : undefined, color: quelle === "fehler" ? "var(--tc-red)" : undefined }}>
+                    style={{ width: 76, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: aufklappbar ? "pointer" : "default", textDecoration: aufklappbar ? "underline dotted" : "none" }}>
                     {aufklappbar && (offen ? "▾ " : "▸ ")}{g.label}{quelle === "fehler" && " ⚠"}
                   </span>
                   <input type="number" className="no-spinner" disabled={readOnly} value={z.t.mengen?.[g.key] ?? ""}
@@ -708,8 +707,7 @@ function GewerkObjektListe({ t, gewerk, rate, api, stammdaten, readOnly, taskAen
                     <circle cx="12" cy="12" r="3" fill={augeAktiv ? "currentColor" : "none"} />
                   </svg>
                 </span>
-                <div title={o.grund} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                    color: o.quelle === "fehler" ? "var(--tc-red)" : "var(--tc-text-2)", fontWeight: o.quelle === "fehler" ? 700 : 400 }}>
+                <div title={o.grund} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: o.quelle === "fehler" ? "var(--tc-red)" : "var(--tc-text-2)" }}>
                   {name}{o.quelle === "fehler" && " ⚠"}
                 </div>
                 <input type="number" className="no-spinner" disabled={readOnly} value={o.wert ?? ""}

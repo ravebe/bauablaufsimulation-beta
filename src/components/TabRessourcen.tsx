@@ -639,7 +639,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                 <>
                 <div ref={pickerOffenFuer === pickerKey ? pickerRef : undefined}
                   style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3, paddingLeft: ratenColW.kuerzel + 6, position: "relative" }}>
-                  <span style={{ fontSize: formelFehler ? 12 : 9, fontWeight: formelFehler ? 700 : 400, color: formelFehler ? "var(--tc-red)" : "var(--tc-text-3)", width: 40, flexShrink: 0, whiteSpace: "nowrap" }}>Formel</span>
+                  <span style={{ fontSize: 9, color: "var(--tc-text-3)", width: 40, flexShrink: 0, whiteSpace: "nowrap" }}>Formel</span>
                   <input disabled={readOnly} value={r.formel ?? ""} placeholder="z.B. {Qto_WallBaseQuantities||NetVolume}"
                     onChange={e => rateAendern(gi, ri, { formel: e.target.value })}
                     style={{ flex: 1, minWidth: 0, fontSize: 10, padding: "3px 5px", fontFamily: "monospace", border: `1px solid ${formelFehler ? "var(--tc-red)" : "#d4dce4"}` }} />
