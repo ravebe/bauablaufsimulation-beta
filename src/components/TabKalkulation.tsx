@@ -451,14 +451,15 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
                   <span
                     title={aufklappbar ? "Bauteil-Liste anzeigen" : undefined}
                     onClick={aufklappbar ? () => gewerkExpandToggle(`${z.t.id}::${g.key}`) : undefined}
-                    style={{ width: 76, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: aufklappbar ? "pointer" : "default", textDecoration: aufklappbar ? "underline dotted" : "none" }}>
+                    style={{ width: 76, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: aufklappbar ? "pointer" : "default", textDecoration: aufklappbar ? "underline dotted" : "none",
+                      fontSize: quelle === "fehler" ? 13 : undefined, fontWeight: quelle === "fehler" ? 700 : undefined, color: quelle === "fehler" ? "var(--tc-red)" : undefined }}>
                     {aufklappbar && (offen ? "▾ " : "▸ ")}{g.label}{quelle === "fehler" && " ⚠"}
                   </span>
                   <input type="number" className="no-spinner" disabled={readOnly} value={z.t.mengen?.[g.key] ?? ""}
                     title={info ? `${g.label} [${g.einheit}] — ${info}` : `${g.label} [${g.einheit}]`}
                     onChange={e => mengeAendern(z.t, g.key, e.target.value === "" ? null : Number(e.target.value))}
                     onFocus={mengenBearbeitungStart} onBlur={mengenBearbeitungEnde} onKeyDown={mengenEnterCommit}
-                    style={{ minWidth: 0, flex: 1, fontSize: quelle === "fehler" ? 14 : 12, padding: "2px 4px", border: `1px solid ${quelle === "fehler" ? "var(--tc-red)" : "#d4dce4"}`, fontFamily: "inherit", color: farbe, fontWeight: quelle === "fehler" ? 700 : quelle ? 600 : 400 }} />
+                    style={{ minWidth: 0, flex: 1, fontSize: 12, padding: "2px 4px", border: `1px solid ${quelle === "fehler" ? "var(--tc-red)" : "#d4dce4"}`, fontFamily: "inherit", color: farbe, fontWeight: quelle ? 600 : 400 }} />
                 </div>
               );
             })}
@@ -707,14 +708,15 @@ function GewerkObjektListe({ t, gewerk, rate, api, stammdaten, readOnly, taskAen
                     <circle cx="12" cy="12" r="3" fill={augeAktiv ? "currentColor" : "none"} />
                   </svg>
                 </span>
-                <div title={o.grund} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: o.quelle === "fehler" ? "var(--tc-red)" : "var(--tc-text-2)" }}>
+                <div title={o.grund} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    color: o.quelle === "fehler" ? "var(--tc-red)" : "var(--tc-text-2)", fontWeight: o.quelle === "fehler" ? 700 : 400 }}>
                   {name}{o.quelle === "fehler" && " ⚠"}
                 </div>
                 <input type="number" className="no-spinner" disabled={readOnly} value={o.wert ?? ""}
                   title={o.grund}
                   onChange={e => overrideAendern(o.guid, e.target.value === "" ? null : Number(e.target.value))}
                   onFocus={mengenBearbeitungStart} onBlur={mengenBearbeitungEnde} onKeyDown={mengenEnterCommit}
-                  style={{ width: 70, fontSize: o.quelle === "fehler" ? 13 : 10, padding: "2px 4px", border: `1px solid ${o.quelle === "fehler" ? "var(--tc-red)" : "#d4dce4"}`, fontFamily: "inherit", color: farbe, fontWeight: o.quelle === "fehler" ? 700 : o.quelle !== "auto" ? 600 : 400 }} />
+                  style={{ width: 70, fontSize: 10, padding: "2px 4px", border: `1px solid ${o.quelle === "fehler" ? "var(--tc-red)" : "#d4dce4"}`, fontFamily: "inherit", color: farbe, fontWeight: o.quelle !== "auto" ? 600 : 400 }} />
                 <div style={{ color: "var(--tc-text-3)" }}>{gewerk.einheit}</div>
               </Fragment>
             );

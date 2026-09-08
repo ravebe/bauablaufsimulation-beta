@@ -594,7 +594,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
               <div style={{ display: "grid", gridTemplateColumns: ratenGridTemplate, alignItems: "center", columnGap: 6 }}>
                 <input disabled={readOnly} value={r.kuerzel} onChange={e => rateAendern(gi, ri, { kuerzel: e.target.value })}
                   title={kuerzelTitle}
-                  style={{ width: "100%", minWidth: 0, fontSize: dupImGewerk ? 14 : 12, fontWeight: dupImGewerk ? 700 : 400, padding: "3px 5px", fontFamily: "inherit",
+                  style={{ width: "100%", minWidth: 0, fontSize: 12, padding: "3px 5px", fontFamily: "inherit",
                     border: `1px solid ${dupImGewerk ? "var(--tc-red)" : andereGewerkeMitKuerzel.length > 0 ? "var(--tc-blue)" : "#d4dce4"}` }} />
                 <input disabled={readOnly} value={r.bezeichnung} onChange={e => rateAendern(gi, ri, { bezeichnung: e.target.value })}
                   style={{ width: "100%", minWidth: 0, fontSize: 12, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
@@ -639,10 +639,10 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                 <>
                 <div ref={pickerOffenFuer === pickerKey ? pickerRef : undefined}
                   style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3, paddingLeft: ratenColW.kuerzel + 6, position: "relative" }}>
-                  <span style={{ fontSize: 9, color: "var(--tc-text-3)", width: 40, flexShrink: 0 }}>Formel</span>
+                  <span style={{ fontSize: formelFehler ? 12 : 9, fontWeight: formelFehler ? 700 : 400, color: formelFehler ? "var(--tc-red)" : "var(--tc-text-3)", width: 40, flexShrink: 0, whiteSpace: "nowrap" }}>Formel</span>
                   <input disabled={readOnly} value={r.formel ?? ""} placeholder="z.B. {Qto_WallBaseQuantities||NetVolume}"
                     onChange={e => rateAendern(gi, ri, { formel: e.target.value })}
-                    style={{ flex: 1, minWidth: 0, fontSize: formelFehler ? 13 : 10, fontWeight: formelFehler ? 700 : 400, padding: "3px 5px", fontFamily: "monospace", border: `1px solid ${formelFehler ? "var(--tc-red)" : "#d4dce4"}` }} />
+                    style={{ flex: 1, minWidth: 0, fontSize: 10, padding: "3px 5px", fontFamily: "monospace", border: `1px solid ${formelFehler ? "var(--tc-red)" : "#d4dce4"}` }} />
                   {api && !readOnly && (
                     <button className="tc-btn-ghost" style={{ fontSize: 9, padding: "2px 6px", flexShrink: 0 }}
                       onClick={() => { const opening = pickerOffenFuer !== pickerKey; setPickerOffenFuer(opening ? pickerKey : null); setPickerQuery(""); if (opening) attrListeLaden(); }}>
