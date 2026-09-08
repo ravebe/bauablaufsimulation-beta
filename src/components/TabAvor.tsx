@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { SimProjekt } from "../types";
 import { LEERER_KALENDER } from "./kalenderHelpers";
-import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
+import { LEERE_STAMMDATEN, hatKranpflichtigeRaten } from "./stammdatenHelpers";
 import { personalauslastung, kranauslastung, mengenProTag, ertragsoptik, optimaleTagesleistung } from "./avorHelpers";
 import type { TagWert } from "./avorHelpers";
 import { TimeSeriesChart, StatTile, CockpitAbschnitt, useEingeklappt, useChartZoom, useChartHoehe, ChartResizeHandle, FARBEN } from "./cockpitCharts";
@@ -52,7 +52,7 @@ export default function TabAvor({ sim, projectId = null }: Props) {
 
   const kran = kranauslastung(tasks, stammdaten, kalender);
   const kranSerien = gestapelteSerien(kran, k => k === "unbekannt" ? "Ohne Kranbereich" : k);
-  const kranGibtEsDaten = kranSerien.serien.length > 0 && stammdaten.gewerke.some(g => g.kranpflichtig);
+  const kranGibtEsDaten = kranSerien.serien.length > 0 && hatKranpflichtigeRaten(stammdaten);
 
   const gewerkOptionen = stammdaten.gewerke;
   const aktivesGewerk = gewerkOptionen.find(g => g.key === mengenGewerkKey) ?? gewerkOptionen[0];
@@ -112,7 +112,7 @@ export default function TabAvor({ sim, projectId = null }: Props) {
       <CockpitAbschnitt titel="Kranauslastung" eingeklappt={!!eingeklappt["kran"]} onToggle={() => toggleEingeklappt("kran")}>
         {!kranGibtEsDaten ? (
           <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
-            Kein Gewerk als kranpflichtig markiert (Tab Ressourcen) oder keine Tasks mit Kranbereich erfasst.
+            Kein Kürzel als kranpflichtig markiert (Tab Ressourcen) oder keine Tasks mit Kranbereich erfasst.
           </div>
         ) : (<>
           <TimeSeriesChart tage={kranSerien.tage} serien={kranSerien.serien} modus="linie" einheit="gleichzeitig"

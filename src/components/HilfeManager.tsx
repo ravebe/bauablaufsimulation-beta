@@ -59,7 +59,7 @@ const THEMEN: Thema[] = [
     punkte: [
       "Arbeitszeit pro Tag und Umsatz CHF/Mannstunde gelten global für die gesamte Simulation.",
       "Kategorien lassen sich aus vorgefertigten Katalogen laden oder frei anlegen und umbenennen.",
-      "\"kranpflichtig\" markiert Gewerke, deren Mengen in die Kranauslastung (Tab AVOR) einfließen.",
+      "\"kranpflichtig\" markiert je Kürzel, ob dessen Mengen in die Kranauslastung (Tab AVOR) einfließen.",
       "Ein Kürzel darf innerhalb derselben Kategorie nur einmal vorkommen — bei Duplikaten zählt nur die erste Zeile.",
     ],
   },
@@ -68,7 +68,7 @@ const THEMEN: Thema[] = [
     zusammenfassung: "Cockpit mit Personal- und Kranauslastung, Mengen-Filter je Gewerk und Ertragsoptik über die Zeit — abgeleitet aus den Kalkulationsmengen und den Stammdaten.",
     punkte: [
       "Setzt Stammdaten (Ressourcen) sowie erfasste Mengen/Kürzel (Kalkulation) voraus, sonst bleibt die Ansicht leer.",
-      "Die Kranauslastung erscheint nur, wenn mindestens ein Gewerk als \"kranpflichtig\" markiert ist.",
+      "Die Kranauslastung erscheint nur, wenn mindestens ein Kürzel als \"kranpflichtig\" markiert ist.",
       "Die Ertragsoptik vergleicht den kumulierten Ertrag mit den kumulierten Kosten.",
     ],
   },

@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import type { SimProjekt } from "../types";
 import { istGruppe, nsKey } from "../types";
 import type { Gewerk, GewerkeKatalog, Rate, Stammdaten, AusschlussFilter } from "./stammdatenHelpers";
-import { LEERE_STAMMDATEN, GEWERKE_KATALOGE, alleKuerzel, stammdatenAlsJson, parseStammdatenJson, stammdatenAlsCsv, parseStammdatenCsv, ausschlussFilterListe, aktiveFilterIds, einheitUmrechnungsfaktor } from "./stammdatenHelpers";
+import { LEERE_STAMMDATEN, GEWERKE_KATALOGE, alleKuerzel, stammdatenAlsJson, parseStammdatenJson, stammdatenAlsCsv, parseStammdatenCsv, ausschlussFilterListe, aktiveFilterIds, einheitUmrechnungsfaktor, istRateKranpflichtig } from "./stammdatenHelpers";
 import { StatTile } from "./cockpitCharts";
 import type { ApiInstance } from "../hooks/useApi";
 import { ladeAttributListe, ladeObjektAttribute, attrItemsAusWerten, keyZuAttrItem, type AttrItem } from "./modelHelpers";
@@ -18,16 +18,18 @@ interface Props {
 const NEUE_RATE: Rate = { kuerzel: "", bezeichnung: "", leistungswertHProEinheit: null, anzahlPersonen: 1, chfProEinheit: null };
 
 // Grid-Spalten der Raten-Tabelle — verstellbar per Drag, siehe startResize (gleiches Prinzip wie
-// Tab Kalkulation). "aktion" fasst die fixen ƒx/×-Buttons am Zeilenende zusammen, "total" ganz
-// rechts zeigt die aktuelle Mengen-Summe aus Tab Kalkulation — beide nicht verstellbar. Die
-// Ausschlussfilter (welche Bauteile bei der Mengenermittlung ignoriert werden) sitzen nicht in
+// Tab Kalkulation). "aktion" (ƒx), "kran" (kranpflichtig-Checkbox je Kürzel), "total" (Mengen-Summe
+// aus Tab Kalkulation) und "entfernen" (×, ganz am Zeilenende) sind fix, nicht per Drag verstellbar.
+// Die Ausschlussfilter (welche Bauteile bei der Mengenermittlung ignoriert werden) sitzen nicht in
 // dieser Zeile, sondern im aufklappbaren Formel-Bereich, siehe weiter unten.
 const RATEN_SPALTEN = ["kuerzel", "bezeichnung", "lw", "personen", "chf"] as const;
 type RatenSpalte = typeof RATEN_SPALTEN[number];
 const RATEN_SPALTEN_LABEL: Record<RatenSpalte, string> = { kuerzel: "Kürzel", bezeichnung: "Bezeichnung", lw: "LW [h/Einh.]", personen: "Personen", chf: "CHF/Einh." };
 const RATEN_COL_DEFAULT: Record<RatenSpalte, number> = { kuerzel: 60, bezeichnung: 220, lw: 80, personen: 60, chf: 70 };
-const AKTION_BREITE = 50; // fx (26) + gap (6) + × (18)
+const AKTION_BREITE = 32; // ƒx-Button
+const KRAN_BREITE = 40; // kranpflichtig-Checkbox je Kürzel
 const TOTAL_BREITE = 110; // Mengen-Summe je Kürzel, rot bei fehlenden/fehlerhaften Mengen (siehe Tab Kalkulation)
+const ENTFERNEN_BREITE = 26; // ×-Button, ganz am Zeilenende
 const LS_RATEN_COLW = "4d-ressourcen-raten-colw";
 
 export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion = [], aktivesModellId = null, projectId = null }: Props) {
@@ -70,7 +72,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp);
   }
 
-  const ratenGridTemplate = `${RATEN_SPALTEN.map(s => `${ratenColW[s]}px`).join(" ")} ${AKTION_BREITE}px ${TOTAL_BREITE}px`;
+  const ratenGridTemplate = `${RATEN_SPALTEN.map(s => `${ratenColW[s]}px`).join(" ")} ${AKTION_BREITE}px ${KRAN_BREITE}px ${TOTAL_BREITE}px ${ENTFERNEN_BREITE}px`;
 
   function formelUmschalten(key: string) {
     setFormelOffenFuer(prev => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
@@ -501,7 +503,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
         return (
         <div key={gewerk.key} style={{ marginBottom: 18 }}>
           <div style={{ position: "sticky", top: 0, background: "#fff", zIndex: 2, paddingBottom: 3 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px" }}>
                 <input disabled={readOnly} value={gewerk.label} title="Kategorie umbenennen"
                   onChange={e => gewerkLabelAendern(gi, e.target.value)}
@@ -531,11 +533,6 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                   style={{ width: 44, fontSize: 10, fontWeight: 600, padding: "1px 3px", border: "1px solid #d4dce4", fontFamily: "inherit", color: "var(--tc-text-3)" }} />
                 <span>)</span>
               </div>
-              <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--tc-text-3)", cursor: readOnly ? "default" : "pointer" }}>
-                <input type="checkbox" disabled={readOnly} checked={!!gewerk.kranpflichtig}
-                  onChange={e => speichern({ ...stammdaten, gewerke: stammdaten.gewerke.map((g, i) => i !== gi ? g : { ...g, kranpflichtig: e.target.checked }) })} />
-                kranpflichtig
-              </label>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: ratenGridTemplate, columnGap: 6, fontSize: 9, color: "var(--tc-text-3)", padding: "0 0 3px", fontWeight: 600 }}>
               {RATEN_SPALTEN.map((s, i) => (
@@ -546,7 +543,9 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                 </div>
               ))}
               <span />
+              <span style={{ textAlign: "center" }} title="Mengen dieses Kürzels fliessen in die Kranauslastung (Tab AVOR) ein">Kran</span>
               <span style={{ textAlign: "right" }} title="Aktuelle Mengen-Summe je Kürzel aus Tab Kalkulation — rot bei fehlenden oder fehlerhaften Mengen">Menge Ist</span>
+              <span />
             </div>
           </div>
           {gewerk.raten.map((r, ri) => {
@@ -587,7 +586,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                 {numInput(r.leistungswertHProEinheit, v => rateAendern(gi, ri, { leistungswertHProEinheit: v }))}
                 {numInput(r.anzahlPersonen, v => rateAendern(gi, ri, { anzahlPersonen: v ?? 1 }))}
                 {numInput(r.chfProEinheit, v => rateAendern(gi, ri, { chfProEinheit: v }))}
-                <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-start" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
                   {(!readOnly || r.formel) && (
                     <button className="tc-btn-ghost" title={r.formel ? "Formel anzeigen/ausblenden" : "Formel hinterlegen"}
                       onClick={() => formelUmschalten(pickerKey)}
@@ -597,12 +596,11 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                       ƒx
                     </button>
                   )}
-                  {!readOnly && (
-                    <button title="Entfernen" onClick={() => rateEntfernen(gi, ri)}
-                      style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "var(--tc-text-3)", padding: 0, width: 18, flexShrink: 0, lineHeight: 1 }}>
-                      ×
-                    </button>
-                  )}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <input type="checkbox" disabled={readOnly} checked={istRateKranpflichtig(r, gewerk)}
+                    title="Mengen dieses Kürzels fliessen in die Kranauslastung (Tab AVOR) ein"
+                    onChange={e => rateAendern(gi, ri, { kranpflichtig: e.target.checked })} />
                 </div>
                 <div style={{ textAlign: "right", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     color: tasksMitKuerzel.length === 0 ? "var(--tc-text-3)" : mengeProblem ? "var(--tc-red)" : "#333" }}
@@ -612,6 +610,14 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                         : `${tasksMitKuerzel.length} Task${tasksMitKuerzel.length === 1 ? "" : "s"}`
                   }>
                   {tasksMitKuerzel.length === 0 ? "–" : `${mengeSumme.toLocaleString("de-CH", { maximumFractionDigits: 2 })} ${gewerk.einheit}`}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {!readOnly && (
+                    <button title="Entfernen" onClick={() => rateEntfernen(gi, ri)}
+                      style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "var(--tc-text-3)", padding: 0, width: 18, flexShrink: 0, lineHeight: 1 }}>
+                      ×
+                    </button>
+                  )}
                 </div>
               </div>
               {(!readOnly || r.formel) && formelOffenFuer.has(pickerKey) && (

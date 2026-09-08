@@ -13,13 +13,16 @@ export interface Rate {
   ausschlussFilterIds?: string[]; // IDs der Ausschlussfilter (Stammdaten.ausschlussFilter), die bei der Mengenermittlung dieser Rate greifen — siehe objektAusgeschlossen()
   /** @deprecated durch ausschlussFilterIds ersetzt — nur noch zum Migrieren alter Projekte gelesen, siehe aktiveFilterIds(). */
   oeffnungenAusschliessen?: boolean;
+  kranpflichtig?: boolean; // steuert, ob Tasks mit diesem Kürzel in die Kranauslastung (Tab AVOR) einfliessen — siehe istRateKranpflichtig()
 }
 export interface Gewerk {
   key: string;
   label: string;
   einheit: string;
   raten: Rate[];
-  kranpflichtig?: boolean; // steuert, ob Tasks dieses Gewerks in die Kranauslastung (Tab AVOR) einfliessen
+  /** @deprecated durch Rate.kranpflichtig ersetzt (je Kürzel statt je Kategorie) — nur noch als
+   *  Fallback für Raten ohne eigenes Flag gelesen, siehe istRateKranpflichtig(). */
+  kranpflichtig?: boolean;
 }
 /** Ein Ausschlussfilter erkennt Bauteile an einem Attribut/Wert (z.B. Öffnungen, aber genauso jedes
  *  andere Element, das nicht in die Mengenermittlung einer Rate einfliessen soll) — je Rate einzeln
@@ -304,6 +307,28 @@ export function rundeDauer(rohTage: number): number {
 
 function rateFuerKuerzel(gewerk: Gewerk, kuerzel: string): Rate | undefined {
   return gewerk.raten.find(r => r.kuerzel === kuerzel);
+}
+
+/** Ob eine Rate in die Kranauslastung (Tab AVOR) einfliesst — eigenes Flag je Kürzel, mit Fallback
+ *  auf das alte kategorienweite Gewerk.kranpflichtig, solange die Rate noch nicht einzeln gesetzt
+ *  wurde (Migration alter Projekte, siehe Gewerk.kranpflichtig). */
+export function istRateKranpflichtig(rate: Rate | undefined, gewerk: Gewerk): boolean {
+  return rate?.kranpflichtig ?? !!gewerk.kranpflichtig;
+}
+
+/** Ob für den angegebenen Mengen-Schlüssel (Gewerk) und das Bauteil-Kürzel eines Tasks die Rate
+ *  kranpflichtig ist — Basis für die Kranauslastung, siehe kranauslastung() in avorHelpers.ts. */
+export function istMengeKranpflichtig(stammdaten: Stammdaten, gewerkKey: string, kuerzel: string | undefined): boolean {
+  if (!kuerzel) return false;
+  const gewerk = stammdaten.gewerke.find(g => g.key === gewerkKey);
+  if (!gewerk) return false;
+  return istRateKranpflichtig(rateFuerKuerzel(gewerk, kuerzel), gewerk);
+}
+
+/** true, sobald irgendeine Rate (kategorienübergreifend) als kranpflichtig markiert ist — steuert,
+ *  ob die Kranauslastung in Tab AVOR überhaupt angezeigt wird. */
+export function hatKranpflichtigeRaten(stammdaten: Stammdaten): boolean {
+  return stammdaten.gewerke.some(g => g.raten.some(r => istRateKranpflichtig(r, g)));
 }
 
 /** true, wenn für den Task mindestens ein Mengen-Wert hinterlegt ist, der in dauerBerechnetTask()

@@ -5,6 +5,7 @@ import { parseDateUniversal } from "../types";
 import type { Kalender } from "./kalenderHelpers";
 import { istArbeitstag, arbeitstageZwischen } from "./kalenderHelpers";
 import type { Stammdaten, Gewerk, Rate } from "./stammdatenHelpers";
+import { istMengeKranpflichtig, hatKranpflichtigeRaten } from "./stammdatenHelpers";
 
 export interface TagWert { tag: string; werte: Record<string, number> }
 
@@ -66,16 +67,16 @@ export function personalauslastung(tasks: Task[], stammdaten: Stammdaten, kalend
 export function kranauslastung(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender): TagWert[] {
   const zeitraum = projektzeitraum(tasks);
   if (!zeitraum) return [];
-  const kranGewerkKeys = new Set(stammdaten.gewerke.filter(g => g.kranpflichtig).map(g => g.key));
+  const gibtEsKranpflichtige = hatKranpflichtigeRaten(stammdaten);
   const ergebnis: TagWert[] = [];
   const cur = new Date(zeitraum.start.getTime());
   while (cur.getTime() <= zeitraum.end.getTime()) {
     const iso = toIso(cur);
     const werte: Record<string, number> = {};
-    if (istArbeitstag(iso, kalender) && kranGewerkKeys.size > 0) {
+    if (istArbeitstag(iso, kalender) && gibtEsKranpflichtige) {
       for (const t of tasks) {
         if (!laeuftAn(t, iso)) continue;
-        const hatKranGewerk = Object.keys(t.mengen!).some(k => kranGewerkKeys.has(k) && t.mengen![k] > 0);
+        const hatKranGewerk = Object.keys(t.mengen!).some(k => t.mengen![k] > 0 && istMengeKranpflichtig(stammdaten, k, t.bauteilKuerzel));
         if (!hatKranGewerk) continue;
         const bereich = t.kranbereich?.trim() || "unbekannt";
         werte[bereich] = (werte[bereich] ?? 0) + 1;
