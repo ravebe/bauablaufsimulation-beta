@@ -1,13 +1,14 @@
 // kalkulationExportHelpers.ts — Export/Import der in Tab Kalkulation gepflegten Task-Zuordnungen
-// (Bauteil-Kürzel, Kranbereich, Mengen je Gewerk) als CSV (Excel-bearbeitbar, Zuordnung über den
-// Tasknamen) oder JSON (exakter Restore über die Task-ID). Gegenstück zu stammdatenAlsCsv/
-// parseStammdatenCsv in stammdatenHelpers.ts, dort aber für die Stammdaten (Raten) statt die Tasks.
+// (Bauteil-Kürzel, Kranbereich, Personal (Soll), Mengen je Gewerk) als CSV (Excel-bearbeitbar,
+// Zuordnung über den Tasknamen) oder JSON (exakter Restore über die Task-ID). Gegenstück zu
+// stammdatenAlsCsv/parseStammdatenCsv in stammdatenHelpers.ts, dort aber für die Stammdaten (Raten)
+// statt die Tasks.
 import type { Task } from "../types";
 import { istGruppe } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { csvZelle, parseCsvZeilen } from "./stammdatenHelpers";
 
-const CSV_SPALTEN_FIX = ["Nr", "Task", "Kürzel", "Kranbereich"];
+const CSV_SPALTEN_FIX = ["Nr", "Task", "Kürzel", "Kranbereich", "Personal (Soll)"];
 
 function nichtGruppenTasks(tasks: Task[]): Task[] {
   return tasks.filter((t, i) => !t.isGroup && !istGruppe(tasks, i));
@@ -20,7 +21,7 @@ export function kalkulationAlsCsv(tasks: Task[], stammdaten: Stammdaten): string
   const zeilen: string[][] = [[...CSV_SPALTEN_FIX, ...stammdaten.gewerke.map(g => g.label || g.key)]];
   nichtGruppenTasks(tasks).forEach((t, i) => {
     zeilen.push([
-      String(i + 1), t.name, t.bauteilKuerzel ?? "", t.kranbereich ?? "",
+      String(i + 1), t.name, t.bauteilKuerzel ?? "", t.kranbereich ?? "", t.personalSoll != null ? String(t.personalSoll) : "",
       ...stammdaten.gewerke.map(g => t.mengen?.[g.key] != null ? String(t.mengen[g.key]) : ""),
     ]);
   });
@@ -46,6 +47,7 @@ export function parseKalkulationCsv(text: string, tasks: Task[], stammdaten: Sta
   const iTask = header.findIndex(h => h.trim().toLowerCase() === "task");
   const iKuerzel = header.findIndex(h => h.trim().toLowerCase() === "kürzel");
   const iKranbereich = header.findIndex(h => h.trim().toLowerCase() === "kranbereich");
+  const iPersonalSoll = header.findIndex(h => h.trim().toLowerCase() === "personal (soll)");
   if (iTask === -1) throw new Error('Ungültiges CSV-Format — Spalte "Task" erwartet');
 
   // Gewerk-Spalten über den Label-Text in der Kopfzeile finden (funktioniert auch bei geänderter
@@ -83,6 +85,10 @@ export function parseKalkulationCsv(text: string, tasks: Task[], stammdaten: Sta
     const t = neueTasks[idx];
     if (iKuerzel !== -1 && (z[iKuerzel] ?? "").trim()) t.bauteilKuerzel = z[iKuerzel].trim();
     if (iKranbereich !== -1 && (z[iKranbereich] ?? "").trim()) t.kranbereich = z[iKranbereich].trim();
+    if (iPersonalSoll !== -1) {
+      const personalWert = parseNum(z[iPersonalSoll] ?? "");
+      if (personalWert !== null) t.personalSoll = personalWert;
+    }
     for (const { gewerk, idx: gi } of gewerkSpalten) {
       const wert = parseNum(z[gi] ?? "");
       if (wert === null) continue;
@@ -107,6 +113,7 @@ interface KalkulationJsonEintrag {
   name: string; // nur zur Lesbarkeit beim manuellen Anschauen der Datei — der Import ordnet über "id" zu
   bauteilKuerzel?: string;
   kranbereich?: string;
+  personalSoll?: number;
   mengen?: Record<string, number>;
   mengenQuelle?: Record<string, "auto" | "manuell" | "fehler">;
   mengenInfo?: Record<string, string>;
@@ -118,7 +125,7 @@ interface KalkulationJsonEintrag {
  *  kalkulationAlsCsv(). */
 export function kalkulationAlsJson(tasks: Task[]): string {
   const eintraege: KalkulationJsonEintrag[] = nichtGruppenTasks(tasks).map(t => ({
-    id: t.id, name: t.name, bauteilKuerzel: t.bauteilKuerzel, kranbereich: t.kranbereich,
+    id: t.id, name: t.name, bauteilKuerzel: t.bauteilKuerzel, kranbereich: t.kranbereich, personalSoll: t.personalSoll,
     mengen: t.mengen, mengenQuelle: t.mengenQuelle, mengenInfo: t.mengenInfo, mengenObjekte: t.mengenObjekte,
   }));
   return JSON.stringify(eintraege, null, 2);
@@ -141,7 +148,7 @@ export function parseKalkulationJson(text: string, tasks: Task[]): KalkulationJs
     aktualisiert++;
     return {
       ...t,
-      bauteilKuerzel: e.bauteilKuerzel, kranbereich: e.kranbereich,
+      bauteilKuerzel: e.bauteilKuerzel, kranbereich: e.kranbereich, personalSoll: e.personalSoll,
       mengen: e.mengen, mengenQuelle: e.mengenQuelle, mengenInfo: e.mengenInfo, mengenObjekte: e.mengenObjekte,
     };
   });

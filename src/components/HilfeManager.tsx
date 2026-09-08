@@ -48,9 +48,11 @@ const THEMEN: Thema[] = [
     punkte: [
       "Spalten: Nr., Task, Kürzel, Mengen, Geplant, Berechnet, WBS.",
       "Ein Kürzel muss in den Stammdaten (Tab Ressourcen) hinterlegt sein, sonst fehlt der Leistungswert.",
-      "\"Berechnet\" ergibt sich aus Leistungswert × Menge sowie Arbeitszeit/Personen aus den Stammdaten.",
+      "\"Berechnet\" ergibt sich aus Leistungswert × Menge sowie Arbeitszeit/Personen aus den Stammdaten — lässt sich bei Bedarf manuell übersteuern (schwarz statt blau).",
       "Abweichungen zwischen Geplant und Berechnet zeigen mögliche Kalkulationsrisiken.",
       "Mengen lassen sich manuell erfassen oder per Formel (ƒx-Button) aus IFC-Attributen berechnen.",
+      "\"Personal (Soll)\" ist die vorgesehene Gesamt-Personenzahl je Task, unabhängig von den Kolonnengrössen je Kürzel in Tab Ressourcen — ergibt die rote Referenzlinie über der Personalauslastung in Tab AVOR.",
+      "Export/Import (CSV oder JSON) übertragen Kürzel/Kranbereich/Personal (Soll)/Mengen aller Tasks, z.B. zum Bearbeiten in Excel.",
     ],
   },
   {
@@ -69,6 +71,7 @@ const THEMEN: Thema[] = [
     punkte: [
       "Setzt Stammdaten (Ressourcen) sowie erfasste Mengen/Kürzel (Kalkulation) voraus, sonst bleibt die Ansicht leer.",
       "Die Kranauslastung erscheint nur, wenn mindestens ein Kürzel als \"kranpflichtig\" markiert ist.",
+      "Über der Personalauslastung erscheint eine rote gestrichelte \"Personal (Soll)\"-Linie, sobald mindestens ein Task in Tab Kalkulation eine vorgesehene Personenzahl hat.",
       "Die Ertragsoptik vergleicht den kumulierten Ertrag mit den kumulierten Kosten.",
     ],
   },

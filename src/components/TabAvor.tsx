@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { SimProjekt } from "../types";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import { LEERE_STAMMDATEN, hatKranpflichtigeRaten } from "./stammdatenHelpers";
-import { personalauslastung, kranauslastung, mengenProTag, ertragsoptik, optimaleTagesleistung } from "./avorHelpers";
+import { personalauslastung, personalSollProTag, kranauslastung, mengenProTag, ertragsoptik, optimaleTagesleistung } from "./avorHelpers";
 import type { TagWert } from "./avorHelpers";
 import { TimeSeriesChart, StatTile, CockpitAbschnitt, useEingeklappt, useChartZoom, useChartHoehe, ChartResizeHandle, FARBEN } from "./cockpitCharts";
 import type { Serie } from "./cockpitCharts";
@@ -49,6 +49,8 @@ export default function TabAvor({ sim, projectId = null }: Props) {
 
   const personal = personalauslastung(tasks, stammdaten, kalender);
   const personalSerien = gestapelteSerien(personal, k => stammdaten.gewerke.find(g => g.key === k)?.label ?? k);
+  const personalSoll = personalSollProTag(tasks, kalender);
+  const personalSollGesetzt = personalSoll.some(v => v > 0);
 
   const kran = kranauslastung(tasks, stammdaten, kalender);
   const kranSerien = gestapelteSerien(kran, k => k === "unbekannt" ? "Ohne Kranbereich" : k);
@@ -91,6 +93,10 @@ export default function TabAvor({ sim, projectId = null }: Props) {
     if (summe > peakWert) { peakWert = summe; peakTag = tw.tag; }
   }
   const tageUeberKapazitaet = kran.filter(tw => Object.values(tw.werte).some(v => v > KRAN_KAPAZITAET)).length;
+  const tageUeberPersonalSoll = personal.filter((tw, i) => {
+    const soll = personalSoll[i] ?? 0;
+    return soll > 0 && Object.values(tw.werte).reduce((s, v) => s + v, 0) > soll;
+  }).length;
   const letzteErtragszeile = ertrag[ertrag.length - 1];
   const marge = letzteErtragszeile ? letzteErtragszeile.ertragKum - letzteErtragszeile.kostenKum : 0;
 
@@ -98,12 +104,16 @@ export default function TabAvor({ sim, projectId = null }: Props) {
     <div style={{ padding: 14, fontSize: 12 }} ref={zoom.breitenRef}>
       <div style={{ display: "flex", gap: 8, marginBottom: 16, position: "sticky", top: 0, background: "#fff", zIndex: 3, paddingBottom: 4 }}>
         <StatTile label="Peak Personalbedarf" wert={`${peakWert} Pers.`} sub={peakTag !== "–" ? peakTag : undefined} />
+        {personalSollGesetzt && (
+          <StatTile label="Tage über Personal (Soll)" wert={String(tageUeberPersonalSoll)} status={tageUeberPersonalSoll > 0 ? "warning" : "good"} />
+        )}
         <StatTile label="Tage über Kran-Kapazität" wert={String(tageUeberKapazitaet)} status={tageUeberKapazitaet > 0 ? "warning" : "good"} />
         <StatTile label="Marge (kumuliert)" wert={`${fmtChf(marge)} CHF`} status={marge >= 0 ? "good" : "critical"} />
       </div>
 
       <CockpitAbschnitt titel="Personalauslastung" eingeklappt={!!eingeklappt["personal"]} onToggle={() => toggleEingeklappt("personal")}>
         <TimeSeriesChart tage={personalSerien.tage} serien={personalSerien.serien} modus="flaeche-gestapelt" einheit="Personen"
+          referenzlinie={personalSollGesetzt ? { label: "Personal (Soll)", werte: personalSoll } : undefined}
           formatWert={v => String(Math.round(v))} kalender={kalender} hoehe={hoehePersonal}
           pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
         <ChartResizeHandle hoehe={hoehePersonal} setHoehe={setHoehePersonal} />

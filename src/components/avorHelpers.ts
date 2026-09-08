@@ -60,6 +60,31 @@ export function personalauslastung(tasks: Task[], stammdaten: Stammdaten, kalend
   return ergebnis;
 }
 
+/** Für jeden Tag im Projektzeitraum: Summe von Task.personalSoll aller an diesem Tag laufenden Tasks
+ *  (nur Arbeitstage) — unabhängig von Bauteil-Kürzel/Mengen und den Kolonnengrössen je Kürzel in den
+ *  Stammdaten. Basis für die rote "Personal (Soll)"-Referenzlinie über der Personalauslastung in Tab
+ *  AVOR (siehe TabAvor.tsx) — ein direkter Vergleich der tatsächlich vorgesehenen Belegschaft mit dem
+ *  aus Mengen/Leistungswerten rechnerisch ermittelten Bedarf. */
+export function personalSollProTag(tasks: Task[], kalender: Kalender): number[] {
+  const zeitraum = projektzeitraum(tasks);
+  if (!zeitraum) return [];
+  const ergebnis: number[] = [];
+  const cur = new Date(zeitraum.start.getTime());
+  while (cur.getTime() <= zeitraum.end.getTime()) {
+    const iso = toIso(cur);
+    let summe = 0;
+    if (istArbeitstag(iso, kalender)) {
+      for (const t of tasks) {
+        if (t.isGroup || !t.personalSoll || iso < t.start || iso > t.end) continue;
+        summe += t.personalSoll;
+      }
+    }
+    ergebnis.push(summe);
+    cur.setDate(cur.getDate() + 1);
+  }
+  return ergebnis;
+}
+
 /**
  * Kranauslastung: Anzahl gleichzeitig laufender kranpflichtiger Tasks je Kranbereich (Proxy-Metrik
  * — keine echte Kranphysik/-kapazität, sondern "wie viele Tasks wollen an dem Tag denselben Kran").

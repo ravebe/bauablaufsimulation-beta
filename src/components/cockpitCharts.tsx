@@ -77,7 +77,9 @@ interface TimeSeriesProps {
   tage: string[]; // YYYY-MM-DD, gleiche Länge wie serien[].werte
   serien: Serie[];
   modus: "linie" | "flaeche-gestapelt";
-  referenzlinie?: { wert: number; label: string };
+  /** Konstante Schwelle (wert) ODER Tageswerte über die Zeit (werte, gleiche Länge wie tage) — z.B.
+   *  eine fixe Kranauslastungs-Kapazität vs. eine tagesabhängige "Personal (Soll)"-Linie. */
+  referenzlinie?: { label: string; wert?: number; werte?: number[] };
   einheit?: string;
   hoehe?: number;
   formatWert?: (v: number) => string;
@@ -179,7 +181,7 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
     return <div style={{ fontSize: 11, color: FARBEN.textMuted, padding: 12 }}>Keine Daten</div>;
   }
 
-  let maxY = referenzlinie?.wert ?? 0;
+  let maxY = referenzlinie ? (referenzlinie.werte ? Math.max(0, ...referenzlinie.werte) : referenzlinie.wert ?? 0) : 0;
   if (modus === "flaeche-gestapelt") {
     for (let i = 0; i < n; i++) {
       let summe = 0;
@@ -239,7 +241,7 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
   const wochenTicksAnzeige = entzerrt(wochenTicks, 32);
   const tagTicksAnzeige = entzerrt(tagTicks, 14);
 
-  const zeigeLegende = serien.length >= 2;
+  const zeigeLegende = serien.length >= 2 || !!referenzlinie?.werte;
 
   return (
     <div ref={outerRef} style={{ position: "relative" }}>
@@ -251,6 +253,12 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
               {s.label}
             </span>
           ))}
+          {referenzlinie?.werte && (
+            <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ width: 10, height: 0, borderTop: `2px dashed ${FARBEN.status.critical}`, display: "inline-block" }} />
+              {referenzlinie.label}
+            </span>
+          )}
         </div>
       )}
       <div style={{ position: "relative" }}>
@@ -283,7 +291,11 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
             {monatTicks.map((t, i) => (
               <line key={`ml${i}`} x1={t.x} y1={MT} x2={t.x} y2={hoehe - MB} stroke="#aab4bd" strokeWidth={1.4} />
             ))}
-            {referenzlinie && (<>
+            {referenzlinie?.werte && (
+              <path fill="none" stroke={FARBEN.status.critical} strokeWidth={1.5} strokeDasharray="4 3" strokeLinecap="round" strokeLinejoin="round"
+                d={referenzlinie.werte.map((w, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(w ?? 0)}`).join(" ")} />
+            )}
+            {referenzlinie?.wert != null && (<>
               <line x1={ML} y1={y(referenzlinie.wert)} x2={VBW - MR} y2={y(referenzlinie.wert)}
                 stroke={FARBEN.status.critical} strokeWidth={1} strokeDasharray="4 3" />
               <text x={VBW - MR} y={y(referenzlinie.wert) - 3} textAnchor="end" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.status.critical}>
@@ -321,10 +333,10 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
                 {s.label}: {fmt(s.werte[hoverIdx] ?? 0)} {einheit}
               </div>
             ))}
-            {referenzlinie && (
+            {referenzlinie && (referenzlinie.werte ? referenzlinie.werte[hoverIdx] != null : referenzlinie.wert != null) && (
               <div style={{ color: FARBEN.status.critical }}>
                 <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: 2, background: FARBEN.status.critical, marginRight: 4 }} />
-                {referenzlinie.label}: {fmt(referenzlinie.wert)} {einheit}
+                {referenzlinie.label}: {fmt(referenzlinie.werte ? referenzlinie.werte[hoverIdx] ?? 0 : referenzlinie.wert!)} {einheit}
               </div>
             )}
           </div>

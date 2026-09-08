@@ -18,13 +18,13 @@ interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; re
 // Grid-Spalten der Tabelle — feste Breiten statt Flex, damit kein Inhalt nachfolgende Spalten
 // verschiebt. Verstellbar per Drag, siehe startResize. Alle Zellen top-ausgerichtet (alignItems:
 // "start"), damit sie in einer Flucht stehen, auch wenn die Mengen-Zelle mehrzeilig ist.
-const ALLE_SPALTEN = ["nr", "auge", "task", "kuerzel", "mengen", "geplant", "berechnet", "differenz", "kranbereich"] as const;
+const ALLE_SPALTEN = ["nr", "auge", "task", "kuerzel", "mengen", "geplant", "berechnet", "differenz", "kranbereich", "personalSoll"] as const;
 type Spalte = typeof ALLE_SPALTEN[number];
 const SPALTEN_LABEL: Record<Spalte, string> = {
   nr: "Nr.", task: "Task", kuerzel: "Kürzel", mengen: "Mengen", geplant: "Geplant", berechnet: "Berechnet",
-  differenz: "Differenz", kranbereich: "Kranbereich", auge: "",
+  differenz: "Differenz", kranbereich: "Kranbereich", personalSoll: "Personal (Soll)", auge: "",
 };
-const DEFAULT_COL_W: Record<Spalte, number> = { nr: 30, task: 220, kuerzel: 64, mengen: 260, geplant: 76, berechnet: 88, differenz: 60, kranbereich: 110, auge: 30 };
+const DEFAULT_COL_W: Record<Spalte, number> = { nr: 30, task: 220, kuerzel: 64, mengen: 260, geplant: 76, berechnet: 88, differenz: 60, kranbereich: 110, personalSoll: 90, auge: 30 };
 const LS_COLW = "4d-kalk-colw";
 
 // Spalten mit Sortier-/Filterfunktion im Header (Klick auf Titel = sortieren, ▾ = Filter-Popover).
@@ -563,6 +563,14 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
         return (
           <input type="text" disabled={readOnly} value={z.t.kranbereich ?? ""} onChange={e => taskAendern(z.t.id, { kranbereich: e.target.value || undefined })}
             style={{ width: "90%", fontSize: 12, padding: "2px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
+        );
+      case "personalSoll":
+        return (
+          <input type="number" className="no-spinner" disabled={readOnly} value={z.t.personalSoll ?? ""}
+            title="Vorgesehene Gesamt-Personenzahl für diesen Task (alle Kürzel zusammen) — unabhängig von den Kolonnengrössen je Kürzel in Tab Ressourcen. Ergibt die rote 'Personal (Soll)'-Referenzlinie in Tab AVOR unter Personalauslastung."
+            onChange={e => taskAendern(z.t.id, { personalSoll: e.target.value === "" ? undefined : Number(e.target.value) })}
+            onFocus={mengenBearbeitungStart} onBlur={mengenBearbeitungEnde} onKeyDown={mengenEnterCommit}
+            style={{ width: 50, fontSize: 12, padding: "2px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
         );
       case "auge": {
         const hatBauteile = z.t.objektGuids.length > 0;
