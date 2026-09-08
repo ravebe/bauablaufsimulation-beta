@@ -472,11 +472,11 @@ export function CategoryBarChart({ kategorien, serien, einheit = "", hoehe = 180
 }
 
 export function StatTile({ label, wert, status, sub }: { label: string; wert: string; status?: "good" | "warning" | "critical"; sub?: string }) {
-  const farbe = status ? FARBEN.status[status] : FARBEN.textPrimaer;
+  void status; // Zahl bewusst immer schwarz, kein Status-Farbcode mehr — siehe StatTile-Aufrufer für Warn-/Fehlerhinweise
   return (
     <div style={{ border: `1px solid ${FARBEN.gridline}`, background: FARBEN.surface, padding: "8px 12px", minWidth: 120, flex: 1 }}>
       <div style={{ fontSize: 9, color: FARBEN.textPrimaer, fontWeight: 600, letterSpacing: ".3px", marginBottom: 3 }}>{label.toUpperCase()}</div>
-      <div style={{ fontSize: 18, fontWeight: 700, color: farbe }}>{wert}</div>
+      <div style={{ fontSize: 18, fontWeight: 700, color: FARBEN.textPrimaer }}>{wert}</div>
       {sub && <div style={{ fontSize: 10, color: FARBEN.textSekundaer, marginTop: 2 }}>{sub}</div>}
     </div>
   );
