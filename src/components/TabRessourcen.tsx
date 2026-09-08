@@ -390,7 +390,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
       )}
 
       {stammdaten.gewerke.length > 0 && (
-        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
           <StatTile label="Elemente ohne Leistungswert" wert={String(kuerzelOhneLw.length)} status={kuerzelOhneLw.length > 0 ? "warning" : "good"} />
           <StatTile label="Elemente ohne Stammdaten" wert={String(kuerzelOhneRate.length)} status={kuerzelOhneRate.length > 0 ? "warning" : "good"} />
           <StatTile label="Unbenutzte Elemente" wert={String(kuerzelUnbenutzt.length)} />
