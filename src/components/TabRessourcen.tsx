@@ -381,13 +381,13 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     : [];
 
   const exportImportButtonStyle: CSSProperties = {
-    fontSize: 12, fontWeight: 600, fontFamily: "inherit", padding: "4px 10px", border: "1px solid #d4dce4", background: "#fff", cursor: "pointer",
+    fontSize: 12, fontWeight: 400, fontFamily: "inherit", color: "var(--tc-text-3)", padding: "3px 5px", border: "1px solid #d4dce4", background: "#fff", cursor: "pointer",
   };
   const exportBlock = (
     <div ref={exportMenuRef} style={{ position: "relative" }}>
       <button disabled={stammdaten.gewerke.length === 0} onClick={() => setExportMenuOffen(o => !o)} title="Ressourcen exportieren"
         style={{ ...exportImportButtonStyle, opacity: stammdaten.gewerke.length === 0 ? 0.5 : 1, cursor: stammdaten.gewerke.length === 0 ? "default" : "pointer" }}>
-        ⭳ Export ▾
+        Export
       </button>
       {exportMenuOffen && (
         <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 2, background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 50, minWidth: 110 }}>
@@ -410,7 +410,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   const importBlock = !readOnly && (
     <div ref={importMenuRef} style={{ position: "relative" }}>
       <button onClick={() => setImportMenuOffen(o => !o)} title="Ressourcen importieren" style={exportImportButtonStyle}>
-        ⭱ Import ▾
+        Import
       </button>
       {importMenuOffen && (
         <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 2, background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 50, minWidth: 110 }}>
