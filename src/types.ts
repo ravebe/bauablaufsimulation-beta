@@ -37,6 +37,7 @@ export interface Task {
   mengenQuelle?: Record<string, "auto" | "manuell" | "fehler">; // Herkunft je Gewerk-key — steuert Farbe (blau/schwarz/rot) in Tab Kalkulation
   mengenInfo?: Record<string, string>; // Tooltip-Text bei Status "fehler" (z.B. fehlende Attribute), siehe formelHelpers.ts
   mengenObjekte?: Record<string, Record<string, number>>; // Gewerk-key → Bauteil-GUID (objektGuids-Eintrag) → manuell gesetzter Einzelwert, überschreibt für genau dieses Bauteil den Formel-Wert — siehe Bauteil-Liste in Tab Kalkulation
+  berechneteDauerManuell?: number; // manuelle Übersteuerung der "Berechnet"-Spalte in Tab Kalkulation (schwarz statt blau) — siehe dauerBerechnetTask() in stammdatenHelpers.ts
   kranbereich?: string; // für Kranauslastung in Tab AVOR, siehe avorHelpers.ts
   attrGruppe?: Record<string, string>; // Attribut-Werte-Kombination (pset||name → Wert), die diesen Task bei der Attribut-Task-Erzeugung ergeben hat — dient beim erneuten Generieren dazu, denselben Task (inkl. Termine) wiederzuerkennen statt neu anzulegen, siehe AttributTaskErzeugung.tsx
 }

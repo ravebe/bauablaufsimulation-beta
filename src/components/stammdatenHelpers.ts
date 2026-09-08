@@ -334,15 +334,19 @@ export function hatKranpflichtigeRaten(stammdaten: Stammdaten): boolean {
 }
 
 /** true, wenn für den Task mindestens ein Mengen-Wert hinterlegt ist, der in dauerBerechnetTask()
- *  tatsächlich einfließt — ohne das wäre "berechnete Dauer" nicht wirklich berechnet, sondern schlicht 0
- *  (siehe berechneZeitplanUebernahme() in zeitplanUebernahmeHelpers.ts, das solche Tasks deshalb unangetastet lässt). */
+ *  tatsächlich einfließt, oder die "Berechnet"-Spalte manuell übersteuert wurde — ohne das wäre
+ *  "berechnete Dauer" nicht wirklich berechnet, sondern schlicht 0 (siehe berechneZeitplanUebernahme()
+ *  in zeitplanUebernahmeHelpers.ts, das solche Tasks deshalb unangetastet lässt). */
 export function hatKalkulationsWerte(task: Task, stammdaten: Stammdaten): boolean {
+  if (task.berechneteDauerManuell != null) return true;
   if (!task.bauteilKuerzel || !task.mengen) return false;
   return stammdaten.gewerke.some(gewerk => !!task.mengen![gewerk.key]);
 }
 
-/** Berechnete Dauer eines Tasks: Summe über alle Gewerke mit hinterlegter Menge, gerundet. */
+/** Berechnete Dauer eines Tasks: manuelle Übersteuerung (Task.berechneteDauerManuell, siehe Tab
+ *  Kalkulation), sonst Summe über alle Gewerke mit hinterlegter Menge, gerundet. */
 export function dauerBerechnetTask(task: Task, stammdaten: Stammdaten): number {
+  if (task.berechneteDauerManuell != null) return task.berechneteDauerManuell;
   if (!task.bauteilKuerzel || !task.mengen) return 0;
   let roh = 0;
   for (const gewerk of stammdaten.gewerke) {

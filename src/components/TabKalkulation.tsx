@@ -154,6 +154,12 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     taskAendern(task.id, { mengen, mengenQuelle, mengenInfo, mengenObjekte });
   }
 
+  // Manuelle Übersteuerung der "Berechnet"-Spalte (siehe dauerBerechnetTask() in stammdatenHelpers.ts) —
+  // leeren setzt wieder auf die automatische Menge→Tage-Berechnung zurück.
+  function berechnetDauerAendern(task: Task, wert: number | null) {
+    taskAendern(task.id, { berechneteDauerManuell: wert ?? undefined });
+  }
+
   function kalkulationExportierenCsv() {
     const blob = new Blob([kalkulationAlsCsv(sim!.tasks, stammdaten)], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -532,13 +538,23 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
       }
       case "geplant":
         return <span style={{ fontSize: 12, color: "#888", paddingTop: 3 }}>{z.geplant}d</span>;
-      case "berechnet":
+      case "berechnet": {
+        const istManuell = z.t.berechneteDauerManuell != null;
+        const farbe = z.abweichung ? "#d9622b" : istManuell ? "#333" : "var(--tc-blue)";
         return (
-          <span style={{ fontSize: 12, fontWeight: 600, color: z.abweichung ? "#d9622b" : "#333", paddingTop: 3 }}
-            title={z.abweichung ? "Deutliche Abweichung von der geplanten Dauer" : ""}>
-            {z.berechnet}d
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+            <input type="number" className="no-spinner" disabled={readOnly} value={z.berechnet}
+              title={
+                (z.abweichung ? "Deutliche Abweichung von der geplanten Dauer. " : "") +
+                (istManuell ? "Manuell übersteuert — leeren, um wieder automatisch aus den Mengen zu berechnen." : "Automatisch aus Mengen × Leistungswert berechnet — Wert eintragen, um sie manuell zu übersteuern.")
+              }
+              onChange={e => berechnetDauerAendern(z.t, e.target.value === "" ? null : Number(e.target.value))}
+              onFocus={mengenBearbeitungStart} onBlur={mengenBearbeitungEnde} onKeyDown={mengenEnterCommit}
+              style={{ width: 36, minWidth: 0, fontSize: 12, padding: "2px 4px", border: `1px solid ${z.abweichung ? "#d9622b" : "#d4dce4"}`, fontFamily: "inherit", color: farbe, fontWeight: 600 }} />
+            <span style={{ fontSize: 12, color: farbe }}>d</span>
+          </div>
         );
+      }
       case "differenz": {
         const farbe = z.differenz > 0 ? "#d9622b" : z.differenz < 0 ? "#2e8b57" : "#888";
         return <span style={{ fontSize: 12, fontWeight: 600, color: farbe, paddingTop: 3 }}>{z.differenz > 0 ? "+" : ""}{z.differenz}d</span>;
