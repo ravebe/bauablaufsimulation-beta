@@ -283,6 +283,9 @@ export default function App() {
   const [optionsDropdown, setOptionsDropdown] = useState(false);
   const [exportSubOffen, setExportSubOffen] = useState(false);
   const headerDropdownRef = useClickOutside<HTMLDivElement>(headerDropdown, () => setHeaderDropdown(false));
+  // Simulation wechseln geht nur in Tab Projekte — Pfeil/Popup dort ausblenden und beim Verlassen
+  // schliessen, falls er gerade offen war.
+  useEffect(() => { if (aktTab !== "projekte") setHeaderDropdown(false); }, [aktTab]);
   const sortDropdownRef = useClickOutside<HTMLDivElement>(sortDropdown, () => setSortDropdown(false));
   const optionsDropdownRef = useClickOutside<HTMLDivElement>(optionsDropdown, () => { setOptionsDropdown(false); setExportSubOffen(false); });
   const [zugriffsManagerOffen, setZugriffsManagerOffen] = useState(false);
@@ -331,8 +334,9 @@ export default function App() {
               <span className="tc-logo">{tabGruppe === "erweitert" ? "5D" : "4D"}</span> Simulationen
             </div>
             <div ref={headerDropdownRef}>
-            <div className="tc-header-org-sub" onClick={e => { e.stopPropagation(); setHeaderDropdown(d => !d); setSortDropdown(false); }}>
-              {aktiveSim ? aktiveSim.name : "Kein Projekt"} {headerDropdown ? "▲" : "▼"}
+            <div className={`tc-header-org-sub ${aktTab === "projekte" ? "" : "static"}`}
+              onClick={aktTab === "projekte" ? (e => { e.stopPropagation(); setHeaderDropdown(d => !d); setSortDropdown(false); }) : undefined}>
+              {aktiveSim ? aktiveSim.name : "Kein Projekt"}{aktTab === "projekte" && ` ${headerDropdown ? "▲" : "▼"}`}
             </div>
             {andererBearbeiter && (
               <div style={{ fontSize: 10, color: "#e8a023", marginTop: 2 }} title="Bearbeitet diese Simulation gerade ebenfalls">

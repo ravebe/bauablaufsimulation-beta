@@ -59,6 +59,7 @@
   font-size: 12px; color: var(--tc-text-3); cursor: pointer; margin-top: 2px; user-select: none;
 }
 .tc-header-org-sub:hover { color: var(--tc-blue); }
+.tc-header-org-sub.static, .tc-header-org-sub.static:hover { cursor: default; color: var(--tc-text-3); }
 .tc-header-org-actions {
   display: flex; gap: 4px; align-items: center; margin-top: 2px;
 }
