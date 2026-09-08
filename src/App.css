@@ -28,7 +28,7 @@
   --tc-green-bg: #e8f5ee;
   --tc-yellow: #edb94c;
   --tc-yellow-bg: #fdf4e0;
-  --tc-red: #d44;
+  --tc-red: #7a1f2e; /* weinrot statt knalligem Rot, siehe FARBEN.status.critical in cockpitCharts.tsx (dort synchron halten) */
   --tc-bg: #fff;
   --tc-bg-hover: #f5f9fc;
   --tc-bg-panel: #f5f5f5;
@@ -93,7 +93,7 @@
 }
 .tc-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .tc-dot.on { background: #6cc07a; }
-.tc-dot.off { background: #ff6b6b; }
+.tc-dot.off { background: var(--tc-red); }
 
 /* === TABS === */
 .tc-tabs { display: flex; border-bottom: 1px solid var(--tc-border); }

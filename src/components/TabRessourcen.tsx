@@ -5,7 +5,7 @@ import type { SimProjekt } from "../types";
 import { istGruppe, nsKey } from "../types";
 import type { Gewerk, GewerkeKatalog, Rate, Stammdaten, AusschlussFilter } from "./stammdatenHelpers";
 import { LEERE_STAMMDATEN, GEWERKE_KATALOGE, alleKuerzel, stammdatenAlsJson, parseStammdatenJson, stammdatenAlsCsv, parseStammdatenCsv, ausschlussFilterListe, aktiveFilterIds, einheitUmrechnungsfaktor, istRateKranpflichtig } from "./stammdatenHelpers";
-import { StatTile } from "./cockpitCharts";
+import { StatTile, FARBEN } from "./cockpitCharts";
 import type { ApiInstance } from "../hooks/useApi";
 import { ladeAttributListe, ladeObjektAttribute, attrItemsAusWerten, keyZuAttrItem, type AttrItem } from "./modelHelpers";
 import { parseFormel, FormelFehler } from "./formelHelpers";
@@ -389,23 +389,23 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
         </div>
       )}
 
-      {stammdaten.gewerke.length > 0 && (
-        <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+      <div style={{ display: "flex", alignItems: "stretch", gap: 8, marginBottom: 10 }}>
+        {stammdaten.gewerke.length > 0 && (<>
           <StatTile label="Elemente ohne Leistungswert" wert={String(kuerzelOhneLw.length)} status={kuerzelOhneLw.length > 0 ? "warning" : "good"} />
           <StatTile label="Elemente ohne Stammdaten" wert={String(kuerzelOhneRate.length)} status={kuerzelOhneRate.length > 0 ? "warning" : "good"} />
           <StatTile label="Unbenutzte Elemente" wert={String(kuerzelUnbenutzt.length)} />
-        </div>
-      )}
-
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, marginBottom: 10 }}>
-        <div ref={exportMenuRef} style={{ position: "relative" }}>
-          <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "3px 8px" }}
-            disabled={stammdaten.gewerke.length === 0}
-            onClick={() => setExportMenuOffen(o => !o)} title="Ressourcen exportieren">
+        </>)}
+        <div ref={exportMenuRef} style={{ position: "relative", flex: 1, minWidth: 120 }}>
+          <button disabled={stammdaten.gewerke.length === 0} onClick={() => setExportMenuOffen(o => !o)} title="Ressourcen exportieren"
+            style={{ width: "100%", height: "100%", border: `1px solid ${FARBEN.gridline}`, background: FARBEN.surface, padding: "8px 12px",
+              fontSize: 13, fontWeight: 600, fontFamily: "inherit", color: FARBEN.textPrimaer, cursor: stammdaten.gewerke.length === 0 ? "default" : "pointer",
+              opacity: stammdaten.gewerke.length === 0 ? 0.5 : 1 }}
+            onMouseEnter={e => stammdaten.gewerke.length > 0 && (e.currentTarget.style.background = "#f5f9fc")}
+            onMouseLeave={e => (e.currentTarget.style.background = FARBEN.surface)}>
             ⭳ Export ▾
           </button>
           {exportMenuOffen && (
-            <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 2, background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 50, minWidth: 110 }}>
+            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 2, background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 50 }}>
               <div onClick={() => { stammdatenExportieren(); setExportMenuOffen(false); }}
                 style={{ padding: "6px 10px", cursor: "pointer", fontSize: 11 }}
                 onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")} onMouseLeave={e => (e.currentTarget.style.background = "")}
@@ -422,13 +422,15 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
           )}
         </div>
         {!readOnly && (
-          <div ref={importMenuRef} style={{ position: "relative" }}>
-            <button className="tc-btn-secondary" style={{ fontSize: 10, padding: "3px 8px" }}
-              onClick={() => setImportMenuOffen(o => !o)} title="Ressourcen importieren">
+          <div ref={importMenuRef} style={{ position: "relative", flex: 1, minWidth: 120 }}>
+            <button onClick={() => setImportMenuOffen(o => !o)} title="Ressourcen importieren"
+              style={{ width: "100%", height: "100%", border: `1px solid ${FARBEN.gridline}`, background: FARBEN.surface, padding: "8px 12px",
+                fontSize: 13, fontWeight: 600, fontFamily: "inherit", color: FARBEN.textPrimaer, cursor: "pointer" }}
+              onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")} onMouseLeave={e => (e.currentTarget.style.background = FARBEN.surface)}>
               ⭱ Import ▾
             </button>
             {importMenuOffen && (
-              <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 2, background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 50, minWidth: 110 }}>
+              <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 2, background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 50 }}>
                 <div onClick={() => { importInputRef.current?.click(); setImportMenuOffen(false); }}
                   style={{ padding: "6px 10px", cursor: "pointer", fontSize: 11 }}
                   onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")} onMouseLeave={e => (e.currentTarget.style.background = "")}
@@ -583,7 +585,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
               <div style={{ display: "grid", gridTemplateColumns: ratenGridTemplate, alignItems: "center", columnGap: 6 }}>
                 <input disabled={readOnly} value={r.kuerzel} onChange={e => rateAendern(gi, ri, { kuerzel: e.target.value })}
                   title={kuerzelTitle}
-                  style={{ width: "100%", minWidth: 0, fontSize: 12, padding: "3px 5px", fontFamily: "inherit",
+                  style={{ width: "100%", minWidth: 0, fontSize: dupImGewerk ? 14 : 12, fontWeight: dupImGewerk ? 700 : 400, padding: "3px 5px", fontFamily: "inherit",
                     border: `1px solid ${dupImGewerk ? "var(--tc-red)" : andereGewerkeMitKuerzel.length > 0 ? "var(--tc-blue)" : "#d4dce4"}` }} />
                 <input disabled={readOnly} value={r.bezeichnung} onChange={e => rateAendern(gi, ri, { bezeichnung: e.target.value })}
                   style={{ width: "100%", minWidth: 0, fontSize: 12, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
@@ -631,7 +633,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                   <span style={{ fontSize: 9, color: "var(--tc-text-3)", width: 40, flexShrink: 0 }}>Formel</span>
                   <input disabled={readOnly} value={r.formel ?? ""} placeholder="z.B. {Qto_WallBaseQuantities||NetVolume}"
                     onChange={e => rateAendern(gi, ri, { formel: e.target.value })}
-                    style={{ flex: 1, minWidth: 0, fontSize: 10, padding: "3px 5px", fontFamily: "monospace", border: `1px solid ${formelFehler ? "var(--tc-red)" : "#d4dce4"}` }} />
+                    style={{ flex: 1, minWidth: 0, fontSize: formelFehler ? 13 : 10, fontWeight: formelFehler ? 700 : 400, padding: "3px 5px", fontFamily: "monospace", border: `1px solid ${formelFehler ? "var(--tc-red)" : "#d4dce4"}` }} />
                   {api && !readOnly && (
                     <button className="tc-btn-ghost" style={{ fontSize: 9, padding: "2px 6px", flexShrink: 0 }}
                       onClick={() => { const opening = pickerOffenFuer !== pickerKey; setPickerOffenFuer(opening ? pickerKey : null); setPickerQuery(""); if (opening) attrListeLaden(); }}>

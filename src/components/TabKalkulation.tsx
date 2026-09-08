@@ -458,7 +458,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
                     title={info ? `${g.label} [${g.einheit}] — ${info}` : `${g.label} [${g.einheit}]`}
                     onChange={e => mengeAendern(z.t, g.key, e.target.value === "" ? null : Number(e.target.value))}
                     onFocus={mengenBearbeitungStart} onBlur={mengenBearbeitungEnde} onKeyDown={mengenEnterCommit}
-                    style={{ minWidth: 0, flex: 1, fontSize: 12, padding: "2px 4px", border: `1px solid ${quelle === "fehler" ? "var(--tc-red)" : "#d4dce4"}`, fontFamily: "inherit", color: farbe, fontWeight: quelle ? 600 : 400 }} />
+                    style={{ minWidth: 0, flex: 1, fontSize: quelle === "fehler" ? 14 : 12, padding: "2px 4px", border: `1px solid ${quelle === "fehler" ? "var(--tc-red)" : "#d4dce4"}`, fontFamily: "inherit", color: farbe, fontWeight: quelle === "fehler" ? 700 : quelle ? 600 : 400 }} />
                 </div>
               );
             })}
@@ -714,7 +714,7 @@ function GewerkObjektListe({ t, gewerk, rate, api, stammdaten, readOnly, taskAen
                   title={o.grund}
                   onChange={e => overrideAendern(o.guid, e.target.value === "" ? null : Number(e.target.value))}
                   onFocus={mengenBearbeitungStart} onBlur={mengenBearbeitungEnde} onKeyDown={mengenEnterCommit}
-                  style={{ width: 70, fontSize: 10, padding: "2px 4px", border: `1px solid ${o.quelle === "fehler" ? "var(--tc-red)" : "#d4dce4"}`, fontFamily: "inherit", color: farbe, fontWeight: o.quelle !== "auto" ? 600 : 400 }} />
+                  style={{ width: 70, fontSize: o.quelle === "fehler" ? 13 : 10, padding: "2px 4px", border: `1px solid ${o.quelle === "fehler" ? "var(--tc-red)" : "#d4dce4"}`, fontFamily: "inherit", color: farbe, fontWeight: o.quelle === "fehler" ? 700 : o.quelle !== "auto" ? 600 : 400 }} />
                 <div style={{ color: "var(--tc-text-3)" }}>{gewerk.einheit}</div>
               </Fragment>
             );

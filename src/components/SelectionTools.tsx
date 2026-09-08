@@ -95,11 +95,11 @@ export default function SelectionTools({ aktivTask, aktiveSim, api, updateSim, s
 
       {entfernenBestaetigen ? (
         <div style={{ background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: 3, padding: 8, fontSize: 11 }}>
-          <div style={{ fontWeight: 600, color: "#DC2626", marginBottom: 4 }}>
+          <div style={{ fontWeight: 600, color: "var(--tc-red)", marginBottom: 4 }}>
             ⚠ {selCount} markierte Bauteile aus allen Tasks entfernen?
           </div>
           <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-            <button className="tc-btn-primary" style={{ flex: 1, background: "#DC2626", borderColor: "#DC2626", fontSize: 11 }}
+            <button className="tc-btn-primary" style={{ flex: 1, background: "var(--tc-red)", borderColor: "var(--tc-red)", fontSize: 11 }}
               onClick={entfernenAusfuehren}>Ja, entfernen</button>
             <button className="tc-btn-ghost" style={{ flex: 1, fontSize: 11 }}
               onClick={() => setEntfernenBestaetigen(false)}>Abbrechen</button>

@@ -62,7 +62,7 @@ export function useMeasuredWidth<T extends HTMLElement>(fallback: number) {
 export const FARBEN = {
   kategorial: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"],
   andere: "#898781",
-  status: { good: "#0ca30c", warning: "#fab219", serious: "#ec835a", critical: "#d03b3b" },
+  status: { good: "#0ca30c", warning: "#fab219", serious: "#ec835a", critical: "#7a1f2e" }, // critical = weinrot, synchron mit --tc-red in App.css
   surface: "#fcfcfb",
   gridline: "#e1e0d9",
   achse: "#c3c2b7",

@@ -792,11 +792,11 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
             {/* Lösch-Bestätigung */}
             {loeschenBestaetigen && !aktivIsGroup && (
               <div style={{ background: "#FEF2F2", border: "1px solid #FCA5A5", padding: 8, marginBottom: 6, fontSize: 11 }}>
-                <div style={{ fontWeight: 600, color: "#DC2626", marginBottom: 4 }}>
+                <div style={{ fontWeight: 600, color: "var(--tc-red)", marginBottom: 4 }}>
                   ⚠ Alle {bauteilGuids.length} Bauteile von „{aktivTask.name}" entfernen?
                 </div>
                 <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                  <button className="tc-btn-primary" style={{ flex: 1, background: "#DC2626", borderColor: "#DC2626", fontSize: 11 }}
+                  <button className="tc-btn-primary" style={{ flex: 1, background: "var(--tc-red)", borderColor: "var(--tc-red)", fontSize: 11 }}
                     onClick={() => { speichereGuids(aktivTask.id, []); setLoeschenBestaetigen(false); }}>Alle entfernen</button>
                   <button className="tc-btn-ghost" style={{ flex: 1, fontSize: 11 }}
                     onClick={() => setLoeschenBestaetigen(false)}>Abbrechen</button>

@@ -458,7 +458,7 @@ export default function App() {
             {/* Sync Status */}
             <span title={syncStatus === "saved" ? "Cloud gespeichert" : syncStatus === "saving" ? "Speichern…" : syncStatus === "error" ? "Sync-Fehler" : ""}
               style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
-                background: syncStatus === "saved" ? "#6cc07a" : syncStatus === "saving" ? "#edb94c" : syncStatus === "error" ? "#ff6b6b" : "transparent",
+                background: syncStatus === "saved" ? "#6cc07a" : syncStatus === "saving" ? "#edb94c" : syncStatus === "error" ? "var(--tc-red)" : "transparent",
                 transition: "background 0.3s" }} />
           </div>
         </div>
