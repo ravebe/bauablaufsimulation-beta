@@ -85,6 +85,9 @@ interface TimeSeriesProps {
   formatWert?: (v: number) => string;
   markerIdx?: number | null; // Index in tage[] für eine dauerhafte Markierung (z.B. "Heute")
   markerLabel?: string;
+  /** Klick ins Diagramm meldet den getroffenen Tag zurück (z.B. um das 3D-Modell auf dieses Datum zu
+   *  setzen und markerIdx/markerLabel entsprechend nachzuführen) — siehe Tab AVOR. */
+  onTagKlick?: (tag: string, index: number) => void;
   kalender?: Kalender; // für Wochenend-/Feiertag-Schattierung; ohne wird nur Sa/So schattiert
   /** Gemeinsamer Zoom-/Scroll-Zustand mehrerer Charts auf derselben Zeitachse (siehe Tab AVOR) —
    *  Mausrad zoomt zum Cursor wie im Gantt, Achse wechselt Monate → Wochen → Tage. Ohne diese Props
@@ -97,7 +100,7 @@ interface TimeSeriesProps {
 
 const ML = 44, MR = 8, MT = 16, MB = 20;
 
-export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = "", hoehe = 180, formatWert, markerIdx, markerLabel = "Heute", kalender,
+export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = "", hoehe = 180, formatWert, markerIdx, markerLabel = "Heute", onTagKlick, kalender,
   pxProTag: pxProTagProp, onPxProTagChange: onPxProTagChangeProp, scrollTag: scrollTagProp, onScrollChange: onScrollChangeProp }: TimeSeriesProps) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [outerRef, viewportW] = useMeasuredWidth<HTMLDivElement>(1000);
@@ -201,6 +204,14 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
     setHoverIdx(Math.max(0, Math.min(n - 1, idx)));
   }
 
+  function onKlick(e: React.MouseEvent<SVGSVGElement>) {
+    if (!onTagKlick) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const idx = Math.max(0, Math.min(n - 1, Math.round((mouseX - ML) / pxProTag)));
+    onTagKlick(tage[idx], idx);
+  }
+
   const stackedPaths: { d: string; color: string; key: string }[] = [];
   if (modus === "flaeche-gestapelt") {
     let kumBase = new Array(n).fill(0);
@@ -281,7 +292,8 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
         </div>
         <div ref={scrollRef} onScroll={onChartScroll} style={{ overflowX: "auto", overflowY: "hidden" }}>
           <svg width={VBW} height={hoehe} viewBox={`0 0 ${VBW} ${hoehe}`}
-            onMouseMove={onMove} onMouseLeave={() => setHoverIdx(null)} style={{ display: "block", cursor: "crosshair" }}>
+            onMouseMove={onMove} onMouseLeave={() => setHoverIdx(null)} onClick={onKlick}
+            style={{ display: "block", cursor: onTagKlick ? "pointer" : "crosshair" }}>
             {weekendBands.map((b, i) => <rect key={`we${i}`} x={b.x} y={MT} width={b.w} height={innerH} fill={WE_BG} />)}
             <line x1={ML} y1={MT} x2={ML} y2={hoehe - MB} stroke={FARBEN.achse} strokeWidth={1} />
             <line x1={ML} y1={hoehe - MB} x2={VBW - MR} y2={hoehe - MB} stroke={FARBEN.achse} strokeWidth={1} />

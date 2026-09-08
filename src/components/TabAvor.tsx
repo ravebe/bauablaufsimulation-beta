@@ -2,14 +2,17 @@
 // aus den in Tab Kalkulation erfassten Mengen/Kürzeln/WBS-Feldern und den Stammdaten aus Ressourcen.
 import { useState } from "react";
 import type { SimProjekt } from "../types";
+import { parseDateUniversal } from "../types";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import { LEERE_STAMMDATEN, hatKranpflichtigeRaten } from "./stammdatenHelpers";
 import { personalauslastung, personalSollProTag, kranauslastung, mengenProTag, ertragsoptik, optimaleTagesleistung } from "./avorHelpers";
 import type { TagWert } from "./avorHelpers";
+import { dreiDZustandAufTagSetzen, tagVonDatum } from "./dreiDHeuteHelper";
+import type { ApiInstance } from "../hooks/useApi";
 import { TimeSeriesChart, StatTile, CockpitAbschnitt, useEingeklappt, useChartZoom, useChartHoehe, ChartResizeHandle, FARBEN } from "./cockpitCharts";
 import type { Serie } from "./cockpitCharts";
 
-interface Props { sim: SimProjekt | null; projectId?: string | null; }
+interface Props { sim: SimProjekt | null; projectId?: string | null; api?: ApiInstance | null; sharedNadelTag?: React.MutableRefObject<number>; }
 
 const KRAN_KAPAZITAET = 1; // Annahme: 1 Kran je Kranbereich — Werte darüber = mehrere Tasks wollen gleichzeitig denselben Kran
 
@@ -35,10 +38,16 @@ function gestapelteSerien(tagWerte: TagWert[], labelFuer: (k: string) => string)
   return { tage, serien };
 }
 
-export default function TabAvor({ sim, projectId = null }: Props) {
+export default function TabAvor({ sim, projectId = null, api, sharedNadelTag }: Props) {
   const [mengenGewerkKey, setMengenGewerkKey] = useState<string>("beton");
   const [mengenKuerzel, setMengenKuerzel] = useState<string>(""); // "" = Total (alle Kürzel dieses Gewerks summiert), Default
   const { eingeklappt, toggle: toggleEingeklappt } = useEingeklappt(projectId, "avor");
+
+  // Klick in eines der Diagramme setzt eine gemeinsame Datums-Markierung (Index, da alle Tagesreihen
+  // dieses Tabs denselben Projektzeitraum abdecken) und springt im 3D-Modell auf diesen Tag — siehe
+  // onChartTagKlick() weiter unten.
+  const [ausgewaehlterTag, setAusgewaehlterTag] = useState<number | null>(null);
+  const [klickErgebnis, setKlickErgebnis] = useState<string | null>(null);
 
   // Alle Daten mit sicheren Fallbacks berechnen (nicht erst nach einem frühen Return), damit die
   // untenstehenden Hooks (useChartZoom/useChartHoehe) in jedem Render in derselben Reihenfolge
@@ -73,6 +82,27 @@ export default function TabAvor({ sim, projectId = null }: Props) {
   const [hoeheKran, setHoeheKran] = useChartHoehe(projectId, "avor-kran");
   const [hoeheMengen, setHoeheMengen] = useChartHoehe(projectId, "avor-mengen");
   const [hoeheErtrag, setHoeheErtrag] = useChartHoehe(projectId, "avor-ertrag");
+
+  const allStarts = tasks.map(t => parseDateUniversal(t.start)).filter((d): d is Date => !!d);
+  const minDate = allStarts.length > 0 ? new Date(Math.min(...allStarts.map(d => d.getTime()))) : null;
+  const ausgewaehltesDatumIso = ausgewaehlterTag != null ? personalSerien.tage[ausgewaehlterTag] : null;
+  const ausgewaehltesDatumLabel = ausgewaehltesDatumIso
+    ? (parseDateUniversal(ausgewaehltesDatumIso)?.toLocaleDateString("de-CH") ?? ausgewaehltesDatumIso)
+    : "Heute";
+
+  // Klick in irgendeines der vier Diagramme: gemeinsame Markierung setzen, "geteilte Nadel" (siehe
+  // App.tsx) für andere Tabs synchron halten, und — falls ein Modell verbunden ist — den 3D-Zustand
+  // auf diesen Tag springen.
+  async function onChartTagKlick(iso: string, idx: number) {
+    setAusgewaehlterTag(idx);
+    setKlickErgebnis(null);
+    const datum = parseDateUniversal(iso);
+    if (sharedNadelTag && datum) sharedNadelTag.current = datum.getTime();
+    if (!api || !minDate) return;
+    const tag = tagVonDatum(iso, minDate);
+    const aktive = await dreiDZustandAufTagSetzen(api, tasks, minDate, tag, true);
+    setKlickErgebnis(aktive.length > 0 ? `${aktive.length} Task${aktive.length === 1 ? "" : "s"} aktiv am ${datum ? datum.toLocaleDateString("de-CH") : iso}` : `Keine aktiven Tasks am ${datum ? datum.toLocaleDateString("de-CH") : iso}`);
+  }
 
   if (!sim) return <div style={{ padding: 14, fontSize: 12, color: "var(--tc-text-3)" }}>Kein aktives Projekt ausgewählt</div>;
 
@@ -110,11 +140,17 @@ export default function TabAvor({ sim, projectId = null }: Props) {
         <StatTile label="Tage über Kran-Kapazität" wert={String(tageUeberKapazitaet)} status={tageUeberKapazitaet > 0 ? "warning" : "good"} />
         <StatTile label="Marge (kumuliert)" wert={`${fmtChf(marge)} CHF`} status={marge >= 0 ? "good" : "critical"} />
       </div>
+      {ausgewaehltesDatumIso && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, marginTop: -8, fontSize: 11, color: "var(--tc-text-3)" }}>
+          <span>📍 {ausgewaehltesDatumLabel}{!api && " — Klick in ein Diagramm springt zu diesem Tag, aber es ist kein 3D-Modell verbunden"}{klickErgebnis && api ? ` — ${klickErgebnis}` : ""}</span>
+        </div>
+      )}
 
       <CockpitAbschnitt titel="Personalauslastung" eingeklappt={!!eingeklappt["personal"]} onToggle={() => toggleEingeklappt("personal")}>
         <TimeSeriesChart tage={personalSerien.tage} serien={personalSerien.serien} modus="flaeche-gestapelt" einheit="Personen"
           referenzlinie={personalSollGesetzt ? { label: "Personal (Soll)", werte: personalSoll } : undefined}
           formatWert={v => String(Math.round(v))} kalender={kalender} hoehe={hoehePersonal}
+          markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick}
           pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
         <ChartResizeHandle hoehe={hoehePersonal} setHoehe={setHoehePersonal} />
       </CockpitAbschnitt>
@@ -128,6 +164,7 @@ export default function TabAvor({ sim, projectId = null }: Props) {
           <TimeSeriesChart tage={kranSerien.tage} serien={kranSerien.serien} modus="linie" einheit="gleichzeitig"
             referenzlinie={{ wert: KRAN_KAPAZITAET, label: "Kapazität" }} formatWert={v => String(Math.round(v))}
             kalender={kalender} hoehe={hoeheKran}
+            markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick}
             pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
           <ChartResizeHandle hoehe={hoeheKran} setHoehe={setHoeheKran} />
         </>)}
@@ -155,6 +192,7 @@ export default function TabAvor({ sim, projectId = null }: Props) {
           referenzlinie={optimal != null ? { wert: optimal, label: "Optimal ausgelastete Tagesleistung" } : undefined}
           modus="linie" formatWert={v => v.toLocaleString("de-CH", { maximumFractionDigits: 1 })}
           kalender={kalender} hoehe={hoeheMengen}
+          markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick}
           pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
         <ChartResizeHandle hoehe={hoeheMengen} setHoehe={setHoeheMengen} />
       </CockpitAbschnitt>
@@ -165,6 +203,7 @@ export default function TabAvor({ sim, projectId = null }: Props) {
             { key: "ertrag", label: "Ertrag (kumuliert)", color: FARBEN.kategorial[0], werte: ertrag.map(e => e.ertragKum) },
             { key: "kosten", label: "Kosten (kumuliert)", color: FARBEN.kategorial[1], werte: ertrag.map(e => e.kostenKum) },
           ]} kalender={kalender} hoehe={hoeheErtrag}
+          markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick}
           pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
         <ChartResizeHandle hoehe={hoeheErtrag} setHoehe={setHoeheErtrag} />
       </CockpitAbschnitt>
