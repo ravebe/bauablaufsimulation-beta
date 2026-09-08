@@ -37,7 +37,7 @@ function gestapelteSerien(tagWerte: TagWert[], labelFuer: (k: string) => string)
 
 export default function TabAvor({ sim, projectId = null }: Props) {
   const [mengenGewerkKey, setMengenGewerkKey] = useState<string>("beton");
-  const [mengenKuerzel, setMengenKuerzel] = useState<string>("");
+  const [mengenKuerzel, setMengenKuerzel] = useState<string>(""); // "" = Total (alle Kürzel dieses Gewerks summiert), Default
   const { eingeklappt, toggle: toggleEingeklappt } = useEingeklappt(projectId, "avor");
 
   // Alle Daten mit sicheren Fallbacks berechnen (nicht erst nach einem frühen Return), damit die
@@ -56,7 +56,7 @@ export default function TabAvor({ sim, projectId = null }: Props) {
 
   const gewerkOptionen = stammdaten.gewerke;
   const aktivesGewerk = gewerkOptionen.find(g => g.key === mengenGewerkKey) ?? gewerkOptionen[0];
-  const aktiveRate = aktivesGewerk?.raten.find(r => r.kuerzel === mengenKuerzel) ?? aktivesGewerk?.raten[0];
+  const aktiveRate = mengenKuerzel ? aktivesGewerk?.raten.find(r => r.kuerzel === mengenKuerzel) : undefined;
   const mengen = aktivesGewerk ? mengenProTag(tasks, aktivesGewerk.key, kalender, aktiveRate?.kuerzel) : [];
   const optimal = aktiveRate ? optimaleTagesleistung(aktiveRate, stammdaten.arbeitszeitStdProTag) : null;
 
@@ -131,16 +131,17 @@ export default function TabAvor({ sim, projectId = null }: Props) {
               {gewerkOptionen.map(g => <option key={g.key} value={g.key}>{g.label}</option>)}
             </select>
             {aktivesGewerk && aktivesGewerk.raten.length > 0 && (
-              <select value={aktiveRate?.kuerzel ?? ""} onChange={e => setMengenKuerzel(e.target.value)}
-                title="Bauteil-Kürzel — bestimmt die Optimal-Tagesleistung (Leistungswert × Personen × Arbeitszeit dieses Kürzels)"
+              <select value={mengenKuerzel} onChange={e => setMengenKuerzel(e.target.value)}
+                title="Bauteil-Kürzel — bestimmt die Optimal-Tagesleistung (Leistungswert × Personen × Arbeitszeit dieses Kürzels). Total summiert alle Kürzel dieser Kategorie, ohne Optimal-Referenzlinie."
                 style={{ fontSize: 11, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }}>
+                <option value="">Total {aktivesGewerk.label}</option>
                 {aktivesGewerk.raten.map(r => <option key={r.kuerzel} value={r.kuerzel}>{r.kuerzel} — {r.bezeichnung}</option>)}
               </select>
             )}
           </div>
         }>
         <TimeSeriesChart tage={mengen.map(m => m.tag)} einheit={aktivesGewerk?.einheit ?? ""}
-          serien={[{ key: "menge", label: "Durchschnittlich nötige Tagesleistung", color: FARBEN.kategorial[0], werte: mengen.map(m => m.menge) }]}
+          serien={[{ key: "menge", label: `Durchschnittlich nötige Tagesleistung${aktiveRate ? ` (${aktiveRate.kuerzel})` : " (Total)"}`, color: FARBEN.kategorial[0], werte: mengen.map(m => m.menge) }]}
           referenzlinie={optimal != null ? { wert: optimal, label: "Optimal ausgelastete Tagesleistung" } : undefined}
           modus="linie" formatWert={v => v.toLocaleString("de-CH", { maximumFractionDigits: 1 })}
           kalender={kalender} hoehe={hoeheMengen}
