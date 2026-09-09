@@ -597,7 +597,7 @@ export default function App() {
           <TabRessourcen sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} api={api} selektion={selektion} aktivesModellId={aktivesModellId} projectId={projectId} />
         </div>
         <div className="tc-tab-pane" style={{ display: aktTab === "avor" ? "block" : "none" }}>
-          <TabAvor sim={aktiveSim} projectId={projectId} api={api} sharedNadelTag={sharedNadelTag} />
+          <TabAvor sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} projectId={projectId} api={api} sharedNadelTag={sharedNadelTag} />
         </div>
         <div className="tc-tab-pane" style={{ display: aktTab === "kosten" ? "block" : "none" }}>
           <TabKosten sim={aktiveSim} projectId={projectId} api={api} sharedNadelTag={sharedNadelTag} />

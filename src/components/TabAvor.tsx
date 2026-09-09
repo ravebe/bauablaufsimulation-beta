@@ -11,8 +11,9 @@ import { dreiDZustandAufTagSetzen, tagVonDatum } from "./dreiDHeuteHelper";
 import type { ApiInstance } from "../hooks/useApi";
 import { TimeSeriesChart, StatTile, CockpitAbschnitt, useEingeklappt, useChartZoom, useChartHoehe, ChartResizeHandle, FARBEN } from "./cockpitCharts";
 import type { Serie } from "./cockpitCharts";
+import KapazitaetsCheckManager from "./KapazitaetsCheckManager";
 
-interface Props { sim: SimProjekt | null; projectId?: string | null; api?: ApiInstance | null; sharedNadelTag?: React.MutableRefObject<number>; }
+interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; projectId?: string | null; api?: ApiInstance | null; sharedNadelTag?: React.MutableRefObject<number>; }
 
 const KRAN_KAPAZITAET = 1; // Annahme: 1 Kran je Kranbereich — Werte darüber = mehrere Tasks wollen gleichzeitig denselben Kran
 
@@ -38,9 +39,10 @@ function gestapelteSerien(tagWerte: TagWert[], labelFuer: (k: string) => string)
   return { tage, serien };
 }
 
-export default function TabAvor({ sim, projectId = null, api, sharedNadelTag }: Props) {
+export default function TabAvor({ sim, updateSim, readOnly, projectId = null, api, sharedNadelTag }: Props) {
   const [mengenGewerkKey, setMengenGewerkKey] = useState<string>("beton");
   const [mengenKuerzel, setMengenKuerzel] = useState<string>(""); // "" = Total (alle Kürzel dieses Gewerks summiert), Default
+  const [kapazitaetsCheckOffen, setKapazitaetsCheckOffen] = useState(false);
   const { eingeklappt, toggle: toggleEingeklappt } = useEingeklappt(projectId, "avor");
 
   // Klick in eines der Diagramme setzt eine gemeinsame Datums-Markierung (Index, da alle Tagesreihen
@@ -132,13 +134,18 @@ export default function TabAvor({ sim, projectId = null, api, sharedNadelTag }: 
 
   return (
     <div style={{ padding: 14, fontSize: 12 }} ref={zoom.breitenRef}>
-      <div style={{ display: "flex", gap: 8, marginBottom: 16, position: "sticky", top: 0, background: "#fff", zIndex: 3, paddingBottom: 4 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 16, position: "sticky", top: 0, background: "#fff", zIndex: 3, paddingBottom: 4 }}>
         <StatTile label="Peak Personalbedarf" wert={`${peakWert} Pers.`} sub={peakTag !== "–" ? peakTag : undefined} />
         {personalSollGesetzt && (
           <StatTile label="Tage über Personal (Soll)" wert={String(tageUeberPersonalSoll)} status={tageUeberPersonalSoll > 0 ? "warning" : "good"} />
         )}
         <StatTile label="Tage über Kran-Kapazität" wert={String(tageUeberKapazitaet)} status={tageUeberKapazitaet > 0 ? "warning" : "good"} />
         <StatTile label="Marge (kumuliert)" wert={`${fmtChf(marge)} CHF`} status={marge >= 0 ? "good" : "critical"} />
+        <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px", marginLeft: "auto" }}
+          onClick={() => setKapazitaetsCheckOffen(true)}
+          title="Personal-/Kran-Budget je Bauphase gegen den aus Menge × Leistungswert ermittelten Bedarf prüfen">
+          Kapazitäts-Check
+        </button>
       </div>
       {ausgewaehltesDatumIso && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, marginTop: -8, fontSize: 11, color: "var(--tc-text-3)" }}>
@@ -207,6 +214,10 @@ export default function TabAvor({ sim, projectId = null, api, sharedNadelTag }: 
           pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
         <ChartResizeHandle hoehe={hoeheErtrag} setHoehe={setHoeheErtrag} />
       </CockpitAbschnitt>
+
+      {kapazitaetsCheckOffen && (
+        <KapazitaetsCheckManager sim={sim} updateSim={updateSim} readOnly={readOnly} onClose={() => setKapazitaetsCheckOffen(false)} />
+      )}
     </div>
   );
 }

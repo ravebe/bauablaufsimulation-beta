@@ -54,6 +54,21 @@ export interface SimModell {
 
 export type Zugriff = "edit" | "read" | "none";
 
+// Kapazitäts-Check (Tab AVOR): Personal-/Kran-Budget je Bauphase (= Kranbereich, siehe Task.kranbereich)
+// gegen den aus Menge × Leistungswert ermittelten Bedarf prüfen, siehe kapazitaetsCheckHelpers.ts.
+export interface KapazitaetsPhase {
+  id: string;
+  kranbereich: string;       // matcht Task.kranbereich (getrimmt); "" = "unbekannt"-Sammeltopf
+  anzahlPersonen: number;
+  anzahlKraene: number;
+  dauerTageSandbox?: number; // nur im Sandbox-Modus: Ziel-Dauer dieser Phase in Arbeitstagen
+}
+export interface KapazitaetsCheck {
+  modus: "gantt" | "sandbox";
+  gesamtDauerTageSandbox?: number; // nur Sandbox: gewünschte Gesamtdauer, für Plausibilitäts-Hinweis
+  phasen: KapazitaetsPhase[];
+}
+
 export interface SimProjekt {
   id: string;
   name: string;
@@ -70,6 +85,7 @@ export interface SimProjekt {
   kalender?: Kalender; // Arbeitstage-Kalender (Feiertage) dieses Projekts
   stammdaten?: Stammdaten; // Leistungswerte/Personal/CHF für die Kalkulation, siehe stammdatenHelpers.ts
   mengenBerechnetSignatur?: string; // Signatur der Stammdaten (Formeln/Ausschlussfilter) zum Zeitpunkt des letzten "Mengen aus Bauteilen berechnen" — siehe mengenRelevanteSignatur() in stammdatenHelpers.ts; weicht sie vom aktuellen Stand ab, sind die Mengen veraltet
+  kapazitaetsCheck?: KapazitaetsCheck; // Personal-/Kran-Kapazitätscheck je Bauphase, siehe KapazitaetsCheckManager.tsx
 }
 
 // TC API Typen

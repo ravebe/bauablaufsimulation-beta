@@ -307,7 +307,7 @@ export function rundeDauer(rohTage: number): number {
   return 2;
 }
 
-function rateFuerKuerzel(gewerk: Gewerk, kuerzel: string): Rate | undefined {
+export function rateFuerKuerzel(gewerk: Gewerk, kuerzel: string): Rate | undefined {
   return gewerk.raten.find(r => r.kuerzel === kuerzel);
 }
 
