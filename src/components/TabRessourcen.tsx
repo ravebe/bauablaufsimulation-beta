@@ -522,7 +522,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
               <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px" }}>
                 <input disabled={readOnly} value={gewerk.label} title="Kategorie umbenennen"
                   onChange={e => gewerkLabelAendern(gi, e.target.value)}
-                  style={{ width: 160, fontSize: 10, fontWeight: 600, letterSpacing: ".5px", textTransform: "uppercase",
+                  style={{ width: 160, fontSize: 12, fontWeight: 700, letterSpacing: "normal", textTransform: "uppercase",
                     padding: "1px 3px", border: "1px solid transparent", background: "transparent", fontFamily: "inherit", color: "var(--tc-text-3)" }}
                   onFocus={e => e.currentTarget.style.border = "1px solid #d4dce4"}
                   onBlur={e => e.currentTarget.style.border = "1px solid transparent"} />
