@@ -344,7 +344,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   }
 
   const numInput = (val: number | null, onChange: (v: number | null) => void, width: number | string = "100%") => (
-    <input type="number" disabled={readOnly} value={val ?? ""} placeholder="—"
+    <input type="number" className="no-spinner" disabled={readOnly} value={val ?? ""} placeholder="—"
       onChange={e => onChange(e.target.value === "" ? null : Number(e.target.value))}
       style={{ width, minWidth: 0, fontSize: 12, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
   );
@@ -527,7 +527,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                   onFocus={e => e.currentTarget.style.border = "1px solid #d4dce4"}
                   onBlur={e => e.currentTarget.style.border = "1px solid transparent"} />
                 {gewerkTaskAnzahl > 0 && (
-                  <span style={{ color: gewerkProblem ? "var(--tc-red)" : "var(--tc-text-3)" }}
+                  <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: "normal", color: gewerkProblem ? "var(--tc-red)" : "var(--tc-text-3)" }}
                     title={
                       gewerkProblem
                         ? "Mindestens ein Task in dieser Kategorie hat keine oder eine fehlerhafte Menge — siehe Tab Kalkulation"
