@@ -28,13 +28,14 @@ const DEFAULT_COL_W: Record<Spalte, number> = { nr: 30, task: 220, kuerzel: 64, 
 const LS_COLW = "4d-kalk-colw";
 
 // Spalten mit Sortier-/Filterfunktion im Header (Klick auf Titel = sortieren, ▾ = Filter-Popover).
-const SORTIERBARE_SPALTEN = ["task", "kuerzel", "geplant", "berechnet"] as const;
+const SORTIERBARE_SPALTEN = ["nr", "task", "kuerzel", "geplant", "berechnet"] as const;
 type SortSpalte = typeof SORTIERBARE_SPALTEN[number];
 
-type Zeile = { t: Task; geplant: number; berechnet: number; differenz: number; abweichung: boolean };
+type Zeile = { t: Task; nr: string; geplant: number; berechnet: number; differenz: number; abweichung: boolean };
 
 function spalteWert(z: Zeile, spalte: SortSpalte): string {
   switch (spalte) {
+    case "nr": return z.nr;
     case "task": return z.t.name;
     case "kuerzel": return z.t.bauteilKuerzel || "–";
     case "geplant": return `${z.geplant}d`;
@@ -47,6 +48,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   const [bulkErgebnis, setBulkErgebnis] = useState<string | null>(null);
   const [mengenLaeuft, setMengenLaeuft] = useState(false);
   const [mengenErgebnis, setMengenErgebnis] = useState<string | null>(null);
+  const [manuelleLoeschErgebnis, setManuelleLoeschErgebnis] = useState<string | null>(null);
   const [suchOffen, setSuchOffen] = useState(false);
   const [suchQuery, setSuchQuery] = useState("");
   const [sortSpalte, setSortSpalte] = useState<SortSpalte | null>(null);
@@ -255,6 +257,30 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
       : `${taskCount} Tasks aktualisiert · ${autoCount} Mengen berechnet, ${fehlerCount} mit Fehlern${manuellCount > 0 ? `, ${manuellCount} teilweise manuell` : ""}`);
   }
 
+  // Löscht ausschliesslich manuell eingegebene Mengen (mengenQuelle "manuell") über alle Tasks —
+  // automatisch berechnete ("auto") und fehlerhafte ("fehler") Mengen bleiben unangetastet, ebenso
+  // die separate manuelle Übersteuerung der "Berechnet"-Spalte (berechneteDauerManuell). Geleerte
+  // Felder können danach über "Mengen aus Bauteilen berechnen" wieder automatisch befüllt werden.
+  function manuelleMengenLoeschen() {
+    if (!sim) return;
+    const anzahl = sim.tasks.reduce((s, t) => s + Object.values(t.mengenQuelle ?? {}).filter(q => q === "manuell").length, 0);
+    if (anzahl === 0) { setManuelleLoeschErgebnis("Keine manuellen Mengen vorhanden."); return; }
+    if (!confirm(`${anzahl} manuell eingegebene Menge${anzahl === 1 ? "" : "n"} wirklich löschen? Die Felder werden geleert und können danach über "Mengen aus Bauteilen berechnen" wieder automatisch befüllt werden.`)) return;
+    const updatedTasks = sim.tasks.map(t => {
+      if (!t.mengenQuelle) return t;
+      const manuelleKeys = Object.keys(t.mengenQuelle).filter(k => t.mengenQuelle![k] === "manuell");
+      if (manuelleKeys.length === 0) return t;
+      const mengen = { ...(t.mengen ?? {}) };
+      const mengenQuelle = { ...(t.mengenQuelle ?? {}) };
+      const mengenInfo = { ...(t.mengenInfo ?? {}) };
+      const mengenObjekte = { ...(t.mengenObjekte ?? {}) };
+      for (const k of manuelleKeys) { delete mengen[k]; delete mengenQuelle[k]; delete mengenInfo[k]; delete mengenObjekte[k]; }
+      return { ...t, mengen, mengenQuelle, mengenInfo, mengenObjekte };
+    });
+    updateSim({ ...sim, tasks: updatedTasks });
+    setManuelleLoeschErgebnis(`${anzahl} manuelle Menge${anzahl === 1 ? "" : "n"} gelöscht.`);
+  }
+
   async function alleUnzugeordnetenZuordnen() {
     if (!api) return;
     const kandidaten = sim!.tasks.filter((t, i) => !t.isGroup && !istGruppe(sim!.tasks, i) && !t.bauteilKuerzel && t.objektGuids.length > 0);
@@ -306,7 +332,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     const geplant = arbeitstageZwischen(t.start, t.end, kalender);
     const berechnet = dauerBerechnetTask(t, stammdaten);
     const abweichung = berechnet > 0 && (berechnet > geplant * 1.5 || berechnet < geplant * 0.67);
-    return { t, geplant, berechnet, differenz: berechnet - geplant, abweichung };
+    return { t, nr: nummern.get(t.id) ?? "", geplant, berechnet, differenz: berechnet - geplant, abweichung };
   }).filter((z): z is Zeile => z !== null);
 
   const tasksMitKuerzel = zeilen.filter(z => z.t.bauteilKuerzel).length;
@@ -380,6 +406,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   if (sortSpalte) {
     const richt = sortRichtung === "asc" ? 1 : -1;
     zeilenGefiltert = [...zeilenGefiltert].sort((a, b) => {
+      if (sortSpalte === "nr") return (Number(a.nr) - Number(b.nr)) * richt;
       if (sortSpalte === "geplant") return (a.geplant - b.geplant) * richt;
       if (sortSpalte === "berechnet") return (a.berechnet - b.berechnet) * richt;
       if (sortSpalte === "kuerzel") return (a.t.bauteilKuerzel ?? "").localeCompare(b.t.bauteilKuerzel ?? "") * richt;
@@ -609,27 +636,36 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
           </CockpitAbschnitt>
         )}
 
-        {!readOnly && api && (
+        {!readOnly && (
           <div style={{ marginBottom: 10 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }} disabled={bulkLaeuft} onClick={alleUnzugeordnetenZuordnen}>
-                {bulkLaeuft ? "Wird zugeordnet…" : "Alle unzugeordneten automatisch zuordnen"}
-              </button>
-              <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }} disabled={mengenLaeuft} onClick={mengenBerechnen}
-                title="Berechnet Mengen aus den Formeln in Tab Ressourcen für alle Bauteile je Task — manuell überschriebene Werte bleiben unangetastet">
-                {mengenLaeuft ? "Wird berechnet…" : "Mengen aus Bauteilen berechnen"}
-              </button>
-              {mengenVeraltet && (
-                <span title="Formeln/Ausschlussfilter in Tab Ressourcen wurden seit der letzten Berechnung geändert — Mengen sind veraltet"
-                  style={{ fontSize: 10, color: "#d9622b" }}>
-                  ⚠
-                </span>
+              {api && (
+                <>
+                  <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }} disabled={bulkLaeuft} onClick={alleUnzugeordnetenZuordnen}>
+                    {bulkLaeuft ? "Wird zugeordnet…" : "Alle unzugeordneten automatisch zuordnen"}
+                  </button>
+                  <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }} disabled={mengenLaeuft} onClick={mengenBerechnen}
+                    title="Berechnet Mengen aus den Formeln in Tab Ressourcen für alle Bauteile je Task — manuell überschriebene Werte bleiben unangetastet">
+                    {mengenLaeuft ? "Wird berechnet…" : "Mengen aus Bauteilen berechnen"}
+                  </button>
+                  {mengenVeraltet && (
+                    <span title="Formeln/Ausschlussfilter in Tab Ressourcen wurden seit der letzten Berechnung geändert — Mengen sind veraltet"
+                      style={{ fontSize: 10, color: "#d9622b" }}>
+                      ⚠
+                    </span>
+                  )}
+                </>
               )}
+              <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }} onClick={manuelleMengenLoeschen}
+                title="Löscht nur manuell eingegebene Mengen (schwarze Werte) — automatisch berechnete Mengen (blau) und die 'Berechnet'-Übersteuerung bleiben erhalten">
+                Manuelle Mengen löschen
+              </button>
             </div>
-            {(bulkErgebnis || mengenErgebnis) && (
+            {(bulkErgebnis || mengenErgebnis || manuelleLoeschErgebnis) && (
               <div style={{ display: "flex", gap: 16, marginTop: 4, flexWrap: "wrap" }}>
                 {bulkErgebnis && <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>{bulkErgebnis}</span>}
                 {mengenErgebnis && <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>{mengenErgebnis}</span>}
+                {manuelleLoeschErgebnis && <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>{manuelleLoeschErgebnis}</span>}
               </div>
             )}
           </div>
