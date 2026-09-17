@@ -289,6 +289,10 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
         const offen = aufgeklappt === sim.id;
         const istAktiv = aktivId === sim.id;
         const istErsteller = !!userId && sim.erstellerId === userId;
+        // Zugriffskontrolle: Ersteller dürfen immer, sonst zählt der individuelle Zugriff
+        // (Fallback Standardzugriff) — Personen mit "edit" sollen dieselben Rechte haben wie der Ersteller.
+        const darfBearbeiten = istErsteller ||
+          (!!userId && (sim.zugriff?.[userId] ?? sim.zugriff?.["__default__"]) === "edit");
 
         return (
           <div key={sim.id} className={`sim-card ${istAktiv ? "aktiv" : ""}`}>
@@ -314,7 +318,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                 {offen && (
                   <SimKebabMenu
                     sim={sim}
-                    istErsteller={istErsteller}
+                    darfBearbeiten={darfBearbeiten}
                     onKopieren={() => setKopierDialog({ simId: sim.id, name: `${sim.name} (Kopie)`, tasks: true, kalkulation: true, mengenWerte: true, modelle: true, stammdaten: true, kalender: true })}
                     onUmbenennen={(neuerName: string) => setSims(prev => prev.map(s => s.id === sim.id ? { ...s, name: neuerName } : s))}
                     onLoeschen={() => loeschen(sim.id)}
@@ -368,8 +372,8 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                   </button>
                 )}
 
-                {/* Gantt — nur Ersteller kann importieren; Gantt-Vorlage/Export liegen im ⋮-Menü der Karte */}
-                {istErsteller && (
+                {/* Gantt — Ersteller oder Personen mit Bearbeitungs-Zugriff können importieren; Gantt-Vorlage/Export liegen im ⋮-Menü der Karte */}
+                {darfBearbeiten && (
                 <>
                 <div className="tc-section-label" style={{ marginBottom: 4 }}>Gantt</div>
                 <GanttImport
@@ -462,7 +466,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                             {m.id}{m.versionId && ` · Version ${m.versionId.slice(0, 8)}`}
                           </div>
                         </div>
-                        {neueVersion && istErsteller && (
+                        {neueVersion && darfBearbeiten && (
                           <button className="tc-btn-secondary" style={{ flexShrink: 0, fontSize: 9, padding: "3px 8px", color: "#b8860b", borderColor: "#e8c66b" }}
                             onClick={() => setUpdateDialog({ simId: sim.id, modellId: m.id, modellName: m.name, neueVersionId: neueVersion })}
                             title="In Trimble Connect wurde eine neue Revision abgelegt"
@@ -474,7 +478,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                   </div>
                 )}
 
-                {istErsteller && (
+                {darfBearbeiten && (
                 <>
                 <button
                   className="tc-btn-secondary"

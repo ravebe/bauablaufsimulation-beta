@@ -1,6 +1,8 @@
 // SimKebabMenu.tsx — ⋮-Menü der Simulationskarte: Gantt-Vorlage/-Export, Kopieren, Löschen
-// Zugriffskontrolle liegt nicht mehr hier, sondern zentral im Zugriffskontrollmanager (App-Header, ⋮),
-// siehe ZugriffskontrollManager.tsx — nur dort einstellbar, für Admins/Ersteller.
+// Wer die Zugriffsrechte einstellen darf, wird zentral im Zugriffskontrollmanager (App-Header, ⋮)
+// festgelegt, siehe ZugriffskontrollManager.tsx — nur dort einstellbar, für Admins/Ersteller.
+// Wer die dortige Einstellung "Zugriff bearbeiten" hat (oder Ersteller ist), darf hier alle
+// Aktionen ausführen — siehe darfBearbeiten-Berechnung in TabProjekte.tsx.
 import { useState } from "react";
 import * as XLSX from "xlsx";
 import type { SimProjekt } from "../types";
@@ -9,7 +11,7 @@ import { useClickOutside } from "../hooks/useClickOutside";
 
 interface Props {
   sim: SimProjekt;
-  istErsteller: boolean;
+  darfBearbeiten: boolean;
   onKopieren: () => void;
   onUmbenennen: (neuerName: string) => void;
   onLoeschen: () => void;
@@ -34,7 +36,7 @@ function downloadGanttVorlage() {
   XLSX.writeFile(wb, "4D_Gantt_Vorlage.xlsx");
 }
 
-export default function SimKebabMenu({ sim, istErsteller, onKopieren, onUmbenennen, onLoeschen }: Props) {
+export default function SimKebabMenu({ sim, darfBearbeiten, onKopieren, onUmbenennen, onLoeschen }: Props) {
   const [offen, setOffen] = useState(false);
   const [exportSubOffen, setExportSubOffen] = useState(false);
   const [umbenennOffen, setUmbenennOffen] = useState(false);
@@ -59,7 +61,7 @@ export default function SimKebabMenu({ sim, istErsteller, onKopieren, onUmbenenn
           border: "0.5px solid var(--tc-border)", borderRadius: 5,
           boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, minWidth: 200,
         }}>
-          {istErsteller && (
+          {darfBearbeiten && (
             umbenennOffen ? (
               <div style={{ padding: "8px 14px", borderBottom: "0.5px solid #eef1f4" }}>
                 <input className="tc-input" style={{ width: "100%", fontSize: 11, boxSizing: "border-box" }} autoFocus
@@ -81,13 +83,13 @@ export default function SimKebabMenu({ sim, istErsteller, onKopieren, onUmbenenn
               >Simulation umbenennen</button>
             )
           )}
-          {istErsteller && (
+          {darfBearbeiten && (
             <button
               style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", fontSize: 11, cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
               onClick={() => { downloadGanttVorlage(); setOffen(false); }}
             >Gantt-Vorlage</button>
           )}
-          {istErsteller && sim.tasks.length > 0 && (
+          {darfBearbeiten && sim.tasks.length > 0 && (
             <>
               <button
                 style={{ display: "flex", width: "100%", justifyContent: "space-between", alignItems: "center", padding: "8px 14px", background: "none", border: "none", fontSize: 11, cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
@@ -108,7 +110,7 @@ export default function SimKebabMenu({ sim, istErsteller, onKopieren, onUmbenenn
             style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", fontSize: 11, cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
             onClick={() => { onKopieren(); setOffen(false); }}
           >Projekt kopieren</button>
-          {istErsteller && (
+          {darfBearbeiten && (
           <button
             style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", fontSize: 11, cursor: "pointer" }}
             onClick={() => { onLoeschen(); setOffen(false); }}
