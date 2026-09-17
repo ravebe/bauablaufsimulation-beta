@@ -36,6 +36,7 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [userId, setUserId] = useState<string | null>(null);
   const [userName, setUserName] = useState<string>("");
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [andererBearbeiter, setAndererBearbeiter] = useState<string | null>(null);
   const [cloudLoadDone, setCloudLoadDone] = useState(false);
   const [konflikt, setKonflikt] = useState(false);
@@ -54,9 +55,10 @@ export default function App() {
         const user = await (api as any).user.getUser();
         if (user?.id) {
           setUserId(user.id);
+          setUserEmail(user.email ?? null);
           const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
           setUserName(name || user.email || "Kollege");
-          console.log("[Auth] User:", user.id);
+          console.log("[Auth] User:", user.id, user.email);
         }
       } catch { /* ignore */ }
     })();
@@ -605,7 +607,7 @@ export default function App() {
       </div>
 
       {zugriffsManagerOffen && <ZugriffskontrollManager api={api} onClose={() => setZugriffsManagerOffen(false)}
-        sims={sims} setSims={setSims} aktivId={aktivId} onWechsel={setAktivId} userId={userId} />}
+        sims={sims} setSims={setSims} aktivId={aktivId} onWechsel={setAktivId} userId={userId} userEmail={userEmail} />}
       {kalenderManagerOffen && aktiveSim && <KalenderManager sim={aktiveSim} updateSim={updateSim} onClose={() => setKalenderManagerOffen(false)} />}
       {hilfeOffen && <HilfeManager initialTab={aktTab} onClose={() => setHilfeOffen(false)} />}
     </div>

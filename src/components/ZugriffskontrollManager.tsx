@@ -32,6 +32,7 @@ interface Props {
   aktivId: string | null;
   onWechsel: (id: string) => void;
   userId?: string | null;
+  userEmail?: string | null;
 }
 
 // Auf Modulebene definiert (nicht mehr innerhalb von ZugriffskontrollManager) — sonst entstünde bei
@@ -76,7 +77,7 @@ function AccessDropdown({ id, aktuell, onSelect, offenerDropdown, setOffenerDrop
   );
 }
 
-export default function ZugriffskontrollManager({ api, onClose, sims, setSims, aktivId, onWechsel, userId }: Props) {
+export default function ZugriffskontrollManager({ api, onClose, sims, setSims, aktivId, onWechsel, userId, userEmail }: Props) {
   const aktiveSim = sims.find(s => s.id === aktivId) ?? null;
   const [mitglieder, setMitglieder] = useState<Mitglied[] | null>(null);
   const [istAdmin, setIstAdmin] = useState(false);
@@ -95,13 +96,18 @@ export default function ZugriffskontrollManager({ api, onClose, sims, setSims, a
         // "Admin" = Trimble-Connect-Projektrolle enthält "admin" (z.B. "Project Administrator") — die API
         // liefert role als freien String ohne dokumentierte Literale, daher bewusst case-insensitiver
         // Teilstring-Vergleich statt exaktem Abgleich.
-        const eigenes = liste.find(m => m.id === userId);
+        // Abgleich primär über userId, zusätzlich per E-Mail (case-insensitiv) als Fallback — die
+        // Workspace-API liefert für api.user.getUser().id und project.getMembers()[].id nicht
+        // dokumentiert garantiert dieselbe ID-Quelle; bei realen Admin-Konten, die trotz korrekter
+        // Projektrolle als "kein Admin" erkannt wurden, griff der reine ID-Vergleich ins Leere.
+        const eigenes = liste.find(m => m.id === userId
+          || (!!userEmail && !!m.email && m.email.toLowerCase() === userEmail.toLowerCase()));
         setIstAdmin(!!eigenes?.role && eigenes.role.toLowerCase().includes("admin"));
       } catch {
         setFehler("Projektmitglieder konnten nicht geladen werden");
       }
     })();
-  }, [api, userId]);
+  }, [api, userId, userEmail]);
 
   const istErsteller = !!aktiveSim && !!userId && aktiveSim.erstellerId === userId;
   const darfBearbeiten = !!aktiveSim && (istAdmin || istErsteller);
