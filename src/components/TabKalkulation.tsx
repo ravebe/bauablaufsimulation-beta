@@ -375,7 +375,14 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   // der jeweiligen mengenQuelle; "leer": kein Kürzel gewählt ODER mindestens ein anwendbares Gewerk hat
   // noch gar keine Menge erfasst. Als stabiler Sortier-Pass NACH der Spalten-Sortierung angewendet,
   // damit die bisherige Reihenfolge innerhalb der beiden Gruppen erhalten bleibt.
+  // "fehler" ist dreistufig statt zweistufig: 1. Formel-/Attributfehler (mengenQuelle "fehler"),
+  // 2. Tasks mit deutlicher Abweichung Berechnet↔Geplant (z.abweichung), 3. der Rest.
   function mengenPrioritaet(z: Zeile): number {
+    if (mengenSortModus === "fehler") {
+      const gewerke = z.t.bauteilKuerzel ? gewerkeFuerKuerzel(stammdaten, z.t.bauteilKuerzel) : [];
+      if (gewerke.some(g => z.t.mengenQuelle?.[g.key] === "fehler")) return 0;
+      return z.abweichung ? 1 : 2;
+    }
     if (!z.t.bauteilKuerzel) return mengenSortModus === "leer" ? 0 : 1;
     const gewerke = gewerkeFuerKuerzel(stammdaten, z.t.bauteilKuerzel);
     if (mengenSortModus === "leer") return gewerke.some(g => z.t.mengen?.[g.key] === undefined) ? 0 : 1;
@@ -735,7 +742,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
             style={{ cursor: "pointer", fontWeight: mengenSortModus === "manuell" ? 700 : 400, color: mengenSortModus === "manuell" ? "#333" : "var(--tc-text-3)" }}>
             <span style={{ color: "#333", fontWeight: 700 }}>■</span> manuell angepasst
           </span>
-          <span onClick={() => setMengenSortModus(m => m === "fehler" ? null : "fehler")} title="Fehlerhafte Felder zuoberst"
+          <span onClick={() => setMengenSortModus(m => m === "fehler" ? null : "fehler")} title="Fehlerhafte Felder zuoberst, danach Tasks mit deutlicher Abweichung Berechnet↔Geplant"
             style={{ cursor: "pointer", fontWeight: mengenSortModus === "fehler" ? 700 : 400, color: mengenSortModus === "fehler" ? "var(--tc-red)" : "var(--tc-text-3)" }}>
             <span style={{ color: "var(--tc-red)", fontWeight: 700 }}>■</span> Fehler / fehlende Attribute
           </span>
