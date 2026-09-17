@@ -342,7 +342,7 @@ export default function App() {
             </div>
             {andererBearbeiter && (
               <div style={{ fontSize: 10, color: "#e8a023", marginTop: 2 }} title="Bearbeitet diese Simulation gerade ebenfalls">
-                👥 {andererBearbeiter} ist auch hier
+                👥 {andererBearbeiter} ist auch in dieser Simulation
               </div>
             )}
             {headerDropdown && (
