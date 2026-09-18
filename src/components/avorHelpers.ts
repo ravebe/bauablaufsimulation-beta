@@ -13,7 +13,9 @@ function toIso(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function projektzeitraum(tasks: Task[]): { start: Date; end: Date } | null {
+/** Gesamtzeitraum aller Tasks (min Start / max Ende) — Grundlage für alle Tagesreihen dieses Moduls
+ *  sowie für die Zeitraster-Buckets (Monat/Woche) in kranHelpers.ts. */
+export function projektzeitraum(tasks: Task[]): { start: Date; end: Date } | null {
   let minT = Infinity, maxT = -Infinity;
   for (const t of tasks) {
     const s = parseDateUniversal(t.start), e = parseDateUniversal(t.end);

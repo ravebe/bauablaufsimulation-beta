@@ -4,12 +4,13 @@
 // "sandbox" eine unabhängig eingegebene Zieldauer je Phase — z.B. um vor der Grobterminierung zu
 // testen, ob eine Personal-/Kranstrategie überhaupt aufgehen kann.
 import { useState } from "react";
-import type { SimProjekt, KapazitaetsCheck, KapazitaetsPhase } from "../types";
+import type { SimProjekt, KapazitaetsCheck, KapazitaetsPhase, Zeitraster } from "../types";
 import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import {
   personenstundenBedarfProKranbereich, zeitraumProKranbereich, kranSpitzenbedarfProKranbereich,
   kranpflichtigeTaskAnzahlProKranbereich, auswertungPhase, arbeitstageGanttModus,
+  MAX_PERSONEN_PRO_KRAN, personenstundenProKranUndBucket, personalRichtwertJeBucket,
 } from "./kapazitaetsCheckHelpers";
 
 interface Props { sim: SimProjekt; updateSim: (s: SimProjekt) => void; readOnly?: boolean; onClose: () => void; }
@@ -51,6 +52,12 @@ export default function KapazitaetsCheckManager({ sim, updateSim, readOnly, onCl
   const zeitraeume = zeitraumProKranbereich(sim.tasks);
   const kranSpitzenMap = kranSpitzenbedarfProKranbereich(sim.tasks, stammdaten, kalender);
   const kranAnzahlMap = kranpflichtigeTaskAnzahlProKranbereich(sim.tasks, stammdaten);
+
+  const kraene = sim.kraene ?? [];
+  const raster: Zeitraster = sim.zeitraster ?? "monat";
+  const maxPersonen = kc.maxPersonenProKran ?? MAX_PERSONEN_PRO_KRAN;
+  const { buckets: personalBuckets, serien: personalSerien } = personenstundenProKranUndBucket(sim.tasks, kraene, stammdaten, kalender, raster);
+  const kranHatPersonalBedarf = personalSerien.some(s => s.personenstunden.some(v => v > 0));
 
   const summeSandboxDauer = kc.phasen.reduce((s, p) => s + (p.dauerTageSandbox ?? 0), 0);
   const gesamtDauerAbweichend = kc.modus === "sandbox" && !!kc.gesamtDauerTageSandbox && kc.phasen.length > 0
@@ -208,6 +215,49 @@ export default function KapazitaetsCheckManager({ sim, updateSim, readOnly, onCl
             <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px", marginTop: 4 }} onClick={phaseHinzufuegen}>
               + Phase hinzufügen
             </button>
+          )}
+
+          {kraene.length > 0 && (
+            <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--tc-border-light)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6, flexWrap: "wrap", gap: 6 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--tc-text)" }}>Kräne — ungefährer Personalbedarf</div>
+                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--tc-text-2)" }}>
+                  Max. Personen/Kran
+                  <input type="number" className="no-spinner" disabled={readOnly} value={maxPersonen}
+                    onChange={e => speichern({ ...kc, maxPersonenProKran: e.target.value === "" ? undefined : Number(e.target.value) })}
+                    style={{ width: 40, fontSize: 11, padding: "2px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
+                </label>
+              </div>
+              <div style={{ fontSize: 11, color: "var(--tc-text-2)", lineHeight: 1.5, marginBottom: 10 }}>
+                Richtwert aus Personenstunden (Menge × Leistungswert kranpflichtiger Gewerke) je Kran und Zeitraum
+                gegen die Kran-Verfügbarkeit — Ampel zur Plausibilisierung, keine exakte Personalrechnung. Nutzt
+                ausschliesslich die Kran-Zuweisung in Tab Kalkulation, nicht das Feld "Kranbereich" oben.
+              </div>
+              {!kranHatPersonalBedarf ? (
+                <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
+                  Noch keinen Task einem Kran zugewiesen (Tab Kalkulation → Spalte "Kräne") oder kein Kürzel als kranpflichtig markiert.
+                </div>
+              ) : personalSerien.map(s => (
+                <div key={s.kranId} style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "var(--tc-text)", marginBottom: 3 }}>{s.kranName}</div>
+                  <div style={{ display: "flex", gap: 2, overflowX: "auto", paddingBottom: 2 }}>
+                    {personalBuckets.map((b, bi) => {
+                      const rw = personalRichtwertJeBucket(s.personenstunden[bi], s.arbeitstageVerfuegbar[bi], stammdaten.arbeitszeitStdProTag, maxPersonen);
+                      const titel = rw.kranNichtVerfuegbar
+                        ? `${b.label}: Bedarf vorhanden, Kran aber nicht verfügbar`
+                        : `${b.label}: ~${rw.richtwert} Person${rw.richtwert === 1 ? "" : "en"}${rw.engpass ? " — über dem Maximum" : ""}`;
+                      return (
+                        <div key={b.key} title={titel}
+                          style={{ minWidth: 30, textAlign: "center", fontSize: 9, padding: "3px 2px", fontWeight: rw.engpass ? 700 : 400,
+                            background: rw.engpass ? "var(--tc-red)" : "#eef1f4", color: rw.engpass ? "#fff" : "var(--tc-text-3)" }}>
+                          {rw.richtwert ?? "–"}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </div>

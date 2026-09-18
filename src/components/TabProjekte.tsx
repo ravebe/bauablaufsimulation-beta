@@ -29,7 +29,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
     ausgewaehlt: Set<string>;
   } | null>(null);
   const [kopierDialog, setKopierDialog] = useState<{
-    simId: string; name: string; tasks: boolean; kalkulation: boolean; mengenWerte: boolean; modelle: boolean; stammdaten: boolean; kalender: boolean;
+    simId: string; name: string; tasks: boolean; kalkulation: boolean; mengenWerte: boolean; kraene: boolean; modelle: boolean; stammdaten: boolean; kalender: boolean;
   } | null>(null);
   // modelId → in TC verfügbare, aber noch nicht geladene Versions-ID (neue Revision abgelegt)
   const [neueVersionen, setNeueVersionen] = useState<Record<string, string>>({});
@@ -206,6 +206,11 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
           delete t.mengen; delete t.mengenQuelle; delete t.mengenInfo; delete t.mengenObjekte;
         }
       }
+      // Kräne unabhängig von der Kalkulation-Zuordnung: ohne mitkopierte Kran-Stammdaten (unten)
+      // wären Task.kraene-IDs Verweise ins Leere, darum hier separat entfernt.
+      if (!kopierDialog.kraene) {
+        for (const t of tasks) delete t.kraene;
+      }
     }
 
     const kopie: SimProjekt = {
@@ -218,6 +223,8 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
       modelle: kopierDialog.modelle ? structuredClone(orig.modelle) : [],
       kalender: kopierDialog.kalender && orig.kalender ? structuredClone(orig.kalender) : undefined,
       stammdaten: kopierDialog.stammdaten && orig.stammdaten ? structuredClone(orig.stammdaten) : undefined,
+      kraene: kopierDialog.kraene && orig.kraene ? structuredClone(orig.kraene) : undefined,
+      zeitraster: kopierDialog.kraene ? orig.zeitraster : undefined,
     };
     setSims(prev => [kopie, ...prev]);
     setAktivId(kopie.id);
@@ -319,7 +326,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                   <SimKebabMenu
                     sim={sim}
                     darfBearbeiten={darfBearbeiten}
-                    onKopieren={() => setKopierDialog({ simId: sim.id, name: `${sim.name} (Kopie)`, tasks: true, kalkulation: true, mengenWerte: true, modelle: true, stammdaten: true, kalender: true })}
+                    onKopieren={() => setKopierDialog({ simId: sim.id, name: `${sim.name} (Kopie)`, tasks: true, kalkulation: true, mengenWerte: true, kraene: true, modelle: true, stammdaten: true, kalender: true })}
                     onUmbenennen={(neuerName: string) => setSims(prev => prev.map(s => s.id === sim.id ? { ...s, name: neuerName } : s))}
                     onLoeschen={() => loeschen(sim.id)}
                   />
@@ -550,6 +557,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                 { key: "tasks", label: "Bauablauf (Tasks, Termine, Struktur)", indent: 0, disabled: false },
                 { key: "kalkulation", label: "Bauteil-Kürzel & Kranbereich (Kalkulation-Zuordnung)", indent: 1, disabled: !kopierDialog.tasks },
                 { key: "mengenWerte", label: "Berechnete & manuelle Mengen-Werte je Task", indent: 2, disabled: !kopierDialog.tasks || !kopierDialog.kalkulation },
+                { key: "kraene", label: "Kräne (Stammdaten, Verfügbarkeit & Zuweisung je Task)", indent: 0, disabled: false },
                 { key: "modelle", label: "Zugewiesene Modelle", indent: 0, disabled: false },
                 { key: "stammdaten", label: "Stammdaten (Ressourcen)", indent: 0, disabled: false },
                 { key: "kalender", label: "Kalender (Arbeitstage/Feiertage/Ferien)", indent: 0, disabled: false },

@@ -7,13 +7,19 @@
 // geteilt wird, um eine Dauer in Tagen zu erhalten. Hier wird dieselbe Personenstunden-Grösse über
 // alle Tasks eines Kranbereichs aufsummiert und stattdessen gegen ein frei eingegebenes
 // Personal-Budget der Phase gestellt (statt gegen rate.anzahlPersonen).
-import type { Task } from "../types";
+import type { Task, Kran, Zeitraster } from "../types";
 import { parseDateUniversal } from "../types";
 import type { Kalender } from "./kalenderHelpers";
-import { arbeitstageZwischen } from "./kalenderHelpers";
+import { arbeitstageZwischen, istArbeitstag } from "./kalenderHelpers";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { rateFuerKuerzel, istMengeKranpflichtig } from "./stammdatenHelpers";
 import { kranauslastung } from "./avorHelpers";
+import type { ZeitrasterBucket } from "./kranHelpers";
+import { zeitrasterBuckets, kranVerfuegbareArbeitstage, kranAnteil } from "./kranHelpers";
+
+function toIso(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 /** Kranbereich-Schlüssel eines Tasks — leeres/fehlendes Feld landet im "unbekannt"-Sammeltopf,
  *  analog zu kranauslastung() in avorHelpers.ts. */
@@ -109,4 +115,77 @@ export function auswertungPhase(anzahlPersonen: number, bedarfPersonenstunden: n
 export function arbeitstageGanttModus(bereich: string, zeitraeume: Map<string, { start: string; end: string }>, kalender: Kalender): number {
   const z = zeitraeume.get(bereich);
   return z ? arbeitstageZwischen(z.start, z.end, kalender) : 0;
+}
+
+// === Kran-Personal-Bilanz (grob, siehe kranHelpers.ts für die analoge Kranstunden-Bilanz in der
+// Kranoptik) — nutzt ausschliesslich die strukturierte Kran-Zuordnung (Task.kraene) statt des freien
+// Kranbereich-Texts, damit hier kein zweites Kran-Datenmodell entsteht. Immer anhand der echten
+// Task-Termine (kein Sandbox-Äquivalent — Kran-Zuweisung/Verfügbarkeit sind inhärent terminbasiert). */
+export const MAX_PERSONEN_PRO_KRAN = 13;
+
+export interface KranPersonalSerie { kranId: string; kranName: string; personenstunden: number[]; arbeitstageVerfuegbar: number[] }
+
+/** Personenstunden-Bedarf (Menge × Leistungswert kranpflichtiger Gewerke) je Kran und Zeitraster-Bucket
+ *  — gleichmässig über die Arbeitstage jedes Tasks verteilt und bei mehreren zugeordneten Kränen
+ *  anteilig aufgeteilt (kranAnteil, 0.5/0.33…). Grundlage für personalRichtwertJeBucket(). */
+export function personenstundenProKranUndBucket(tasks: Task[], kraene: Kran[], stammdaten: Stammdaten, kalender: Kalender, raster: Zeitraster): { buckets: ZeitrasterBucket[]; serien: KranPersonalSerie[] } {
+  const buckets = zeitrasterBuckets(tasks, raster);
+  if (buckets.length === 0 || kraene.length === 0) return { buckets, serien: [] };
+
+  const serien: KranPersonalSerie[] = kraene.map(k => ({
+    kranId: k.id, kranName: k.name,
+    personenstunden: new Array(buckets.length).fill(0),
+    arbeitstageVerfuegbar: buckets.map(b => kranVerfuegbareArbeitstage(k, b, kalender)),
+  }));
+  const serieByKranId = new Map(serien.map(s => [s.kranId, s]));
+  const bucketIndexFuer = (iso: string) => buckets.findIndex(b => iso >= b.start && iso <= b.end);
+
+  for (const t of tasks) {
+    if (t.isGroup || !t.kraene || t.kraene.length === 0 || !t.bauteilKuerzel || !t.mengen) continue;
+    let taskPersonenstunden = 0;
+    for (const gewerk of stammdaten.gewerke) {
+      const menge = t.mengen[gewerk.key];
+      if (!menge || !istMengeKranpflichtig(stammdaten, gewerk.key, t.bauteilKuerzel)) continue;
+      const rate = rateFuerKuerzel(gewerk, t.bauteilKuerzel);
+      if (!rate?.leistungswertHProEinheit) continue;
+      taskPersonenstunden += menge * rate.leistungswertHProEinheit;
+    }
+    if (taskPersonenstunden <= 0) continue;
+    const beteiligteSerien = t.kraene.map(id => serieByKranId.get(id)).filter((s): s is KranPersonalSerie => !!s);
+    if (beteiligteSerien.length === 0) continue;
+    const anteil = kranAnteil(t.kraene.length);
+
+    const arbeitstageDesTasks = arbeitstageZwischen(t.start, t.end, kalender);
+    const proArbeitstag = taskPersonenstunden / arbeitstageDesTasks;
+
+    const start = parseDateUniversal(t.start), end = parseDateUniversal(t.end);
+    if (!start || !end) continue;
+    const cur = new Date(start.getTime());
+    while (cur.getTime() <= end.getTime()) {
+      const iso = toIso(cur);
+      if (istArbeitstag(iso, kalender)) {
+        const bi = bucketIndexFuer(iso);
+        if (bi !== -1) for (const s of beteiligteSerien) s.personenstunden[bi] += proArbeitstag * anteil;
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
+  }
+  return { buckets, serien };
+}
+
+export interface KranPersonalRichtwert {
+  richtwert: number | null; // gerundet, keine Nachkommastellen; null = keine sinnvolle Aussage (Kran nicht verfügbar)
+  engpass: boolean; // über maxPersonenProKran ODER Kran im Bucket nicht verfügbar trotz Bedarf
+  kranNichtVerfuegbar: boolean;
+}
+
+/** Ordnet den Personenstunden-Bedarf eines Kran/Bucket-Paars grob in einen Personal-Richtwert ein
+ *  ("ungefährer Personalbedarf") — reine Ampel, keine exakte Personalrechnung. Ohne verfügbaren Kran
+ *  im Bucket ist der Bedarf per Definition ungedeckt, unabhängig vom Personal. */
+export function personalRichtwertJeBucket(personenstunden: number, arbeitstageVerfuegbar: number, arbeitszeitStdProTag: number, maxPersonenProKran: number = MAX_PERSONEN_PRO_KRAN): KranPersonalRichtwert {
+  if (arbeitstageVerfuegbar <= 0 || arbeitszeitStdProTag <= 0) {
+    return { richtwert: null, engpass: personenstunden > 0, kranNichtVerfuegbar: personenstunden > 0 };
+  }
+  const richtwert = Math.round(personenstunden / (arbeitszeitStdProTag * arbeitstageVerfuegbar));
+  return { richtwert, engpass: richtwert > maxPersonenProKran, kranNichtVerfuegbar: false };
 }

@@ -1,14 +1,28 @@
 // kalkulationExportHelpers.ts — Export/Import der in Tab Kalkulation gepflegten Task-Zuordnungen
-// (Bauteil-Kürzel, Kranbereich, Personal (Soll), Mengen je Gewerk) als CSV (Excel-bearbeitbar,
+// (Bauteil-Kürzel, Kranbereich, Kräne, Personal (Soll), Mengen je Gewerk) als CSV (Excel-bearbeitbar,
 // Zuordnung über den Tasknamen) oder JSON (exakter Restore über die Task-ID). Gegenstück zu
 // stammdatenAlsCsv/parseStammdatenCsv in stammdatenHelpers.ts, dort aber für die Stammdaten (Raten)
 // statt die Tasks.
-import type { Task } from "../types";
+import type { Task, Kran } from "../types";
 import { istGruppe } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { csvZelle, parseCsvZeilen } from "./stammdatenHelpers";
 
-const CSV_SPALTEN_FIX = ["Nr", "Task", "Kürzel", "Kranbereich", "Personal (Soll)"];
+const CSV_SPALTEN_FIX = ["Nr", "Task", "Kürzel", "Kranbereich", "Kraene", "Personal (Soll)"];
+
+/** Kraene-Zelle aus den zugewiesenen Kran-IDs eines Tasks bauen ("Kran 1+Kran 2") — Reihenfolge wie
+ *  in Task.kraene gespeichert. Unbekannte IDs (z.B. zwischenzeitlich gelöschter Kran) werden ausgelassen. */
+function kraeneAlsText(taskKraene: string[] | undefined, kraene: Kran[]): string {
+  if (!taskKraene || taskKraene.length === 0) return "";
+  return taskKraene.map(id => kraene.find(k => k.id === id)?.name).filter((n): n is string => !!n).join("+");
+}
+
+/** Kehrt kraeneAlsText() um: "Kran 1+Kran 2" → IDs der gleichnamigen Kräne (Namensvergleich exakt nach
+ *  Trim). Namen ohne Treffer (Tippfehler, gelöschter Kran) werden stillschweigend ausgelassen. */
+function kraeneAusText(text: string, kraene: Kran[]): string[] {
+  return text.split("+").map(n => n.trim()).filter(n => n.length > 0)
+    .map(n => kraene.find(k => k.name === n)?.id).filter((id): id is string => !!id);
+}
 
 function nichtGruppenTasks(tasks: Task[]): Task[] {
   return tasks.filter((t, i) => !t.isGroup && !istGruppe(tasks, i));
@@ -17,11 +31,11 @@ function nichtGruppenTasks(tasks: Task[]): Task[] {
 /** Kalkulations-Zuordnungen aller Tasks als CSV (Semikolon-getrennt, UTF-8-BOM für Excel) — "Nr" nur
  *  zur Orientierung beim Bearbeiten, der Reimport ordnet ausschliesslich über den Tasknamen zu (siehe
  *  parseKalkulationCsv). Je Gewerk aus den Stammdaten eine eigene Spalte mit dem aktuellen Mengen-Wert. */
-export function kalkulationAlsCsv(tasks: Task[], stammdaten: Stammdaten): string {
+export function kalkulationAlsCsv(tasks: Task[], stammdaten: Stammdaten, kraene: Kran[]): string {
   const zeilen: string[][] = [[...CSV_SPALTEN_FIX, ...stammdaten.gewerke.map(g => g.label || g.key)]];
   nichtGruppenTasks(tasks).forEach((t, i) => {
     zeilen.push([
-      String(i + 1), t.name, t.bauteilKuerzel ?? "", t.kranbereich ?? "", t.personalSoll != null ? String(t.personalSoll) : "",
+      String(i + 1), t.name, t.bauteilKuerzel ?? "", t.kranbereich ?? "", kraeneAlsText(t.kraene, kraene), t.personalSoll != null ? String(t.personalSoll) : "",
       ...stammdaten.gewerke.map(g => t.mengen?.[g.key] != null ? String(t.mengen[g.key]) : ""),
     ]);
   });
@@ -40,13 +54,14 @@ export interface KalkulationCsvErgebnis {
  *  zählt). Leere Zellen lassen den bestehenden Wert unangetastet, damit ein Export mit nur teilweise
  *  ausgefüllten Spalten beim Reimport nichts löscht. Importierte Mengen gelten als "manuell" (siehe
  *  Task.mengenQuelle) — eine spätere "Mengen aus Bauteilen berechnen" überschreibt sie nicht automatisch. */
-export function parseKalkulationCsv(text: string, tasks: Task[], stammdaten: Stammdaten): KalkulationCsvErgebnis {
+export function parseKalkulationCsv(text: string, tasks: Task[], stammdaten: Stammdaten, kraene: Kran[]): KalkulationCsvErgebnis {
   const zeilen = parseCsvZeilen(text.replace(/^﻿/, ""));
   if (zeilen.length === 0) throw new Error("Leere CSV-Datei");
   const header = zeilen[0];
   const iTask = header.findIndex(h => h.trim().toLowerCase() === "task");
   const iKuerzel = header.findIndex(h => h.trim().toLowerCase() === "kürzel");
   const iKranbereich = header.findIndex(h => h.trim().toLowerCase() === "kranbereich");
+  const iKraene = header.findIndex(h => h.trim().toLowerCase() === "kraene");
   const iPersonalSoll = header.findIndex(h => h.trim().toLowerCase() === "personal (soll)");
   if (iTask === -1) throw new Error('Ungültiges CSV-Format — Spalte "Task" erwartet');
 
@@ -85,6 +100,10 @@ export function parseKalkulationCsv(text: string, tasks: Task[], stammdaten: Sta
     const t = neueTasks[idx];
     if (iKuerzel !== -1 && (z[iKuerzel] ?? "").trim()) t.bauteilKuerzel = z[iKuerzel].trim();
     if (iKranbereich !== -1 && (z[iKranbereich] ?? "").trim()) t.kranbereich = z[iKranbereich].trim();
+    if (iKraene !== -1 && (z[iKraene] ?? "").trim()) {
+      const ids = kraeneAusText(z[iKraene], kraene);
+      t.kraene = ids.length > 0 ? ids : undefined;
+    }
     if (iPersonalSoll !== -1) {
       const personalWert = parseNum(z[iPersonalSoll] ?? "");
       if (personalWert !== null) t.personalSoll = personalWert;
@@ -113,6 +132,7 @@ interface KalkulationJsonEintrag {
   name: string; // nur zur Lesbarkeit beim manuellen Anschauen der Datei — der Import ordnet über "id" zu
   bauteilKuerzel?: string;
   kranbereich?: string;
+  kraene?: string; // Kran-Namen "Kran 1+Kran 2", wie in der CSV — siehe kraeneAlsText/kraeneAusText
   personalSoll?: number;
   mengen?: Record<string, number>;
   mengenQuelle?: Record<string, "auto" | "manuell" | "fehler">;
@@ -123,9 +143,10 @@ interface KalkulationJsonEintrag {
 /** Kalkulations-Zuordnungen aller Tasks als JSON — 1:1 über die Task-ID, für einen exakten Restore
  *  innerhalb desselben Projekts (z.B. vor einem riskanten Bulk-Vorgang). Für Excel-Bearbeitung siehe
  *  kalkulationAlsCsv(). */
-export function kalkulationAlsJson(tasks: Task[]): string {
+export function kalkulationAlsJson(tasks: Task[], kraene: Kran[]): string {
   const eintraege: KalkulationJsonEintrag[] = nichtGruppenTasks(tasks).map(t => ({
-    id: t.id, name: t.name, bauteilKuerzel: t.bauteilKuerzel, kranbereich: t.kranbereich, personalSoll: t.personalSoll,
+    id: t.id, name: t.name, bauteilKuerzel: t.bauteilKuerzel, kranbereich: t.kranbereich,
+    kraene: kraeneAlsText(t.kraene, kraene) || undefined, personalSoll: t.personalSoll,
     mengen: t.mengen, mengenQuelle: t.mengenQuelle, mengenInfo: t.mengenInfo, mengenObjekte: t.mengenObjekte,
   }));
   return JSON.stringify(eintraege, null, 2);
@@ -134,9 +155,9 @@ export function kalkulationAlsJson(tasks: Task[]): string {
 export interface KalkulationJsonErgebnis { tasks: Task[]; aktualisiert: number; nichtGefunden: number }
 
 /** Parst eine zuvor exportierte Kalkulations-JSON-Datei und ERSETZT bei jedem per "id" gefundenen
- *  Task die Kürzel-/Kranbereich-/Mengen-Felder vollständig (kein Zusammenführen wie bei der CSV) —
+ *  Task die Kürzel-/Kranbereich-/Kräne-/Mengen-Felder vollständig (kein Zusammenführen wie bei der CSV) —
  *  ids aus der Datei ohne passenden Task im aktuellen Projekt werden gezählt, aber ignoriert. */
-export function parseKalkulationJson(text: string, tasks: Task[]): KalkulationJsonErgebnis {
+export function parseKalkulationJson(text: string, tasks: Task[], kraene: Kran[]): KalkulationJsonErgebnis {
   const raw = JSON.parse(text);
   if (!Array.isArray(raw)) throw new Error("Ungültiges Format — keine Kalkulations-Exportdatei");
   const eintraege = raw.filter((e): e is KalkulationJsonEintrag => !!e && typeof e === "object" && typeof e.id === "string");
@@ -148,6 +169,7 @@ export function parseKalkulationJson(text: string, tasks: Task[]): KalkulationJs
     aktualisiert++;
     return {
       ...t,
+      kraene: e.kraene ? kraeneAusText(e.kraene, kraene) : undefined,
       bauteilKuerzel: e.bauteilKuerzel, kranbereich: e.kranbereich, personalSoll: e.personalSoll,
       mengen: e.mengen, mengenQuelle: e.mengenQuelle, mengenInfo: e.mengenInfo, mengenObjekte: e.mengenObjekte,
     };

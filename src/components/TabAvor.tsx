@@ -1,21 +1,21 @@
 // TabAvor.tsx — Cockpit mit Personal-/Kranauslastung, Mengen-Filter und Ertragsoptik, abgeleitet
 // aus den in Tab Kalkulation erfassten Mengen/Kürzeln/WBS-Feldern und den Stammdaten aus Ressourcen.
 import { useState } from "react";
-import type { SimProjekt } from "../types";
+import type { SimProjekt, Zeitraster } from "../types";
 import { parseDateUniversal } from "../types";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import { LEERE_STAMMDATEN, hatKranpflichtigeRaten } from "./stammdatenHelpers";
-import { personalauslastung, personalSollProTag, kranauslastung, mengenProTag, ertragsoptik, optimaleTagesleistung } from "./avorHelpers";
+import { personalauslastung, personalSollProTag, mengenProTag, ertragsoptik, optimaleTagesleistung } from "./avorHelpers";
 import type { TagWert } from "./avorHelpers";
+import { kranstundenProKranUndBucket } from "./kranHelpers";
 import { dreiDZustandAufTagSetzen, tagVonDatum } from "./dreiDHeuteHelper";
 import type { ApiInstance } from "../hooks/useApi";
-import { TimeSeriesChart, StatTile, CockpitAbschnitt, useEingeklappt, useChartZoom, useChartHoehe, ChartResizeHandle, FARBEN } from "./cockpitCharts";
-import type { Serie } from "./cockpitCharts";
+import { TimeSeriesChart, CategoryBarChart, StatTile, CockpitAbschnitt, useEingeklappt, useChartZoom, useChartHoehe, ChartResizeHandle, FARBEN } from "./cockpitCharts";
+import type { Serie, KategorieSerie } from "./cockpitCharts";
 import KapazitaetsCheckManager from "./KapazitaetsCheckManager";
+import KranVerfuegbarkeitManager from "./KranVerfuegbarkeitManager";
 
 interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; projectId?: string | null; api?: ApiInstance | null; sharedNadelTag?: React.MutableRefObject<number>; }
-
-const KRAN_KAPAZITAET = 1; // Annahme: 1 Kran je Kranbereich — Werte darüber = mehrere Tasks wollen gleichzeitig denselben Kran
 
 function fmtChf(n: number): string {
   return n.toLocaleString("de-CH", { maximumFractionDigits: 0 });
@@ -43,6 +43,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
   const [mengenGewerkKey, setMengenGewerkKey] = useState<string>("beton");
   const [mengenKuerzel, setMengenKuerzel] = useState<string>(""); // "" = Total (alle Kürzel dieses Gewerks summiert), Default
   const [kapazitaetsCheckOffen, setKapazitaetsCheckOffen] = useState(false);
+  const [kranVerfuegbarkeitOffen, setKranVerfuegbarkeitOffen] = useState(false);
   const { eingeklappt, toggle: toggleEingeklappt } = useEingeklappt(projectId, "avor");
 
   // Klick in eines der Diagramme setzt eine gemeinsame Datums-Markierung (Index, da alle Tagesreihen
@@ -63,9 +64,13 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
   const personalSoll = personalSollProTag(tasks, kalender);
   const personalSollGesetzt = personalSoll.some(v => v > 0);
 
-  const kran = kranauslastung(tasks, stammdaten, kalender);
-  const kranSerien = gestapelteSerien(kran, k => k === "unbekannt" ? "Ohne Kranbereich" : k);
-  const kranGibtEsDaten = kranSerien.serien.length > 0 && hatKranpflichtigeRaten(stammdaten);
+  const kraene = sim?.kraene ?? [];
+  const raster: Zeitraster = sim?.zeitraster ?? "monat";
+  const { buckets: kranBuckets, serien: kranstundenSerien } = kranstundenProKranUndBucket(tasks, kraene, stammdaten, kalender, raster);
+  const kranHatBedarf = kranstundenSerien.some(s => s.bedarf.some(v => v > 0));
+  const kranBarSerien: KategorieSerie[] = kranstundenSerien.map((s, i) => ({
+    key: s.kranId, label: s.kranName, color: FARBEN.kategorial[i % FARBEN.kategorial.length], werte: s.bedarf, kapazitaet: s.kapazitaet,
+  }));
 
   const gewerkOptionen = stammdaten.gewerke;
   const aktivesGewerk = gewerkOptionen.find(g => g.key === mengenGewerkKey) ?? gewerkOptionen[0];
@@ -78,7 +83,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
   // Gemeinsamer Zoom/Scroll aller Diagramme dieses Tabs (Mausrad zoomt zum Cursor, wie im Gantt —
   // Achse wechselt dabei automatisch zwischen Monaten/Wochen/Tagen) + je Diagramm frei per Slider
   // einstellbare Höhe, beides projektbezogen in localStorage gemerkt.
-  const tageAnzahl = Math.max(personal.length, kran.length, mengen.length, ertrag.length);
+  const tageAnzahl = Math.max(personal.length, mengen.length, ertrag.length);
   const zoom = useChartZoom(projectId, "avor", tageAnzahl);
   const [hoehePersonal, setHoehePersonal] = useChartHoehe(projectId, "avor-personal");
   const [hoeheKran, setHoeheKran] = useChartHoehe(projectId, "avor-kran");
@@ -124,7 +129,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
     const summe = Object.values(tw.werte).reduce((s, v) => s + v, 0);
     if (summe > peakWert) { peakWert = summe; peakTag = tw.tag; }
   }
-  const tageUeberKapazitaet = kran.filter(tw => Object.values(tw.werte).some(v => v > KRAN_KAPAZITAET)).length;
+  const zeitraeumeUeberKapazitaet = kranBuckets.filter((_, bi) => kranstundenSerien.some(s => s.bedarf[bi] > s.kapazitaet[bi])).length;
   const tageUeberPersonalSoll = personal.filter((tw, i) => {
     const soll = personalSoll[i] ?? 0;
     return soll > 0 && Object.values(tw.werte).reduce((s, v) => s + v, 0) > soll;
@@ -139,9 +144,14 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
         {personalSollGesetzt && (
           <StatTile label="Tage über Personal (Soll)" wert={String(tageUeberPersonalSoll)} status={tageUeberPersonalSoll > 0 ? "warning" : "good"} />
         )}
-        <StatTile label="Tage über Kran-Kapazität" wert={String(tageUeberKapazitaet)} status={tageUeberKapazitaet > 0 ? "warning" : "good"} />
+        <StatTile label="Zeiträume über Kran-Kapazität" wert={String(zeitraeumeUeberKapazitaet)} status={zeitraeumeUeberKapazitaet > 0 ? "warning" : "good"} />
         <StatTile label="Marge (kumuliert)" wert={`${fmtChf(marge)} CHF`} status={marge >= 0 ? "good" : "critical"} />
         <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px", marginLeft: "auto" }}
+          onClick={() => setKranVerfuegbarkeitOffen(true)}
+          title="Kräne anlegen und ihren Verfügbarkeitszeitraum festlegen">
+          Kran-Verfügbarkeit
+        </button>
+        <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }}
           onClick={() => setKapazitaetsCheckOffen(true)}
           title="Personal-/Kran-Budget je Bauphase gegen den aus Menge × Leistungswert ermittelten Bedarf prüfen">
           Kapazitäts-Check
@@ -162,17 +172,35 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
         <ChartResizeHandle hoehe={hoehePersonal} setHoehe={setHoehePersonal} />
       </CockpitAbschnitt>
 
-      <CockpitAbschnitt titel="Kranauslastung" eingeklappt={!!eingeklappt["kran"]} onToggle={() => toggleEingeklappt("kran")}>
-        {!kranGibtEsDaten ? (
+      <CockpitAbschnitt titel="Kranoptik" eingeklappt={!!eingeklappt["kran"]} onToggle={() => toggleEingeklappt("kran")}
+        aktionen={
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span title="Richtwerte zur Plausibilisierung, keine exakte Kalkulation" style={{ fontSize: 11, color: "var(--tc-text-3)", cursor: "help" }}>ⓘ</span>
+            {(["monat", "woche"] as const).map(r => (
+              <button key={r} disabled={readOnly} onClick={() => updateSim({ ...sim, zeitraster: r })}
+                style={{ fontSize: 11, fontWeight: 600, padding: "3px 8px", cursor: readOnly ? "default" : "pointer",
+                  border: `1px solid ${raster === r ? "var(--tc-blue)" : "var(--tc-border)"}`,
+                  background: raster === r ? "var(--tc-blue-bg)" : "#fff", color: raster === r ? "var(--tc-blue)" : "var(--tc-text-2)" }}>
+                {r === "monat" ? "Monat" : "Woche"}
+              </button>
+            ))}
+          </div>
+        }>
+        {kraene.length === 0 ? (
           <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
-            Kein Kürzel als kranpflichtig markiert (Tab Ressourcen) oder keine Tasks mit Kranbereich erfasst.
+            Noch keine Kräne angelegt — siehe Button "Kran-Verfügbarkeit" oben.
+          </div>
+        ) : !hatKranpflichtigeRaten(stammdaten) ? (
+          <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
+            Kein Kürzel als kranpflichtig markiert (Tab Ressourcen).
+          </div>
+        ) : !kranHatBedarf ? (
+          <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
+            Noch keinen Task einem Kran zugewiesen (Tab Kalkulation → Spalte "Kräne").
           </div>
         ) : (<>
-          <TimeSeriesChart tage={kranSerien.tage} serien={kranSerien.serien} modus="linie" einheit="gleichzeitig"
-            referenzlinie={{ wert: KRAN_KAPAZITAET, label: "Kapazität" }} formatWert={v => String(Math.round(v))}
-            kalender={kalender} hoehe={hoeheKran}
-            markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick}
-            pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
+          <CategoryBarChart kategorien={kranBuckets.map(b => b.label)} serien={kranBarSerien} einheit="h"
+            formatWert={v => String(Math.round(v))} hoehe={hoeheKran} />
           <ChartResizeHandle hoehe={hoeheKran} setHoehe={setHoeheKran} />
         </>)}
       </CockpitAbschnitt>
@@ -217,6 +245,9 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
 
       {kapazitaetsCheckOffen && (
         <KapazitaetsCheckManager sim={sim} updateSim={updateSim} readOnly={readOnly} onClose={() => setKapazitaetsCheckOffen(false)} />
+      )}
+      {kranVerfuegbarkeitOffen && (
+        <KranVerfuegbarkeitManager sim={sim} updateSim={updateSim} readOnly={readOnly} onClose={() => setKranVerfuegbarkeitOffen(false)} />
       )}
     </div>
   );

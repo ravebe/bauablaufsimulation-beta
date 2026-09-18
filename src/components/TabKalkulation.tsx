@@ -1,7 +1,7 @@
 // TabKalkulation.tsx — Menge→Tage-Kalkulation je Task (AVOR-Logik) mit Plausibilitätsvergleich
 // zur geplanten Dauer aus dem Bauablauf.
 import { useState, useEffect, useRef, useMemo, Fragment } from "react";
-import type { SimProjekt, Task } from "../types";
+import type { SimProjekt, Task, Kran } from "../types";
 import { istGruppe, berechneNummern, nsKey } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { arbeitstageZwischen, LEERER_KALENDER } from "./kalenderHelpers";
@@ -18,13 +18,13 @@ interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; re
 // Grid-Spalten der Tabelle — feste Breiten statt Flex, damit kein Inhalt nachfolgende Spalten
 // verschiebt. Verstellbar per Drag, siehe startResize. Alle Zellen top-ausgerichtet (alignItems:
 // "start"), damit sie in einer Flucht stehen, auch wenn die Mengen-Zelle mehrzeilig ist.
-const ALLE_SPALTEN = ["nr", "auge", "task", "kuerzel", "mengen", "geplant", "berechnet", "differenz", "kranbereich", "personalSoll"] as const;
+const ALLE_SPALTEN = ["nr", "auge", "task", "kuerzel", "mengen", "geplant", "berechnet", "differenz", "kranbereich", "kraene", "personalSoll"] as const;
 type Spalte = typeof ALLE_SPALTEN[number];
 const SPALTEN_LABEL: Record<Spalte, string> = {
   nr: "Nr.", task: "Task", kuerzel: "Kürzel", mengen: "Mengen", geplant: "Geplant", berechnet: "Berechnet",
-  differenz: "Differenz", kranbereich: "Kranbereich", personalSoll: "Personal (Soll)", auge: "",
+  differenz: "Differenz", kranbereich: "Kranbereich", kraene: "Kräne", personalSoll: "Personal (Soll)", auge: "",
 };
-const DEFAULT_COL_W: Record<Spalte, number> = { nr: 30, task: 220, kuerzel: 64, mengen: 260, geplant: 76, berechnet: 88, differenz: 60, kranbereich: 110, personalSoll: 90, auge: 30 };
+const DEFAULT_COL_W: Record<Spalte, number> = { nr: 30, task: 220, kuerzel: 64, mengen: 260, geplant: 76, berechnet: 88, differenz: 60, kranbereich: 110, kraene: 110, personalSoll: 90, auge: 30 };
 const LS_COLW = "4d-kalk-colw";
 
 // Spalten mit Sortier-/Filterfunktion im Header (Klick auf Titel = sortieren, ▾ = Filter-Popover).
@@ -56,6 +56,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   const [spaltenFilter, setSpaltenFilter] = useState<Partial<Record<SortSpalte, Set<string>>>>({});
   const [filterMenuOffen, setFilterMenuOffen] = useState<SortSpalte | null>(null);
   const [angezeigtTaskId, setAngezeigtTaskId] = useState<string | null>(null);
+  const [kraeneMenuOffenTaskId, setKraeneMenuOffenTaskId] = useState<string | null>(null);
   const [mengenSortModus, setMengenSortModus] = useState<"fehler" | "leer" | "auto" | "manuell" | null>(null);
   const [expandedGewerk, setExpandedGewerk] = useState<Set<string>>(new Set());
   // Eingefrorene Zeilen-Reihenfolge (Task-IDs), während in einem Mengen-Feld getippt wird — siehe
@@ -141,6 +142,14 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     updateSim({ ...sim!, tasks: sim!.tasks.map(t => t.id === taskId ? { ...t, ...patch } : t) });
   }
 
+  // Kran-Zuweisung eines Tasks umschalten — mehrere Kräne = Schnittstellen-Task, der Anteil wird
+  // ausschliesslich automatisch/gleichmässig verteilt (siehe kranHelpers.ts), nie manuell eingegeben.
+  function kranToggle(t: Task, kranId: string) {
+    const aktuelle = t.kraene ?? [];
+    const neu = aktuelle.includes(kranId) ? aktuelle.filter(id => id !== kranId) : [...aktuelle, kranId];
+    taskAendern(t.id, { kraene: neu.length > 0 ? neu : undefined });
+  }
+
   // Manuelle Eingabe überschreibt eine Formel-Menge (Status "manuell", schwarz statt blau) — Leeren
   // setzt den Status zurück, damit "Mengen berechnen" die Zelle wieder automatisch befüllen kann.
   // Löscht auch etwaige Einzel-Bauteil-Überschreibungen (mengenObjekte) dieses Gewerks, da eine
@@ -163,7 +172,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   }
 
   function kalkulationExportierenCsv() {
-    const blob = new Blob([kalkulationAlsCsv(sim!.tasks, stammdaten)], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob([kalkulationAlsCsv(sim!.tasks, stammdaten, sim!.kraene ?? [])], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = `${sim!.name}_Kalkulation.csv`; a.click();
@@ -171,7 +180,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   }
 
   function kalkulationExportierenJson() {
-    const blob = new Blob([kalkulationAlsJson(sim!.tasks)], { type: "application/json" });
+    const blob = new Blob([kalkulationAlsJson(sim!.tasks, sim!.kraene ?? [])], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = `${sim!.name}_Kalkulation.json`; a.click();
@@ -181,7 +190,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   async function kalkulationImportierenCsv(file: File) {
     setImportFehler(null); setImportErgebnis(null);
     try {
-      const erg = parseKalkulationCsv(await file.text(), sim!.tasks, stammdaten);
+      const erg = parseKalkulationCsv(await file.text(), sim!.tasks, stammdaten, sim!.kraene ?? []);
       updateSim({ ...sim!, tasks: erg.tasks });
       const teile = [`${erg.aktualisiert} Task${erg.aktualisiert === 1 ? "" : "s"} aktualisiert`];
       if (erg.nichtGefunden.length > 0) teile.push(`${erg.nichtGefunden.length} nicht gefunden: ${erg.nichtGefunden.slice(0, 5).join(", ")}${erg.nichtGefunden.length > 5 ? "…" : ""}`);
@@ -195,8 +204,8 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   async function kalkulationImportierenJson(file: File) {
     setImportFehler(null); setImportErgebnis(null);
     try {
-      if (!confirm("Kürzel/Kranbereich/Mengen der passenden Tasks werden vollständig durch den Inhalt der Datei ersetzt. Fortfahren?")) return;
-      const erg = parseKalkulationJson(await file.text(), sim!.tasks);
+      if (!confirm("Kürzel/Kranbereich/Kräne/Mengen der passenden Tasks werden vollständig durch den Inhalt der Datei ersetzt. Fortfahren?")) return;
+      const erg = parseKalkulationJson(await file.text(), sim!.tasks, sim!.kraene ?? []);
       updateSim({ ...sim!, tasks: erg.tasks });
       setImportErgebnis(`${erg.aktualisiert} Task${erg.aktualisiert === 1 ? "" : "s"} aktualisiert${erg.nichtGefunden > 0 ? ` · ${erg.nichtGefunden} Einträge ohne passenden Task ignoriert` : ""}`);
     } catch (e) {
@@ -596,8 +605,49 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
       case "kranbereich":
         return (
           <input type="text" disabled={readOnly} value={z.t.kranbereich ?? ""} onChange={e => taskAendern(z.t.id, { kranbereich: e.target.value || undefined })}
+            title="Freie Gruppierung/Bauphase (z.B. für den Kapazitäts-Check) — für die Kranauslastung siehe Spalte 'Kräne'"
             style={{ width: "90%", fontSize: 12, padding: "2px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
         );
+      case "kraene": {
+        const kraeneListe = sim?.kraene ?? [];
+        const zugewiesen = (z.t.kraene ?? []).map(id => kraeneListe.find(k => k.id === id)).filter((k): k is Kran => !!k);
+        const offen = kraeneMenuOffenTaskId === z.t.id;
+        return (
+          <div style={{ position: "relative", display: "flex", flexWrap: "wrap", gap: 3, alignItems: "center" }}>
+            {zugewiesen.map(k => (
+              <span key={k.id} style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 600, padding: "1px 5px", background: "var(--tc-blue-bg)", color: "var(--tc-blue)", whiteSpace: "nowrap" }}>
+                {k.name}
+                {!readOnly && (
+                  <span onClick={() => kranToggle(z.t, k.id)} title="Entfernen" style={{ cursor: "pointer" }}>✕</span>
+                )}
+              </span>
+            ))}
+            {!readOnly && kraeneListe.length > 0 && (
+              <span onClick={() => setKraeneMenuOffenTaskId(offen ? null : z.t.id)}
+                title="Kräne zuweisen — bei mehreren (Schnittstellen-Task) wird der Anteil automatisch gleichmässig verteilt"
+                style={{ cursor: "pointer", fontSize: 11, color: "var(--tc-text-3)", fontWeight: 600, padding: "0 3px" }}>
+                {zugewiesen.length === 0 ? "+ Kran" : "+"}
+              </span>
+            )}
+            {kraeneListe.length === 0 && (
+              <span style={{ fontSize: 10, color: "var(--tc-text-3)" }} title="Kräne erst in Tab AVOR → Kran-Verfügbarkeit anlegen">–</span>
+            )}
+            {offen && (
+              <>
+                <div style={{ position: "fixed", inset: 0, zIndex: 90 }} onClick={() => setKraeneMenuOffenTaskId(null)} />
+                <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 2, background: "#fff", border: "1px solid #d4dce4", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, minWidth: 120, maxHeight: 180, overflowY: "auto", fontSize: 11, padding: 4 }}>
+                  {kraeneListe.map(k => (
+                    <label key={k.id} style={{ display: "flex", alignItems: "center", gap: 5, padding: "2px 6px", cursor: "pointer" }}>
+                      <input type="checkbox" checked={(z.t.kraene ?? []).includes(k.id)} onChange={() => kranToggle(z.t, k.id)} />
+                      <span>{k.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        );
+      }
       case "personalSoll":
         return (
           <input type="number" className="no-spinner" disabled={readOnly} value={z.t.personalSoll ?? ""}

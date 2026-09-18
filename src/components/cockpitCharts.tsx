@@ -407,7 +407,12 @@ export function ChartResizeHandle({ hoehe, setHoehe, min = 100, max = 640 }: { h
   );
 }
 
-export interface KategorieSerie { key: string; label: string; color: string; werte: number[] }
+export interface KategorieSerie {
+  key: string; label: string; color: string; werte: number[];
+  /** Kapazitätsgrenze je Kategorie, parallel zu werte (z.B. verfügbare Kranstunden je Zeitraster-Bucket)
+   *  — Balken über dieser Grenze werden rot (Engpass) eingefärbt, siehe Kranoptik in Tab AVOR. */
+  kapazitaet?: number[];
+}
 
 interface CategoryBarProps {
   kategorien: string[]; // x-Achse, gleiche Länge wie serien[].werte
@@ -431,7 +436,10 @@ export function CategoryBarChart({ kategorien, serien, einheit = "", hoehe = 180
   const innerW = VBW - ML - MR;
   const innerH = hoehe - MT - MB;
   let maxY = 0;
-  for (const s of serien) for (const w of s.werte) maxY = Math.max(maxY, w ?? 0);
+  for (const s of serien) {
+    for (const w of s.werte) maxY = Math.max(maxY, w ?? 0);
+    for (const c of s.kapazitaet ?? []) maxY = Math.max(maxY, c ?? 0);
+  }
   if (maxY <= 0) maxY = 1;
   const y = (v: number) => MT + innerH - (v / maxY) * innerH;
 
@@ -464,17 +472,30 @@ export function CategoryBarChart({ kategorien, serien, einheit = "", hoehe = 180
           ))}
           {kategorien.map((_, ki) => serien.map((s, si) => {
             const w = s.werte[ki] ?? 0;
+            const kap = s.kapazitaet?.[ki];
+            const engpass = kap != null && w > kap;
             const bx = ML + ki * gruppenBreite + pad + si * balkenBreite;
             const by = y(w);
             const bh = hoehe - MB - by;
+            const bw = Math.max(balkenBreite - 1, 1);
             return (
-              <rect key={`${ki}-${si}`} x={bx} y={by} width={Math.max(balkenBreite - 1, 1)} height={Math.max(bh, 0)}
-                fill={s.color} rx={2} onMouseEnter={() => setHover({ ki, si })} onMouseLeave={() => setHover(null)} />
+              <g key={`${ki}-${si}`} onMouseEnter={() => setHover({ ki, si })} onMouseLeave={() => setHover(null)}>
+                <rect x={bx} y={by} width={bw} height={Math.max(bh, 0)} fill={engpass ? FARBEN.status.critical : s.color} rx={2} />
+                {kap != null && (
+                  <line x1={bx} y1={y(kap)} x2={bx + bw} y2={y(kap)} stroke={FARBEN.textPrimaer} strokeWidth={1.5} />
+                )}
+                {engpass && (
+                  <text x={bx + bw / 2} y={by - 3} textAnchor="middle" fontSize={9} fontWeight={700} fill={FARBEN.status.critical}>!</text>
+                )}
+              </g>
             );
           }))}
         </svg>
         {hover && (() => {
           const s = serien[hover.si];
+          const w = s.werte[hover.ki] ?? 0;
+          const kap = s.kapazitaet?.[hover.ki];
+          const engpass = kap != null && w > kap;
           const bx = ML + hover.ki * gruppenBreite + pad + hover.si * balkenBreite + balkenBreite / 2;
           return (
             <div style={{
@@ -483,9 +504,9 @@ export function CategoryBarChart({ kategorien, serien, einheit = "", hoehe = 180
               boxShadow: "0 2px 6px rgba(0,0,0,.12)", padding: "5px 8px", fontSize: 10, whiteSpace: "nowrap", pointerEvents: "none", zIndex: 5,
             }}>
               <div style={{ fontWeight: 600, color: FARBEN.textPrimaer, marginBottom: 2 }}>{kategorien[hover.ki]}</div>
-              <div style={{ color: FARBEN.textSekundaer }}>
-                <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: 2, background: s.color, marginRight: 4 }} />
-                {s.label}: {fmt(s.werte[hover.ki] ?? 0)} {einheit}
+              <div style={{ color: engpass ? FARBEN.status.critical : FARBEN.textSekundaer, fontWeight: engpass ? 700 : 400 }}>
+                <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: 2, background: engpass ? FARBEN.status.critical : s.color, marginRight: 4 }} />
+                {s.label}: {kap != null ? `${fmt(w)} / ${fmt(kap)} ${einheit}${engpass ? " ← ENGPASS" : ""}` : `${fmt(w)} ${einheit}`}
               </div>
             </div>
           );

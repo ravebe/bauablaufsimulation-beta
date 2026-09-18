@@ -52,7 +52,9 @@ const THEMEN: Thema[] = [
       "Abweichungen zwischen Geplant und Berechnet zeigen mögliche Kalkulationsrisiken.",
       "Mengen lassen sich manuell erfassen oder per Formel (ƒx-Button) aus IFC-Attributen berechnen.",
       "\"Personal (Soll)\" ist die vorgesehene Gesamt-Personenzahl je Task, unabhängig von den Kolonnengrössen je Kürzel in Tab Ressourcen — ergibt die rote Referenzlinie über der Personalauslastung in Tab AVOR.",
-      "Export/Import (CSV oder JSON) übertragen Kürzel/Kranbereich/Personal (Soll)/Mengen aller Tasks, z.B. zum Bearbeiten in Excel.",
+      "Spalte \"Kräne\": einem Task lassen sich mehrere Kräne zuweisen (Schnittstellen-Task zwischen zwei Kränen) — der Anteil wird dabei immer automatisch gleichmässig verteilt (2 Kräne → je 50%), keine manuelle Eingabe. Kräne selbst werden in Tab AVOR über \"Kran-Verfügbarkeit\" angelegt.",
+      "\"Kranbereich\" bleibt ein freies Textfeld zur Gruppierung/Bauphase (z.B. für den Kapazitäts-Check) — für die eigentliche Kranauswertung (Kranoptik) zählt ausschliesslich die Spalte \"Kräne\".",
+      "Export/Import (CSV oder JSON) übertragen Kürzel/Kranbereich/Kräne/Personal (Soll)/Mengen aller Tasks, z.B. zum Bearbeiten in Excel.",
     ],
   },
   {
@@ -70,9 +72,12 @@ const THEMEN: Thema[] = [
     zusammenfassung: "Cockpit mit Personal- und Kranauslastung, Mengen-Filter je Gewerk und Ertragsoptik über die Zeit — abgeleitet aus den Kalkulationsmengen und den Stammdaten.",
     punkte: [
       "Setzt Stammdaten (Ressourcen) sowie erfasste Mengen/Kürzel (Kalkulation) voraus, sonst bleibt die Ansicht leer.",
-      "Die Kranauslastung erscheint nur, wenn mindestens ein Kürzel als \"kranpflichtig\" markiert ist.",
+      "Über \"Kran-Verfügbarkeit\" Kräne anlegen und ihren Einsatzzeitraum (von/bis) festlegen — Grundlage für Kranoptik und Kapazitäts-Check.",
+      "Die Kranoptik zeigt je Kran die geplanten Kranstunden gegen die verfügbare Kapazität, wahlweise je Monat oder Woche; Balken über der Kapazität sind rot markiert (Engpass). Erscheint erst, wenn Kräne angelegt und Tasks in Tab Kalkulation zugewiesen sind.",
       "Über der Personalauslastung erscheint eine rote gestrichelte \"Personal (Soll)\"-Linie, sobald mindestens ein Task in Tab Kalkulation eine vorgesehene Personenzahl hat.",
+      "Der Kapazitäts-Check prüft zusätzlich einen groben Personal-Richtwert je Kran (Ampel, Standard-Obergrenze 13 Personen, einstellbar).",
       "Die Ertragsoptik vergleicht den kumulierten Ertrag mit den kumulierten Kosten.",
+      "Alle Kran-Auswertungen sind Richtwerte zur Plausibilisierung, keine exakte Kalkulation.",
     ],
   },
   {
