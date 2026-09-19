@@ -2,7 +2,7 @@
 // zur geplanten Dauer aus dem Bauablauf.
 import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import type { SimProjekt, Task, Kran } from "../types";
-import { istGruppe, berechneNummern, nsKey } from "../types";
+import { istGruppe, berechneNummern, nsKey, parseDateUniversal } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { arbeitstageZwischen, LEERER_KALENDER } from "./kalenderHelpers";
 import { LEERE_STAMMDATEN, alleKuerzel, gewerkeFuerKuerzel, dauerBerechnetTask, bezeichnungFuerKuerzel, ausschlussFilterListe, aktiveFilterIds, objektAusgeschlossen, mengenRelevanteSignatur } from "./stammdatenHelpers";
@@ -13,7 +13,10 @@ import { ladeObjektAttribute, guidsZuBatch, zeigeBauteileImModell } from "./mode
 import { berechneMenge, mengeStatus } from "./formelHelpers";
 import { kalkulationAlsCsv, parseKalkulationCsv, kalkulationAlsJson, parseKalkulationJson } from "./kalkulationExportHelpers";
 
-interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; api?: ApiInstance | null; projectId?: string | null; }
+interface Props {
+  sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; api?: ApiInstance | null; projectId?: string | null;
+  taskSort?: "gantt" | "datum" | "aktiv" | "name" | "nummer";
+}
 
 // Grid-Spalten der Tabelle — feste Breiten statt Flex, damit kein Inhalt nachfolgende Spalten
 // verschiebt. Verstellbar per Drag, siehe startResize. Alle Zellen top-ausgerichtet (alignItems:
@@ -45,7 +48,7 @@ function spalteWert(z: Zeile, spalte: SortSpalte): string {
   }
 }
 
-export default function TabKalkulation({ sim, updateSim, readOnly, api, projectId = null }: Props) {
+export default function TabKalkulation({ sim, updateSim, readOnly, api, projectId = null, taskSort = "gantt" }: Props) {
   const [bulkLaeuft, setBulkLaeuft] = useState(false);
   const [bulkErgebnis, setBulkErgebnis] = useState<string | null>(null);
   const [mengenLaeuft, setMengenLaeuft] = useState(false);
@@ -81,6 +84,32 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
       document.removeEventListener("mousedown", onMouseDown);
     };
   }, [selectedIds.length]);
+  // Für taskSort "aktiv" (siehe Kopfzeilen-Sortiermenü) — Set der aktuell im 3D-Modell selektierten
+  // Objekt-GUIDs, alle 1.5s gepollt wie in TabBauteile.tsx (dort nicht global gehalten, daher hier
+  // dieselbe kleine Polling-Logik separat für diesen Tab). Läuft nur, solange dieser Modus aktiv ist.
+  const [selGuids, setSelGuids] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!api || taskSort !== "aktiv") return;
+    let intervalId: ReturnType<typeof setInterval>;
+    async function check() {
+      try {
+        const sel = await (api!.viewer as any).getSelection();
+        const guids = new Set<string>();
+        if (Array.isArray(sel)) {
+          for (const s of sel) {
+            const mid = s?.modelId ?? "";
+            for (const rId of s?.objectRuntimeIds ?? []) guids.add(`${mid}:::${rId}`);
+            for (const o of s?.objects ?? []) guids.add(`${mid}:::${o?.id ?? o}`);
+          }
+        }
+        setSelGuids(guids);
+      } catch { setSelGuids(new Set()); }
+    }
+    check();
+    intervalId = setInterval(check, 1500);
+    return () => clearInterval(intervalId);
+  }, [api, taskSort]);
+
   const [mengenSortModus, setMengenSortModus] = useState<"fehler" | "leer" | "auto" | "manuell" | null>(null);
   const [expandedGewerk, setExpandedGewerk] = useState<Set<string>>(new Set());
   // Eingefrorene Zeilen-Reihenfolge (Task-IDs), während in einem Mengen-Feld getippt wird — siehe
@@ -404,6 +433,35 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     const abweichung = berechnet > 0 && (berechnet > geplant * 1.5 || berechnet < geplant * 0.67);
     return { t, nr: nummern.get(t.id) ?? "", geplant, berechnet, differenz: berechnet - geplant, abweichung };
   }).filter((z): z is Zeile => z !== null);
+
+  // Basis-Reihenfolge folgt dem globalen Sortier-Menü in der Kopfzeile (wie Tab Bauteile/Tasks/Gantt) —
+  // ein Klick auf eine Spalten-Kopfzeile weiter unten (sortSpalte) sortiert danach explizit um und
+  // überschreibt diese Basis; ohne das bleibt sie z.B. für den Mengen-Sortmodus als Gleichstand-Reihenfolge
+  // erhalten. "gantt" (Default) lässt die Task-Reihenfolge unverändert.
+  if (taskSort === "datum") {
+    zeilen.sort((a, b) => {
+      const sa = parseDateUniversal(a.t.start)?.getTime() ?? 0;
+      const sb = parseDateUniversal(b.t.start)?.getTime() ?? 0;
+      if (sa !== sb) return sa - sb;
+      const ea = parseDateUniversal(a.t.end)?.getTime() ?? sa;
+      const eb = parseDateUniversal(b.t.end)?.getTime() ?? sb;
+      return ea - eb;
+    });
+  } else if (taskSort === "aktiv") {
+    zeilen.sort((a, b) => {
+      const aHat = selGuids.size > 0 && a.t.objektGuids.some(g => selGuids.has(g)) ? 1 : 0;
+      const bHat = selGuids.size > 0 && b.t.objektGuids.some(g => selGuids.has(g)) ? 1 : 0;
+      return bHat - aHat;
+    });
+  } else if (taskSort === "name") {
+    zeilen.sort((a, b) => a.t.name.localeCompare(b.t.name, "de"));
+  } else if (taskSort === "nummer") {
+    const extractNum = (s: string): number => { const m = s.match(/\d+/g); return m ? parseInt(m[m.length - 1], 10) : Infinity; };
+    zeilen.sort((a, b) => {
+      const na = extractNum(a.t.name), nb = extractNum(b.t.name);
+      return na !== nb ? na - nb : a.t.name.localeCompare(b.t.name, "de");
+    });
+  }
 
   const tasksMitKuerzel = zeilen.filter(z => z.t.bauteilKuerzel).length;
   const anzahlAbweichung = zeilen.filter(z => z.abweichung).length;

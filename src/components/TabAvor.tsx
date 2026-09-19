@@ -77,10 +77,6 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
   // sind, und nur Tasks mit einer Kran-Zuweisung aus Tab Kalkulation) ein Personal-Richtwert — Engpass,
   // sobald der über dem je Kran in "Kräne & Verfügbarkeit" hinterlegten Max-Personen-Wert liegt.
   const { buckets: personalKranBuckets, serien: personalKranSerien } = personenstundenProKranUndBucket(tasks, kraene, stammdaten, kalender, raster);
-  const zeitraeumeUeberPersonalKapazitaet = personalKranBuckets.filter((_, bi) => personalKranSerien.some(s => {
-    const maxPersonenDiesesKrans = kranById.get(s.kranId)?.maxPersonen ?? MAX_PERSONEN_PRO_KRAN;
-    return personalRichtwertJeBucket(s.personenstunden[bi], s.arbeitstageVerfuegbar[bi], stammdaten.arbeitszeitStdProTag, maxPersonenDiesesKrans).engpass;
-  })).length;
   // Personal-Ansicht der Kranoptik (Umschalter neben Kranstunden): Balken = gerundeter Personal-
   // Richtwert je Kran und Zeitraster-Bucket, Kapazitätslinie = dessen fixer Max-Personen-Wert (anders
   // als bei Kranstunden nicht zeitraum-abhängig, da Max. Personen eine statische Kran-Eigenschaft ist).
@@ -170,8 +166,6 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
           <StatTile label="Tage über Personal (Soll)" wert={String(tageUeberPersonalSoll)} status={tageUeberPersonalSoll > 0 ? "warning" : "good"} />
         )}
         <StatTile label="Zeiträume über Kran-Kapazität" wert={String(zeitraeumeUeberKapazitaet)} status={zeitraeumeUeberKapazitaet > 0 ? "warning" : "good"} />
-        <StatTile label="Zeiträume über Kran-Personal-Kapazität" wert={String(zeitraeumeUeberPersonalKapazitaet)} status={zeitraeumeUeberPersonalKapazitaet > 0 ? "warning" : "good"}
-          sub="Ungefährer Personalbedarf je Kran vs. dessen Max. Personen (Tab Kräne & Verfügbarkeit)" />
         <StatTile label="Marge (kumuliert)" wert={`${fmtChf(marge)} CHF`} status={marge >= 0 ? "good" : "critical"} />
         <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px", marginLeft: "auto" }}
           onClick={() => setKranPlanungOffen(true)}

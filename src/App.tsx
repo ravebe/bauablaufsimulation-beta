@@ -593,7 +593,7 @@ export default function App() {
           />
         </div>
         <div className="tc-tab-pane" style={{ display: aktTab === "kalkulation" ? "block" : "none" }}>
-          <TabKalkulation sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} api={api} projectId={projectId} />
+          <TabKalkulation sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} api={api} projectId={projectId} taskSort={taskSort} />
         </div>
         <div className="tc-tab-pane" style={{ display: aktTab === "ressourcen" ? "block" : "none" }}>
           <TabRessourcen sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} api={api} selektion={selektion} aktivesModellId={aktivesModellId} projectId={projectId} />
