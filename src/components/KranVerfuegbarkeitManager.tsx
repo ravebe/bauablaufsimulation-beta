@@ -1,14 +1,15 @@
-// KranVerfuegbarkeitManager.tsx — Dialog in Tab AVOR: Kräne anlegen und ihre Verfügbarkeit (von/bis)
-// pflegen, dargestellt als Matrix Kran × Zeitraum (Monat/Woche). Fundament für Etappe 2-4 (Kran-
-// Zuweisung, Kranoptik, Kapazitäts-Check) — hier nur Stammdaten, keine Auswertung.
+// KranVerfuegbarkeitManager.tsx — erster Tab im Dialog "Kranplanung" (siehe KranPlanungManager) in
+// Tab AVOR: Kräne anlegen und ihre Verfügbarkeit (von/bis) pflegen, dargestellt als Matrix Kran ×
+// Zeitraum (Monat/Woche). Fundament für Kran-Zuweisung, Kranoptik und Kapazitäts-Check (zweiter Tab)
+// — hier nur Stammdaten, keine Auswertung.
 import { useState } from "react";
 import type { SimProjekt, Kran, Zeitraster } from "../types";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import { zeitrasterBuckets, kranAktivInBucket, neuerKran, kranAusTasksEntfernen } from "./kranHelpers";
 
-interface Props { sim: SimProjekt; updateSim: (s: SimProjekt) => void; readOnly?: boolean; onClose: () => void; }
+interface Props { sim: SimProjekt; updateSim: (s: SimProjekt) => void; readOnly?: boolean; }
 
-export default function KranVerfuegbarkeitManager({ sim, updateSim, readOnly, onClose }: Props) {
+export function KranVerfuegbarkeitInhalt({ sim, updateSim, readOnly }: Props) {
   const kraene = sim.kraene ?? [];
   const raster: Zeitraster = sim.zeitraster ?? "monat";
   const kalender = sim.kalender ?? LEERER_KALENDER;
@@ -47,16 +48,6 @@ export default function KranVerfuegbarkeitManager({ sim, updateSim, readOnly, on
   const buckets = zeitrasterBuckets(sim.tasks, raster);
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}
-      onClick={onClose}>
-      <div style={{ background: "#fff", width: 820, maxWidth: "94vw", maxHeight: "88vh", overflowY: "auto",
-        boxShadow: "0 8px 30px rgba(0,0,0,.25)", fontFamily: "var(--tc-font)" }}
-        onClick={e => e.stopPropagation()}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid var(--tc-border-light)" }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "var(--tc-text)" }}>Kran-Verfügbarkeit</div>
-          <button className="tc-btn-ghost" style={{ fontSize: 14, padding: "2px 8px" }} onClick={onClose}>✕</button>
-        </div>
-
         <div style={{ padding: "14px 18px" }}>
           <div style={{ fontSize: 11, color: "var(--tc-text-2)", lineHeight: 1.5, marginBottom: 12 }}>
             Kräne anlegen und den Zeitraum festlegen, in dem sie auf der Baustelle verfügbar sind — Grundlage
@@ -147,7 +138,5 @@ export default function KranVerfuegbarkeitManager({ sim, updateSim, readOnly, on
             </button>
           )}
         </div>
-      </div>
-    </div>
   );
 }

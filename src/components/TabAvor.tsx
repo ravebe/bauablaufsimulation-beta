@@ -12,8 +12,7 @@ import { dreiDZustandAufTagSetzen, tagVonDatum } from "./dreiDHeuteHelper";
 import type { ApiInstance } from "../hooks/useApi";
 import { TimeSeriesChart, CategoryBarChart, StatTile, CockpitAbschnitt, useEingeklappt, useChartZoom, useChartHoehe, ChartResizeHandle, FARBEN } from "./cockpitCharts";
 import type { Serie, KategorieSerie } from "./cockpitCharts";
-import KapazitaetsCheckManager from "./KapazitaetsCheckManager";
-import KranVerfuegbarkeitManager from "./KranVerfuegbarkeitManager";
+import KranPlanungManager from "./KranPlanungManager";
 
 interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; projectId?: string | null; api?: ApiInstance | null; sharedNadelTag?: React.MutableRefObject<number>; }
 
@@ -42,8 +41,7 @@ function gestapelteSerien(tagWerte: TagWert[], labelFuer: (k: string) => string)
 export default function TabAvor({ sim, updateSim, readOnly, projectId = null, api, sharedNadelTag }: Props) {
   const [mengenGewerkKey, setMengenGewerkKey] = useState<string>("beton");
   const [mengenKuerzel, setMengenKuerzel] = useState<string>(""); // "" = Total (alle Kürzel dieses Gewerks summiert), Default
-  const [kapazitaetsCheckOffen, setKapazitaetsCheckOffen] = useState(false);
-  const [kranVerfuegbarkeitOffen, setKranVerfuegbarkeitOffen] = useState(false);
+  const [kranPlanungOffen, setKranPlanungOffen] = useState(false);
   const { eingeklappt, toggle: toggleEingeklappt } = useEingeklappt(projectId, "avor");
 
   // Klick in eines der Diagramme setzt eine gemeinsame Datums-Markierung (Index, da alle Tagesreihen
@@ -150,14 +148,9 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
         <StatTile label="Zeiträume über Kran-Kapazität" wert={String(zeitraeumeUeberKapazitaet)} status={zeitraeumeUeberKapazitaet > 0 ? "warning" : "good"} />
         <StatTile label="Marge (kumuliert)" wert={`${fmtChf(marge)} CHF`} status={marge >= 0 ? "good" : "critical"} />
         <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px", marginLeft: "auto" }}
-          onClick={() => setKranVerfuegbarkeitOffen(true)}
-          title="Kräne anlegen und ihren Verfügbarkeitszeitraum festlegen">
-          Kran-Verfügbarkeit
-        </button>
-        <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }}
-          onClick={() => setKapazitaetsCheckOffen(true)}
-          title="Personal-/Kran-Budget je Bauphase gegen den aus Menge × Leistungswert ermittelten Bedarf prüfen">
-          Kapazitäts-Check
+          onClick={() => setKranPlanungOffen(true)}
+          title="Kräne anlegen, ihre Verfügbarkeit festlegen und Personal-/Kran-Budget je Bauphase gegen den Bedarf prüfen">
+          Kranplanung
         </button>
       </div>
       {ausgewaehltesDatumIso && (
@@ -246,11 +239,8 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
         </>)}
       </CockpitAbschnitt>
 
-      {kapazitaetsCheckOffen && (
-        <KapazitaetsCheckManager sim={sim} updateSim={updateSim} readOnly={readOnly} onClose={() => setKapazitaetsCheckOffen(false)} />
-      )}
-      {kranVerfuegbarkeitOffen && (
-        <KranVerfuegbarkeitManager sim={sim} updateSim={updateSim} readOnly={readOnly} onClose={() => setKranVerfuegbarkeitOffen(false)} />
+      {kranPlanungOffen && (
+        <KranPlanungManager sim={sim} updateSim={updateSim} readOnly={readOnly} onClose={() => setKranPlanungOffen(false)} />
       )}
     </div>
   );

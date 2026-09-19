@@ -1,8 +1,8 @@
-// KapazitaetsCheckManager.tsx — Checkfenster in Tab AVOR: prüft pro Bauphase (= Kranbereich, siehe
-// Task.kranbereich), ob ein frei eingegebenes Personal-/Kran-Budget den aus Menge × Leistungswert
-// ermittelten Bedarf deckt. Zwei Modi: "gantt" nutzt die echten Task-Termine je Kranbereich,
-// "sandbox" eine unabhängig eingegebene Zieldauer je Phase — z.B. um vor der Grobterminierung zu
-// testen, ob eine Personal-/Kranstrategie überhaupt aufgehen kann.
+// KapazitaetsCheckManager.tsx — zweiter Tab im Dialog "Kranplanung" (siehe KranPlanungManager) in Tab
+// AVOR: prüft pro Bauphase (= Kranbereich, siehe Task.kranbereich), ob ein frei eingegebenes Personal-/
+// Kran-Budget den aus Menge × Leistungswert ermittelten Bedarf deckt. Zwei Modi: "gantt" nutzt die
+// echten Task-Termine je Kranbereich, "sandbox" eine unabhängig eingegebene Zieldauer je Phase — z.B.
+// um vor der Grobterminierung zu testen, ob eine Personal-/Kranstrategie überhaupt aufgehen kann.
 import { useState } from "react";
 import type { SimProjekt, KapazitaetsCheck, KapazitaetsPhase, Zeitraster } from "../types";
 import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
@@ -13,7 +13,7 @@ import {
   MAX_PERSONEN_PRO_KRAN, personenstundenProKranUndBucket, personalRichtwertJeBucket,
 } from "./kapazitaetsCheckHelpers";
 
-interface Props { sim: SimProjekt; updateSim: (s: SimProjekt) => void; readOnly?: boolean; onClose: () => void; }
+interface Props { sim: SimProjekt; updateSim: (s: SimProjekt) => void; readOnly?: boolean; }
 
 const LEERER_CHECK: KapazitaetsCheck = { modus: "gantt", phasen: [] };
 
@@ -21,7 +21,7 @@ function fmt(n: number): string {
   return n.toLocaleString("de-CH", { maximumFractionDigits: 0 });
 }
 
-export default function KapazitaetsCheckManager({ sim, updateSim, readOnly, onClose }: Props) {
+export function KapazitaetsCheckInhalt({ sim, updateSim, readOnly }: Props) {
   const kc = sim.kapazitaetsCheck ?? LEERER_CHECK;
   const stammdaten = sim.stammdaten ?? LEERE_STAMMDATEN;
   const kalender = sim.kalender ?? LEERER_KALENDER;
@@ -48,6 +48,9 @@ export default function KapazitaetsCheckManager({ sim, updateSim, readOnly, onCl
   }
 
   const bereichOptionen = [...new Set(sim.tasks.map(t => t.kranbereich?.trim()).filter((b): b is string => !!b))].sort();
+  // Phasen, deren Kranbereich in Tab Kalkulation umbenannt/entfernt wurde (kein Task nutzt ihn mehr) —
+  // bleiben sonst als "toter" Eintrag stehen, siehe Aufräum-Hinweis unten.
+  const verwaisteIdx = new Set(kc.phasen.map((p, i) => (p.kranbereich !== "" && !bereichOptionen.includes(p.kranbereich)) ? i : -1).filter(i => i >= 0));
   const bedarfMap = personenstundenBedarfProKranbereich(sim.tasks, stammdaten);
   const zeitraeume = zeitraumProKranbereich(sim.tasks);
   const kranSpitzenMap = kranSpitzenbedarfProKranbereich(sim.tasks, stammdaten, kalender);
@@ -64,22 +67,22 @@ export default function KapazitaetsCheckManager({ sim, updateSim, readOnly, onCl
     && summeSandboxDauer !== kc.gesamtDauerTageSandbox;
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}
-      onClick={onClose}>
-      <div style={{ background: "#fff", width: 720, maxWidth: "94vw", maxHeight: "88vh", overflowY: "auto",
-        boxShadow: "0 8px 30px rgba(0,0,0,.25)", fontFamily: "var(--tc-font)" }}
-        onClick={e => e.stopPropagation()}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid var(--tc-border-light)" }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "var(--tc-text)" }}>Kapazitäts-Check</div>
-          <button className="tc-btn-ghost" style={{ fontSize: 14, padding: "2px 8px" }} onClick={onClose}>✕</button>
-        </div>
-
         <div style={{ padding: "14px 18px" }}>
           <div style={{ fontSize: 11, color: "var(--tc-text-2)", lineHeight: 1.5, marginBottom: 12 }}>
             Prüft je Bauphase (= Kranbereich, siehe Feld "Kranbereich" in Tab Kalkulation), ob Personal und
             Kräne reichen, um das mit Menge × Leistungswert hinterlegte Arbeitsvolumen in der verfügbaren
             Zeit zu schaffen — entweder anhand der echten Gantt-Termine oder als unabhängiges Testszenario.
           </div>
+
+          {verwaisteIdx.size > 0 && !readOnly && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, padding: "6px 10px", background: "#fff6e5", border: "1px solid #f0c975", fontSize: 11, color: "#8a5a00" }}>
+              <span>⚠ {verwaisteIdx.size} Phase{verwaisteIdx.size === 1 ? "" : "n"} verweist auf einen Kranbereich, der in Tab Kalkulation keinem Task mehr zugeordnet ist (umbenannt oder gelöscht).</span>
+              <button className="tc-btn-ghost" style={{ fontSize: 11, padding: "2px 8px", marginLeft: "auto", whiteSpace: "nowrap" }}
+                onClick={() => speichern({ ...kc, phasen: kc.phasen.filter((_, i) => !verwaisteIdx.has(i)) })}>
+                Verwaiste Phase{verwaisteIdx.size === 1 ? "" : "n"} entfernen
+              </button>
+            </div>
+          )}
 
           <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
             <button disabled={readOnly} onClick={() => speichern({ ...kc, modus: "gantt" })}
@@ -142,6 +145,12 @@ export default function KapazitaetsCheckManager({ sim, updateSim, readOnly, onCl
                       {bereichOptionen.map(b => <option key={b} value={b}>{b}</option>)}
                       <option value="__neu__">+ neuer Kranbereich…</option>
                     </select>
+                  )}
+
+                  {verwaisteIdx.has(idx) && neuerBereichIdx !== idx && (
+                    <span style={{ fontSize: 10, color: "#8a5a00", fontWeight: 600 }} title="Kein Task in Tab Kalkulation nutzt diesen Kranbereich mehr">
+                      ⚠ verwaist
+                    </span>
                   )}
 
                   <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--tc-text-2)" }}>
@@ -260,7 +269,5 @@ export default function KapazitaetsCheckManager({ sim, updateSim, readOnly, onCl
             </div>
           )}
         </div>
-      </div>
-    </div>
   );
 }
