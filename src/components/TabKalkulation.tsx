@@ -63,6 +63,24 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   // letzten Klick-Position) — dient dem gebündelten Bearbeiten (z.B. Kräne) mehrerer Tasks zugleich.
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const letzterKlickIdx = useRef<number>(-1);
+  const wurzelRef = useRef<HTMLDivElement>(null);
+
+  // Mehrfachauswahl bleibt bestehen, bis Escape gedrückt oder ausserhalb der Tabelle geklickt wird —
+  // nicht schon beim nächsten Klick in ein Bulk-Feld (Kürzel, Berechnet, Kräne, Personal) einer der
+  // ausgewählten Zeilen, siehe zeileAnklicken().
+  useEffect(() => {
+    if (selectedIds.length === 0) return;
+    function onKeyDown(e: KeyboardEvent) { if (e.key === "Escape") setSelectedIds([]); }
+    function onMouseDown(e: MouseEvent) {
+      if (wurzelRef.current && !wurzelRef.current.contains(e.target as Node)) setSelectedIds([]);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("mousedown", onMouseDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("mousedown", onMouseDown);
+    };
+  }, [selectedIds.length]);
   const [mengenSortModus, setMengenSortModus] = useState<"fehler" | "leer" | "auto" | "manuell" | null>(null);
   const [expandedGewerk, setExpandedGewerk] = useState<Set<string>>(new Set());
   // Eingefrorene Zeilen-Reihenfolge (Task-IDs), während in einem Mengen-Feld getippt wird — siehe
@@ -184,7 +202,10 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
       setSelectedIds(zeilenGefiltert.slice(from, to + 1).map(z => z.t.id));
     } else if (e.ctrlKey || e.metaKey) {
       setSelectedIds(prev => prev.includes(taskId) ? prev.filter(id => id !== taskId) : [...prev, taskId]);
-    } else {
+    } else if (!(selectedIds.length > 1 && selectedIds.includes(taskId))) {
+      // Ein einfacher Klick in eine Zeile, die bereits Teil einer Mehrfachauswahl ist, darf diese
+      // nicht auflösen — sonst wäre ein Bulk-Edit-Klick in ein Feld dieser Zeile (Kürzel, Berechnet,
+      // Kräne, Personal) unmöglich. Auflösen nur per Escape oder Klick ausserhalb der Tabelle.
       setSelectedIds([taskId]);
     }
     letzterKlickIdx.current = idx;
@@ -710,7 +731,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", fontSize: 12 }}>
+    <div ref={wurzelRef} style={{ display: "flex", flexDirection: "column", height: "100%", fontSize: 12 }}>
       <div style={{ padding: "14px 14px 0", flexShrink: 0 }}>
         <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
           <StatTile label="Total Abweichung" wert={`${gesamtAbweichungTage > 0 ? "+" : ""}${gesamtAbweichungTage}d`} status={gesamtAbweichungTage !== 0 ? "warning" : "good"} sub="Berechnet − Geplant, alle Tasks" />
@@ -818,15 +839,6 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
           {importErgebnis && <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>{importErgebnis}</span>}
         </div>
 
-        {selectedIds.length > 1 && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "5px 10px", background: "var(--tc-blue-bg)", fontSize: 11, fontWeight: 600, color: "var(--tc-blue)" }}>
-            <span>{selectedIds.length} Tasks ausgewählt — Änderungen an Kürzel, Berechnet, Kräne oder Personal (Soll) in einer der Zeilen wirken auf alle ausgewählten Tasks</span>
-            <button className="tc-btn-ghost" style={{ fontSize: 11, padding: "2px 8px", marginLeft: "auto" }} onClick={() => setSelectedIds([])}>
-              Auswahl aufheben
-            </button>
-          </div>
-        )}
-
         <div style={{ display: "flex", gap: 12, fontSize: 9, color: "var(--tc-text-3)", marginBottom: 6 }}>
           <span onClick={() => setMengenSortModus(m => m === "auto" ? null : "auto")} title="Automatisch berechnete Felder zuoberst"
             style={{ cursor: "pointer", fontWeight: mengenSortModus === "auto" ? 700 : 400, color: mengenSortModus === "auto" ? "var(--tc-blue)" : "var(--tc-text-3)" }}>
@@ -851,7 +863,8 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
           der Kopfzeile und fixiert sie beim Scrollen. overflow:"auto" deckt zugleich das breite
           Grid horizontal ab; minHeight bei offenem Such-/Filterpopup verhindert, dass der Bereich
           bei 0 Treffern auf die Kopfzeile schrumpft und das Popup abschneidet. */}
-      <div style={{ flex: 1, minHeight: (suchOffen || filterMenuOffen) ? 260 : 0, overflow: "auto", padding: "0 14px 14px" }}>
+      <div style={{ flex: 1, minHeight: (suchOffen || filterMenuOffen) ? 260 : 0, overflow: "auto", padding: "0 14px 14px" }}
+        onClick={e => { if (e.target === e.currentTarget) setSelectedIds([]); }}>
         <div style={{ display: "grid", gridTemplateColumns: gridTemplate, fontSize: 9, color: "var(--tc-text-3)", fontWeight: 600, padding: "4px 0", position: "sticky", top: 0, background: "#fff", zIndex: 3 }}>
           {ALLE_SPALTEN.map((s, i) => renderHeaderZelle(s, i))}
         </div>
