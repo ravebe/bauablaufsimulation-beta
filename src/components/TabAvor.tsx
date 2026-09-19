@@ -172,39 +172,6 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
         <ChartResizeHandle hoehe={hoehePersonal} setHoehe={setHoehePersonal} />
       </CockpitAbschnitt>
 
-      <CockpitAbschnitt titel="Kranoptik" eingeklappt={!!eingeklappt["kran"]} onToggle={() => toggleEingeklappt("kran")}
-        aktionen={
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span title="Richtwerte zur Plausibilisierung, keine exakte Kalkulation" style={{ fontSize: 11, color: "var(--tc-text-3)", cursor: "help" }}>ⓘ</span>
-            {(["monat", "woche"] as const).map(r => (
-              <button key={r} disabled={readOnly} onClick={() => updateSim({ ...sim, zeitraster: r })}
-                style={{ fontSize: 11, fontWeight: 600, padding: "3px 8px", cursor: readOnly ? "default" : "pointer",
-                  border: `1px solid ${raster === r ? "var(--tc-blue)" : "var(--tc-border)"}`,
-                  background: raster === r ? "var(--tc-blue-bg)" : "#fff", color: raster === r ? "var(--tc-blue)" : "var(--tc-text-2)" }}>
-                {r === "monat" ? "Monat" : "Woche"}
-              </button>
-            ))}
-          </div>
-        }>
-        {kraene.length === 0 ? (
-          <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
-            Noch keine Kräne angelegt — siehe Button "Kran-Verfügbarkeit" oben.
-          </div>
-        ) : !hatKranpflichtigeRaten(stammdaten) ? (
-          <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
-            Kein Kürzel als kranpflichtig markiert (Tab Ressourcen).
-          </div>
-        ) : !kranHatBedarf ? (
-          <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
-            Noch keinen Task einem Kran zugewiesen (Tab Kalkulation → Spalte "Kräne").
-          </div>
-        ) : (<>
-          <CategoryBarChart kategorien={kranBuckets.map(b => b.label)} serien={kranBarSerien} einheit="h"
-            formatWert={v => String(Math.round(v))} hoehe={hoeheKran} />
-          <ChartResizeHandle hoehe={hoeheKran} setHoehe={setHoeheKran} />
-        </>)}
-      </CockpitAbschnitt>
-
       <CockpitAbschnitt titel="Mengen-Filter" eingeklappt={!!eingeklappt["mengen"]} onToggle={() => toggleEingeklappt("mengen")}
         aktionen={
           <div style={{ display: "flex", gap: 4 }}>
@@ -241,6 +208,39 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
           markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick}
           pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
         <ChartResizeHandle hoehe={hoeheErtrag} setHoehe={setHoeheErtrag} />
+      </CockpitAbschnitt>
+
+      <CockpitAbschnitt titel="Kranoptik" eingeklappt={!!eingeklappt["kran"]} onToggle={() => toggleEingeklappt("kran")}
+        aktionen={
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span title="Richtwerte zur Plausibilisierung, keine exakte Kalkulation" style={{ fontSize: 11, color: "var(--tc-text-3)", cursor: "help" }}>ⓘ</span>
+            {(["monat", "woche"] as const).map(r => (
+              <button key={r} disabled={readOnly} onClick={() => updateSim({ ...sim, zeitraster: r })}
+                style={{ fontSize: 11, fontWeight: 600, padding: "3px 8px", cursor: readOnly ? "default" : "pointer",
+                  border: `1px solid ${raster === r ? "var(--tc-blue)" : "var(--tc-border)"}`,
+                  background: raster === r ? "var(--tc-blue-bg)" : "#fff", color: raster === r ? "var(--tc-blue)" : "var(--tc-text-2)" }}>
+                {r === "monat" ? "Monat" : "Woche"}
+              </button>
+            ))}
+          </div>
+        }>
+        {kraene.length === 0 ? (
+          <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
+            Noch keine Kräne angelegt — siehe Button "Kran-Verfügbarkeit" oben.
+          </div>
+        ) : !hatKranpflichtigeRaten(stammdaten) ? (
+          <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
+            Kein Kürzel als kranpflichtig markiert (Tab Ressourcen).
+          </div>
+        ) : !kranHatBedarf ? (
+          <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
+            Noch keinen Task einem Kran zugewiesen (Tab Kalkulation → Spalte "Kräne").
+          </div>
+        ) : (<>
+          <CategoryBarChart kategorien={kranBuckets.map(b => b.label)} serien={kranBarSerien} einheit="h"
+            formatWert={v => String(Math.round(v))} hoehe={hoeheKran} />
+          <ChartResizeHandle hoehe={hoeheKran} setHoehe={setHoeheKran} />
+        </>)}
       </CockpitAbschnitt>
 
       {kapazitaetsCheckOffen && (

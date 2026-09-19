@@ -30,6 +30,8 @@ const LS_COLW = "4d-kalk-colw";
 // Spalten mit Sortier-/Filterfunktion im Header (Klick auf Titel = sortieren, ▾ = Filter-Popover).
 const SORTIERBARE_SPALTEN = ["nr", "task", "kuerzel", "geplant", "berechnet"] as const;
 type SortSpalte = typeof SORTIERBARE_SPALTEN[number];
+// Nr. und Task sind nur sortierbar — der Werte-Filter-Popover (Checkbox-Liste) ist dort nicht nötig.
+const FILTERBARE_SPALTEN: readonly SortSpalte[] = ["kuerzel", "geplant", "berechnet"];
 
 type Zeile = { t: Task; nr: string; geplant: number; berechnet: number; differenz: number; abweichung: boolean };
 
@@ -146,6 +148,13 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     updateSim({ ...sim!, tasks: sim!.tasks.map(t => t.id === taskId ? { ...t, ...patch } : t) });
   }
 
+  // Wie taskAendern, wirkt aber auf alle ausgewählten Tasks (selectedIds) zugleich, sofern der
+  // bearbeitete Task Teil einer Mehrfachauswahl ist — für Kürzel/Berechnet/Personal (Soll).
+  function taskAendernBulk(taskId: string, patch: Partial<Task>) {
+    const zielIds = selectedIds.length > 1 && selectedIds.includes(taskId) ? selectedIds : [taskId];
+    updateSim({ ...sim!, tasks: sim!.tasks.map(t => zielIds.includes(t.id) ? { ...t, ...patch } : t) });
+  }
+
   // Kran-Zuweisung eines Tasks umschalten — mehrere Kräne = Schnittstellen-Task, der Anteil wird
   // ausschliesslich automatisch/gleichmässig verteilt (siehe kranHelpers.ts), nie manuell eingegeben.
   // Ist der Task Teil einer Mehrfachauswahl (selectedIds), wirkt das Umschalten auf alle
@@ -199,7 +208,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   // Manuelle Übersteuerung der "Berechnet"-Spalte (siehe dauerBerechnetTask() in stammdatenHelpers.ts) —
   // leeren setzt wieder auf die automatische Menge→Tage-Berechnung zurück.
   function berechnetDauerAendern(task: Task, wert: number | null) {
-    taskAendern(task.id, { berechneteDauerManuell: wert ?? undefined });
+    taskAendernBulk(task.id, { berechneteDauerManuell: wert ?? undefined });
   }
 
   function kalkulationExportierenCsv() {
@@ -497,8 +506,9 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     const istSortierbar = (SORTIERBARE_SPALTEN as readonly string[]).includes(spalte);
     const sortSpalteTyp = istSortierbar ? spalte as SortSpalte : null;
     const aktivSort = sortSpalteTyp && sortSpalte === sortSpalteTyp;
-    const gefiltert = sortSpalteTyp ? !!spaltenFilter[sortSpalteTyp] : false;
-    const alleWerte = sortSpalteTyp && filterMenuOffen === sortSpalteTyp ? eindeutigeWerte(sortSpalteTyp) : [];
+    const istFilterbar = sortSpalteTyp && FILTERBARE_SPALTEN.includes(sortSpalteTyp);
+    const gefiltert = istFilterbar && sortSpalteTyp ? !!spaltenFilter[sortSpalteTyp] : false;
+    const alleWerte = istFilterbar && sortSpalteTyp && filterMenuOffen === sortSpalteTyp ? eindeutigeWerte(sortSpalteTyp) : [];
     return (
       <div key={spalte} style={{ position: "relative", display: "flex", alignItems: "center", gap: 3, paddingLeft: idx > 0 ? 8 : 0, overflow: "visible", whiteSpace: "nowrap" }}>
         <span
@@ -511,7 +521,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
             {sortRichtung === "asc" ? "▲" : "▼"}
           </span>
         )}
-        {sortSpalteTyp && (
+        {istFilterbar && sortSpalteTyp && (
           <span onClick={() => setFilterMenuOffen(m => m === sortSpalteTyp ? null : sortSpalteTyp)}
             title="Filtern" style={{ cursor: "pointer", fontSize: 9, color: gefiltert ? "var(--tc-blue)" : "var(--tc-text-3)", flexShrink: 0 }}>
             ▾
@@ -523,7 +533,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
             <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="6.5" cy="6.5" r="5" /><line x1="10.2" y1="10.2" x2="14.5" y2="14.5" /></svg>
           </span>
         )}
-        {sortSpalteTyp && filterMenuOffen === sortSpalteTyp && (
+        {istFilterbar && sortSpalteTyp && filterMenuOffen === sortSpalteTyp && (
           <>
             <div style={{ position: "fixed", inset: 0, zIndex: 90 }} onClick={() => setFilterMenuOffen(null)} />
             <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 2, background: "#fff", border: "1px solid #d4dce4", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, minWidth: 140, maxHeight: 220, overflowY: "auto", fontSize: 11, padding: 4, fontWeight: 400 }}>
@@ -573,7 +583,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
         return <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 6 }}>{z.t.name}</span>;
       case "kuerzel":
         return (
-          <select disabled={readOnly} value={z.t.bauteilKuerzel ?? ""} onChange={e => taskAendern(z.t.id, { bauteilKuerzel: e.target.value || undefined })}
+          <select disabled={readOnly} value={z.t.bauteilKuerzel ?? ""} onChange={e => taskAendernBulk(z.t.id, { bauteilKuerzel: e.target.value || undefined })}
             style={{ width: "90%", fontSize: 12, padding: "3px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }}>
             <option value="">–</option>
             {kuerzelOptionen.map(o => <option key={o.k} value={o.k}>{o.label}</option>)}
@@ -677,7 +687,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
         return (
           <input type="number" className="no-spinner" disabled={readOnly} value={z.t.personalSoll ?? ""}
             title="Vorgesehene Gesamt-Personenzahl für diesen Task (alle Kürzel zusammen) — unabhängig von den Kolonnengrössen je Kürzel in Tab Ressourcen. Ergibt die rote 'Personal (Soll)'-Referenzlinie in Tab AVOR unter Personalauslastung."
-            onChange={e => taskAendern(z.t.id, { personalSoll: e.target.value === "" ? undefined : Number(e.target.value) })}
+            onChange={e => taskAendernBulk(z.t.id, { personalSoll: e.target.value === "" ? undefined : Number(e.target.value) })}
             onFocus={mengenBearbeitungStart} onBlur={mengenBearbeitungEnde} onKeyDown={mengenEnterCommit}
             style={{ width: 50, fontSize: 12, padding: "2px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
         );
@@ -810,7 +820,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
 
         {selectedIds.length > 1 && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "5px 10px", background: "var(--tc-blue-bg)", fontSize: 11, fontWeight: 600, color: "var(--tc-blue)" }}>
-            <span>{selectedIds.length} Tasks ausgewählt — Klick auf "+ Kran" oder eine Kran-Chip-✕ in einer der Zeilen wirkt auf alle ausgewählten Tasks</span>
+            <span>{selectedIds.length} Tasks ausgewählt — Änderungen an Kürzel, Berechnet, Kräne oder Personal (Soll) in einer der Zeilen wirken auf alle ausgewählten Tasks</span>
             <button className="tc-btn-ghost" style={{ fontSize: 11, padding: "2px 8px", marginLeft: "auto" }} onClick={() => setSelectedIds([])}>
               Auswahl aufheben
             </button>
