@@ -100,6 +100,13 @@ export function KranVerfuegbarkeitInhalt({ sim, updateSim, readOnly }: Props) {
                     onChange={e => kranAendern(kran.id, { verfuegbarBis: e.target.value || undefined })}
                     style={{ fontSize: 11, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
                 </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--tc-text-2)" }}
+                  title="Obergrenze für die Personal-Ampel dieses Krans im Kapazitäts-Check — wie viele Personen dieser Kran realistisch gleichzeitig versorgen kann. Leer = 13.">
+                  Max. Personen
+                  <input type="number" className="no-spinner" disabled={readOnly} value={kran.maxPersonen ?? ""} placeholder="13"
+                    onChange={e => kranAendern(kran.id, { maxPersonen: e.target.value === "" ? undefined : Number(e.target.value) })}
+                    style={{ width: 45, fontSize: 11, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
+                </label>
 
                 {!readOnly && (
                   <button className="tc-btn-ghost" style={{ fontSize: 11, padding: "2px 6px", marginLeft: "auto" }} onClick={() => kranEntfernen(kran.id)}>

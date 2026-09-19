@@ -57,8 +57,8 @@ export function KapazitaetsCheckInhalt({ sim, updateSim, readOnly }: Props) {
   const kranAnzahlMap = kranpflichtigeTaskAnzahlProKranbereich(sim.tasks, stammdaten);
 
   const kraene = sim.kraene ?? [];
+  const kranById = new Map(kraene.map(k => [k.id, k]));
   const raster: Zeitraster = sim.zeitraster ?? "monat";
-  const maxPersonen = kc.maxPersonenProKran ?? MAX_PERSONEN_PRO_KRAN;
   const { buckets: personalBuckets, serien: personalSerien } = personenstundenProKranUndBucket(sim.tasks, kraene, stammdaten, kalender, raster);
   const kranHatPersonalBedarf = personalSerien.some(s => s.personenstunden.some(v => v > 0));
 
@@ -228,19 +228,12 @@ export function KapazitaetsCheckInhalt({ sim, updateSim, readOnly }: Props) {
 
           {kraene.length > 0 && (
             <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--tc-border-light)" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6, flexWrap: "wrap", gap: 6 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--tc-text)" }}>Kräne — ungefährer Personalbedarf</div>
-                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--tc-text-2)" }}>
-                  Max. Personen/Kran
-                  <input type="number" className="no-spinner" disabled={readOnly} value={maxPersonen}
-                    onChange={e => speichern({ ...kc, maxPersonenProKran: e.target.value === "" ? undefined : Number(e.target.value) })}
-                    style={{ width: 40, fontSize: 11, padding: "2px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
-                </label>
-              </div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--tc-text)", marginBottom: 6 }}>Kräne — ungefährer Personalbedarf</div>
               <div style={{ fontSize: 11, color: "var(--tc-text-2)", lineHeight: 1.5, marginBottom: 10 }}>
                 Richtwert aus Personenstunden (Menge × Leistungswert kranpflichtiger Gewerke) je Kran und Zeitraum
                 gegen die Kran-Verfügbarkeit — Ampel zur Plausibilisierung, keine exakte Personalrechnung. Nutzt
-                ausschliesslich die Kran-Zuweisung in Tab Kalkulation, nicht das Feld "Kranbereich" oben.
+                ausschliesslich die Kran-Zuweisung in Tab Kalkulation, nicht das Feld "Kranbereich" oben. Die
+                Obergrenze je Kran ("Max. Personen") wird im Tab "Kräne & Verfügbarkeit" festgelegt.
               </div>
               {!kranHatPersonalBedarf ? (
                 <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
@@ -251,7 +244,8 @@ export function KapazitaetsCheckInhalt({ sim, updateSim, readOnly }: Props) {
                   <div style={{ fontSize: 11, fontWeight: 600, color: "var(--tc-text)", marginBottom: 3 }}>{s.kranName}</div>
                   <div style={{ display: "flex", gap: 2, overflowX: "auto", paddingBottom: 2 }}>
                     {personalBuckets.map((b, bi) => {
-                      const rw = personalRichtwertJeBucket(s.personenstunden[bi], s.arbeitstageVerfuegbar[bi], stammdaten.arbeitszeitStdProTag, maxPersonen);
+                      const maxPersonenDiesesKrans = kranById.get(s.kranId)?.maxPersonen ?? MAX_PERSONEN_PRO_KRAN;
+                      const rw = personalRichtwertJeBucket(s.personenstunden[bi], s.arbeitstageVerfuegbar[bi], stammdaten.arbeitszeitStdProTag, maxPersonenDiesesKrans);
                       const titel = rw.kranNichtVerfuegbar
                         ? `${b.label}: Bedarf vorhanden, Kran aber nicht verfügbar`
                         : `${b.label}: ~${rw.richtwert} Person${rw.richtwert === 1 ? "" : "en"}${rw.engpass ? " — über dem Maximum" : ""}`;

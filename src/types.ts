@@ -69,6 +69,7 @@ export interface Kran {
   name: string;
   verfuegbarVon?: string; // YYYY-MM-DD
   verfuegbarBis?: string; // YYYY-MM-DD
+  maxPersonen?: number; // Obergrenze für die Personal-Ampel dieses Krans im Kapazitäts-Check, fehlt = 13 (siehe kapazitaetsCheckHelpers.ts)
 }
 
 // Kapazitäts-Check (Tab AVOR): Personal-/Kran-Budget je Bauphase (= Kranbereich, siehe Task.kranbereich)
@@ -84,7 +85,6 @@ export interface KapazitaetsCheck {
   modus: "gantt" | "sandbox";
   gesamtDauerTageSandbox?: number; // nur Sandbox: gewünschte Gesamtdauer, für Plausibilitäts-Hinweis
   phasen: KapazitaetsPhase[];
-  maxPersonenProKran?: number; // Obergrenze für die Personal-Ampel je Kran (siehe kranHelpers.ts), fehlt = 13
 }
 
 export interface SimProjekt {
