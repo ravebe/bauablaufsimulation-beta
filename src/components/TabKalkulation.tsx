@@ -18,13 +18,13 @@ interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; re
 // Grid-Spalten der Tabelle — feste Breiten statt Flex, damit kein Inhalt nachfolgende Spalten
 // verschiebt. Verstellbar per Drag, siehe startResize. Alle Zellen top-ausgerichtet (alignItems:
 // "start"), damit sie in einer Flucht stehen, auch wenn die Mengen-Zelle mehrzeilig ist.
-const ALLE_SPALTEN = ["nr", "auge", "task", "kuerzel", "mengen", "geplant", "berechnet", "differenz", "kranbereich", "kraene", "personalSoll"] as const;
+const ALLE_SPALTEN = ["nr", "auge", "task", "kuerzel", "mengen", "geplant", "berechnet", "differenz", "kraene", "personalSoll"] as const;
 type Spalte = typeof ALLE_SPALTEN[number];
 const SPALTEN_LABEL: Record<Spalte, string> = {
   nr: "Nr.", task: "Task", kuerzel: "Kürzel", mengen: "Mengen", geplant: "Geplant", berechnet: "Berechnet",
-  differenz: "Differenz", kranbereich: "Kranbereich", kraene: "Kräne", personalSoll: "Personal (Soll)", auge: "",
+  differenz: "Differenz", kraene: "Kräne", personalSoll: "Personal (Soll)", auge: "",
 };
-const DEFAULT_COL_W: Record<Spalte, number> = { nr: 30, task: 220, kuerzel: 64, mengen: 260, geplant: 76, berechnet: 88, differenz: 60, kranbereich: 110, kraene: 110, personalSoll: 90, auge: 30 };
+const DEFAULT_COL_W: Record<Spalte, number> = { nr: 30, task: 220, kuerzel: 64, mengen: 260, geplant: 76, berechnet: 88, differenz: 60, kraene: 110, personalSoll: 90, auge: 30 };
 const LS_COLW = "4d-kalk-colw";
 
 // Spalten mit Sortier-/Filterfunktion im Header (Klick auf Titel = sortieren, ▾ = Filter-Popover).
@@ -57,6 +57,10 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   const [filterMenuOffen, setFilterMenuOffen] = useState<SortSpalte | null>(null);
   const [angezeigtTaskId, setAngezeigtTaskId] = useState<string | null>(null);
   const [kraeneMenuOffenTaskId, setKraeneMenuOffenTaskId] = useState<string | null>(null);
+  // Mehrfachauswahl von Zeilen per Klick (Strg/Cmd = einzelne dazu/weg, Shift = Bereich ab der
+  // letzten Klick-Position) — dient dem gebündelten Bearbeiten (z.B. Kräne) mehrerer Tasks zugleich.
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const letzterKlickIdx = useRef<number>(-1);
   const [mengenSortModus, setMengenSortModus] = useState<"fehler" | "leer" | "auto" | "manuell" | null>(null);
   const [expandedGewerk, setExpandedGewerk] = useState<Set<string>>(new Set());
   // Eingefrorene Zeilen-Reihenfolge (Task-IDs), während in einem Mengen-Feld getippt wird — siehe
@@ -144,10 +148,37 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
 
   // Kran-Zuweisung eines Tasks umschalten — mehrere Kräne = Schnittstellen-Task, der Anteil wird
   // ausschliesslich automatisch/gleichmässig verteilt (siehe kranHelpers.ts), nie manuell eingegeben.
+  // Ist der Task Teil einer Mehrfachauswahl (selectedIds), wirkt das Umschalten auf alle
+  // ausgewählten Tasks zugleich — Richtung (zuweisen/entfernen) richtet sich nach dem angeklickten Task.
   function kranToggle(t: Task, kranId: string) {
-    const aktuelle = t.kraene ?? [];
-    const neu = aktuelle.includes(kranId) ? aktuelle.filter(id => id !== kranId) : [...aktuelle, kranId];
-    taskAendern(t.id, { kraene: neu.length > 0 ? neu : undefined });
+    const zielIds = selectedIds.length > 1 && selectedIds.includes(t.id) ? selectedIds : [t.id];
+    const hinzufuegen = !(t.kraene ?? []).includes(kranId);
+    updateSim({
+      ...sim!,
+      tasks: sim!.tasks.map(task => {
+        if (!zielIds.includes(task.id)) return task;
+        const aktuelle = task.kraene ?? [];
+        const neu = hinzufuegen
+          ? (aktuelle.includes(kranId) ? aktuelle : [...aktuelle, kranId])
+          : aktuelle.filter(id => id !== kranId);
+        return { ...task, kraene: neu.length > 0 ? neu : undefined };
+      }),
+    });
+  }
+
+  // Zeilen-Klick-Handler für die Mehrfachauswahl — gleiches Muster wie taskAnklicken in
+  // TabBauteile.tsx: Shift = Bereich, Strg/Cmd = einzelne dazuschalten, sonst nur diese eine wählen.
+  function zeileAnklicken(taskId: string, idx: number, e: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }) {
+    if (e.shiftKey && letzterKlickIdx.current >= 0) {
+      const from = Math.min(letzterKlickIdx.current, idx);
+      const to = Math.max(letzterKlickIdx.current, idx);
+      setSelectedIds(zeilenGefiltert.slice(from, to + 1).map(z => z.t.id));
+    } else if (e.ctrlKey || e.metaKey) {
+      setSelectedIds(prev => prev.includes(taskId) ? prev.filter(id => id !== taskId) : [...prev, taskId]);
+    } else {
+      setSelectedIds([taskId]);
+    }
+    letzterKlickIdx.current = idx;
   }
 
   // Manuelle Eingabe überschreibt eine Formel-Menge (Status "manuell", schwarz statt blau) — Leeren
@@ -602,12 +633,6 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
         const farbe = z.differenz > 0 ? "#d9622b" : z.differenz < 0 ? "#2e8b57" : "#888";
         return <span style={{ fontSize: 12, fontWeight: 600, color: farbe, paddingTop: 3 }}>{z.differenz > 0 ? "+" : ""}{z.differenz}d</span>;
       }
-      case "kranbereich":
-        return (
-          <input type="text" disabled={readOnly} value={z.t.kranbereich ?? ""} onChange={e => taskAendern(z.t.id, { kranbereich: e.target.value || undefined })}
-            title="Freie Gruppierung/Bauphase (z.B. für den Kapazitäts-Check) — für die Kranauslastung siehe Spalte 'Kräne'"
-            style={{ width: "90%", fontSize: 12, padding: "2px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
-        );
       case "kraene": {
         const kraeneListe = sim?.kraene ?? [];
         const zugewiesen = (z.t.kraene ?? []).map(id => kraeneListe.find(k => k.id === id)).filter((k): k is Kran => !!k);
@@ -783,6 +808,15 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
           {importErgebnis && <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>{importErgebnis}</span>}
         </div>
 
+        {selectedIds.length > 1 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "5px 10px", background: "var(--tc-blue-bg)", fontSize: 11, fontWeight: 600, color: "var(--tc-blue)" }}>
+            <span>{selectedIds.length} Tasks ausgewählt — Klick auf "+ Kran" oder eine Kran-Chip-✕ in einer der Zeilen wirkt auf alle ausgewählten Tasks</span>
+            <button className="tc-btn-ghost" style={{ fontSize: 11, padding: "2px 8px", marginLeft: "auto" }} onClick={() => setSelectedIds([])}>
+              Auswahl aufheben
+            </button>
+          </div>
+        )}
+
         <div style={{ display: "flex", gap: 12, fontSize: 9, color: "var(--tc-text-3)", marginBottom: 6 }}>
           <span onClick={() => setMengenSortModus(m => m === "auto" ? null : "auto")} title="Automatisch berechnete Felder zuoberst"
             style={{ cursor: "pointer", fontWeight: mengenSortModus === "auto" ? 700 : 400, color: mengenSortModus === "auto" ? "var(--tc-blue)" : "var(--tc-text-3)" }}>
@@ -811,15 +845,18 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
         <div style={{ display: "grid", gridTemplateColumns: gridTemplate, fontSize: 9, color: "var(--tc-text-3)", fontWeight: 600, padding: "4px 0", position: "sticky", top: 0, background: "#fff", zIndex: 3 }}>
           {ALLE_SPALTEN.map((s, i) => renderHeaderZelle(s, i))}
         </div>
-        {zeilenGefiltert.map(z => {
+        {zeilenGefiltert.map((z, idx) => {
           const offeneGewerke = z.t.bauteilKuerzel
             ? gewerkeFuerKuerzel(stammdaten, z.t.bauteilKuerzel).filter(g => expandedGewerk.has(`${z.t.id}::${g.key}`))
             : [];
+          const ausgewaehlt = selectedIds.includes(z.t.id);
           return (
             <Fragment key={z.t.id}>
-              <div style={{ display: "grid", gridTemplateColumns: gridTemplate, alignItems: "start", padding: "6px 0", borderBottom: offeneGewerke.length > 0 ? "none" : "1px solid var(--tc-border-light)" }}
-                onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")}
-                onMouseLeave={e => (e.currentTarget.style.background = "")}>
+              <div style={{ display: "grid", gridTemplateColumns: gridTemplate, alignItems: "start", padding: "6px 0", background: ausgewaehlt ? "var(--tc-blue-bg)" : "", borderBottom: offeneGewerke.length > 0 ? "none" : "1px solid var(--tc-border-light)" }}
+                onClick={e => zeileAnklicken(z.t.id, idx, e)}
+                onMouseDown={e => { if (e.shiftKey || e.ctrlKey || e.metaKey) e.preventDefault(); }}
+                onMouseEnter={e => { if (!ausgewaehlt) e.currentTarget.style.background = "#f5f9fc"; }}
+                onMouseLeave={e => { if (!ausgewaehlt) e.currentTarget.style.background = ""; }}>
                 {ALLE_SPALTEN.map((s, i) => (
                   <div key={s} style={{ minWidth: 0, paddingLeft: i > 0 ? 8 : 0 }}>{renderZelle(s, z)}</div>
                 ))}
