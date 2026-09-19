@@ -108,7 +108,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
     if (!api || !minDate) return;
     const tag = tagVonDatum(iso, minDate);
     const aktive = await dreiDZustandAufTagSetzen(api, tasks, minDate, tag, true);
-    setKlickErgebnis(aktive.length > 0 ? `${aktive.length} Task${aktive.length === 1 ? "" : "s"} aktiv am ${datum ? datum.toLocaleDateString("de-CH") : iso}` : `Keine aktiven Tasks am ${datum ? datum.toLocaleDateString("de-CH") : iso}`);
+    setKlickErgebnis(aktive.length > 0 ? `${aktive.length} Task${aktive.length === 1 ? "" : "s"} aktiv` : "Keine aktiven Tasks");
   }
 
   if (!sim) return <div style={{ padding: 14, fontSize: 12, color: "var(--tc-text-3)" }}>Kein aktives Projekt ausgewählt</div>;
@@ -129,6 +129,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
     const summe = Object.values(tw.werte).reduce((s, v) => s + v, 0);
     if (summe > peakWert) { peakWert = summe; peakTag = tw.tag; }
   }
+  const peakTagLabel = peakTag !== "–" ? (parseDateUniversal(peakTag)?.toLocaleDateString("de-CH") ?? peakTag) : null;
   const zeitraeumeUeberKapazitaet = kranBuckets.filter((_, bi) => kranstundenSerien.some(s => s.bedarf[bi] > s.kapazitaet[bi])).length;
   const tageUeberPersonalSoll = personal.filter((tw, i) => {
     const soll = personalSoll[i] ?? 0;
@@ -140,7 +141,9 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
   return (
     <div style={{ padding: 14, fontSize: 12 }} ref={zoom.breitenRef}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 16, position: "sticky", top: 0, background: "#fff", zIndex: 3, paddingBottom: 4 }}>
-        <StatTile label="Peak Personalbedarf" wert={`${peakWert} Pers.`} sub={peakTag !== "–" ? peakTag : undefined} />
+        <StatTile label="Peak Personalbedarf" wert={
+          <>{peakWert} Pers.{peakTagLabel && <span style={{ fontSize: 11, fontWeight: 400, color: FARBEN.textSekundaer, marginLeft: 6 }}>{peakTagLabel}</span>}</>
+        } />
         {personalSollGesetzt && (
           <StatTile label="Tage über Personal (Soll)" wert={String(tageUeberPersonalSoll)} status={tageUeberPersonalSoll > 0 ? "warning" : "good"} />
         )}

@@ -516,7 +516,7 @@ export function CategoryBarChart({ kategorien, serien, einheit = "", hoehe = 180
   );
 }
 
-export function StatTile({ label, wert, status, sub }: { label: string; wert: string; status?: "good" | "warning" | "critical"; sub?: string }) {
+export function StatTile({ label, wert, status, sub }: { label: string; wert: React.ReactNode; status?: "good" | "warning" | "critical"; sub?: string }) {
   void status; // Zahl bewusst immer schwarz, kein Status-Farbcode mehr — siehe StatTile-Aufrufer für Warn-/Fehlerhinweise
   return (
     <div style={{ border: `1px solid ${FARBEN.gridline}`, background: FARBEN.surface, padding: "8px 12px", minWidth: 120, flex: 1 }}>

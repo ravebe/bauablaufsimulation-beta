@@ -123,7 +123,7 @@ export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }
     if (!api || !minDate) return;
     const tag = tagVonDatum(iso, minDate);
     const aktive = await dreiDZustandAufTagSetzen(api, sim!.tasks, minDate, tag, true);
-    setKlickErgebnis(aktive.length > 0 ? `${aktive.length} Task${aktive.length === 1 ? "" : "s"} aktiv am ${datum ? datum.toLocaleDateString("de-CH") : iso}` : `Keine aktiven Tasks am ${datum ? datum.toLocaleDateString("de-CH") : iso}`);
+    setKlickErgebnis(aktive.length > 0 ? `${aktive.length} Task${aktive.length === 1 ? "" : "s"} aktiv` : "Keine aktiven Tasks");
   }
 
   if (stammdaten.gewerke.length === 0) {
