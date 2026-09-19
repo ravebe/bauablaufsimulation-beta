@@ -43,6 +43,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
   const [mengenGewerkKey, setMengenGewerkKey] = useState<string>("beton");
   const [mengenKuerzel, setMengenKuerzel] = useState<string>(""); // "" = Total (alle Kürzel dieses Gewerks summiert), Default
   const [kranPlanungOffen, setKranPlanungOffen] = useState(false);
+  const [kranMetrik, setKranMetrik] = useState<"stunden" | "personal">("stunden");
   const { eingeklappt, toggle: toggleEingeklappt } = useEingeklappt(projectId, "avor");
 
   // Klick in eines der Diagramme setzt eine gemeinsame Datums-Markierung (Index, da alle Tagesreihen
@@ -80,6 +81,18 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
     const maxPersonenDiesesKrans = kranById.get(s.kranId)?.maxPersonen ?? MAX_PERSONEN_PRO_KRAN;
     return personalRichtwertJeBucket(s.personenstunden[bi], s.arbeitstageVerfuegbar[bi], stammdaten.arbeitszeitStdProTag, maxPersonenDiesesKrans).engpass;
   })).length;
+  // Personal-Ansicht der Kranoptik (Umschalter neben Kranstunden): Balken = gerundeter Personal-
+  // Richtwert je Kran und Zeitraster-Bucket, Kapazitätslinie = dessen fixer Max-Personen-Wert (anders
+  // als bei Kranstunden nicht zeitraum-abhängig, da Max. Personen eine statische Kran-Eigenschaft ist).
+  const personalBarSerien: KategorieSerie[] = personalKranSerien.map((s, i) => {
+    const maxPersonenDiesesKrans = kranById.get(s.kranId)?.maxPersonen ?? MAX_PERSONEN_PRO_KRAN;
+    return {
+      key: s.kranId, label: s.kranName, color: FARBEN.kategorial[i % FARBEN.kategorial.length],
+      werte: personalKranBuckets.map((_, bi) => personalRichtwertJeBucket(s.personenstunden[bi], s.arbeitstageVerfuegbar[bi], stammdaten.arbeitszeitStdProTag, maxPersonenDiesesKrans).richtwert ?? 0),
+      kapazitaet: personalKranBuckets.map(() => maxPersonenDiesesKrans),
+    };
+  });
+  const personalKranHatBedarf = personalKranSerien.some(s => s.personenstunden.some(v => v > 0));
 
   const gewerkOptionen = stammdaten.gewerke;
   const aktivesGewerk = gewerkOptionen.find(g => g.key === mengenGewerkKey) ?? gewerkOptionen[0];
@@ -223,6 +236,16 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
         aktionen={
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span title="Richtwerte zur Plausibilisierung, keine exakte Kalkulation" style={{ fontSize: 11, color: "var(--tc-text-3)", cursor: "help" }}>ⓘ</span>
+            {(["stunden", "personal"] as const).map(m => (
+              <button key={m} onClick={() => setKranMetrik(m)}
+                title={m === "stunden" ? "Kranstunden-Bedarf vs. Verfügbarkeit" : "Ungefährer Personalbedarf je Kran vs. dessen Max. Personen"}
+                style={{ fontSize: 11, fontWeight: 600, padding: "3px 8px", cursor: "pointer",
+                  border: `1px solid ${kranMetrik === m ? "var(--tc-blue)" : "var(--tc-border)"}`,
+                  background: kranMetrik === m ? "var(--tc-blue-bg)" : "#fff", color: kranMetrik === m ? "var(--tc-blue)" : "var(--tc-text-2)" }}>
+                {m === "stunden" ? "Kranstunden" : "Personal"}
+              </button>
+            ))}
+            <span style={{ width: 1, alignSelf: "stretch", background: "var(--tc-border)" }} />
             {(["monat", "woche"] as const).map(r => (
               <button key={r} disabled={readOnly} onClick={() => updateSim({ ...sim, zeitraster: r })}
                 style={{ fontSize: 11, fontWeight: 600, padding: "3px 8px", cursor: readOnly ? "default" : "pointer",
@@ -241,15 +264,27 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
           <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
             Kein Kürzel als kranpflichtig markiert (Tab Ressourcen).
           </div>
-        ) : !kranHatBedarf ? (
-          <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
-            Noch keinen Task einem Kran zugewiesen (Tab Kalkulation → Spalte "Kräne").
-          </div>
-        ) : (<>
-          <CategoryBarChart kategorien={kranBuckets.map(b => b.label)} serien={kranBarSerien} einheit="h"
-            formatWert={v => String(Math.round(v))} hoehe={hoeheKran} />
-          <ChartResizeHandle hoehe={hoeheKran} setHoehe={setHoeheKran} />
-        </>)}
+        ) : kranMetrik === "stunden" ? (
+          !kranHatBedarf ? (
+            <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
+              Noch keinen Task einem Kran zugewiesen (Tab Kalkulation → Spalte "Kräne").
+            </div>
+          ) : (<>
+            <CategoryBarChart kategorien={kranBuckets.map(b => b.label)} serien={kranBarSerien} einheit="h"
+              formatWert={v => String(Math.round(v))} hoehe={hoeheKran} />
+            <ChartResizeHandle hoehe={hoeheKran} setHoehe={setHoeheKran} />
+          </>)
+        ) : (
+          !personalKranHatBedarf ? (
+            <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
+              Noch keinen Task einem Kran zugewiesen (Tab Kalkulation → Spalte "Kräne").
+            </div>
+          ) : (<>
+            <CategoryBarChart kategorien={personalKranBuckets.map(b => b.label)} serien={personalBarSerien} einheit="Personen"
+              formatWert={v => String(Math.round(v))} hoehe={hoeheKran} />
+            <ChartResizeHandle hoehe={hoeheKran} setHoehe={setHoeheKran} />
+          </>)
+        )}
       </CockpitAbschnitt>
 
       {kranPlanungOffen && (
