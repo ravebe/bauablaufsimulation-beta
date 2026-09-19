@@ -8,6 +8,7 @@ import { LEERE_STAMMDATEN, hatKranpflichtigeRaten } from "./stammdatenHelpers";
 import { personalauslastung, personalSollProTag, mengenProTag, ertragsoptik, optimaleTagesleistung } from "./avorHelpers";
 import type { TagWert } from "./avorHelpers";
 import { kranstundenProKranUndBucket } from "./kranHelpers";
+import { personenstundenProKranUndBucket, personalRichtwertJeBucket, MAX_PERSONEN_PRO_KRAN } from "./kapazitaetsCheckHelpers";
 import { dreiDZustandAufTagSetzen, tagVonDatum } from "./dreiDHeuteHelper";
 import type { ApiInstance } from "../hooks/useApi";
 import { TimeSeriesChart, CategoryBarChart, StatTile, CockpitAbschnitt, useEingeklappt, useChartZoom, useChartHoehe, ChartResizeHandle, FARBEN } from "./cockpitCharts";
@@ -63,12 +64,22 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
   const personalSollGesetzt = personalSoll.some(v => v > 0);
 
   const kraene = sim?.kraene ?? [];
+  const kranById = new Map(kraene.map(k => [k.id, k]));
   const raster: Zeitraster = sim?.zeitraster ?? "monat";
   const { buckets: kranBuckets, serien: kranstundenSerien } = kranstundenProKranUndBucket(tasks, kraene, stammdaten, kalender, raster);
   const kranHatBedarf = kranstundenSerien.some(s => s.bedarf.some(v => v > 0));
   const kranBarSerien: KategorieSerie[] = kranstundenSerien.map((s, i) => ({
     key: s.kranId, label: s.kranName, color: FARBEN.kategorial[i % FARBEN.kategorial.length], werte: s.bedarf, kapazitaet: s.kapazitaet,
   }));
+  // Personal-Pendant zur Kran-Stunden-Kapazität: je Kran und Zeitraster-Bucket ergibt sich aus den
+  // Personenstunden kranpflichtiger Gewerke (nur Kürzel, die in Tab Ressourcen als kranpflichtig markiert
+  // sind, und nur Tasks mit einer Kran-Zuweisung aus Tab Kalkulation) ein Personal-Richtwert — Engpass,
+  // sobald der über dem je Kran in "Kräne & Verfügbarkeit" hinterlegten Max-Personen-Wert liegt.
+  const { buckets: personalKranBuckets, serien: personalKranSerien } = personenstundenProKranUndBucket(tasks, kraene, stammdaten, kalender, raster);
+  const zeitraeumeUeberPersonalKapazitaet = personalKranBuckets.filter((_, bi) => personalKranSerien.some(s => {
+    const maxPersonenDiesesKrans = kranById.get(s.kranId)?.maxPersonen ?? MAX_PERSONEN_PRO_KRAN;
+    return personalRichtwertJeBucket(s.personenstunden[bi], s.arbeitstageVerfuegbar[bi], stammdaten.arbeitszeitStdProTag, maxPersonenDiesesKrans).engpass;
+  })).length;
 
   const gewerkOptionen = stammdaten.gewerke;
   const aktivesGewerk = gewerkOptionen.find(g => g.key === mengenGewerkKey) ?? gewerkOptionen[0];
@@ -146,6 +157,8 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
           <StatTile label="Tage über Personal (Soll)" wert={String(tageUeberPersonalSoll)} status={tageUeberPersonalSoll > 0 ? "warning" : "good"} />
         )}
         <StatTile label="Zeiträume über Kran-Kapazität" wert={String(zeitraeumeUeberKapazitaet)} status={zeitraeumeUeberKapazitaet > 0 ? "warning" : "good"} />
+        <StatTile label="Zeiträume über Kran-Personal-Kapazität" wert={String(zeitraeumeUeberPersonalKapazitaet)} status={zeitraeumeUeberPersonalKapazitaet > 0 ? "warning" : "good"}
+          sub="Ungefährer Personalbedarf je Kran vs. dessen Max. Personen (Tab Kräne & Verfügbarkeit)" />
         <StatTile label="Marge (kumuliert)" wert={`${fmtChf(marge)} CHF`} status={marge >= 0 ? "good" : "critical"} />
         <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px", marginLeft: "auto" }}
           onClick={() => setKranPlanungOffen(true)}
