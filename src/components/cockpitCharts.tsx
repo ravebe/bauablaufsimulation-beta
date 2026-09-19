@@ -41,6 +41,133 @@ function parseIsoLocal(iso: string): Date {
   return new Date(y, m - 1, d);
 }
 
+/** Mausrad+Strg-Zoom (zum Cursor) + Scroll-Synchronisation einer Zeitachse — gemeinsam genutzt von
+ *  TimeSeriesChart und KranBalkenChart, damit mehrere Diagramme mit gemeinsamem pxProTag/scrollTag
+ *  (siehe useChartZoom) exakt gleich auf Zoom/Scroll reagieren. suppressScroll verhindert, dass das
+ *  programmatische Setzen von scrollLeft (beim Nachführen von scrollTag) selbst wieder als
+ *  Nutzer-Scroll gewertet wird und sich mehrere Diagramme gegenseitig aufschaukeln. */
+function useZeitachsenInteraktion(n: number, pxProTag: number, onPxProTagChange: (px: number) => void, scrollTag: number, onScrollChange: (tag: number) => void) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+  const suppressScroll = useRef(false);
+
+  useEffect(() => {
+    const el = scrollRef.current; if (!el || n === 0) return;
+    const handler = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const tagAmCursor = (el.scrollLeft + mouseX) / pxProTag;
+      const factor = e.deltaY < 0 ? 1.15 : 0.87;
+      const neuPx = Math.max(MIN_PX_TAG, Math.min(MAX_PX_TAG, pxProTag * factor));
+      onPxProTagChange(neuPx);
+      onScrollChange(tagAmCursor - mouseX / neuPx);
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, [pxProTag, onPxProTagChange, onScrollChange, n]);
+
+  function zoomBy(factor: number) {
+    const el = scrollRef.current; if (!el) return;
+    const centerX = el.clientWidth / 2;
+    const tagAmZentrum = (el.scrollLeft + centerX) / pxProTag;
+    const neuPx = Math.max(MIN_PX_TAG, Math.min(MAX_PX_TAG, pxProTag * factor));
+    onPxProTagChange(neuPx);
+    onScrollChange(tagAmZentrum - centerX / neuPx);
+  }
+
+  useEffect(() => {
+    const el = scrollRef.current; if (!el) return;
+    const ziel = Math.max(0, scrollTag * pxProTag);
+    if (Math.abs(el.scrollLeft - ziel) > 0.5) {
+      suppressScroll.current = true;
+      el.scrollLeft = ziel;
+      if (headerRef.current) headerRef.current.scrollLeft = ziel;
+      setTimeout(() => { suppressScroll.current = false; }, 50);
+    }
+  }, [scrollTag, pxProTag]);
+
+  function onChartScroll() {
+    if (headerRef.current && scrollRef.current) headerRef.current.scrollLeft = scrollRef.current.scrollLeft;
+    if (suppressScroll.current) return;
+    const el = scrollRef.current; if (!el) return;
+    onScrollChange(el.scrollLeft / pxProTag);
+  }
+
+  return { scrollRef, headerRef, zoomBy, onChartScroll };
+}
+
+interface ZeitachsenTicks {
+  monatTicks: { x: number; label: string }[];
+  monatTicksAnzeige: { x: number; label: string }[];
+  wochenTicksAnzeige: { x: number; label: string }[];
+  tagTicksAnzeige: { x: number; label: string }[];
+  weekendBands: { x: number; w: number }[];
+  zeigeTage: boolean;
+}
+
+/** Monats-/Wochen-/Tages-Ticks + Wochenend-Bänder einer Tagesreihe — gemeinsam genutzt von
+ *  TimeSeriesChart und KranBalkenChart, damit beide exakt dieselbe Kopfzeile/Gitternetzlinien zeigen. */
+function berechneZeitachsenTicks(tage: string[], pxProTag: number, kalender?: Kalender): ZeitachsenTicks {
+  const n = tage.length;
+  const x = (i: number) => ML + i * pxProTag;
+  const startDate = parseIsoLocal(tage[0]);
+  const zeigeWochen = pxProTag >= 1.5;
+  const zeigeTage = pxProTag >= 10;
+  const monatTicks: { x: number; label: string }[] = [];
+  const wochenTicks: { x: number; label: string }[] = [];
+  const tagTicks: { x: number; label: string }[] = [];
+  const weekendBands: { x: number; w: number }[] = [];
+  for (let i = 0; i < n; i++) {
+    const d = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate() + i);
+    if (i === 0 || d.getDate() === 1) monatTicks.push({ x: x(i), label: `${MONAT_KURZ[d.getMonth()]} ${String(d.getFullYear()).slice(2)}` });
+    if (zeigeWochen && d.getDay() === 1) wochenTicks.push({ x: x(i), label: `KW ${getKW(d)}` });
+    if (zeigeTage) tagTicks.push({ x: x(i), label: String(d.getDate()) });
+    const frei = kalender ? !istArbeitstag(tage[i], kalender) : (d.getDay() === 0 || d.getDay() === 6);
+    if (frei) weekendBands.push({ x: x(i), w: pxProTag });
+  }
+  // Zu eng stehende Achsenticks weglassen statt überlappenden Text zu zeichnen — sonst laufen sich
+  // bei einem langen Projektzeitraum und geringem Zoom die Monatslabels ineinander.
+  const entzerrt = (ticks: { x: number; label: string }[], mindestabstand: number) => {
+    const out: typeof ticks = [];
+    let letztesX = -Infinity;
+    for (const t of ticks) { if (t.x - letztesX >= mindestabstand) { out.push(t); letztesX = t.x; } }
+    return out;
+  };
+  return {
+    monatTicks,
+    monatTicksAnzeige: entzerrt(monatTicks, 42),
+    wochenTicksAnzeige: entzerrt(wochenTicks, 32),
+    tagTicksAnzeige: entzerrt(tagTicks, 14),
+    weekendBands,
+    zeigeTage,
+  };
+}
+
+/** Datums-Kopfzeile (Monat/Jahr + KW bzw. Tageszahlen) über einem Zeitachsen-Diagramm — eigener
+ *  Scroll-Container, synchron zum Diagramm gehalten (siehe useZeitachsenInteraktion). Gemeinsam
+ *  genutzt von TimeSeriesChart und KranBalkenChart. */
+function ZeitachsenKopf({ headerRef, VBW, ticks, pxProTag }: { headerRef: React.RefObject<HTMLDivElement | null>; VBW: number; ticks: ZeitachsenTicks; pxProTag: number }) {
+  return (
+    <div ref={headerRef} style={{ overflow: "hidden", background: "#f5f7f9", borderBottom: `1px solid ${FARBEN.gridline}` }}>
+      <svg width={VBW} height={HEAD_H} style={{ display: "block" }}>
+        {ticks.monatTicks.map((t, i) => (
+          <line key={`hml${i}`} x1={t.x} y1={0} x2={t.x} y2={HEAD_H} stroke="#aab4bd" strokeWidth={1.4} />
+        ))}
+        {ticks.monatTicksAnzeige.map((t, i) => (
+          <text key={`hm${i}`} x={t.x + 4} y={13} fontSize={10} fontWeight={600} fontFamily="var(--tc-font)" fill={FARBEN.textSekundaer}>{t.label}</text>
+        ))}
+        {ticks.zeigeTage ? ticks.tagTicksAnzeige.map((t, i) => (
+          <text key={`ht${i}`} x={t.x + pxProTag / 2} y={HEAD_H - 4} textAnchor="middle" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>{t.label}</text>
+        )) : ticks.wochenTicksAnzeige.map((t, i) => (
+          <text key={`hw${i}`} x={t.x + 2} y={HEAD_H - 4} fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>{t.label}</text>
+        ))}
+      </svg>
+    </div>
+  );
+}
+
 /** Misst die tatsächliche Pixelbreite eines Containers, damit die SVG-viewBox exakt dazu passt
  * (sonst verzerrt preserveAspectRatio bei ungleichem Seitenverhältnis die Achsentexte). */
 export function useMeasuredWidth<T extends HTMLElement>(fallback: number) {
@@ -104,8 +231,6 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
   pxProTag: pxProTagProp, onPxProTagChange: onPxProTagChangeProp, scrollTag: scrollTagProp, onScrollChange: onScrollChangeProp }: TimeSeriesProps) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [outerRef, viewportW] = useMeasuredWidth<HTMLDivElement>(1000);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const headerRef = useRef<HTMLDivElement>(null);
   const fmt = formatWert ?? ((v: number) => v.toLocaleString("de-CH", { maximumFractionDigits: 1 }));
 
   const n = tage.length;
@@ -128,57 +253,7 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
   const innerH = hoehe - MT - MB;
   const x = (i: number) => ML + i * pxProTag;
 
-  // Mausrad + Strg = Zoom zum Cursor (wie GanttChart); ohne Strg scrollt das Rad normal, statt den
-  // Zeitmaßstab zu verstellen.
-  useEffect(() => {
-    const el = scrollRef.current; if (!el || n === 0) return;
-    const handler = (e: WheelEvent) => {
-      if (!e.ctrlKey) return;
-      e.preventDefault();
-      const rect = el.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const tagAmCursor = (el.scrollLeft + mouseX) / pxProTag;
-      const factor = e.deltaY < 0 ? 1.15 : 0.87;
-      const neuPx = Math.max(MIN_PX_TAG, Math.min(MAX_PX_TAG, pxProTag * factor));
-      onPxProTagChange(neuPx);
-      onScrollChange(tagAmCursor - mouseX / neuPx);
-    };
-    el.addEventListener("wheel", handler, { passive: false });
-    return () => el.removeEventListener("wheel", handler);
-  }, [pxProTag, onPxProTagChange, onScrollChange, n]);
-
-  // Zoom-Buttons: wie Mausrad-Zoom, aber zentriert auf die Mitte des sichtbaren Ausschnitts
-  function zoomBy(factor: number) {
-    const el = scrollRef.current; if (!el) return;
-    const centerX = el.clientWidth / 2;
-    const tagAmZentrum = (el.scrollLeft + centerX) / pxProTag;
-    const neuPx = Math.max(MIN_PX_TAG, Math.min(MAX_PX_TAG, pxProTag * factor));
-    onPxProTagChange(neuPx);
-    onScrollChange(tagAmZentrum - centerX / neuPx);
-  }
-
-  // Scrollposition synchron zum gemeinsamen scrollTag halten (auch bei manuellem Scrollen anderer
-  // Charts). Das programmatische Setzen von scrollLeft löst selbst ein "scroll"-Event aus — ohne
-  // suppressScroll würde onChartScroll das als Nutzeraktion werten, onScrollChange erneut aufrufen
-  // und so alle Charts endlos gegenseitig aufschaukeln (sichtbares "Zittern" beim Scrollen).
-  const suppressScroll = useRef(false);
-  useEffect(() => {
-    const el = scrollRef.current; if (!el) return;
-    const ziel = Math.max(0, scrollTag * pxProTag);
-    if (Math.abs(el.scrollLeft - ziel) > 0.5) {
-      suppressScroll.current = true;
-      el.scrollLeft = ziel;
-      if (headerRef.current) headerRef.current.scrollLeft = ziel;
-      setTimeout(() => { suppressScroll.current = false; }, 50);
-    }
-  }, [scrollTag, pxProTag]);
-
-  function onChartScroll() {
-    if (headerRef.current && scrollRef.current) headerRef.current.scrollLeft = scrollRef.current.scrollLeft;
-    if (suppressScroll.current) return;
-    const el = scrollRef.current; if (!el) return;
-    onScrollChange(el.scrollLeft / pxProTag);
-  }
+  const { scrollRef, headerRef, zoomBy, onChartScroll } = useZeitachsenInteraktion(n, pxProTag, onPxProTagChange, scrollTag, onScrollChange);
 
   if (n === 0 || serien.length === 0) {
     return <div style={{ fontSize: 11, color: FARBEN.textMuted, padding: 12 }}>Keine Daten</div>;
@@ -224,33 +299,7 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
     }
   }
 
-  // Zeitachse: Monate immer, Wochen-/Tagesticks erst ab genügend Zoom (analog GanttChart-Schwellen)
-  const startDate = parseIsoLocal(tage[0]);
-  const zeigeWochen = pxProTag >= 1.5;
-  const zeigeTage = pxProTag >= 10;
-  const monatTicks: { x: number; label: string }[] = [];
-  const wochenTicks: { x: number; label: string }[] = [];
-  const tagTicks: { x: number; label: string }[] = [];
-  const weekendBands: { x: number; w: number }[] = [];
-  for (let i = 0; i < n; i++) {
-    const d = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate() + i);
-    if (i === 0 || d.getDate() === 1) monatTicks.push({ x: x(i), label: `${MONAT_KURZ[d.getMonth()]} ${String(d.getFullYear()).slice(2)}` });
-    if (zeigeWochen && d.getDay() === 1) wochenTicks.push({ x: x(i), label: `KW ${getKW(d)}` });
-    if (zeigeTage) tagTicks.push({ x: x(i), label: String(d.getDate()) });
-    const frei = kalender ? !istArbeitstag(tage[i], kalender) : (d.getDay() === 0 || d.getDay() === 6);
-    if (frei) weekendBands.push({ x: x(i), w: pxProTag });
-  }
-  // Zu eng stehende Achsenticks weglassen statt überlappenden Text zu zeichnen — sonst laufen sich
-  // bei einem langen Projektzeitraum und geringem Zoom die Monatslabels ineinander.
-  const entzerrt = (ticks: { x: number; label: string }[], mindestabstand: number) => {
-    const out: typeof ticks = [];
-    let letztesX = -Infinity;
-    for (const t of ticks) { if (t.x - letztesX >= mindestabstand) { out.push(t); letztesX = t.x; } }
-    return out;
-  };
-  const monatTicksAnzeige = entzerrt(monatTicks, 42);
-  const wochenTicksAnzeige = entzerrt(wochenTicks, 32);
-  const tagTicksAnzeige = entzerrt(tagTicks, 14);
+  const ticks = berechneZeitachsenTicks(tage, pxProTag, kalender);
 
   const zeigeLegende = serien.length >= 2 || !!referenzlinie?.werte;
 
@@ -273,34 +322,18 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
         </div>
       )}
       <div style={{ position: "relative" }}>
-        {/* Kopfzeile: Monat/Jahr + KW bzw. Tageszahlen, wie im GanttChart — eigener Scroll-Container,
-            synchron zum Diagramm gehalten (siehe onChartScroll/scrollTag-Effekt oben). */}
-        <div ref={headerRef} style={{ overflow: "hidden", background: "#f5f7f9", borderBottom: `1px solid ${FARBEN.gridline}` }}>
-          <svg width={VBW} height={HEAD_H} style={{ display: "block" }}>
-            {monatTicks.map((t, i) => (
-              <line key={`hml${i}`} x1={t.x} y1={0} x2={t.x} y2={HEAD_H} stroke="#aab4bd" strokeWidth={1.4} />
-            ))}
-            {monatTicksAnzeige.map((t, i) => (
-              <text key={`hm${i}`} x={t.x + 4} y={13} fontSize={10} fontWeight={600} fontFamily="var(--tc-font)" fill={FARBEN.textSekundaer}>{t.label}</text>
-            ))}
-            {zeigeTage ? tagTicksAnzeige.map((t, i) => (
-              <text key={`ht${i}`} x={t.x + pxProTag / 2} y={HEAD_H - 4} textAnchor="middle" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>{t.label}</text>
-            )) : wochenTicksAnzeige.map((t, i) => (
-              <text key={`hw${i}`} x={t.x + 2} y={HEAD_H - 4} fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>{t.label}</text>
-            ))}
-          </svg>
-        </div>
+        <ZeitachsenKopf headerRef={headerRef} VBW={VBW} ticks={ticks} pxProTag={pxProTag} />
         <div ref={scrollRef} onScroll={onChartScroll} style={{ overflowX: "auto", overflowY: "hidden" }}>
           <svg width={VBW} height={hoehe} viewBox={`0 0 ${VBW} ${hoehe}`}
             onMouseMove={onMove} onMouseLeave={() => setHoverIdx(null)} onClick={onKlick}
             style={{ display: "block", cursor: onTagKlick ? "pointer" : "crosshair" }}>
-            {weekendBands.map((b, i) => <rect key={`we${i}`} x={b.x} y={MT} width={b.w} height={innerH} fill={WE_BG} />)}
+            {ticks.weekendBands.map((b, i) => <rect key={`we${i}`} x={b.x} y={MT} width={b.w} height={innerH} fill={WE_BG} />)}
             <line x1={ML} y1={MT} x2={ML} y2={hoehe - MB} stroke={FARBEN.achse} strokeWidth={1} />
             <line x1={ML} y1={hoehe - MB} x2={VBW - MR} y2={hoehe - MB} stroke={FARBEN.achse} strokeWidth={1} />
             <text x={ML - 4} y={y(maxY) + 3} textAnchor="end" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>{fmt(maxY)}</text>
             <text x={ML - 4} y={hoehe - MB} textAnchor="end" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>0</text>
             {/* Monats-Linien durchgehend dicker als sonstige Hilfslinien, damit der Monatswechsel auffällt */}
-            {monatTicks.map((t, i) => (
+            {ticks.monatTicks.map((t, i) => (
               <line key={`ml${i}`} x1={t.x} y1={MT} x2={t.x} y2={hoehe - MB} stroke="#aab4bd" strokeWidth={1.4} />
             ))}
             {referenzlinie?.werte && (
@@ -523,6 +556,149 @@ export function CategoryBarChart({ kategorien, serien, einheit = "", hoehe = 180
             </div>
           );
         })()}
+      </div>
+    </div>
+  );
+}
+
+interface KranBalkenChartProps {
+  /** Tagesreihe, die dieselbe Zeitachse wie die übrigen Diagramme dieses Tabs referenziert (gleicher
+   *  Starttag) — Tag-0-Referenz für die Bucket-Positionierung, siehe pxProTag/scrollTag unten. */
+  tage: string[];
+  buckets: { key: string; label: string; start: string; end: string }[];
+  /** Ein Eintrag je Kran; werte/kapazitaet parallel zu buckets (gleicher Index). */
+  serien: KategorieSerie[];
+  einheit?: string;
+  hoehe?: number;
+  formatWert?: (v: number) => string;
+  kalender?: Kalender;
+  /** Gemeinsamer Zoom-/Scroll-Zustand mit den übrigen Zeitachsen-Diagrammen dieses Tabs (siehe
+   *  TimeSeriesChart) — Pflichtprops, da dieser Chart nur im Verbund mit anderen sinnvoll ist. */
+  pxProTag: number;
+  onPxProTagChange: (px: number) => void;
+  scrollTag: number;
+  onScrollChange: (tag: number) => void;
+}
+
+/** Wie CategoryBarChart, aber die Kategorien sind Zeitraster-Buckets (Monat/Woche) auf derselben Tages-
+ *  Pixel-Zeitachse wie TimeSeriesChart — Zoom (Lupe/Strg-Mausrad) und horizontales Scrollen wirken sich
+ *  dadurch exakt gemeinsam auf dieses und alle anderen Diagramme desselben Tabs aus (siehe Kranoptik in
+ *  Tab AVOR, geteilter Zustand über useChartZoom). Balken über der optionalen Kapazitätslinie (kap)
+ *  werden rot (Engpass) eingefärbt, wie in CategoryBarChart. */
+export function KranBalkenChart({ tage, buckets, serien, einheit = "", hoehe = 180, formatWert, kalender,
+  pxProTag, onPxProTagChange, scrollTag, onScrollChange }: KranBalkenChartProps) {
+  const [hover, setHover] = useState<{ bi: number; si: number } | null>(null);
+  const [outerRef, viewportW] = useMeasuredWidth<HTMLDivElement>(1000);
+  const fmt = formatWert ?? ((v: number) => v.toLocaleString("de-CH", { maximumFractionDigits: 1 }));
+  const n = tage.length;
+
+  const { scrollRef, headerRef, zoomBy, onChartScroll } = useZeitachsenInteraktion(n, pxProTag, onPxProTagChange, scrollTag, onScrollChange);
+
+  if (n === 0 || buckets.length === 0 || serien.length === 0) {
+    return <div style={{ fontSize: 11, color: FARBEN.textMuted, padding: 12 }}>Keine Daten</div>;
+  }
+
+  const VBW = Math.max(n * pxProTag, viewportW);
+  const innerH = hoehe - MT - MB;
+  const x = (i: number) => ML + i * pxProTag;
+  const startDate = parseIsoLocal(tage[0]);
+  // Bucket-Tagesindex relativ zum Diagramm-Starttag — auf [0, n-1] geklemmt, falls ein Bucket (z.B.
+  // der erste Monat/die erste Woche) über den Projektzeitraum hinausragt (siehe zeitrasterBuckets()).
+  const dayIndexClamped = (iso: string, istEnde: boolean): number => {
+    const raw = Math.round((parseIsoLocal(iso).getTime() - startDate.getTime()) / 86400000);
+    return istEnde ? Math.min(raw, n - 1) : Math.max(raw, 0);
+  };
+
+  let maxY = 0;
+  for (const s of serien) {
+    for (const w of s.werte) maxY = Math.max(maxY, w ?? 0);
+    for (const c of s.kapazitaet ?? []) maxY = Math.max(maxY, c ?? 0);
+  }
+  if (maxY <= 0) maxY = 1;
+  const y = (v: number) => MT + innerH - (v / maxY) * innerH;
+
+  const ticks = berechneZeitachsenTicks(tage, pxProTag, kalender);
+  const zeigeLegende = serien.length >= 2;
+
+  return (
+    <div ref={outerRef} style={{ position: "relative" }}>
+      {zeigeLegende && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 10, color: FARBEN.textSekundaer, marginBottom: 4 }}>
+          {serien.map(s => (
+            <span key={s.key} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ width: 8, height: 8, borderRadius: 2, background: s.color, display: "inline-block" }} />
+              {s.label}
+            </span>
+          ))}
+        </div>
+      )}
+      <div style={{ position: "relative" }}>
+        <ZeitachsenKopf headerRef={headerRef} VBW={VBW} ticks={ticks} pxProTag={pxProTag} />
+        <div ref={scrollRef} onScroll={onChartScroll} style={{ overflowX: "auto", overflowY: "hidden" }}>
+          <svg width={VBW} height={hoehe} viewBox={`0 0 ${VBW} ${hoehe}`} style={{ display: "block" }}>
+            {ticks.weekendBands.map((b, i) => <rect key={`we${i}`} x={b.x} y={MT} width={b.w} height={innerH} fill={WE_BG} />)}
+            <line x1={ML} y1={MT} x2={ML} y2={hoehe - MB} stroke={FARBEN.achse} strokeWidth={1} />
+            <line x1={ML} y1={hoehe - MB} x2={VBW - MR} y2={hoehe - MB} stroke={FARBEN.achse} strokeWidth={1} />
+            <text x={ML - 4} y={y(maxY) + 3} textAnchor="end" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>{fmt(maxY)}</text>
+            <text x={ML - 4} y={hoehe - MB} textAnchor="end" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>0</text>
+            {ticks.monatTicks.map((t, i) => (
+              <line key={`ml${i}`} x1={t.x} y1={MT} x2={t.x} y2={hoehe - MB} stroke="#aab4bd" strokeWidth={1.4} />
+            ))}
+            {buckets.map((b, bi) => {
+              const bx0 = x(dayIndexClamped(b.start, false));
+              const bx1 = x(dayIndexClamped(b.end, true) + 1);
+              const bucketW = Math.max(bx1 - bx0, 1);
+              const pad = bucketW * 0.15;
+              const balkenBreite = (bucketW - pad * 2) / serien.length;
+              return (
+                <g key={b.key}>
+                  {serien.map((s, si) => {
+                    const w = s.werte[bi] ?? 0;
+                    const kap = s.kapazitaet?.[bi];
+                    const engpass = kap != null && w > kap;
+                    const bx = bx0 + pad + si * balkenBreite;
+                    const by = y(w);
+                    const bh = hoehe - MB - by;
+                    const bw = Math.max(balkenBreite - 1, 1);
+                    return (
+                      <g key={s.key} onMouseEnter={() => setHover({ bi, si })} onMouseLeave={() => setHover(null)}>
+                        <rect x={bx} y={by} width={bw} height={Math.max(bh, 0)} fill={engpass ? FARBEN.status.critical : s.color} rx={2} />
+                        {kap != null && (
+                          <line x1={bx} y1={y(kap)} x2={bx + bw} y2={y(kap)} stroke={FARBEN.textPrimaer} strokeWidth={1.5} />
+                        )}
+                        {engpass && (
+                          <text x={bx + bw / 2} y={by - 3} textAnchor="middle" fontSize={9} fontWeight={700} fill={FARBEN.status.critical}>!</text>
+                        )}
+                      </g>
+                    );
+                  })}
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+        {hover && (() => {
+          const b = buckets[hover.bi];
+          const s = serien[hover.si];
+          const w = s.werte[hover.bi] ?? 0;
+          const kap = s.kapazitaet?.[hover.bi];
+          const engpass = kap != null && w > kap;
+          const mitte = (x(dayIndexClamped(b.start, false)) + x(dayIndexClamped(b.end, true) + 1)) / 2;
+          return (
+            <div style={{
+              position: "absolute", top: 4, left: Math.min(Math.max(mitte - scrollTag * pxProTag, 70), Math.max(viewportW - 70, 70)),
+              transform: "translateX(-50%)", background: "#fff", border: `1px solid ${FARBEN.gridline}`,
+              boxShadow: "0 2px 6px rgba(0,0,0,.12)", padding: "5px 8px", fontSize: 10, whiteSpace: "nowrap", pointerEvents: "none", zIndex: 5,
+            }}>
+              <div style={{ fontWeight: 600, color: FARBEN.textPrimaer, marginBottom: 2 }}>{b.label}</div>
+              <div style={{ color: engpass ? FARBEN.status.critical : FARBEN.textSekundaer, fontWeight: engpass ? 700 : 400 }}>
+                <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: 2, background: engpass ? FARBEN.status.critical : s.color, marginRight: 4 }} />
+                {s.label}: {kap != null ? `${fmt(w)} / ${fmt(kap)} ${einheit}${engpass ? " ← ENGPASS" : ""}` : `${fmt(w)} ${einheit}`}
+              </div>
+            </div>
+          );
+        })()}
+        <ZoomControls onZoomIn={() => zoomBy(1.3)} onZoomOut={() => zoomBy(1 / 1.3)} />
       </div>
     </div>
   );

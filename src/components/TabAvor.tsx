@@ -11,7 +11,7 @@ import { kranstundenProKranUndBucket } from "./kranHelpers";
 import { personenstundenProKranUndBucket, personalRichtwertJeBucket, MAX_PERSONEN_PRO_KRAN } from "./kapazitaetsCheckHelpers";
 import { dreiDZustandAufTagSetzen, tagVonDatum } from "./dreiDHeuteHelper";
 import type { ApiInstance } from "../hooks/useApi";
-import { TimeSeriesChart, CategoryBarChart, StatTile, CockpitAbschnitt, useEingeklappt, useChartZoom, useChartHoehe, ChartResizeHandle, FARBEN } from "./cockpitCharts";
+import { TimeSeriesChart, KranBalkenChart, StatTile, CockpitAbschnitt, useEingeklappt, useChartZoom, useChartHoehe, ChartResizeHandle, FARBEN } from "./cockpitCharts";
 import type { Serie, KategorieSerie } from "./cockpitCharts";
 import KranPlanungManager from "./KranPlanungManager";
 
@@ -264,8 +264,9 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
               Noch keinen Task einem Kran zugewiesen (Tab Kalkulation → Spalte "Kräne").
             </div>
           ) : (<>
-            <CategoryBarChart kategorien={kranBuckets.map(b => b.label)} serien={kranBarSerien} einheit="h"
-              formatWert={v => String(Math.round(v))} hoehe={hoeheKran} />
+            <KranBalkenChart tage={personalSerien.tage} buckets={kranBuckets} serien={kranBarSerien} einheit="h"
+              formatWert={v => String(Math.round(v))} kalender={kalender} hoehe={hoeheKran}
+              pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
             <ChartResizeHandle hoehe={hoeheKran} setHoehe={setHoeheKran} />
           </>)
         ) : (
@@ -274,8 +275,9 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
               Noch keinen Task einem Kran zugewiesen (Tab Kalkulation → Spalte "Kräne").
             </div>
           ) : (<>
-            <CategoryBarChart kategorien={personalKranBuckets.map(b => b.label)} serien={personalBarSerien} einheit="Personen"
-              formatWert={v => String(Math.round(v))} hoehe={hoeheKran} />
+            <KranBalkenChart tage={personalSerien.tage} buckets={personalKranBuckets} serien={personalBarSerien} einheit="Personen"
+              formatWert={v => String(Math.round(v))} kalender={kalender} hoehe={hoeheKran}
+              pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
             <ChartResizeHandle hoehe={hoeheKran} setHoehe={setHoeheKran} />
           </>)
         )}
