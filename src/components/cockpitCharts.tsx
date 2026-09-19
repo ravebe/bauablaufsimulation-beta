@@ -422,9 +422,14 @@ interface CategoryBarProps {
   formatWert?: (v: number) => string;
 }
 
-/** Gruppierte Balken über einer kategorialen x-Achse (Kürzel/Gewerke statt Zeit). */
+/** Gruppierte Balken über einer kategorialen x-Achse (Kürzel/Gewerke statt Zeit). Bei nur einer Serie
+ *  (Standardfall wie "Kosten je Gewerk") steht der Wert direkt sichtbar über jedem Balken, nicht erst
+ *  bei Hover — ein Klick auf einen Balken markiert ihn dauerhaft (bis zum nächsten Klick) und hebt
+ *  dessen Zahl hervor, damit der Wert auch ohne Maus über dem Diagramm ablesbar bleibt. */
 export function CategoryBarChart({ kategorien, serien, einheit = "", hoehe = 180, formatWert }: CategoryBarProps) {
   const [hover, setHover] = useState<{ ki: number; si: number } | null>(null);
+  const [ausgewaehlt, setAusgewaehlt] = useState<{ ki: number; si: number } | null>(null);
+  const aktiv = hover ?? ausgewaehlt;
   const [containerRef, VBW] = useMeasuredWidth<HTMLDivElement>(1000);
   const fmt = formatWert ?? ((v: number) => v.toLocaleString("de-CH", { maximumFractionDigits: 1 }));
 
@@ -478,32 +483,39 @@ export function CategoryBarChart({ kategorien, serien, einheit = "", hoehe = 180
             const by = y(w);
             const bh = hoehe - MB - by;
             const bw = Math.max(balkenBreite - 1, 1);
+            const istAusgewaehlt = ausgewaehlt?.ki === ki && ausgewaehlt?.si === si;
             return (
-              <g key={`${ki}-${si}`} onMouseEnter={() => setHover({ ki, si })} onMouseLeave={() => setHover(null)}>
-                <rect x={bx} y={by} width={bw} height={Math.max(bh, 0)} fill={engpass ? FARBEN.status.critical : s.color} rx={2} />
+              <g key={`${ki}-${si}`} style={{ cursor: "pointer" }}
+                onMouseEnter={() => setHover({ ki, si })} onMouseLeave={() => setHover(null)}
+                onClick={() => setAusgewaehlt(prev => (prev && prev.ki === ki && prev.si === si) ? null : { ki, si })}>
+                <rect x={bx} y={by} width={bw} height={Math.max(bh, 0)} fill={engpass ? FARBEN.status.critical : s.color} rx={2}
+                  stroke={istAusgewaehlt ? FARBEN.textPrimaer : "none"} strokeWidth={istAusgewaehlt ? 2 : 0} />
                 {kap != null && (
                   <line x1={bx} y1={y(kap)} x2={bx + bw} y2={y(kap)} stroke={FARBEN.textPrimaer} strokeWidth={1.5} />
                 )}
-                {engpass && (
+                {engpass ? (
                   <text x={bx + bw / 2} y={by - 3} textAnchor="middle" fontSize={9} fontWeight={700} fill={FARBEN.status.critical}>!</text>
+                ) : serien.length === 1 && (
+                  <text x={bx + bw / 2} y={by - 4} textAnchor="middle" fontSize={9}
+                    fontWeight={istAusgewaehlt ? 700 : 400} fill={istAusgewaehlt ? FARBEN.textPrimaer : FARBEN.textSekundaer}>{fmt(w)}</text>
                 )}
               </g>
             );
           }))}
         </svg>
-        {hover && (() => {
-          const s = serien[hover.si];
-          const w = s.werte[hover.ki] ?? 0;
-          const kap = s.kapazitaet?.[hover.ki];
+        {aktiv && (() => {
+          const s = serien[aktiv.si];
+          const w = s.werte[aktiv.ki] ?? 0;
+          const kap = s.kapazitaet?.[aktiv.ki];
           const engpass = kap != null && w > kap;
-          const bx = ML + hover.ki * gruppenBreite + pad + hover.si * balkenBreite + balkenBreite / 2;
+          const bx = ML + aktiv.ki * gruppenBreite + pad + aktiv.si * balkenBreite + balkenBreite / 2;
           return (
             <div style={{
               position: "absolute", top: 4, left: `${Math.min(Math.max((bx / VBW) * 100, 10), 90)}%`,
               transform: "translateX(-50%)", background: "#fff", border: `1px solid ${FARBEN.gridline}`,
               boxShadow: "0 2px 6px rgba(0,0,0,.12)", padding: "5px 8px", fontSize: 10, whiteSpace: "nowrap", pointerEvents: "none", zIndex: 5,
             }}>
-              <div style={{ fontWeight: 600, color: FARBEN.textPrimaer, marginBottom: 2 }}>{kategorien[hover.ki]}</div>
+              <div style={{ fontWeight: 600, color: FARBEN.textPrimaer, marginBottom: 2 }}>{kategorien[aktiv.ki]}</div>
               <div style={{ color: engpass ? FARBEN.status.critical : FARBEN.textSekundaer, fontWeight: engpass ? 700 : 400 }}>
                 <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: 2, background: engpass ? FARBEN.status.critical : s.color, marginRight: 4 }} />
                 {s.label}: {kap != null ? `${fmt(w)} / ${fmt(kap)} ${einheit}${engpass ? " ← ENGPASS" : ""}` : `${fmt(w)} ${einheit}`}
