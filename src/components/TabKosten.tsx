@@ -25,11 +25,13 @@ function heuteIsoUndDatum(): { iso: string; datum: Date } {
 
 export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }: Props) {
   const { eingeklappt, toggle: toggleEingeklappt } = useEingeklappt(projectId, "kosten");
-  const [heuteLaeuft, setHeuteLaeuft] = useState(false);
-  const [heuteErgebnis, setHeuteErgebnis] = useState<string | null>(null);
   // null = Stammdaten-Reihenfolge (wie Tab Ressourcen), sonst höchste/niedrigste Summe zuoberst —
   // sortiert sowohl die Gewerk-Gruppen (nach Gesamtsumme) als auch die Kürzel-Zeilen darin.
   const [kostenSortRichtung, setKostenSortRichtung] = useState<"desc" | "asc" | null>(null);
+  // Klick ins Kosten-kumuliert-Diagramm setzt eine Tages-Markierung und springt — wie in Tab AVOR —
+  // im 3D-Modell auf diesen Tag. Ohne Auswahl markiert das Diagramm weiterhin "Heute".
+  const [ausgewaehlterTag, setAusgewaehlterTag] = useState<number | null>(null);
+  const [klickErgebnis, setKlickErgebnis] = useState<string | null>(null);
 
   if (!sim) return <div style={{ padding: 14, fontSize: 12, color: "var(--tc-text-3)" }}>Kein aktives Projekt ausgewählt</div>;
 
@@ -104,15 +106,24 @@ export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }
   const allStarts = sim.tasks.map(t => parseDateUniversal(t.start)).filter((d): d is Date => !!d);
   const minDate = allStarts.length > 0 ? new Date(Math.min(...allStarts.map(d => d.getTime()))) : null;
 
-  async function heuteIm3dZeigen() {
+  const aktiverMarkerIdx = ausgewaehlterTag ?? (heuteIdx >= 0 ? heuteIdx : null);
+  const ausgewaehltesDatumIso = ausgewaehlterTag != null ? ertrag[ausgewaehlterTag]?.tag ?? null : null;
+  const aktivesMarkerLabel = ausgewaehltesDatumIso
+    ? (parseDateUniversal(ausgewaehltesDatumIso)?.toLocaleDateString("de-CH") ?? ausgewaehltesDatumIso)
+    : "Heute";
+
+  // Klick ins Kosten-kumuliert-Diagramm: Markierung setzen, "geteilte Nadel" (siehe App.tsx) für
+  // andere Tabs synchron halten und — falls ein Modell verbunden ist — den 3D-Zustand auf diesen Tag
+  // springen, genau wie onChartTagKlick in Tab AVOR.
+  async function onChartTagKlick(iso: string, idx: number) {
+    setAusgewaehlterTag(idx);
+    setKlickErgebnis(null);
+    const datum = parseDateUniversal(iso);
+    if (sharedNadelTag && datum) sharedNadelTag.current = datum.getTime();
     if (!api || !minDate) return;
-    setHeuteLaeuft(true);
-    setHeuteErgebnis(null);
-    if (sharedNadelTag) sharedNadelTag.current = heute.getTime();
-    const tag = tagVonDatum(heuteIso, minDate);
+    const tag = tagVonDatum(iso, minDate);
     const aktive = await dreiDZustandAufTagSetzen(api, sim!.tasks, minDate, tag, true);
-    setHeuteLaeuft(false);
-    setHeuteErgebnis(aktive.length > 0 ? `${aktive.length} Task${aktive.length === 1 ? "" : "s"} aktiv am ${heute.toLocaleDateString("de-CH")}` : `Keine aktiven Tasks am ${heute.toLocaleDateString("de-CH")}`);
+    setKlickErgebnis(aktive.length > 0 ? `${aktive.length} Task${aktive.length === 1 ? "" : "s"} aktiv am ${datum ? datum.toLocaleDateString("de-CH") : iso}` : `Keine aktiven Tasks am ${datum ? datum.toLocaleDateString("de-CH") : iso}`);
   }
 
   if (stammdaten.gewerke.length === 0) {
@@ -134,13 +145,9 @@ export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }
         )}
       </div>
 
-      {api && minDate && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-          <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }} disabled={heuteLaeuft} onClick={heuteIm3dZeigen}
-            title="Zeigt den Baufortschritt von heute im 3D-Modell und markiert heute im Kosten-Diagramm">
-            {heuteLaeuft ? "Wird aktualisiert…" : "Heute im 3D-Modell zeigen"}
-          </button>
-          {heuteErgebnis && <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>{heuteErgebnis}</span>}
+      {ausgewaehltesDatumIso && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 11, color: "var(--tc-text-3)" }}>
+          <span>📍 {aktivesMarkerLabel}{!api && " — Klick ins Diagramm springt zu diesem Tag, aber es ist kein 3D-Modell verbunden"}{klickErgebnis && api ? ` — ${klickErgebnis}` : ""}</span>
         </div>
       )}
 
@@ -155,7 +162,7 @@ export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }
       {ertrag.length > 0 && (
         <CockpitAbschnitt titel="Kosten kumuliert" eingeklappt={!!eingeklappt["kumuliert"]} onToggle={() => toggleEingeklappt("kumuliert")}>
           <TimeSeriesChart tage={ertrag.map(e => e.tag)} einheit="CHF" formatWert={fmtChf} modus="linie"
-            markerIdx={heuteIdx >= 0 ? heuteIdx : null}
+            markerIdx={aktiverMarkerIdx} markerLabel={aktivesMarkerLabel} onTagKlick={onChartTagKlick}
             serien={[{ key: "kosten", label: "Kosten (kumuliert)", color: FARBEN.kategorial[0], werte: ertrag.map(e => e.kostenKum) }]} />
         </CockpitAbschnitt>
       )}
