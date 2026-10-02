@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import type { SimProjekt, Task } from "../types";
+import type { SimModell, SimProjekt, Task } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import GanttImport from "./GanttImport";
 import AutoVerknuepfung from "./AutoVerknuepfung";
@@ -7,6 +7,10 @@ import AttributTaskErzeugung from "./AttributTaskErzeugung";
 import SimKebabMenu from "./SimKebabMenu";
 import ModellVersionen from "./ModellVersionen";
 import { stelleVersionUm, wendeUmstellungAn } from "./modellVersionHelpers";
+import IfcImportDialog from "./IfcImportDialog";
+import type { IfcImportUebernahme } from "./IfcImportDialog";
+import { enthaeltBauablauf } from "./ifcImport";
+import { ladeTcDateiEnde } from "../hooks/tcDateien";
 
 interface Props {
   api: ApiInstance | null;
@@ -37,6 +41,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
   const [neueVersionen, setNeueVersionen] = useState<Record<string, string>>({});
   const [updateDialog, setUpdateDialog] = useState<{ simId: string; modellId: string; modellName: string; neueVersionId: string } | null>(null);
   const [versionWechselLaeuft, setVersionWechselLaeuft] = useState(false);
+  const [importAngebot, setImportAngebot] = useState<{ simId: string; modell: SimModell } | null>(null);
   // Immer aktueller Stand für das Polling-Interval unten — verhindert, dass dessen Closure einen
   // veralteten sims-Stand aus dem Render beim Effekt-Setup festhält (Intervall wird bewusst NICHT
   // bei jeder sims-Änderung neu gestartet, siehe exhaustive-deps-Kommentar dort).
@@ -195,11 +200,50 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
       setModellMsg({ simId: modellPicker.simId, typ: "err", text: "Mindestens 1 Modell auswählen" });
       return;
     }
+    const bisher = new Set(sims.find(s => s.id === modellPicker.simId)?.modelle.map(m => m.id) ?? []);
     setSims(prev => prev.map(s =>
       s.id === modellPicker.simId ? { ...s, modelle: ausgewaehlt } : s
     ));
     setModellMsg({ simId: modellPicker.simId, typ: "ok", text: `✓ ${ausgewaehlt.length} Modelle gespeichert` });
     setModellPicker(null);
+    pruefeAufBauablauf(modellPicker.simId, ausgewaehlt.filter(m => !bisher.has(m.id)));
+  }
+
+  /** Neu hinzugefügte IFC-Modelle auf einen hinterlegten Bauablauf prüfen (nur das Dateiende laden —
+   *  dort liegen die vom IFC-4D-Export angehängten Daten) und ggf. die Übernahme anbieten. */
+  async function pruefeAufBauablauf(simId: string, neu: SimModell[]) {
+    if (!api) return;
+    for (const m of neu.filter(x => /\.ifc$/i.test(x.name))) {
+      try {
+        setModellMsg({ simId, typ: "ok", text: `⟳ Prüfe ${m.name} auf hinterlegten Bauablauf…` });
+        if (enthaeltBauablauf(await ladeTcDateiEnde(api, m.id, m.versionId))) { setImportAngebot({ simId, modell: m }); break; }
+      } catch { /* Prüfung ist optional — ohne Zugriff einfach kein Angebot */ }
+    }
+    setModellMsg(prev => prev?.text.startsWith("⟳ Prüfe") ? { simId, typ: "ok", text: `✓ ${neu.length} Modell(e) hinzugefügt` } : prev);
+  }
+
+  function bauablaufUebernehmen(simId: string, modellName: string, u: IfcImportUebernahme) {
+    setSims(prev => prev.map(s => {
+      if (s.id !== simId) return s;
+      // Kräne über den Namen mit bestehenden zusammenführen
+      const kraene = [...(s.kraene ?? [])];
+      const kranMap = new Map<string, string>();
+      for (const k of u.kraene) {
+        const vorhanden = kraene.find(x => x.name === k.name);
+        if (vorhanden) kranMap.set(k.id, vorhanden.id); else { kraene.push(k); kranMap.set(k.id, k.id); }
+      }
+      const tasks = u.tasks.map(t => t.kraene ? { ...t, kraene: t.kraene.map(id => kranMap.get(id) ?? id) } : t);
+      const kalenderLeer = !s.kalender || (s.kalender.feiertage.length === 0 && (s.kalender.ferien ?? []).length === 0);
+      return {
+        ...s, tasks, kraene,
+        kalender: kalenderLeer && u.kalender ? u.kalender : s.kalender,
+        ganttImport: { dateiname: `${modellName} (IFC)`, version: (s.ganttImport?.version ?? 0) + 1 },
+        autoVerknuepft: true,
+      };
+    }));
+    setModellMsg({ simId, typ: "ok", text: `✓ Bauablauf übernommen — ${u.bericht.tasks} Tasks, ${u.bericht.bauteile} Bauteile zugeordnet`
+      + (u.bericht.nichtGefunden ? `, ${u.bericht.nichtGefunden} Bauteile im Modell nicht gefunden` : "") });
+    setImportAngebot(null);
   }
 
   function modellToggle(id: string) {
@@ -607,6 +651,15 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
           </div>
         </div>
       )}
+
+      {importAngebot && (() => {
+        const sim = sims.find(s => s.id === importAngebot.simId);
+        return sim ? (
+          <IfcImportDialog api={api} sim={sim} modell={importAngebot.modell}
+            onUebernehmen={u => bauablaufUebernehmen(sim.id, importAngebot.modell.name, u)}
+            onClose={() => setImportAngebot(null)} />
+        ) : null;
+      })()}
 
       {updateDialog && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}

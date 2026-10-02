@@ -66,6 +66,17 @@ export async function ladeTcDatei(api: ApiInstance, fileId: string, versionId?: 
   return new Uint8Array(await dateiRes.arrayBuffer());
 }
 
+/** Nur die letzten `bytes` Bytes einer Datei als Text (1 Zeichen = 1 Byte) — für die schnelle Prüfung,
+ *  ob eine IFC einen Bauablauf enthält, ohne die ganze (evtl. 100 MB grosse) Datei zu laden. */
+export async function ladeTcDateiEnde(api: ApiInstance, fileId: string, versionId?: string, bytes = 1000000): Promise<string> {
+  const token = await holeAccessToken(api);
+  const params = new URLSearchParams({ fileId, location: await projektRegion(api), mode: "ende", bytes: String(bytes) });
+  if (versionId) params.set("versionId", versionId);
+  const res = await fetch(`/api/tc-datei?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(`Dateiende nicht erhalten: ${await fehlerText(res)}`);
+  return new TextDecoder("windows-1252").decode(await res.arrayBuffer());
+}
+
 export interface TcDateiInfo {
   region: string; // Region-Key des Proxys (für Upload/Commit auf derselben Region)
   id: string;

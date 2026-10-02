@@ -6,6 +6,7 @@
 //   GET  ?fileId&location&mode=versions          → { region, versions }  (alle Versionen der Datei)
 //   GET  ?fileId&versionId&location              → { region, url }   (Download-URL)
 //   GET  ?fileId&versionId&location&mode=datei   → Datei-Bytes (gestreamt)
+//   GET  ?fileId&versionId&location&mode=ende&bytes=N → nur die letzten N Bytes (Bauablauf-Erkennung)
 //   POST ?aktion=initiate  { region, parentId, name } → { uploadURL, uploadId }  (Upload = neue Version
 //        bei gleichem Namen im gleichen Ordner, Ablauf wie im offiziellen trimble-connect-sdk)
 //   POST ?aktion=commit    { region, uploadId }        → FileEntry der neuen Version
@@ -94,6 +95,26 @@ export default async function handler(req, res) {
 
     const { region, json } = await tcAufruf(regionen, `files/fs/${fileId}/downloadurl${query}`, auth);
     if (!json?.url) return res.status(502).json({ error: "Keine Download-URL erhalten" });
+    if (mode === "ende") {
+      // Nur das Dateiende (angehängte 4D-Daten liegen dort) — per Range-Request, sonst Stream mitlesen
+      const n = Math.min(Math.max(Number(req.query.bytes) || 1000000, 1000), 4000000);
+      const r = await fetch(json.url, { headers: { Range: `bytes=-${n}` } });
+      if (!r.ok || !r.body) return res.status(502).json({ error: `Datei-Download HTTP ${r.status}` });
+      let ende;
+      if (r.status === 206) {
+        ende = Buffer.from(await r.arrayBuffer());
+      } else {
+        const teile = []; let laenge = 0;
+        for await (const chunk of r.body) {
+          teile.push(Buffer.from(chunk)); laenge += chunk.length;
+          while (teile.length > 1 && laenge - teile[0].length >= n) laenge -= teile.shift().length;
+        }
+        ende = Buffer.concat(teile);
+        ende = ende.subarray(Math.max(0, ende.length - n));
+      }
+      res.setHeader("Content-Type", "application/octet-stream");
+      return res.status(200).send(ende);
+    }
     if (mode !== "datei") return res.status(200).json({ region, url: json.url });
 
     const datei = await fetch(json.url);
