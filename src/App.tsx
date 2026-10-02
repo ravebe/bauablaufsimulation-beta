@@ -35,6 +35,7 @@ export default function App() {
   const [sims, setSims] = useState<SimProjekt[]>([]);
   const [aktivId, setAktivId] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [syncFehler, setSyncFehler] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [userName, setUserName] = useState<string>("");
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -143,17 +144,20 @@ export default function App() {
         const result = await cloudSave(api, { sims: simsData, aktivId: aid }, cloudVersion.current);
         if (result.ok) {
           cloudVersion.current = result.version;
+          setSyncFehler(null);
           setSyncStatus("saved");
           setTimeout(() => setSyncStatus("idle"), 2000);
         } else if (result.conflict) {
           // Jemand anderes hat zwischenzeitlich gespeichert — nicht überschreiben,
           // sondern den Nutzer entscheiden lassen (Banner mit "Neu laden")
           setKonflikt(true);
+          setSyncFehler("Konflikt — jemand anderes hat inzwischen gespeichert");
           setSyncStatus("error");
         } else {
+          setSyncFehler(result.fehler);
           setSyncStatus("error");
         }
-      } catch { setSyncStatus("error"); }
+      } catch (e) { setSyncFehler(e instanceof Error ? e.message : String(e)); setSyncStatus("error"); }
     });
   }, [api, projectId]);
 
@@ -467,7 +471,7 @@ export default function App() {
               </svg>
             </button>
             {/* Sync Status */}
-            <span title={syncStatus === "saved" ? "Cloud gespeichert" : syncStatus === "saving" ? "Speichern…" : syncStatus === "error" ? "Sync-Fehler" : ""}
+            <span title={syncStatus === "saved" ? "Cloud gespeichert" : syncStatus === "saving" ? "Speichern…" : syncStatus === "error" ? `Nicht gespeichert: ${syncFehler ?? "Sync-Fehler"}` : ""}
               style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
                 background: syncStatus === "saved" ? "#6cc07a" : syncStatus === "saving" ? "#edb94c" : syncStatus === "error" ? "var(--tc-red)" : "transparent",
                 transition: "background 0.3s" }} />

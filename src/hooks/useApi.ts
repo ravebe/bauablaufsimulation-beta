@@ -220,29 +220,67 @@ async function getProjectId(api: ApiInstance): Promise<string | null> {
 export type CloudSaveResult =
   | { ok: true; version: number }
   | { ok: false; conflict: true; serverData: Record<string, unknown> | null }
-  | { ok: false; conflict: false };
+  | { ok: false; conflict: false; fehler: string };
+
+// Gzip + Base64: grosse Projekte (hunderte Tasks mit tausenden Bauteil-IDs) sprengten unkomprimiert das
+// 4.5-MB-Limit von Vercel für Request-Bodies — das Speichern scheiterte dann bei jeder Änderung.
+async function gzipBase64(text: string): Promise<string> {
+  const stream = new Blob([text]).stream().pipeThrough(new CompressionStream("gzip"));
+  const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+async function gunzipBase64(b64: string): Promise<string> {
+  const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return new Response(stream).text();
+}
+/** Server-Antwort ({ data } alt oder { gz } komprimiert) → Daten inkl. version */
+async function entpacke(json: { data?: Record<string, unknown> | null; gz?: string; version?: number } | null): Promise<Record<string, unknown> | null> {
+  if (json?.gz) return { ...JSON.parse(await gunzipBase64(json.gz)), version: json.version };
+  return json?.data ?? null;
+}
+
+const MAX_BODY_BYTES = 4_400_000; // Vercel-Limit 4.5 MB minus Reserve
+const SPEICHER_TIMEOUT_MS = 60000;
 
 export async function cloudSave(api: ApiInstance, data: Record<string, unknown>, baseVersion: number): Promise<CloudSaveResult> {
   try {
     const projectId = await getProjectId(api);
-    if (!projectId) { console.warn("[CloudSync] Keine Projekt-ID"); return { ok: false, conflict: false }; }
+    if (!projectId) { console.warn("[CloudSync] Keine Projekt-ID"); return { ok: false, conflict: false, fehler: "Keine Projekt-ID von Trimble Connect erhalten" }; }
+    const roh = JSON.stringify(data);
+    const body = JSON.stringify({ projectId, gz: await gzipBase64(roh), baseVersion });
+    const mb = (n: number) => (n / 1048576).toFixed(1);
+    if (body.length > MAX_BODY_BYTES) {
+      return { ok: false, conflict: false, fehler: `Daten zu gross (${mb(roh.length)} MB, komprimiert ${mb(body.length)} MB — Limit 4.4 MB)` };
+    }
+    const abbruch = new AbortController();
+    const timer = setTimeout(() => abbruch.abort(), SPEICHER_TIMEOUT_MS);
     const res = await fetch(`/api/sync?projectId=${projectId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectId, data, baseVersion }),
-    });
+      body,
+      signal: abbruch.signal,
+    }).finally(() => clearTimeout(timer));
     if (res.status === 409) {
       const json = await res.json().catch(() => null);
       console.warn("[CloudSync] Konflikt — jemand anderes hat inzwischen gespeichert");
-      return { ok: false, conflict: true, serverData: json?.data ?? null };
+      return { ok: false, conflict: true, serverData: await entpacke(json).catch(() => null) };
     }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      const json = await res.json().catch(() => null) as { error?: string } | null;
+      throw new Error(`HTTP ${res.status}${json?.error ? ` — ${json.error}` : ""}`);
+    }
     const json = await res.json();
-    console.log("[CloudSync] ✓ Gespeichert in Cloud (Projekt:", projectId + ")");
+    console.log(`[CloudSync] ✓ Gespeichert in Cloud (Projekt: ${projectId}, ${mb(roh.length)} MB → ${mb(body.length)} MB)`);
     return { ok: true, version: json.version };
   } catch (e) {
     console.warn("[CloudSync] Speichern fehlgeschlagen:", e);
-    return { ok: false, conflict: false };
+    const fehler = e instanceof DOMException && e.name === "AbortError"
+      ? `Keine Antwort vom Server innerhalb von ${SPEICHER_TIMEOUT_MS / 1000} s`
+      : e instanceof Error ? e.message : String(e);
+    return { ok: false, conflict: false, fehler };
   }
 }
 
@@ -270,10 +308,10 @@ export async function cloudLoad(api: ApiInstance): Promise<Record<string, unknow
     if (!projectId) { console.warn("[CloudSync] Keine Projekt-ID"); return null; }
     const res = await fetch(`/api/sync?projectId=${projectId}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = await res.json();
-    if (json.data && json.data.sims) {
-      console.log("[CloudSync] ✓ Geladen aus Cloud:", json.data.sims.length, "Simulationen (Projekt:", projectId + ")");
-      return json.data;
+    const data = await entpacke(await res.json());
+    if (data && Array.isArray(data.sims)) {
+      console.log("[CloudSync] ✓ Geladen aus Cloud:", data.sims.length, "Simulationen (Projekt:", projectId + ")");
+      return data;
     }
     console.log("[CloudSync] Keine Cloud-Daten für Projekt", projectId);
     return null;
