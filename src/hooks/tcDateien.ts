@@ -86,6 +86,26 @@ export async function tcDateiInfo(api: ApiInstance, fileId: string, versionId?: 
   return { region, ...file };
 }
 
+export interface TcVersion {
+  versionId: string;
+  revision?: number;
+  createdOn?: string;
+  modifiedOn?: string;
+  createdBy?: { firstName?: string; lastName?: string };
+  modifiedBy?: { firstName?: string; lastName?: string };
+}
+
+/** Alle Versionen einer Datei, neueste zuerst */
+export async function tcDateiVersionen(api: ApiInstance, fileId: string): Promise<TcVersion[]> {
+  const token = await holeAccessToken(api);
+  const params = new URLSearchParams({ fileId, location: await projektRegion(api), mode: "versions" });
+  const res = await fetch(`/api/tc-datei?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(`Versionen nicht erhalten: ${await fehlerText(res)}`);
+  const { versions } = await res.json() as { versions: TcVersion[] };
+  return versions.filter(v => v?.versionId).sort((a, b) =>
+    (b.revision ?? 0) - (a.revision ?? 0) || String(b.createdOn ?? b.modifiedOn ?? "").localeCompare(String(a.createdOn ?? a.modifiedOn ?? "")));
+}
+
 /** Lädt `inhalt` als neue Version hoch (gleicher Name im gleichen Ordner wie `ziel`) — Ablauf wie
  *  trimble-connect-sdk: initiate → PUT an die vorsignierte URL → commit. Der PUT geht direkt an den
  *  Speicher (über Vercel ginge nur bis 4.5 MB). */

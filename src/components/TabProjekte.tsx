@@ -5,6 +5,8 @@ import GanttImport from "./GanttImport";
 import AutoVerknuepfung from "./AutoVerknuepfung";
 import AttributTaskErzeugung from "./AttributTaskErzeugung";
 import SimKebabMenu from "./SimKebabMenu";
+import ModellVersionen from "./ModellVersionen";
+import { stelleVersionUm, wendeUmstellungAn } from "./modellVersionHelpers";
 
 interface Props {
   api: ApiInstance | null;
@@ -34,6 +36,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
   // modelId → in TC verfügbare, aber noch nicht geladene Versions-ID (neue Revision abgelegt)
   const [neueVersionen, setNeueVersionen] = useState<Record<string, string>>({});
   const [updateDialog, setUpdateDialog] = useState<{ simId: string; modellId: string; modellName: string; neueVersionId: string } | null>(null);
+  const [versionWechselLaeuft, setVersionWechselLaeuft] = useState(false);
   // Immer aktueller Stand für das Polling-Interval unten — verhindert, dass dessen Closure einen
   // veralteten sims-Stand aus dem Render beim Effekt-Setup festhält (Intervall wird bewusst NICHT
   // bei jeder sims-Änderung neu gestartet, siehe exhaustive-deps-Kommentar dort).
@@ -77,17 +80,37 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
   async function modellAktualisieren() {
     if (!updateDialog) return;
     const { simId, modellId, neueVersionId } = updateDialog;
-    if (!api) { setUpdateDialog(null); return; }
+    setUpdateDialog(null);
+    await versionWechseln(simId, modellId, neueVersionId);
+  }
+
+  /** Simulation auf eine andere Modellversion umstellen und die Bauteil-Zuordnungen über die IFC-GUIDs
+   *  mitnehmen (Runtime-IDs ändern sich je Version). Reparatur (quelleVersionId gesetzt): Zuordnungen
+   *  stammen aus quelleVersionId, die Simulation bleibt auf ihrer aktiven Version. */
+  async function versionWechseln(simId: string, modellId: string, zielVersionId: string, quelleVersionId?: string) {
+    const sim = simsRef.current.find(s => s.id === simId);
+    const modell = sim?.modelle.find(m => m.id === modellId);
+    if (!api || !sim || !modell) return;
+    const reparatur = quelleVersionId !== undefined;
+    const quelle = reparatur ? quelleVersionId : modell.versionId;
+    setVersionWechselLaeuft(true);
+    const status = (text: string) => setModellMsg({ simId, typ: "ok", text: `⟳ ${text}` });
     try {
-      await api.viewer.toggleModelVersion({ id: modellId, versionId: neueVersionId }, true, false);
-      setSims(prev => prev.map(s => s.id === simId
-        ? { ...s, modelle: s.modelle.map(m => m.id === modellId ? { ...m, versionId: neueVersionId } : m) }
-        : s));
+      const u = await stelleVersionUm(api, modellId, quelle, zielVersionId, sim.tasks, status);
+      setSims(prev => prev.map(s => s.id === simId ? {
+        ...s,
+        tasks: wendeUmstellungAn(s.tasks, u.mapping),
+        modelle: s.modelle.map(m => m.id === modellId ? { ...m, versionId: zielVersionId } : m),
+      } : s));
       setNeueVersionen(prev => { const next = { ...prev }; delete next[modellId]; return next; });
+      setModellMsg({ simId, typ: "ok", text: `✓ ${reparatur ? "Zuordnungen repariert" : "Version gewechselt"} — ${u.umgestellt} Bauteil-Zuordnung(en) übertragen`
+        + (u.nichtGefunden ? `, ${u.nichtGefunden} in dieser Version nicht vorhanden (unverändert gelassen)` : "") });
     } catch (e) {
-      setModellMsg({ simId, typ: "err", text: `Aktualisieren fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}` });
+      // Viewer wieder auf die (unveränderte) gepinnte Version zurück
+      try { await api.viewer.toggleModelVersion({ id: modellId, versionId: modell.versionId }, true, false); } catch { /* ignore */ }
+      setModellMsg({ simId, typ: "err", text: `${reparatur ? "Reparatur" : "Versionswechsel"} fehlgeschlagen: ${e instanceof Error ? e.message : String(e)} — die Simulation ist unverändert.` });
     } finally {
-      setUpdateDialog(null);
+      setVersionWechselLaeuft(false);
     }
   }
 
@@ -475,10 +498,14 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                         </div>
                         {neueVersion && darfBearbeiten && (
                           <button className="tc-btn-secondary" style={{ flexShrink: 0, fontSize: 9, padding: "3px 8px", color: "#b8860b", borderColor: "#e8c66b" }}
+                            disabled={versionWechselLaeuft}
                             onClick={() => setUpdateDialog({ simId: sim.id, modellId: m.id, modellName: m.name, neueVersionId: neueVersion })}
                             title="In Trimble Connect wurde eine neue Revision abgelegt"
                           >⟳ Aktualisieren</button>
                         )}
+                        <ModellVersionen api={api} modell={m} darfBearbeiten={darfBearbeiten} beschaeftigt={versionWechselLaeuft}
+                          onWechseln={ziel => versionWechseln(sim.id, m.id, ziel)}
+                          onReparieren={quelle => m.versionId && versionWechseln(sim.id, m.id, m.versionId, quelle)} />
                       </div>
                       );
                     })}
@@ -593,8 +620,9 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
             <div style={{ padding: "16px 18px" }}>
               <div style={{ fontSize: 12, color: "var(--tc-text-2)", lineHeight: 1.5, marginBottom: 16 }}>
                 Für <strong>{updateDialog.modellName}</strong> wurde in Trimble Connect eine neue Revision abgelegt.
-                Beim Aktualisieren wird diese neue Version geladen. Da sich Objekt-IDs zwischen Modellversionen
-                ändern können, können dadurch bestehende Bauteil-Verknüpfungen (Auto-Verknüpfung) ungültig werden.
+                Beim Aktualisieren wird diese neue Version geladen und die bestehenden Bauteil-Zuordnungen der Tasks
+                werden über die IFC-GUIDs auf die neue Version übertragen. Bauteile, die es in der neuen Version nicht
+                mehr gibt, bleiben unverändert und werden gemeldet.
               </div>
               <div style={{ display: "flex", gap: 6 }}>
                 <button className="tc-btn-primary" style={{ flex: 1 }} onClick={modellAktualisieren}>Fortfahren</button>

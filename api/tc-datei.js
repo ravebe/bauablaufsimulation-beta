@@ -3,6 +3,7 @@
 // Server-zu-Server gilt das nicht. Das Access-Token des Benutzers (aus der Workspace API) wird nur
 // durchgereicht, nicht gespeichert. Bewusst nur diese festen Operationen, kein allgemeiner Proxy.
 //   GET  ?fileId&versionId&location&mode=info   → { region, file }  (Name, parentId, versionId, status …)
+//   GET  ?fileId&location&mode=versions          → { region, versions }  (alle Versionen der Datei)
 //   GET  ?fileId&versionId&location              → { region, url }   (Download-URL)
 //   GET  ?fileId&versionId&location&mode=datei   → Datei-Bytes (gestreamt)
 //   POST ?aktion=initiate  { region, parentId, name } → { uploadURL, uploadId }  (Upload = neue Version
@@ -82,6 +83,10 @@ export default async function handler(req, res) {
     const query = versionId ? `?versionId=${encodeURIComponent(versionId)}` : "";
     const regionen = hostsFuer(location);
 
+    if (mode === "versions") {
+      const { region, json } = await tcAufruf(regionen, `files/${fileId}/versions`, auth);
+      return res.status(200).json({ region, versions: Array.isArray(json) ? json : (json?.items ?? json?.data ?? []) });
+    }
     if (mode === "info") {
       const { region, json } = await tcAufruf(regionen, `files/${fileId}${query}`, auth);
       return res.status(200).json({ region, file: json });

@@ -10,7 +10,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { SimModell, SimProjekt } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
-import { batchConvertToObjectIds, batchConvertToRuntimeIds } from "../hooks/useApi";
+import { batchConvertToObjectIds } from "../hooks/useApi";
+import { ordneInVersionZu, wendeUmstellungAn } from "./modellVersionHelpers";
 import { ladeTcDatei, ladeTcVersionHoch, tcDateiInfo, warteAufVerarbeitung } from "../hooks/tcDateien";
 import { erzeuge4dIfc } from "./ifcExport";
 import type { IfcExportErgebnis } from "./ifcExport";
@@ -38,8 +39,6 @@ function download(blob: Blob, filename: string) {
   a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
 }
-
-const pause = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 /** Version ohne 4D-Daten, auf der ein Export/eine Übernahme aufbauen soll */
 function basisVersion(sm: SimModell | undefined): string | undefined {
@@ -135,34 +134,13 @@ export default function IfcExportDialog({ sim, updateSim, api, geladeneModelle, 
       // 2. Warten, bis Connect die Version verarbeitet hat, dann im Viewer laden
       await warteAufVerarbeitung(api, mid, neu.versionId, s => schritt(mid, `Trimble Connect verarbeitet die neue Version (${s}) … das kann einige Minuten dauern.`));
       schritt(mid, "Neue Version im Viewer laden …");
-      const guids = [...new Set(guidById.values())];
-      let neueIds = new Map<string, number>();
-      for (let versuch = 0; versuch < 18 && (guids.length === 0 || neueIds.size === 0); versuch++) {
-        try { await api.viewer.toggleModelVersion({ id: mid, versionId: neu.versionId }, true); } catch { /* noch nicht bereit */ }
-        if (guids.length === 0) break;
-        neueIds = await batchConvertToRuntimeIds(api, mid, guids);
-        if (neueIds.size === 0) { schritt(mid, `Neue Version im Viewer laden … (Versuch ${versuch + 2})`); await pause(10000); }
-      }
-      if (guids.length > 0 && neueIds.size === 0) {
-        throw new Error(`Die neue Version ist in Trimble Connect hochgeladen, konnte aber nicht im Viewer geladen werden. Die Simulation verwendet weiterhin die bisherige Version.`);
-      }
+      const { mapping, umgestellt, nichtGefunden } = await ordneInVersionZu(api, mid, neu.versionId, simRef.current.tasks, guidById,
+        n => schritt(mid, `Neue Version im Viewer laden … (Versuch ${n + 1})`))
+        .catch(e => { throw new Error("Die neue Version ist in Trimble Connect hochgeladen, konnte aber nicht im Viewer geladen werden. Die Simulation verwendet weiterhin die bisherige Version.", { cause: e }); });
 
       // 3. Simulation umstellen: Version pinnen + Bauteil-Zuordnungen auf die neuen Runtime-IDs
-      let umgestellt = 0, nichtGefunden = 0;
       const aktuell = simRef.current;
-      const tasks = aktuell.tasks.map(t => {
-        if (!t.objektGuids.some(g => g.startsWith(`${mid}:::`))) return t;
-        return {
-          ...t, objektGuids: t.objektGuids.map(g => {
-            if (!g.startsWith(`${mid}:::`)) return g;
-            const ifcGuid = guidById.get(Number(g.slice(mid.length + 3)));
-            const neuId = ifcGuid ? neueIds.get(ifcGuid) : undefined;
-            if (neuId === undefined) { nichtGefunden++; return g; }
-            umgestellt++;
-            return `${mid}:::${neuId}`;
-          }),
-        };
-      });
+      const tasks = wendeUmstellungAn(aktuell.tasks, mapping);
       const vierD = { versionId: neu.versionId, basisVersionId: basis ?? ziel.versionId, am: new Date().toISOString() };
       const modelle = aktuell.modelle.some(m => m.id === mid)
         ? aktuell.modelle.map(m => m.id === mid ? { ...m, versionId: neu.versionId, vierD } : m)
