@@ -53,6 +53,9 @@ export interface SimModell {
   name: string; // Dateiname z.B. "23.ifc"
   versionId?: string; // zum Zeitpunkt der Zuweisung gepinnte TC-Versions-ID — wird beim Laden verwendet, damit neue Revisionen NICHT automatisch übernommen werden
   ifcGuidLayerMap?: Record<string, string>; // GUID → Layer-Name (aus IFC-Parsing)
+  // von "In Connect übernehmen" (IfcExportDialog.tsx) hochgeladene Version mit 4D-Daten + die Version
+  // ohne 4D-Daten, auf der sie beruht — erneute Exporte/Übernahmen gehen immer von der Basis aus
+  vierD?: { versionId: string; basisVersionId?: string; am: string };
 }
 
 export type Zugriff = "edit" | "read" | "none";
@@ -92,6 +95,8 @@ export interface SimProjekt {
   name: string;
   erstelltAm: string; // ISO string
   erstellerId?: string; // TC User ID des Erstellers
+  geaendertAm?: string; // ISO-Zeitstempel der letzten Bearbeitung (gesetzt in updateSim, App.tsx) — u.a. für den IFC-4D-Export
+  geaendertVon?: string; // Name des letzten Bearbeiters
   zugriff?: Record<string, Zugriff>; // userId → Zugriff (default: "read")
   autoVerknuepft?: boolean; // true wenn Auto-Verknüpfung durchgeführt
   ganttImport?: { dateiname: string; version: number }; // Metadaten des zuletzt importierten Gantt (version zählt Importe hoch)

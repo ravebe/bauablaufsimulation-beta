@@ -27,44 +27,107 @@ async function holeAccessToken(api: ApiInstance): Promise<string> {
   });
 }
 
-// TC-Regionen — die Projekt-Region (falls die API sie liefert) zuerst, die übrigen als Fallback
-const REGION_HOSTS: Record<string, string> = {
-  northamerica: "https://app.connect.trimble.com",
-  europe: "https://app21.connect.trimble.com",
-  asia: "https://app31.connect.trimble.com",
-  australia: "https://app32.connect.trimble.com",
-};
-
-async function hostReihenfolge(api: ApiInstance): Promise<string[]> {
-  const alle = Object.values(REGION_HOSTS);
+// Download läuft über den eigenen Proxy (api/tc-datei.js): der Browser darf die TC-REST-API bzw. den
+// Datei-Speicher wegen CORS nicht direkt aufrufen ("Failed to fetch").
+async function projektRegion(api: ApiInstance): Promise<string> {
   try {
     const proj = await api.project.getProject() as { location?: string };
-    const host = REGION_HOSTS[String(proj?.location ?? "").toLowerCase().replace(/[^a-z]/g, "")];
-    if (host) return [host, ...alle.filter(h => h !== host)];
-  } catch { /* Region unbekannt */ }
-  return alle;
+    return String(proj?.location ?? "");
+  } catch { return ""; }
+}
+
+async function fehlerText(res: Response): Promise<string> {
+  const json = await res.json().catch(() => null) as { error?: string } | null;
+  return json?.error ?? `HTTP ${res.status}`;
 }
 
 /** Lädt die Datei `fileId` (in der gepinnten `versionId`, sonst die aktuelle) als Bytes. */
 export async function ladeTcDatei(api: ApiInstance, fileId: string, versionId?: string): Promise<Uint8Array<ArrayBuffer>> {
   const token = await holeAccessToken(api);
   const headers = { Authorization: `Bearer ${token}` };
-  const query = versionId ? `?versionId=${encodeURIComponent(versionId)}` : "";
-  let letzterFehler = "";
-  for (const host of await hostReihenfolge(api)) {
-    for (const pfad of [`/tc/api/2.0/files/fs/${fileId}/downloadurl`, `/tc/api/2.0/files/${fileId}/downloadurl`]) {
-      try {
-        const res = await fetch(`${host}${pfad}${query}`, { headers });
-        if (!res.ok) { letzterFehler = `HTTP ${res.status}`; continue; }
-        const { url } = await res.json() as { url?: string };
-        if (!url) { letzterFehler = "keine Download-URL"; continue; }
-        const datei = await fetch(url);
-        if (!datei.ok) { letzterFehler = `Download HTTP ${datei.status}`; continue; }
-        return new Uint8Array(await datei.arrayBuffer());
-      } catch (e) {
-        letzterFehler = e instanceof Error ? e.message : String(e);
-      }
-    }
+  const params = new URLSearchParams({ fileId, location: await projektRegion(api) });
+  if (versionId) params.set("versionId", versionId);
+
+  // 1. Download-URL über den Proxy
+  const urlRes = await fetch(`/api/tc-datei?${params}`, { headers });
+  if (!urlRes.ok) throw new Error(`Datei konnte nicht aus Trimble Connect geladen werden: ${await fehlerText(urlRes)}`);
+  const { url } = await urlRes.json() as { url?: string };
+
+  // 2. Datei direkt vom Speicher (schnell, kein Grössenlimit) — bei CORS-Sperre über den Proxy
+  if (url) {
+    try {
+      const direkt = await fetch(url);
+      if (direkt.ok) return new Uint8Array(await direkt.arrayBuffer());
+    } catch { /* CORS — weiter über Proxy */ }
   }
-  throw new Error(`Datei konnte nicht aus Trimble Connect geladen werden (${letzterFehler}).`);
+  params.set("mode", "datei");
+  const dateiRes = await fetch(`/api/tc-datei?${params}`, { headers });
+  if (!dateiRes.ok) throw new Error(`Datei-Download fehlgeschlagen: ${await fehlerText(dateiRes)}`);
+  return new Uint8Array(await dateiRes.arrayBuffer());
+}
+
+export interface TcDateiInfo {
+  region: string; // Region-Key des Proxys (für Upload/Commit auf derselben Region)
+  id: string;
+  name: string;
+  parentId?: string;
+  versionId?: string;
+  status?: string; // PENDING | PROCESSING | DONE | ERROR | …
+}
+
+/** Metadaten einer Datei (ohne versionId: aktuellste Version). */
+export async function tcDateiInfo(api: ApiInstance, fileId: string, versionId?: string): Promise<TcDateiInfo> {
+  const token = await holeAccessToken(api);
+  const params = new URLSearchParams({ fileId, location: await projektRegion(api), mode: "info" });
+  if (versionId) params.set("versionId", versionId);
+  const res = await fetch(`/api/tc-datei?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(`Datei-Infos nicht erhalten: ${await fehlerText(res)}`);
+  const { region, file } = await res.json() as { region: string; file: Omit<TcDateiInfo, "region"> };
+  return { region, ...file };
+}
+
+/** Lädt `inhalt` als neue Version hoch (gleicher Name im gleichen Ordner wie `ziel`) — Ablauf wie
+ *  trimble-connect-sdk: initiate → PUT an die vorsignierte URL → commit. Der PUT geht direkt an den
+ *  Speicher (über Vercel ginge nur bis 4.5 MB). */
+export async function ladeTcVersionHoch(api: ApiInstance, ziel: TcDateiInfo, inhalt: Blob): Promise<TcDateiInfo> {
+  if (!ziel.parentId) throw new Error("Ordner der Datei unbekannt — Upload nicht möglich.");
+  const token = await holeAccessToken(api);
+  const post = (aktion: string, body: object) => fetch(`/api/tc-datei?aktion=${aktion}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ region: ziel.region, ...body }),
+  });
+
+  const init = await post("initiate", { parentId: ziel.parentId, name: ziel.name });
+  if (!init.ok) throw new Error(`Upload konnte nicht gestartet werden: ${await fehlerText(init)}`);
+  const { uploadURL, uploadId } = await init.json() as { uploadURL?: string; uploadId?: string };
+  if (!uploadURL || !uploadId) throw new Error("Upload konnte nicht gestartet werden (keine Upload-URL).");
+
+  let put: Response;
+  try {
+    put = await fetch(uploadURL, { method: "PUT", body: inhalt });
+  } catch (e) {
+    throw new Error(`Hochladen der Datei blockiert (${e instanceof Error ? e.message : e}).`, { cause: e });
+  }
+  if (!put.ok) throw new Error(`Hochladen der Datei fehlgeschlagen (HTTP ${put.status}).`);
+
+  const commit = await post("commit", { uploadId });
+  if (!commit.ok) throw new Error(`Upload konnte nicht abgeschlossen werden: ${await fehlerText(commit)}`);
+  const datei = await commit.json() as Omit<TcDateiInfo, "region">;
+  return { region: ziel.region, ...datei };
+}
+
+/** Wartet, bis Trimble Connect die Version verarbeitet hat (Viewer kann sie erst dann laden). */
+export async function warteAufVerarbeitung(api: ApiInstance, fileId: string, versionId: string,
+  onStatus: (s: string) => void, maxMinuten = 20): Promise<void> {
+  const ende = Date.now() + maxMinuten * 60000;
+  while (Date.now() < ende) {
+    const info = await tcDateiInfo(api, fileId, versionId).catch(() => null);
+    const status = String(info?.status ?? "").toUpperCase();
+    if (status === "DONE" || (info && !status)) return; // ohne Status-Feld: Laden im Viewer wird ohnehin wiederholt
+    if (status === "ERROR" || status === "CANCELLED") throw new Error(`Trimble Connect konnte die Datei nicht verarbeiten (Status ${status}).`);
+    onStatus(status || "unbekannt");
+    await new Promise(r => setTimeout(r, 10000));
+  }
+  throw new Error(`Verarbeitung dauert länger als ${maxMinuten} Minuten.`);
 }

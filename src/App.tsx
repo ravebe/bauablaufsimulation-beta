@@ -258,7 +258,8 @@ export default function App() {
       redoStack.current = [];
       setUndoLen(undoStack.current.length); setRedoLen(0);
     }
-    setSims(prev => prev.map(s => s.id === updated.id ? updated : s));
+    const gestempelt = { ...updated, geaendertAm: new Date().toISOString(), geaendertVon: userName || undefined };
+    setSims(prev => prev.map(s => s.id === updated.id ? gestempelt : s));
   }
 
   function undo() {
@@ -617,7 +618,7 @@ export default function App() {
       {zugriffsManagerOffen && <ZugriffskontrollManager api={api} onClose={() => setZugriffsManagerOffen(false)}
         sims={sims} setSims={setSims} aktivId={aktivId} onWechsel={setAktivId} userId={userId} userEmail={userEmail} />}
       {kalenderManagerOffen && aktiveSim && <KalenderManager sim={aktiveSim} updateSim={updateSim} onClose={() => setKalenderManagerOffen(false)} />}
-      {ifcExportOffen && aktiveSim && <IfcExportDialog sim={aktiveSim} api={api} geladeneModelle={geladeneModelle} onClose={() => setIfcExportOffen(false)} />}
+      {ifcExportOffen && aktiveSim && <IfcExportDialog sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} api={api} geladeneModelle={geladeneModelle} benutzer={userName} onClose={() => setIfcExportOffen(false)} />}
       {hilfeOffen && <HilfeManager initialTab={aktTab} onClose={() => setHilfeOffen(false)} />}
     </div>
   );

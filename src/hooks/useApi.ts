@@ -332,4 +332,22 @@ export async function batchConvertToObjectIds(
   return result;
 }
 
+/** IFC-GUIDs → Runtime-IDs im aktuell geladenen Modell (Umkehrung von batchConvertToObjectIds) */
+export async function batchConvertToRuntimeIds(
+  api: ApiInstance,
+  modelId: string,
+  guids: string[]
+): Promise<Map<string, number>> {
+  const BATCH = 200;
+  const result = new Map<string, number>();
+  for (let i = 0; i < guids.length; i += BATCH) {
+    const slice = guids.slice(i, i + BATCH);
+    try {
+      const ids = await api.viewer.convertToObjectRuntimeIds(modelId, slice);
+      slice.forEach((g, j) => { const n = Number((ids as unknown[])?.[j]); if (ids?.[j] != null && !isNaN(n)) result.set(g, n); });
+    } catch { /* Chunk überspringen — fehlende werden vom Aufrufer gemeldet */ }
+  }
+  return result;
+}
+
 export { parseObjectIds };

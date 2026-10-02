@@ -20,7 +20,7 @@
 import type { Task, TaskTyp, Kran } from "../types";
 import { TASK_TYP_LABEL, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, parseDateUniversal } from "../types";
 import type { Kalender } from "./kalenderHelpers";
-import { arbeitstageZwischen, LEERER_KALENDER } from "./kalenderHelpers";
+import { arbeitstageZwischen, getKW, LEERER_KALENDER } from "./kalenderHelpers";
 
 export type IfcSchemaFamilie = "IFC4" | "IFC2X3";
 
@@ -132,6 +132,8 @@ export interface IfcExportEingabe {
   /** taskId → IFC-GlobalIds der Bauteile dieses Modells */
   bauteilGuidsJeTask: Map<string, string[]>;
   jetzt?: Date;
+  /** Zusatzinfos für das Pset "Bauablauf" */
+  meta?: { erstelltAm?: string; geaendertAm?: string; geaendertVon?: string; exportiertVon?: string; modellVersion?: string };
 }
 
 export interface IfcExportErgebnis {
@@ -354,6 +356,23 @@ export function erzeuge4dIfc(e: IfcExportEingabe): IfcExportErgebnis {
   const prop = (name: string, wert: string) => w.add(`IFCPROPERTYSINGLEVALUE(${stepText(name)},$,${wert},$)`);
   const vereint = (werte: string[]) => [...new Set(werte.filter(Boolean))].join(" | ");
 
+  // Zeitstempel: IFC4 als IfcDateTime, IFC2X3 (kein Datumstyp für Properties) als lesbarer Text
+  const zeitpunkt = (iso: string | undefined): string | null => {
+    const d = iso ? new Date(iso) : null;
+    if (!d || isNaN(d.getTime())) return null;
+    const lokal = `${d.getFullYear()}-${zwei(d.getMonth() + 1)}-${zwei(d.getDate())}T${zwei(d.getHours())}:${zwei(d.getMinutes())}:${zwei(d.getSeconds())}`;
+    return ist4 ? `IFCDATETIME('${lokal}')` : `IFCLABEL('${lokal.slice(0, 16).replace("T", " ")}')`;
+  };
+  const metaProps: [string, string][] = [];
+  const m = e.meta ?? {};
+  const meta = (name: string, wert: string | null) => { if (wert) metaProps.push([name, wert]); };
+  meta("Simulation_erstellt_am", zeitpunkt(m.erstelltAm));
+  meta("Simulation_geaendert_am", zeitpunkt(m.geaendertAm));
+  meta("Simulation_geaendert_von", m.geaendertVon ? `IFCLABEL(${label(m.geaendertVon)})` : null);
+  meta("Exportiert_am", zeitpunkt(jetzt.toISOString()));
+  meta("Exportiert_von", m.exportiertVon ? `IFCLABEL(${label(m.exportiertVon)})` : null);
+  meta("Modellversion", m.modellVersion ? `IFCIDENTIFIER(${label(m.modellVersion)})` : null);
+
   // Bauteil-Pset: eins je Kombination von Tasks, damit kein Bauteil zwei gleichnamige Psets bekommt
   const gruppen = new Map<string, { idx: number[]; ids: number[] }>();
   for (const [guid, idx] of tasksJeBauteil) {
@@ -379,10 +398,27 @@ export function erzeuge4dIfc(e: IfcExportEingabe): IfcExportErgebnis {
       ? prop("Dauer_Arbeitstage", `IFCINTEGER(${termine[einzel].tage})`)
       : prop("Dauer_Arbeitstage", `IFCLABEL(${label(vereint(idx.map(i => String(termine[i].tage))))})`));
     const phase = vereint(ts.map(t => t.kranbereich ?? ""));
+    const kw = (iso: string | null) => iso ? `${iso.slice(0, 4)}-KW${String(getKW(parseDateUniversal(iso)!)).padStart(2, "0")}` : "";
+    props.push(prop("Start_KW", `IFCLABEL(${label(vereint(idx.map(i => kw(termine[i].start))))})`),
+      prop("Ende_KW", `IFCLABEL(${label(vereint(idx.map(i => kw(termine[i].ende))))})`));
+    const gruppe = vereint(idx.map(i => elternIdx[i] !== null ? taskName(tasks[elternIdx[i]!], elternIdx[i]!) : ""));
+    if (gruppe) props.push(prop("Gruppe", `IFCLABEL(${label(gruppe)})`));
+    const vorg = vereint(ts.map(t => {
+      const p = t.predecessorId ? idxById.get(t.predecessorId) : undefined;
+      return p !== undefined ? `${nummern.get(tasks[p].id) ?? ""} ${taskName(tasks[p], p)}`.trim() : "";
+    }));
+    if (vorg) props.push(prop("Vorgaenger", `IFCLABEL(${label(vorg)})`));
+    const warte = vereint(ts.filter(t => t.predecessorId && t.lagDays).map(t => String(t.lagDays)));
+    if (warte) props.push(prop("Wartetage", `IFCLABEL(${label(warte)})`));
+    const kuerzel = vereint(ts.map(t => t.bauteilKuerzel ?? ""));
+    if (kuerzel) props.push(prop("Kuerzel", `IFCIDENTIFIER(${label(kuerzel)})`));
     if (phase) props.push(prop("Bauphase", `IFCLABEL(${label(phase)})`));
     const kran = vereint(ts.flatMap(t => (t.kraene ?? []).map(k => kranName.get(k) ?? "")));
     if (kran) props.push(prop("Kran", `IFCLABEL(${label(kran)})`));
+    const personal = vereint(ts.filter(t => t.personalSoll != null).map(t => String(t.personalSoll)));
+    if (personal) props.push(prop("Personal_Soll", `IFCLABEL(${label(personal)})`));
     props.push(prop("Simulation", `IFCLABEL(${label(e.simName)})`));
+    for (const [name, wert] of metaProps) props.push(prop(name, wert));
     const pset = w.add(`IFCPROPERTYSET('${g(`pset|${key}`)}',${oh},${stepText(PSET_BAUTEIL)},$,${refs(props)})`);
     w.add(`IFCRELDEFINESBYPROPERTIES('${g(`rel-pset|${key}`)}',${oh},$,$,${refs(ids)},${ref(pset)})`);
   }

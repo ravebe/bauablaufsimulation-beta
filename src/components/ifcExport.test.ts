@@ -26,6 +26,7 @@ const guids = new Map([["a", [ALT]], ["b", [WAND]]]);
 const eingabe = (schema: string) => ({
   ifcText: ifc(schema), simId: "sim1", simName: "Test Ü", modellId: "m", tasks, bauteilGuidsJeTask: guids,
   kalender: { feiertage: [{ datum: "2026-03-10", name: "Feiertag" }], ferien: [] }, jetzt: new Date(2026, 0, 1, 12, 0, 0),
+  meta: { geaendertAm: new Date(2026, 1, 3, 9, 30, 0).toISOString(), geaendertVon: "Max", exportiertVon: "Max" },
 });
 
 describe("ifcExport", () => {
@@ -66,6 +67,12 @@ describe("ifcExport", () => {
     expect(t).toMatch(/IFCRELASSIGNSTOPROCESS\('[^']{22}',#1,\$,\$,\(#21\),\$,#\d+,\$\)/);
     expect(t).toMatch(/IFCRELNESTS\('[^']{22}',#1,\$,\$,#\d+,\(#\d+,#\d+\)\)/);
     expect(t).toContain("IFCDATE('2026-03-09')");
+    expect(t).toContain("IFCPROPERTYSINGLEVALUE('Start_KW',$,IFCLABEL('2026-KW11'),$)");
+    expect(t).toContain("IFCPROPERTYSINGLEVALUE('Gruppe',$,IFCLABEL('Rohbau'),$)");
+    expect(t).toContain("IFCPROPERTYSINGLEVALUE('Vorgaenger',$,IFCLABEL('1 Abbruch Decke'),$)");
+    expect(t).toContain("IFCPROPERTYSINGLEVALUE('Wartetage',$,IFCLABEL('2'),$)");
+    expect(t).toContain("IFCPROPERTYSINGLEVALUE('Simulation_geaendert_am',$,IFCDATETIME('2026-02-03T09:30:00'),$)");
+    expect(t).toContain("IFCPROPERTYSINGLEVALUE('Exportiert_von',$,IFCLABEL('Max'),$)");
     expect(erg.anzahl).toMatchObject({ tasks: 3, verknuepfteBauteile: 2, nichtGefunden: 0, sequenzen: 1 });
     // nur ASCII, Original unverändert davor/dahinter
     expect(/^[\x09\x0a\x0d\x20-\x7e]*$/.test(t)).toBe(true);
@@ -85,6 +92,7 @@ describe("ifcExport", () => {
     expect(t).toMatch(/IFCRELSEQUENCE\('[^']{22}',#1,\$,\$,#\d+,#\d+,172800\.,\.FINISH_START\.\)/);
     expect(t).toMatch(/IFCRELASSIGNSTOPROCESS\('[^']{22}',#1,\$,\$,\(#20\),\$,#\d+,\$\)/);
     expect(t).toContain("IFCCALENDARDATE(9,3,2026)");
+    expect(t).toContain("IFCPROPERTYSINGLEVALUE('Simulation_geaendert_am',$,IFCLABEL('2026-02-03 09:30'),$)");
     expect(erg.hinweise.some(h => h.includes("Kalender"))).toBe(true);
   });
 
