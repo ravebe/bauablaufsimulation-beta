@@ -16,9 +16,22 @@ export function tcEventHandler(event: string, args: unknown) {
   tokenWartende = [];
 }
 
+const pause = (ms: number) => new Promise(r => setTimeout(r, ms));
+
 async function holeAccessToken(api: ApiInstance): Promise<string> {
-  const res = await api.extension.requestPermission("accesstoken");
-  if (res && res !== "pending" && res !== "denied") return res;
+  // Während der Viewer ein grosses Modell lädt, beantwortet die Workspace API Anfragen oft nicht rechtzeitig
+  // ("dispatcher.ts | sendRequest(): Operation timed out.") — dann das zuletzt erhaltene Token nehmen
+  // bzw. erneut versuchen.
+  let res: string | undefined;
+  for (let versuch = 1; ; versuch++) {
+    try { res = await api.extension.requestPermission("accesstoken") as string; break; }
+    catch (e) {
+      if (letzterToken) return letzterToken;
+      if (versuch >= 4) throw new Error(`Kein Zugriffs-Token von Trimble Connect erhalten (${e instanceof Error ? e.message : String(e)}). Bitte warten, bis das Modell geladen ist, und erneut versuchen.`);
+      await pause(3000);
+    }
+  }
+  if (res && res !== "pending" && res !== "denied") { letzterToken = res; return res; }
   if (res === "denied") throw new Error("Zugriff auf Trimble Connect wurde verweigert.");
   if (letzterToken) return letzterToken;
   return new Promise<string>((resolve, reject) => {
@@ -29,11 +42,13 @@ async function holeAccessToken(api: ApiInstance): Promise<string> {
 
 // Download läuft über den eigenen Proxy (api/tc-datei.js): der Browser darf die TC-REST-API bzw. den
 // Datei-Speicher wegen CORS nicht direkt aufrufen ("Failed to fetch").
+let letzteRegion = "";
 async function projektRegion(api: ApiInstance): Promise<string> {
   try {
     const proj = await api.project.getProject() as { location?: string };
-    return String(proj?.location ?? "");
-  } catch { return ""; }
+    if (proj?.location) letzteRegion = String(proj.location);
+    return String(proj?.location ?? letzteRegion);
+  } catch { return letzteRegion; }
 }
 
 async function fehlerText(res: Response): Promise<string> {
