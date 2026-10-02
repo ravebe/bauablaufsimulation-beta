@@ -11,6 +11,7 @@ import TabAvor from "./components/TabAvor";
 import TabKosten from "./components/TabKosten";
 import ZugriffskontrollManager from "./components/ZugriffskontrollManager";
 import KalenderManager from "./components/KalenderManager";
+import IfcExportDialog from "./components/IfcExportDialog";
 import HilfeManager from "./components/HilfeManager";
 import { EXPORT_FORMATE } from "./components/ganttExportFormate";
 import { useClickOutside } from "./hooks/useClickOutside";
@@ -292,6 +293,7 @@ export default function App() {
   const optionsDropdownRef = useClickOutside<HTMLDivElement>(optionsDropdown, () => { setOptionsDropdown(false); setExportSubOffen(false); });
   const [zugriffsManagerOffen, setZugriffsManagerOffen] = useState(false);
   const [kalenderManagerOffen, setKalenderManagerOffen] = useState(false);
+  const [ifcExportOffen, setIfcExportOffen] = useState(false);
   const [hilfeOffen, setHilfeOffen] = useState(false);
   // Spiegelt undoStack/redoStack.length als echten State (statt die Refs während des Renderns direkt
   // zu lesen) — nur so ist garantiert, dass Undo-/Redo-Buttons nach jeder Änderung korrekt neu rendern.
@@ -423,6 +425,12 @@ export default function App() {
                       {f.label}
                     </div>
                   ))}
+                  {exportSubOffen && aktiveSim && (
+                    <div className="tc-header-dropdown-item" style={{ paddingLeft: 24, fontSize: 10 }}
+                      onClick={() => { setIfcExportOffen(true); setExportSubOffen(false); setOptionsDropdown(false); }}>
+                      IFC 4D (.ifc) …
+                    </div>
+                  )}
                   <div className="tc-header-dropdown-item" style={{ opacity: aktiveSim ? 1 : 0.4, cursor: aktiveSim ? "pointer" : "default" }}
                     onClick={() => { if (aktiveSim) { setKalenderManagerOffen(true); setOptionsDropdown(false); } }}>
                     <div>
@@ -609,6 +617,7 @@ export default function App() {
       {zugriffsManagerOffen && <ZugriffskontrollManager api={api} onClose={() => setZugriffsManagerOffen(false)}
         sims={sims} setSims={setSims} aktivId={aktivId} onWechsel={setAktivId} userId={userId} userEmail={userEmail} />}
       {kalenderManagerOffen && aktiveSim && <KalenderManager sim={aktiveSim} updateSim={updateSim} onClose={() => setKalenderManagerOffen(false)} />}
+      {ifcExportOffen && aktiveSim && <IfcExportDialog sim={aktiveSim} api={api} geladeneModelle={geladeneModelle} onClose={() => setIfcExportOffen(false)} />}
       {hilfeOffen && <HilfeManager initialTab={aktTab} onClose={() => setHilfeOffen(false)} />}
     </div>
   );

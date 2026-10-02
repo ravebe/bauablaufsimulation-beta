@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { TcModel, TcObjectWithProps, TcSelectionEvent } from "../types";
 import { parseObjectIds } from "../types";
+import { tcEventHandler } from "./tcDateien";
 
 // Entspricht ModelSpec der Trimble Connect Workspace API (viewer.getModels())
 export interface TcModelSpec {
@@ -102,7 +103,7 @@ export function useApi(): UseApiReturn {
           return;
         }
 
-        apiInst = (await wapi.connect(window.parent, () => {})) as ApiInstance;
+        apiInst = (await wapi.connect(window.parent, tcEventHandler)) as ApiInstance;
         setApi(apiInst);
 
         // Projekt-ID laden — darf "ready" niemals blockieren, falls getProject()
