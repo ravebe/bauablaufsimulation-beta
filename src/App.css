@@ -195,6 +195,9 @@
 }
 .tc-btn-primary:hover { background: #256da8; }
 .tc-btn-primary:disabled { opacity: .5; cursor: default; }
+/* Hellere Variante für sekundäre Aktionen (z.B. "Attribut-Tasks erzeugen") */
+.tc-btn-primary.hell { background: #5aa5dd; border-color: #5aa5dd; }
+.tc-btn-primary.hell:hover { background: #4996d1; border-color: #4996d1; }
 
 .tc-btn-green {
   height: 28px; padding: 0 7px; background: var(--tc-blue); color: #fff; border: none;

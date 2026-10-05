@@ -579,6 +579,7 @@ export default function App() {
             setAktivId={setAktivId}
             geladeneModelle={geladeneModelle}
             userId={userId}
+            sichtbar={aktTab === "projekte"}
           />
         </div>
         <div className="tc-tab-pane" style={{ display: aktTab === "bauteile" ? "block" : "none" }}>

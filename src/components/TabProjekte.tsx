@@ -21,10 +21,26 @@ interface Props {
   setAktivId: (id: string) => void;
   geladeneModelle: { id: string; name: string }[];
   userId?: string | null;
+  /** Tab "Projekte" ist gerade sichtbar — beim Wechsel wird der Verknüpfungs-Bereich zugeklappt */
+  sichtbar?: boolean;
 }
 
-export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, userId }: Props) {
+export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, userId, sichtbar = true }: Props) {
   const [aufgeklappt, setAufgeklappt] = useState<string | null>(aktivId);
+  // Sim-ID, deren Verknüpfungs-Aktion (Auto-Verknüpfung / Attribut-Tasks) nach Klick auf den Umschalter
+  // eingeblendet ist — Klick ausserhalb oder Tab-Wechsel blendet sie wieder aus (Komponente bleibt gemountet,
+  // damit Eingaben und ein laufender Vorgang erhalten bleiben).
+  const [verknuepfOffen, setVerknuepfOffen] = useState<string | null>(null);
+  const verknuepfRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!verknuepfOffen) return;
+    const handler = (e: MouseEvent) => {
+      if (verknuepfRef.current && !verknuepfRef.current.contains(e.target as Node)) setVerknuepfOffen(null);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [verknuepfOffen]);
+  if (!sichtbar && verknuepfOffen) setVerknuepfOffen(null);
   const [neuName, setNeuName] = useState("");
   const [zeigeNeu, setZeigeNeu] = useState(false);
   const [modellLaden, setModellLaden] = useState(false);
@@ -461,31 +477,60 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                   ganttInfo={sim.ganttImport}
                 />
 
-                {sim.modelle.length > 0 && (
+                {sim.modelle.length > 0 && (() => {
+                  const offen = verknuepfOffen === sim.id;
+                  return (
+                <div ref={offen ? verknuepfRef : undefined}>
                   <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
                     {([
-                      { modus: "auto" as const, label: "🔗 Auto-Verknüpfung", disabled: !sim.ganttImport },
-                      { modus: "attribut" as const, label: "🏷️ Attribut-Tasks", disabled: false },
-                    ]).map(({ modus, label, disabled }) => {
-                      const aktiv = (sim.verknuepfungsModus ?? "auto") === modus;
+                      { modus: "auto" as const, label: "🔗 Auto-Verknüpfung", disabled: !sim.ganttImport,
+                        hinweis: sim.autoVerknuepft
+                          ? "Die Auto-Verknüpfung wurde bereits ausgeführt. Erneutes Ausführen kann bestehende Bauteil-Zuweisungen überschreiben."
+                          : null },
+                      { modus: "attribut" as const, label: "🏷️ Attribut-Tasks", disabled: false,
+                        hinweis: sim.attributTasksErzeugt
+                          ? "Attribut-Tasks wurden bereits erzeugt. Erneutes Erzeugen aktualisiert diese Tasks; nicht mehr vorkommende Kombinationen werden entfernt."
+                          : null },
+                    ]).map(({ modus, label, disabled, hinweis }) => {
+                      const aktiv = offen && (sim.verknuepfungsModus ?? "auto") === modus;
                       return (
-                        <button key={modus} disabled={disabled}
-                          onClick={() => setSims(prev =>
-                            prev.map(s => s.id === sim.id ? { ...s, verknuepfungsModus: modus } : s)
-                          )}
+                        <button key={modus} disabled={disabled} title={hinweis ?? undefined}
+                          onClick={() => {
+                            if (aktiv) { setVerknuepfOffen(null); return; }
+                            setSims(prev => prev.map(s => s.id === sim.id ? { ...s, verknuepfungsModus: modus } : s));
+                            setVerknuepfOffen(sim.id);
+                          }}
                           style={{
                             flex: 1, padding: "3px 6px", fontSize: 10, fontFamily: "inherit",
                             cursor: disabled ? "not-allowed" : "pointer",
-                            background: disabled ? "#f3f4f6" : aktiv ? "#2d7dbd" : "#fff",
-                            color: disabled ? "#aaa" : aktiv ? "#fff" : "#555",
-                            border: `1px solid ${disabled ? "#e4e7ea" : aktiv ? "#2d7dbd" : "#d4dce4"}`, borderRadius: 3,
+                            background: disabled ? "#f3f4f6" : aktiv ? "#e3f0fb" : "#fff",
+                            color: disabled ? "#aaa" : aktiv ? "#1f639c" : "#555",
+                            border: `1px solid ${disabled ? "#e4e7ea" : aktiv ? "#8fc0e8" : "#d4dce4"}`, borderRadius: 3,
+                            display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
                           }}>
                           {label}
+                          {hinweis && (
+                            <span style={{
+                              display: "inline-flex", alignItems: "center", justifyContent: "center",
+                              width: 12, height: 12, borderRadius: "50%", background: "#f0a23b", color: "#fff",
+                              fontSize: 9, fontWeight: 700, lineHeight: 1,
+                            }}>!</span>
+                          )}
                         </button>
                       );
                     })}
                   </div>
-                )}
+                  {offen && (() => {
+                    const hinweis = (sim.verknuepfungsModus ?? "auto") === "auto"
+                      ? (sim.autoVerknuepft ? "Die Auto-Verknüpfung wurde bereits ausgeführt — erneutes Ausführen kann bestehende Bauteil-Zuweisungen überschreiben." : null)
+                      : (sim.attributTasksErzeugt ? "Attribut-Tasks wurden bereits erzeugt — erneutes Erzeugen aktualisiert diese Tasks." : null);
+                    return hinweis ? (
+                      <div style={{ marginTop: 6, fontSize: 10, color: "#9A3412", background: "#FFF7ED", border: "1px solid #FBD3A5", padding: "4px 6px" }}>
+                        ! {hinweis}
+                      </div>
+                    ) : null;
+                  })()}
+                  <div style={{ display: offen ? "block" : "none" }}>
 
                 {(sim.verknuepfungsModus ?? "auto") === "auto" && !sim.ganttImport && sim.modelle.length > 0 && (
                   <div className="alert info" style={{ marginTop: 6 }}>
@@ -514,6 +559,10 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                     done={sim.attributTasksErzeugt}
                   />
                 )}
+                  </div>
+                </div>
+                  );
+                })()}
 
                 <div className="tc-divider" />
                 </>

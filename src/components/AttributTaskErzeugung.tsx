@@ -204,7 +204,7 @@ export default function AttributTaskErzeugung({ api, sim, onUpdate, done }: Prop
     <div style={{ marginTop: 6 }} ref={wrapRef}>
       {!offen ? (
         <div style={{ position: "relative" }}>
-          <button className={done ? "tc-btn-secondary" : "tc-btn-primary"}
+          <button className={done ? "tc-btn-secondary" : "tc-btn-primary hell"}
             style={{ width: "100%", fontSize: 11, opacity: done ? 0.7 : 1 }}
             onClick={() => { setOffen(true); if (allAttrs.length === 0) ladeAttr(); }}>
             {laeuft ? (
