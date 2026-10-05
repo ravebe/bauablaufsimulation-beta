@@ -73,6 +73,7 @@ describe("ifcImport", () => {
   it("erkennt den Bauablauf am Dateiende, nicht in leeren Dateien", () => {
     const text = ifc("IFC4");
     expect(enthaeltBauablauf(text)).toBe(false);
+    expect(enthaeltBauablauf(text + "\n#9001=IFCPROPERTYSET('x',$,'Bauablauf',$,());\n#9002=IFCRELSEQUENCE('y',$,$,$,#1,#2,$,$,$);")).toBe(false);
     const erg = erzeuge4dIfc({ ifcText: text, simId: "s", simName: "S", modellId: "m", tasks, bauteilGuidsJeTask: new Map() });
     expect(enthaeltBauablauf(fuegeIfcEin(text, erg).slice(-2000))).toBe(true);
     expect(() => leseBauablaufAusIfc(text)).toThrow(/kein Bauablauf/);

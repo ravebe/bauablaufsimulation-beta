@@ -11,10 +11,11 @@ import type { Kalender, Feiertag, Ferienzeitraum } from "./kalenderHelpers";
 import { erkenneIfcSchema } from "./ifcExport";
 import type { IfcSchemaFamilie } from "./ifcExport";
 
-/** Schnelltest auf dem Dateiende (z.B. letzte 1–2 MB): unsere angehängten 4D-Daten liegen dort. */
+/** Schnelltest auf dem Dateiende (z.B. letzte 1–2 MB): unsere angehängten 4D-Daten liegen dort.
+ *  Nur IfcTask zählt — leseBauablaufAusIfc braucht Vorgänge; ein Pset "Bauablauf" an den Bauteilen oder
+ *  lose Beziehungen (IfcRelSequence …) ohne Tasks würden sonst ein Angebot auslösen, das dann scheitert. */
 export function enthaeltBauablauf(text: string): boolean {
-  return /IFC(TASK|WORKSCHEDULE|RELASSIGNSTOPROCESS|RELASSIGNSTASKS|RELSEQUENCE)\s*\(/i.test(text)
-    || text.includes("'Bauablauf_Vorgang'") || text.includes("'Bauablauf'");
+  return /IFCTASK\s*\(/i.test(text);
 }
 
 // --- STEP-Hilfen ---
