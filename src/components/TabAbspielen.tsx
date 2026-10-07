@@ -117,17 +117,29 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
     return [...byModel.entries()].map(([modelId, rIds]) => ({ modelId, objectRuntimeIds: [...rIds] }));
   }
 
+  // Aus der Simulation entfernte Bauteile (Tab Bauteile → "Aus Simulation entfernt") nach JEDEM Einblenden
+  // gleich wieder ausblenden: blendet der Viewer z.B. eine Baugruppe ein, kommen sonst auch deren (entfernte)
+  // Teile mit — so bleiben sie während der Wiedergabe so gut wie möglich weg.
+  const ausgeschlossen = (aktiveSim?.ausgeschlossen ?? []).map(a => a.guid);
+  async function ausgeschlosseneNachziehen() {
+    if (!api || ausgeschlossen.length === 0) return;
+    try { await api.viewer.setObjectState({ modelObjectIds: zuBatch(ausgeschlossen) } as any, { visible: false } as any); } catch {}
+  }
+
   async function setzeZustand(guids: string[], opts: { visible?: boolean; color?: string | null }) {
     if (!api || guids.length === 0) return;
     const batch = zuBatch(guids);
     if (batch.length === 0) return;
     try { await api.viewer.setObjectState({ modelObjectIds: batch } as any, opts as any); } catch {}
+    if (opts.visible === true) await ausgeschlosseneNachziehen();
   }
 
   function setzeZustandAsync(guids: string[], opts: { visible?: boolean; color?: string | null }) {
     if (!api || guids.length === 0) return;
     const batch = zuBatch(guids); if (batch.length === 0) return;
-    api.viewer.setObjectState({ modelObjectIds: batch } as any, opts as any).catch(() => {});
+    api.viewer.setObjectState({ modelObjectIds: batch } as any, opts as any)
+      .then(() => (opts.visible === true ? ausgeschlosseneNachziehen() : undefined))
+      .catch(() => {});
   }
 
   async function selektieren(guids: string[]) {
@@ -170,6 +182,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
       else if ((t.typ === "abbruch" || istZeitlichWieTemporaer(t.typ)) && t.objektGuids.length > 0)
         await setzeZustand(t.objektGuids, { visible: true });
     }
+    await ausgeschlosseneNachziehen(); // auch falls der Viewer sie zwischenzeitlich wieder eingeblendet hat
     setCurrentTag(0); currentTagRef.current = 0;
     setStatus("✓ Bereit"); setAktiveTasksAnzeige(null);
   }

@@ -125,7 +125,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
     if (sharedNadelTag && datum) sharedNadelTag.current = datum.getTime();
     if (!api || !minDate) return;
     const tag = tagVonDatum(iso, minDate);
-    const aktive = await dreiDZustandAufTagSetzen(api, tasks, minDate, tag, true);
+    const aktive = await dreiDZustandAufTagSetzen(api, tasks, minDate, tag, true, (sim?.ausgeschlossen ?? []).map(a => a.guid));
     setKlickErgebnis(aktive.length > 0 ? `${aktive.length} Task${aktive.length === 1 ? "" : "s"} aktiv` : "Keine aktiven Tasks");
   }
 

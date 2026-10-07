@@ -46,7 +46,8 @@ async function selektieren(api: ApiInstance, guids: string[]) {
 
 /** Baut den 3D-Zustand für einen bestimmten Tag auf (Sichtbarkeit + Typ-Einfärbung + Selektion der
  * aktiven Neubau-Objekte) und gibt die an diesem Tag aktiven Tasks zurück. */
-export async function dreiDZustandAufTagSetzen(api: ApiInstance, tasks: Task[], minDate: Date, tag: number, farbeEin = true): Promise<Task[]> {
+/** @param ausgeschlossen aus der Simulation entfernte Bauteile — werden nach dem Einblenden wieder ausgeblendet */
+export async function dreiDZustandAufTagSetzen(api: ApiInstance, tasks: Task[], minDate: Date, tag: number, farbeEin = true, ausgeschlossen: string[] = []): Promise<Task[]> {
   const showGuids: string[] = [];
   const hideGuids: string[] = [];
   const colorBestand: string[] = [];
@@ -88,6 +89,7 @@ export async function dreiDZustandAufTagSetzen(api: ApiInstance, tasks: Task[], 
 
   if (hideGuids.length > 0) await setzeZustand(api, hideGuids, { visible: false });
   if (showGuids.length > 0) await setzeZustand(api, showGuids, { visible: true });
+  if (ausgeschlossen.length > 0) await setzeZustand(api, ausgeschlossen, { visible: false });
   if (colorBestand.length > 0) setzeZustandAsync(api, colorBestand, { color: TYP_FARBEN.bestand });
   if (colorAbbruch.length > 0) setzeZustandAsync(api, colorAbbruch, { color: TYP_FARBEN.abbruch });
   if (colorNeubau.length > 0) setzeZustandAsync(api, colorNeubau, { color: TYP_FARBEN.neubau });
