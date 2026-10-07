@@ -495,7 +495,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                         <button key={modus} disabled={disabled} title={hinweis ?? undefined}
                           onClick={() => {
                             if (aktiv) { setVerknuepfOffen(null); return; }
-                            setSims(prev => prev.map(s => s.id === sim.id ? { ...s, verknuepfungsModus: modus } : s));
+                            setSims(prev => prev.map(s => s.id === sim.id && (s.verknuepfungsModus ?? "auto") !== modus ? { ...s, verknuepfungsModus: modus } : s)); // unverändert → kein Rückgängig-Schritt
                             setVerknuepfOffen(sim.id);
                           }}
                           style={{

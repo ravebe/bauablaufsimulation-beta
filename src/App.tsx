@@ -46,8 +46,10 @@ export default function App() {
 
   // Logik in eigenen Bausteinen (hooks/): Benutzer, Laden/Speichern, Anwesenheit, Rückgängig
   const { userId, userName, userEmail, userFehler, erneutVersuchen: benutzerErneutVersuchen } = useAuth(api);
+  // Alle Benutzer-Änderungen laufen über useUndo (updateSim / setSimsMitUndo) → rückgängig machbar
+  const { updateSim, setSimsMitUndo, undo, redo, undoLen, redoLen, verlaufLeeren } = useUndo(sims, setSims, userName);
   const { syncStatus, syncFehler, geladen: cloudLoadDone, konflikt, konfliktAufloesen, ladeFehler, erneutLaden } =
-    useCloudSync({ api, ready, projectId, sims, setSims, aktivId, setAktivId });
+    useCloudSync({ api, ready, projectId, sims, setSims, aktivId, setAktivId, onStandErsetzt: verlaufLeeren });
   const [verlaufOffen, setVerlaufOffen] = useState(false);
 
   const aktiveSim = sims.find(s => s.id === aktivId) ?? null;
@@ -68,7 +70,6 @@ export default function App() {
   const andererBearbeiter = usePresence(api, aktiveSim, userId, userName);
   // Nur Sims anzeigen die nicht "none" sind
   const sichtbareSims = sims.filter(s => istSichtbar(s, userId));
-  const { updateSim, undo, redo, undoLen, redoLen } = useUndo(sims, setSims, userName);
 
   const [headerDropdown, setHeaderDropdown] = useState(false);
   const [headerFilter, setHeaderFilter] = useState<"alle" | "meine" | "freigegeben">("alle");
@@ -382,7 +383,7 @@ export default function App() {
               api={api}
               ready={ready}
               sims={sichtbareSims}
-              setSims={setSims}
+              setSims={setSimsMitUndo}
               aktivId={aktivId}
               setAktivId={setAktivId}
               geladeneModelle={geladeneModelle}
@@ -443,11 +444,11 @@ export default function App() {
 
       <FehlerGrenze bereich="Dialog">
       {zugriffsManagerOffen && <ZugriffskontrollManager api={api} onClose={() => setZugriffsManagerOffen(false)}
-        sims={sims} setSims={setSims} aktivId={aktivId} onWechsel={setAktivId} userId={userId} userEmail={userEmail} />}
+        sims={sims} setSims={setSimsMitUndo} aktivId={aktivId} onWechsel={setAktivId} userId={userId} userEmail={userEmail} />}
       {kalenderManagerOffen && aktiveSim && <KalenderManager sim={aktiveSim} updateSim={updateSim} onClose={() => setKalenderManagerOffen(false)} />}
       {ifcExportOffen && aktiveSim && <IfcExportDialog sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} api={api} geladeneModelle={geladeneModelle} benutzer={userName} onClose={() => setIfcExportOffen(false)} />}
       {verlaufOffen && <VersionsVerlauf api={api} sims={sims} darfBearbeiten={s => darfBearbeiten(s, userId)} onClose={() => setVerlaufOffen(false)}
-        onWiederherstellen={(frueher, modus, standZeit) => setSims(prev => stelleSimWiederHer(prev, frueher, modus, standZeit, userId).sims)} />}
+        onWiederherstellen={(frueher, modus, standZeit) => setSimsMitUndo(prev => stelleSimWiederHer(prev, frueher, modus, standZeit, userId).sims)} />}
       {hilfeOffen && <HilfeManager initialTab={aktTab} onClose={() => setHilfeOffen(false)} />}
       </FehlerGrenze>
     </div>

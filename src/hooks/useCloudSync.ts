@@ -24,9 +24,13 @@ interface Optionen {
   setSims: (s: SimProjekt[]) => void;
   aktivId: string | null;
   setAktivId: (id: string | null) => void;
+  /** Stand wurde von aussen ersetzt (Laden, Konflikt) — z.B. Rückgängig-Verlauf leeren */
+  onStandErsetzt?: () => void;
 }
 
-export function useCloudSync({ api, ready, projectId, sims, setSims, aktivId, setAktivId }: Optionen) {
+export function useCloudSync({ api, ready, projectId, sims, setSims, aktivId, setAktivId, onStandErsetzt }: Optionen) {
+  const onStandErsetztRef = useRef(onStandErsetzt);
+  useEffect(() => { onStandErsetztRef.current = onStandErsetzt; });
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
   const [syncFehler, setSyncFehler] = useState<string | null>(null);
   const [geladen, setGeladen] = useState(false);
@@ -53,6 +57,7 @@ export function useCloudSync({ api, ready, projectId, sims, setSims, aktivId, se
         // Cloud nicht erreichbar: lokalen Stand anzeigen, aber NICHT speichern (würde sonst als Konflikt
         // enden oder einen veralteten Stand hochladen) — Hinweis mit "Erneut laden"
         setSims(lokal);
+        onStandErsetztRef.current?.();
         setAktivId(waehleAktivId(lokalAid, null, lokal));
         setLadeFehler(r.fehler);
         return;
@@ -65,6 +70,7 @@ export function useCloudSync({ api, ready, projectId, sims, setSims, aktivId, se
       lsSet(nsKey(CLOUD_IDS_KEY, pid), JSON.stringify(cloudSims.map(s => s.id)));
       cloudVersion.current = r.version;
       setSims(erg.sims);
+      onStandErsetztRef.current?.();
       setAktivId(waehleAktivId(lokalAid, r.status === "ok" ? (r.data.aktivId as string | null) ?? null : null, erg.sims));
       setLadeFehler(null);
       setGeladen(true);
@@ -82,6 +88,7 @@ export function useCloudSync({ api, ready, projectId, sims, setSims, aktivId, se
       if (data) {
         if (Array.isArray(data.sims)) {
           setSims(data.sims as SimProjekt[]);
+          onStandErsetztRef.current?.();
           const pid = projektIdRef.current ?? projectId;
           lsSetSimsCache(nsKey(SIMS_KEY, pid), JSON.stringify(data.sims));
           lsSet(nsKey(CLOUD_IDS_KEY, pid), JSON.stringify((data.sims as SimProjekt[]).map(s => s.id)));
