@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { TcModel, TcObjectWithProps, TcSelectionEvent } from "../types";
 import { parseObjectIds } from "../types";
 import { tcEventHandler, syncHeaders, syncTokenVerwerfen } from "./tcDateien";
+import { fetchMitTimeout, mitTimeout, mitTimeoutOder } from "./mitTimeout";
 
 // Entspricht ModelSpec der Trimble Connect Workspace API (viewer.getModels())
 export interface TcModelSpec {
@@ -111,7 +112,7 @@ export function useApi(): UseApiReturn {
         const projPromise = apiInst.project.getProject()
           .then(proj => { if (proj?.id) setProjectId(proj.id); return proj; })
           .catch(() => null);
-        await Promise.race([projPromise, new Promise(r => setTimeout(r, 2500))]);
+        await mitTimeoutOder(projPromise, 2500, null);
 
         // Ab hier gilt die App als einsatzbereit — alles Folgende ist Zusatzfunktionalität
         // (Modell-/Selektions-Sync) und darf "ready" nicht mehr blockieren, falls sie fehlschlägt.
@@ -209,10 +210,7 @@ export function useApi(): UseApiReturn {
 // --- Cloud Sync via Vercel API + Upstash Redis ---
 async function getProjectId(api: ApiInstance): Promise<string | null> {
   try {
-    const proj = await Promise.race([
-      api.project.getProject(),
-      new Promise<null>(r => setTimeout(() => r(null), 4000)),
-    ]);
+    const proj = await mitTimeoutOder(api.project.getProject(), 4000, null);
     return proj?.id || null;
   } catch { return null; }
 }
@@ -255,14 +253,8 @@ export async function cloudSave(api: ApiInstance, data: Record<string, unknown>,
     if (body.length > MAX_BODY_BYTES) {
       return { ok: false, conflict: false, fehler: `Daten zu gross (${mb(roh.length)} MB, komprimiert ${mb(body.length)} MB — Limit 4.4 MB)` };
     }
-    const abbruch = new AbortController();
-    const timer = setTimeout(() => abbruch.abort(), SPEICHER_TIMEOUT_MS);
-    const res = await fetch(`/api/sync?projectId=${projectId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...await syncHeaders(api) },
-      body,
-      signal: abbruch.signal,
-    }).finally(() => clearTimeout(timer));
+    const headers = { "Content-Type": "application/json", ...await syncHeaders(api) };
+    const res = await fetchMitTimeout(`/api/sync?projectId=${projectId}`, { method: "POST", headers, body }, SPEICHER_TIMEOUT_MS, "Cloud-Speichern");
     if (res.status === 401) syncTokenVerwerfen();
     if (res.status === 409) {
       const json = await res.json().catch(() => null);
@@ -278,9 +270,7 @@ export async function cloudSave(api: ApiInstance, data: Record<string, unknown>,
     return { ok: true, version: json.version };
   } catch (e) {
     console.warn("[CloudSync] Speichern fehlgeschlagen:", e);
-    const fehler = e instanceof DOMException && e.name === "AbortError"
-      ? `Keine Antwort vom Server innerhalb von ${SPEICHER_TIMEOUT_MS / 1000} s`
-      : e instanceof Error ? e.message : String(e);
+    const fehler = e instanceof Error ? e.message : String(e); // inkl. Zeitueberschreitung ("… keine Antwort innerhalb von 60 s")
     return { ok: false, conflict: false, fehler };
   }
 }
@@ -292,11 +282,11 @@ export async function sendPresence(api: ApiInstance, simId: string, userId: stri
   try {
     const projectId = await getProjectId(api);
     if (!projectId) return {};
-    const res = await fetch(`/api/presence`, {
+    const res = await fetchMitTimeout(`/api/presence`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...await syncHeaders(api) },
       body: JSON.stringify({ projectId, simId, userId, name }),
-    });
+    }, 10000, "Anwesenheit");
     if (!res.ok) return {};
     const json = await res.json();
     return json.presence || {};
@@ -315,10 +305,8 @@ export async function cloudLaden(api: ApiInstance): Promise<CloudLadeErgebnis> {
   if (!projectId) { console.warn("[CloudSync] Keine Projekt-ID"); return { status: "fehler", projectId: null, fehler: "Keine Projekt-ID von Trimble Connect erhalten" }; }
   try {
     // Zeitlimit: hängt das Laden, startet das Speichern nie (App.tsx wartet auf das Lade-Ergebnis)
-    const abbruch = new AbortController();
-    const timer = setTimeout(() => abbruch.abort(), SPEICHER_TIMEOUT_MS);
     const headers = await syncHeaders(api);
-    const res = await fetch(`/api/sync?projectId=${projectId}`, { headers, signal: abbruch.signal }).finally(() => clearTimeout(timer));
+    const res = await fetchMitTimeout(`/api/sync?projectId=${projectId}`, { headers }, SPEICHER_TIMEOUT_MS, "Cloud-Laden");
     console.log("[Auth] Server-Prüfung:", res.headers.get("X-Sync-Auth") ?? "(keine — Server noch alte Version)", headers.Authorization ? "· Token gesendet" : "· OHNE Token");
     if (res.status === 401) syncTokenVerwerfen();
     if (!res.ok) {
@@ -335,9 +323,7 @@ export async function cloudLaden(api: ApiInstance): Promise<CloudLadeErgebnis> {
     return { status: "leer", projectId, version };
   } catch (e) {
     console.warn("[CloudSync] Laden fehlgeschlagen:", e);
-    const fehler = e instanceof DOMException && e.name === "AbortError"
-      ? `Keine Antwort vom Server innerhalb von ${SPEICHER_TIMEOUT_MS / 1000} s`
-      : e instanceof Error ? e.message : String(e);
+    const fehler = e instanceof Error ? e.message : String(e); // inkl. Zeitueberschreitung ("… keine Antwort innerhalb von 60 s")
     return { status: "fehler", projectId, fehler };
   }
 }
@@ -348,7 +334,7 @@ export interface VerlaufEintrag { index: number; ts: number; version: number; by
 async function verlaufAbruf(api: ApiInstance, verlauf: string): Promise<Record<string, unknown>> {
   const projectId = await getProjectId(api);
   if (!projectId) throw new Error("Keine Projekt-ID von Trimble Connect erhalten");
-  const res = await fetch(`/api/sync?projectId=${projectId}&verlauf=${verlauf}`, { headers: await syncHeaders(api) });
+  const res = await fetchMitTimeout(`/api/sync?projectId=${projectId}&verlauf=${verlauf}`, { headers: await syncHeaders(api) }, SPEICHER_TIMEOUT_MS, "Versionsgeschichte");
   if (res.status === 401) syncTokenVerwerfen();
   const json = await res.json().catch(() => null) as Record<string, unknown> | null;
   if (!res.ok) throw new Error(`HTTP ${res.status}${json?.error ? ` — ${json.error}` : ""}`);
@@ -373,6 +359,10 @@ export async function cloudLoad(api: ApiInstance): Promise<Record<string, unknow
   return r.status === "ok" ? r.data : null;
 }
 
+// Viewer-Aufrufe in Teilpaketen: hängt eines, wird es nach diesem Limit übersprungen statt den ganzen
+// Vorgang (z.B. Auto-Verknüpfung) einzufrieren
+const VIEWER_TIMEOUT_MS = 30000;
+
 export async function batchGetProperties(
   api: ApiInstance,
   modelId: string,
@@ -383,12 +373,12 @@ export async function batchGetProperties(
   for (let i = 0; i < ids.length; i += BATCH) {
     const slice = ids.slice(i, i + BATCH);
     try {
-      const res = await api.viewer.getObjectProperties(modelId, slice);
+      const res = await mitTimeout(api.viewer.getObjectProperties(modelId, slice), VIEWER_TIMEOUT_MS, "Eigenschaften");
       if (Array.isArray(res)) results.push(...res);
     } catch {
       for (const id of slice) {
         try {
-          const r = await api.viewer.getObjectProperties(modelId, [id]);
+          const r = await mitTimeout(api.viewer.getObjectProperties(modelId, [id]), VIEWER_TIMEOUT_MS, "Eigenschaften");
           if (Array.isArray(r) && r.length > 0) results.push(...r);
         } catch { /* einzelnes Objekt überspringen */ }
       }
@@ -407,12 +397,12 @@ export async function batchConvertToObjectIds(
   for (let i = 0; i < ids.length; i += BATCH) {
     const slice = ids.slice(i, i + BATCH);
     try {
-      const guids = await api.viewer.convertToObjectIds(modelId, slice);
+      const guids = await mitTimeout(api.viewer.convertToObjectIds(modelId, slice), VIEWER_TIMEOUT_MS, "IFC-GUIDs");
       slice.forEach((id, j) => { const g = (guids as any)?.[j]; if (g) result.set(id, g); });
     } catch {
       for (const id of slice) {
         try {
-          const g = await api.viewer.convertToObjectIds(modelId, [id]);
+          const g = await mitTimeout(api.viewer.convertToObjectIds(modelId, [id]), VIEWER_TIMEOUT_MS, "IFC-GUIDs");
           const v = (g as any)?.[0];
           if (v) result.set(id, v);
         } catch { /* einzelnes Objekt überspringen */ }
@@ -433,7 +423,7 @@ export async function batchConvertToRuntimeIds(
   for (let i = 0; i < guids.length; i += BATCH) {
     const slice = guids.slice(i, i + BATCH);
     try {
-      const ids = await api.viewer.convertToObjectRuntimeIds(modelId, slice);
+      const ids = await mitTimeout(api.viewer.convertToObjectRuntimeIds(modelId, slice), VIEWER_TIMEOUT_MS, "Runtime-IDs");
       slice.forEach((g, j) => { const n = Number((ids as unknown[])?.[j]); if (ids?.[j] != null && !isNaN(n)) result.set(g, n); });
     } catch { /* Chunk überspringen — fehlende werden vom Aufrufer gemeldet */ }
   }

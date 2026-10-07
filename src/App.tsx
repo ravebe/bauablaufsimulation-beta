@@ -19,12 +19,15 @@ import FehlerGrenze from "./components/FehlerGrenze";
 import { EXPORT_FORMATE } from "./components/ganttExportFormate";
 import { useClickOutside } from "./hooks/useClickOutside";
 import { lsGet, lsGetJson, lsSet, lsSetSimsCache } from "./hooks/lokalSpeicher";
+import { mitTimeout } from "./hooks/mitTimeout";
 import { CLOUD_IDS_KEY, fuehreZusammen, waehleAktivId, stelleSimWiederHer } from "./hooks/syncHelpers";
 import "./App.css";
 
 export type Tab = "projekte" | "bauteile" | "abspielen" | "kalkulation" | "ressourcen" | "avor" | "kosten";
 export type TabGruppe = "haupt" | "erweitert";
 const HAUPT_TABS: Tab[] = ["projekte", "bauteile", "abspielen"];
+
+interface TcUser { id?: string; email?: string; firstName?: string; lastName?: string; }
 
 export default function App() {
   const { api, ready, selektion, aktivesModellId, geladeneModelle, projectId } = useApi();
@@ -65,10 +68,7 @@ export default function App() {
       let letzterFehler = "keine Benutzer-ID erhalten";
       for (let versuch = 1; versuch <= 6 && !abgebrochen; versuch++) {
         try {
-          const user = await Promise.race([
-            (api as any).user.getUser(),
-            new Promise<never>((_, rej) => setTimeout(() => rej(new Error("Zeitüberschreitung")), 8000)),
-          ]);
+          const user = await mitTimeout<TcUser | null>((api as unknown as { user: { getUser(): Promise<TcUser | null> } }).user.getUser(), 8000, "Benutzer-Abfrage");
           if (abgebrochen) return;
           if (user?.id) {
             setUserId(user.id);

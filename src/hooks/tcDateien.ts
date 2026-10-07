@@ -3,6 +3,10 @@
 // "pending" — dann kommt es nach Zustimmung des Benutzers als Event "extension.accessToken", das
 // useApi.ts über tcEventHandler hierher weiterreicht.
 import type { ApiInstance } from "./useApi";
+import { fetchMitTimeout, mitTimeout, mitTimeoutOder } from "./mitTimeout";
+
+// Zeitlimits je Art: Metadaten/Steuerung kurz, Datei-Download/-Upload (IFC bis einige 100 MB) lang
+const META_MS = 30000, DOWNLOAD_MS = 5 * 60000, UPLOAD_MS = 10 * 60000;
 
 let letzterToken: string | null = null;
 let tokenWartende: ((t: string) => void)[] = [];
@@ -62,17 +66,14 @@ export async function syncHeaders(api: ApiInstance): Promise<Record<string, stri
   const h: Record<string, string> = {};
   if (!syncToken || Date.now() - syncToken.am > 10 * 60 * 1000) {
     try {
-      const wert = await Promise.race([
-        holeAccessToken(api),
-        new Promise<never>((_, rej) => setTimeout(() => rej(new Error("Zeitüberschreitung")), 15000)),
-      ]);
+      const wert = await mitTimeout(holeAccessToken(api), 15000, "Access-Token");
       syncToken = { wert, am: Date.now() };
     } catch (e) {
       console.warn("[Auth] Kein Access-Token für Cloud-Sync:", e instanceof Error ? e.message : e);
     }
   }
   if (syncToken) h.Authorization = `Bearer ${syncToken.wert}`;
-  const region = letzteRegion || await Promise.race([projektRegion(api), new Promise<string>(r => setTimeout(() => r(""), 3000))]);
+  const region = letzteRegion || await mitTimeoutOder(projektRegion(api), 3000, "");
   if (region) h["X-TC-Region"] = region;
   return h;
 }
@@ -93,19 +94,19 @@ export async function ladeTcDatei(api: ApiInstance, fileId: string, versionId?: 
   if (versionId) params.set("versionId", versionId);
 
   // 1. Download-URL über den Proxy
-  const urlRes = await fetch(`/api/tc-datei?${params}`, { headers });
+  const urlRes = await fetchMitTimeout(`/api/tc-datei?${params}`, { headers }, META_MS, "Download-URL");
   if (!urlRes.ok) throw new Error(`Datei konnte nicht aus Trimble Connect geladen werden: ${await fehlerText(urlRes)}`);
   const { url } = await urlRes.json() as { url?: string };
 
   // 2. Datei direkt vom Speicher (schnell, kein Grössenlimit) — bei CORS-Sperre über den Proxy
   if (url) {
     try {
-      const direkt = await fetch(url);
+      const direkt = await fetchMitTimeout(url, {}, DOWNLOAD_MS, "Datei-Download");
       if (direkt.ok) return new Uint8Array(await direkt.arrayBuffer());
     } catch { /* CORS — weiter über Proxy */ }
   }
   params.set("mode", "datei");
-  const dateiRes = await fetch(`/api/tc-datei?${params}`, { headers });
+  const dateiRes = await fetchMitTimeout(`/api/tc-datei?${params}`, { headers }, DOWNLOAD_MS, "Datei-Download");
   if (!dateiRes.ok) throw new Error(`Datei-Download fehlgeschlagen: ${await fehlerText(dateiRes)}`);
   return new Uint8Array(await dateiRes.arrayBuffer());
 }
@@ -116,7 +117,7 @@ export async function ladeTcDateiEnde(api: ApiInstance, fileId: string, versionI
   const token = await holeAccessToken(api);
   const params = new URLSearchParams({ fileId, location: await projektRegion(api), mode: "ende", bytes: String(bytes) });
   if (versionId) params.set("versionId", versionId);
-  const res = await fetch(`/api/tc-datei?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await fetchMitTimeout(`/api/tc-datei?${params}`, { headers: { Authorization: `Bearer ${token}` } }, META_MS, "Trimble Connect");
   if (!res.ok) throw new Error(`Dateiende nicht erhalten: ${await fehlerText(res)}`);
   return new TextDecoder("windows-1252").decode(await res.arrayBuffer());
 }
@@ -135,7 +136,7 @@ export async function tcDateiInfo(api: ApiInstance, fileId: string, versionId?: 
   const token = await holeAccessToken(api);
   const params = new URLSearchParams({ fileId, location: await projektRegion(api), mode: "info" });
   if (versionId) params.set("versionId", versionId);
-  const res = await fetch(`/api/tc-datei?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await fetchMitTimeout(`/api/tc-datei?${params}`, { headers: { Authorization: `Bearer ${token}` } }, META_MS, "Trimble Connect");
   if (!res.ok) throw new Error(`Datei-Infos nicht erhalten: ${await fehlerText(res)}`);
   const { region, file } = await res.json() as { region: string; file: Omit<TcDateiInfo, "region"> };
   return { region, ...file };
@@ -154,7 +155,7 @@ export interface TcVersion {
 export async function tcDateiVersionen(api: ApiInstance, fileId: string): Promise<TcVersion[]> {
   const token = await holeAccessToken(api);
   const params = new URLSearchParams({ fileId, location: await projektRegion(api), mode: "versions" });
-  const res = await fetch(`/api/tc-datei?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await fetchMitTimeout(`/api/tc-datei?${params}`, { headers: { Authorization: `Bearer ${token}` } }, META_MS, "Trimble Connect");
   if (!res.ok) throw new Error(`Versionen nicht erhalten: ${await fehlerText(res)}`);
   const { versions } = await res.json() as { versions: TcVersion[] };
   return versions.filter(v => v?.versionId).sort((a, b) =>
@@ -167,11 +168,11 @@ export async function tcDateiVersionen(api: ApiInstance, fileId: string): Promis
 export async function ladeTcVersionHoch(api: ApiInstance, ziel: TcDateiInfo, inhalt: Blob): Promise<TcDateiInfo> {
   if (!ziel.parentId) throw new Error("Ordner der Datei unbekannt — Upload nicht möglich.");
   const token = await holeAccessToken(api);
-  const post = (aktion: string, body: object) => fetch(`/api/tc-datei?aktion=${aktion}`, {
+  const post = (aktion: string, body: object) => fetchMitTimeout(`/api/tc-datei?aktion=${aktion}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ region: ziel.region, ...body }),
-  });
+  }, 60000, `Upload (${aktion})`);
 
   const init = await post("initiate", { parentId: ziel.parentId, name: ziel.name });
   if (!init.ok) throw new Error(`Upload konnte nicht gestartet werden: ${await fehlerText(init)}`);
@@ -180,7 +181,7 @@ export async function ladeTcVersionHoch(api: ApiInstance, ziel: TcDateiInfo, inh
 
   let put: Response;
   try {
-    put = await fetch(uploadURL, { method: "PUT", body: inhalt });
+    put = await fetchMitTimeout(uploadURL, { method: "PUT", body: inhalt }, UPLOAD_MS, "Datei-Upload");
   } catch (e) {
     throw new Error(`Hochladen der Datei blockiert (${e instanceof Error ? e.message : e}).`, { cause: e });
   }
