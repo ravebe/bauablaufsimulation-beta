@@ -509,13 +509,6 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                             display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
                           }}>
                           {label}
-                          {hinweis && (
-                            <span style={{
-                              display: "inline-flex", alignItems: "center", justifyContent: "center",
-                              width: 12, height: 12, borderRadius: "50%", background: "#f0a23b", color: "#fff",
-                              fontSize: 9, fontWeight: 700, lineHeight: 1,
-                            }}>!</span>
-                          )}
                         </button>
                       );
                     })}
@@ -525,8 +518,8 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                       ? (sim.autoVerknuepft ? "Die Auto-Verknüpfung wurde bereits ausgeführt — erneutes Ausführen kann bestehende Bauteil-Zuweisungen überschreiben." : null)
                       : (sim.attributTasksErzeugt ? "Attribut-Tasks wurden bereits erzeugt — erneutes Erzeugen aktualisiert diese Tasks." : null);
                     return hinweis ? (
-                      <div style={{ marginTop: 6, fontSize: 10, color: "#9A3412", background: "#FFF7ED", border: "1px solid #FBD3A5", padding: "4px 6px" }}>
-                        ! {hinweis}
+                      <div style={{ marginTop: 6, fontSize: 10, color: "#9A3412", background: "#FFE8CC", border: "1px solid #F8C58C", padding: "4px 6px" }}>
+                        {hinweis}
                       </div>
                     ) : null;
                   })()}
