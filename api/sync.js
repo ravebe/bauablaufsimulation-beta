@@ -17,6 +17,35 @@ async function redis(command) {
   return (await res.json()).result;
 }
 
+// Versionsprüfung + Schreiben in EINEM atomaren Schritt (Lua läuft in Redis ununterbrochen). Vorher
+// GET → prüfen → SET in drei Requests: speicherten zwei Personen fast gleichzeitig, bestanden beide die
+// Prüfung und die zweite überschrieb die erste stillschweigend.
+// KEYS[1] = Daten, KEYS[2] = Version (eigener Schlüssel — so muss Lua die mehrere MB grossen Daten nicht
+// lesen). Fehlt der Versions-Schlüssel (Einträge von vor dieser Änderung), wird die Version einmalig aus
+// dem gespeicherten JSON gelesen — dort steht "version" immer als LETZTES Feld (tiefer verschachtelte
+// "version"-Felder, z.B. ganttImport.version, kommen davor).
+// ARGV[1] = baseVersion ("" = ohne Prüfung), ARGV[2] = gz (base64, JSON-sicher)
+// Rückgabe: { 1, neueVersion } gespeichert | { 0, aktuelleVersion } Konflikt
+export const SPEICHERN_LUA = `
+local cur = redis.call('GET', KEYS[2])
+if cur then
+  cur = tonumber(cur)
+else
+  cur = 0
+  local raw = redis.call('GET', KEYS[1])
+  if raw then
+    for v in string.gmatch(raw, '"version":(%d+)') do cur = tonumber(v) end
+  end
+end
+if ARGV[1] ~= '' and tonumber(ARGV[1]) ~= cur then
+  return { 0, cur }
+end
+local nv = cur + 1
+redis.call('SET', KEYS[1], '{"gz":"' .. ARGV[2] .. '","version":' .. nv .. '}')
+redis.call('SET', KEYS[2], tostring(nv))
+return { 1, nv }
+`;
+
 export default async function handler(req, res) {
   // CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -34,6 +63,7 @@ export default async function handler(req, res) {
   }
 
   const key = `4dsim:${projectId}`;
+  const versionKey = `4dsim-version:${projectId}`;
 
   try {
     // Gespeichert wird entweder { ...data, version } (alt, unkomprimiert) oder { gz, version } (gzip+base64,
@@ -52,20 +82,20 @@ export default async function handler(req, res) {
     if (req.method === "POST") {
       const { data, gz, baseVersion } = req.body;
       if (!data && typeof gz !== "string") return res.status(400).json({ error: "data fehlt" });
+      // Unkomprimiert gesendete Daten (alte Clients) hier packen — gespeichert wird immer { gz, version }
+      const gzWert = typeof gz === "string" ? gz : gzipSync(JSON.stringify(data)).toString("base64");
+      if (!/^[A-Za-z0-9+/=]*$/.test(gzWert)) return res.status(400).json({ error: "gz ungültig" });
 
-      const raw = await redis(["GET", key]);
-      const stored = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : null;
-      const currentVersion = stored?.version ?? 0;
+      const [ok, version] = await redis(["EVAL", SPEICHERN_LUA, "2", key, versionKey,
+        typeof baseVersion === "number" ? String(baseVersion) : "", gzWert]);
 
-      // Optimistische Sperre: wenn seit dem letzten Laden des Clients bereits
-      // jemand anderes gespeichert hat, Konflikt melden statt stillschweigend zu überschreiben
-      if (typeof baseVersion === "number" && baseVersion !== currentVersion) {
-        return res.status(409).json({ error: "conflict", ...antwort(stored), version: currentVersion });
+      if (ok !== 1) {
+        // Konflikt: jemand anderes hat seit dem letzten Laden des Clients gespeichert
+        const raw = await redis(["GET", key]);
+        const stored = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : null;
+        return res.status(409).json({ error: "conflict", ...antwort(stored), version });
       }
-
-      const neueVersion = currentVersion + 1;
-      await redis(["SET", key, JSON.stringify(gz ? { gz, version: neueVersion } : { ...data, version: neueVersion })]);
-      return res.status(200).json({ ok: true, version: neueVersion });
+      return res.status(200).json({ ok: true, version });
     }
 
     return res.status(405).json({ error: "Method not allowed" });
