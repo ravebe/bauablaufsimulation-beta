@@ -31,6 +31,8 @@ const THEMEN: Thema[] = [
       "Der IFC-Attribut-Filter grenzt die Task-Liste nach Modell-Eigenschaften ein.",
       "Über \"☰ Liste\" / \"▤ Gantt\" zwischen Tabellen- und Gantt-Ansicht umschalten.",
       "Die Suche findet Tasks anhand ihres Namens.",
+      "Zu unterst: \"Noch nicht verknüpft\" (Bauteile ohne Task) und \"Aus Simulation entfernt\". Entfernte Bauteile werden beim Aktivieren der Simulation ausgeblendet, nirgends gerechnet und von Auto-Verknüpfung/Attribut-Tasks übergangen.",
+      "Entfernen: im Modell markieren → \"Noch nicht verknüpft\" → \"⊘ Markierte entfernen\", oder in der Bauteil-Liste eines Tasks \"⊘\". Wieder aufnehmen unter \"Aus Simulation entfernt\" (\"↩\") — das Bauteil kommt zurück in seinen bisherigen Task.",
     ],
   },
   {

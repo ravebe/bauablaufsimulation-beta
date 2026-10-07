@@ -8,6 +8,7 @@ import AttributTaskErzeugung from "./AttributTaskErzeugung";
 import SimKebabMenu from "./SimKebabMenu";
 import ModellVersionen from "./ModellVersionen";
 import { stelleVersionUm, wendeUmstellungAn } from "./modellVersionHelpers";
+import { mitAusschlussTask, ausschluesseUmstellen } from "./ausschlussHelpers";
 import IfcImportDialog from "./IfcImportDialog";
 import type { IfcImportUebernahme } from "./IfcImportDialog";
 import { enthaeltBauablauf } from "./ifcImport";
@@ -118,10 +119,11 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
     setVersionWechselLaeuft(true);
     const status = (text: string) => setModellMsg({ simId, typ: "ok", text: `⟳ ${text}` });
     try {
-      const u = await stelleVersionUm(api, modellId, quelle, zielVersionId, sim.tasks, status);
+      const u = await stelleVersionUm(api, modellId, quelle, zielVersionId, mitAusschlussTask(sim), status);
       setSims(prev => prev.map(s => s.id === simId ? {
         ...s,
         tasks: wendeUmstellungAn(s.tasks, u.mapping),
+        ausgeschlossen: ausschluesseUmstellen(s.ausgeschlossen, u.mapping),
         modelle: s.modelle.map(m => m.id === modellId ? { ...m, versionId: zielVersionId } : m),
       } : s));
       setNeueVersionen(prev => { const next = { ...prev }; delete next[modellId]; return next; });

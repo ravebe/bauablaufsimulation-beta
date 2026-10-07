@@ -1,6 +1,7 @@
 // SelectionTools.tsx — Mausklick-Zuweisung + Entfernen-Button
 import { useState } from "react";
 import type { SimProjekt, Task } from "../types";
+import { ausgeschlosseneGuids } from "./ausschlussHelpers";
 import type { ApiInstance } from "../hooks/useApi";
 import { filterEchteBauteile } from "./modelHelpers";
 
@@ -35,6 +36,8 @@ export default function SelectionTools({ aktivTask, aktiveSim, api, updateSim, s
       if (!Array.isArray(result) || result.length === 0) { setStatus("Keine Objekte ausgewählt"); return; }
       const neueGuids: string[] = [];
       const bereitsImTask = new Set(aktivTask.objektGuids);
+      const ausgeschlossen = ausgeschlosseneGuids(aktiveSim); // nur über "Wieder aufnehmen" zurückholbar
+      let uebersprungen = 0;
       const fallbackMid = aktiveSim.modelle[0]?.id ?? "";
       for (const r of result) {
         const mid: string = r?.modelId ?? r?.id ?? fallbackMid;
@@ -44,9 +47,13 @@ export default function SelectionTools({ aktivTask, aktiveSim, api, updateSim, s
         for (const o of r?.objects ?? []) { const n = Number(o?.id ?? o); if (!isNaN(n)) rIds.push(n); }
         if (rIds.length === 0) continue;
         const echte = await filterEchteBauteile(api, mid, rIds);
-        for (const rId of echte) { const key = `${mid}:::${rId}`; if (!bereitsImTask.has(key)) neueGuids.push(key); }
+        for (const rId of echte) {
+          const key = `${mid}:::${rId}`;
+          if (ausgeschlossen.has(key)) { uebersprungen++; continue; }
+          if (!bereitsImTask.has(key)) neueGuids.push(key);
+        }
       }
-      if (neueGuids.length === 0) { setStatus("Keine neuen Bauteile"); return; }
+      if (neueGuids.length === 0) { setStatus(uebersprungen ? `${uebersprungen} aus der Simulation entfernt — unter „Aus Simulation entfernt“ wieder aufnehmen` : "Keine neuen Bauteile"); return; }
 
       // Konflikte prüfen
       const details: { name: string; anzahl: number }[] = [];

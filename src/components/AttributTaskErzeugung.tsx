@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import type { SimProjekt, Task, AttrRef } from "../types";
 import { datumPlusTage } from "../types";
+import { ausgeschlosseneGuids } from "./ausschlussHelpers";
 import type { ApiInstance } from "../hooks/useApi";
 import { getModellObjekte, ladeObjektAttribute, ladeAttributListe, type AttrItem } from "./modelHelpers";
 
@@ -116,7 +117,9 @@ export default function AttributTaskErzeugung({ api, sim, onUpdate, done }: Prop
       // gewählten Attribute einen Wert haben, gehören zu einer Gruppe (= zukünftiger Task).
       const gruppen = new Map<string, { attrGruppe: Record<string, string>; baseName: string; guids: string[] }>();
       let ohneAttribute = 0;
+      const ausgeschlossen = ausgeschlosseneGuids(sim); // aus der Simulation entfernte Bauteile übergehen
       for (const [guid, w] of werte) {
+        if (ausgeschlossen.has(guid)) continue;
         if (selectedAttrs.some(a => !w[a.key])) { ohneAttribute++; continue; }
         const attrGruppe: Record<string, string> = {};
         for (const a of selectedAttrs) attrGruppe[a.key] = w[a.key];

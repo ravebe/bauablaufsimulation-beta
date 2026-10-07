@@ -12,6 +12,7 @@ import type { SimModell, SimProjekt } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { batchConvertToObjectIds } from "../hooks/useApi";
 import { ordneInVersionZu, wendeUmstellungAn } from "./modellVersionHelpers";
+import { mitAusschlussTask, ausschluesseUmstellen } from "./ausschlussHelpers";
 import { ladeTcDatei, ladeTcVersionHoch, tcDateiInfo, warteAufVerarbeitung } from "../hooks/tcDateien";
 import { erzeuge4dIfc } from "./ifcExport";
 import type { IfcExportErgebnis } from "./ifcExport";
@@ -73,7 +74,9 @@ export default function IfcExportDialog({ sim, updateSim, api, geladeneModelle, 
       const ids = t.objektGuids.filter(g => g.startsWith(`${mid}:::`)).map(g => Number(g.slice(mid.length + 3))).filter(n => !isNaN(n));
       if (ids.length) rIdsJeTask.set(t.id, ids);
     }
-    const alleRIds = [...new Set([...rIdsJeTask.values()].flat())];
+    // auch ausgeschlossene Bauteile (nicht exportiert, aber für die Umstellung auf die neue Version nötig)
+    const ausgeschlRIds = (aktuell.ausgeschlossen ?? []).map(a => a.guid).filter(g => g.startsWith(`${mid}:::`)).map(g => Number(g.slice(mid.length + 3))).filter(n => !isNaN(n));
+    const alleRIds = [...new Set([...[...rIdsJeTask.values()].flat(), ...ausgeschlRIds])];
     const guidById = alleRIds.length ? await batchConvertToObjectIds(api, mid, alleRIds) : new Map<number, string>();
     if (alleRIds.length > 0 && guidById.size === 0) throw new Error("Keine IFC-GUIDs erhalten — bitte das Modell im Viewer laden und erneut versuchen.");
     const bauteilGuidsJeTask = new Map<string, string[]>();
@@ -134,7 +137,7 @@ export default function IfcExportDialog({ sim, updateSim, api, geladeneModelle, 
       // 2. Warten, bis Connect die Version verarbeitet hat, dann im Viewer laden
       await warteAufVerarbeitung(api, mid, neu.versionId, s => schritt(mid, `Trimble Connect verarbeitet die neue Version (${s}) … das kann einige Minuten dauern.`));
       schritt(mid, "Neue Version im Viewer laden …");
-      const { mapping, umgestellt, nichtGefunden } = await ordneInVersionZu(api, mid, neu.versionId, simRef.current.tasks, guidById,
+      const { mapping, umgestellt, nichtGefunden } = await ordneInVersionZu(api, mid, neu.versionId, mitAusschlussTask(simRef.current), guidById,
         n => schritt(mid, `Neue Version im Viewer laden … (Versuch ${n + 1})`))
         .catch(e => { throw new Error("Die neue Version ist in Trimble Connect hochgeladen, konnte aber nicht im Viewer geladen werden. Die Simulation verwendet weiterhin die bisherige Version.", { cause: e }); });
 
@@ -145,7 +148,7 @@ export default function IfcExportDialog({ sim, updateSim, api, geladeneModelle, 
       const modelle = aktuell.modelle.some(m => m.id === mid)
         ? aktuell.modelle.map(m => m.id === mid ? { ...m, versionId: neu.versionId, vierD } : m)
         : [...aktuell.modelle, { id: mid, name: modellName(mid), versionId: neu.versionId, vierD }];
-      updateSim({ ...aktuell, tasks, modelle });
+      updateSim({ ...aktuell, tasks, modelle, ausgeschlossen: ausschluesseUmstellen(aktuell.ausgeschlossen, mapping) });
       setze(mid, { art: "uebernommen", erg, umgestellt, nichtGefunden });
     } catch (e) {
       setze(mid, { art: "fehler", meldung: e instanceof Error ? e.message : String(e) });

@@ -1,6 +1,7 @@
 // AttributeFilter.tsx — IFC-Attribut-Suche mit Autocomplete + Multi-Filter
 import { useState, useEffect, useRef } from "react";
 import type { SimProjekt, Task } from "../types";
+import { ausgeschlosseneGuids } from "./ausschlussHelpers";
 import type { ApiInstance } from "../hooks/useApi";
 import { batchGetProperties, batchConvertToObjectIds } from "../hooks/useApi";
 import { getModellObjekte } from "./modelHelpers";
@@ -212,8 +213,10 @@ export default function AttributeFilter({ api, aktiveSim, aktivTask, aktivesMode
     finally { setLaedt(false); }
   }
 
-  function filterZuweisen(guids: string[]) {
+  function filterZuweisen(alleGuids: string[]) {
     if (!aktivTask || !aktiveSim) return;
+    const ausgeschlossen = ausgeschlosseneGuids(aktiveSim); // aus der Simulation entfernte Bauteile übergehen
+    const guids = alleGuids.filter(g => !ausgeschlossen.has(g));
     const bereinigteTasks = aktiveSim.tasks.map(t =>
       t.id === aktivTask.id ? { ...t, objektGuids: [...new Set([...t.objektGuids, ...guids])] }
         : { ...t, objektGuids: t.objektGuids.filter(g => !guids.includes(g)) }

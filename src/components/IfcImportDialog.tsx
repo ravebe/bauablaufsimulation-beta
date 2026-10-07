@@ -4,6 +4,7 @@
 // aus der Datei werden dazu im geladenen Modell in Viewer-Runtime-IDs umgesetzt.
 import { useState } from "react";
 import type { Kran, SimModell, SimProjekt, Task } from "../types";
+import { ausgeschlosseneGuids } from "./ausschlussHelpers";
 import type { ApiInstance } from "../hooks/useApi";
 import { batchConvertToRuntimeIds } from "../hooks/useApi";
 import { ladeTcDatei } from "../hooks/tcDateien";
@@ -56,11 +57,13 @@ export default function IfcImportDialog({ api, sim, modell, onUebernehmen, onClo
       if (guids.length > 0 && rIds.size === 0) throw new Error("Die Bauteile wurden im geladenen Modell nicht gefunden.");
 
       let bauteile = 0, nichtGefunden = 0;
+      const ausgeschlossen = ausgeschlosseneGuids(sim); // aus der Simulation entfernte Bauteile übergehen
       const tasks = r.tasks.map(t => {
         const objektGuids: string[] = [];
         for (const g of r.bauteilGuids.get(t.id) ?? []) {
           const id = rIds.get(g);
           if (id === undefined) { nichtGefunden++; continue; }
+          if (ausgeschlossen.has(`${modell.id}:::${id}`)) continue;
           objektGuids.push(`${modell.id}:::${id}`); bauteile++;
         }
         return { ...t, objektGuids };

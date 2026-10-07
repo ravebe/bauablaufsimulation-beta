@@ -1,6 +1,7 @@
 // AutoVerknuepfung.tsx — Automatische Bauteil-Task-Verknüpfung
 import { useState } from "react";
 import type { SimProjekt, Task } from "../types";
+import { ausgeschlosseneGuids } from "./ausschlussHelpers";
 import type { ApiInstance } from "../hooks/useApi";
 import { batchGetProperties } from "../hooks/useApi";
 import { getModellObjekte } from "./modelHelpers";
@@ -44,6 +45,7 @@ export default function AutoVerknuepfung({ api, sim, onUpdate, done }: Props) {
 
   async function starten() {
     if (!api || gewaehlt.size === 0) return;
+    const ausgeschlossen = ausgeschlosseneGuids(sim); // aus der Simulation entfernte Bauteile nie wieder zuordnen
     setBestaetigen(false);
     setLaeuft(true);
     setFortschrittProzent(0);
@@ -153,7 +155,7 @@ export default function AutoVerknuepfung({ api, sim, onUpdate, done }: Props) {
               }
               if (!gefunden) { allePasst = false; break; }
             }
-            if (allePasst) treffer.push(`${modell.id}:::${rId}`);
+            if (allePasst && !ausgeschlossen.has(`${modell.id}:::${rId}`)) treffer.push(`${modell.id}:::${rId}`);
           }
 
           if (treffer.length > 0) {

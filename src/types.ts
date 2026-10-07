@@ -90,6 +90,9 @@ export interface KapazitaetsCheck {
   phasen: KapazitaetsPhase[];
 }
 
+/** Aus der Simulation entferntes Bauteil ("modelId:::runtimeId"), mit dem Task, in dem es vorher war */
+export interface Ausschluss { guid: string; taskId?: string; }
+
 export interface SimProjekt {
   id: string;
   name: string;
@@ -100,6 +103,7 @@ export interface SimProjekt {
   zugriff?: Record<string, Zugriff>; // userId → Zugriff (default: "read")
   autoVerknuepft?: boolean; // true wenn Auto-Verknüpfung durchgeführt
   ganttImport?: { dateiname: string; version: number }; // Metadaten des zuletzt importierten Gantt (version zählt Importe hoch)
+  ausgeschlossen?: Ausschluss[]; // aus der Simulation entfernte Bauteile: ausgeblendet, in keinem Task, von Auto-Verknüpfung/Attribut-Tasks/IFC-Import übergangen — siehe ausschlussHelpers.ts
   verknuepfungsModus?: "auto" | "attribut"; // welche der beiden Verknüpfungsarten aktiv ist (Auto-Verknüpfung vs. Attribut-Task-Erzeugung) — nur eine der beiden gleichzeitig, siehe TabProjekte.tsx
   attributTasksErzeugt?: boolean; // true wenn die Attribut-Task-Erzeugung mind. einmal durchgeführt wurde
   attributKonfig?: { tasknameAttr: AttrRef; zusatzAttrs: AttrRef[] }; // zuletzt verwendete Attribut-Auswahl der Attribut-Task-Erzeugung, für Vorbelegung beim erneuten Öffnen

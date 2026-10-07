@@ -4,6 +4,7 @@ import { useAuth } from "./hooks/useAuth";
 import { useCloudSync } from "./hooks/useCloudSync";
 import { usePresence } from "./hooks/usePresence";
 import { useUndo } from "./hooks/useUndo";
+import { useAusgeschlosseneAusblenden } from "./hooks/useAusgeschlosseneAusblenden";
 import { fehlerKontextSetzen } from "./hooks/fehlerMelden";
 import type { SimProjekt } from "./types";
 import { darfBearbeiten, istSichtbar } from "./zugriff";
@@ -71,6 +72,8 @@ export default function App() {
   // Zugriffskontrolle — Regeln zentral in zugriff.ts
   const readOnly = !darfBearbeiten(aktiveSim, userId);
   const andererBearbeiter = usePresence(api, aktiveSim, userId, userName);
+  // Aus der Simulation entfernte Bauteile im Modell ausgeblendet halten (Tab Bauteile → "Aus Simulation entfernt")
+  useAusgeschlosseneAusblenden(api, aktiveSim, geladeneModelle);
   // Nur Sims anzeigen die nicht "none" sind
   const sichtbareSims = sims.filter(s => istSichtbar(s, userId));
 

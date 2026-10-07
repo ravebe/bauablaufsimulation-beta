@@ -9,6 +9,7 @@ import { formatDatum, normalizeDatum, parseDateUniversal, getOutlineLevel, istGr
 import type { ApiInstance } from "../hooks/useApi";
 import { batchGetProperties, batchConvertToObjectIds } from "../hooks/useApi";
 import DatePicker from "./DatePicker";
+import { bauteileAusschliessen } from "./ausschlussHelpers";
 import SelectionTools from "./SelectionTools";
 
 // Alle Werte eines Objekts flach sammeln
@@ -29,6 +30,10 @@ interface Props {
   readOnly?: boolean;
   detailOnly?: boolean;
   suchQuery?: string;
+  /** am Ende der Task-Liste (z.B. "Noch nicht verknüpft" / "Aus Simulation entfernt", siehe UnbenutzteBauteile.tsx) */
+  unterListe?: React.ReactNode;
+  /** ersetzt das Task-Detail (wenn statt eines Tasks eine der Zeilen aus unterListe gewählt ist) */
+  detailErsatz?: React.ReactNode;
 }
 
 const STORAGE_PREFIX = "4d-guid-display-";
@@ -41,7 +46,7 @@ function ladeDisplayConfig(simId: string, projectId: string | null): { zeile1: s
   return { zeile1: "Layer||Layer", zeile2: "Reference Object||Common Type" };
 }
 
-export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, aktivTaskId, selectedIds = [], totalObjekte, updateSim, onTaskClick, selGuids, taskSort = "gantt", readOnly = false, detailOnly = false, suchQuery = "" }: Props) {
+export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, aktivTaskId, selectedIds = [], totalObjekte, updateSim, onTaskClick, selGuids, taskSort = "gantt", readOnly = false, detailOnly = false, suchQuery = "", unterListe, detailErsatz }: Props) {
   const [guidWerte, setGuidWerte] = useState<Map<string, ObjWerte>>(new Map());
   const [verfuegbareAttrs, setVerfuegbareAttrs] = useState<string[]>([]);
   const [displayConfig, setDisplayConfig] = useState(() => ladeDisplayConfig(aktiveSim.id, projectId));
@@ -434,7 +439,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
           <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
             {totalObjekte != null && (() => {
               const vergeben = new Set(aktiveSim.tasks.flatMap(t => t.objektGuids)).size;
-              const offen = Math.max(0, totalObjekte - vergeben);
+              const offen = Math.max(0, totalObjekte - vergeben - (aktiveSim.ausgeschlossen?.length ?? 0)); // entfernte zählen nicht als offen
               return offen > 0 ? (
                 <button style={{ fontSize: 11, color: "#2d7dbd", fontWeight: 600, background: "none", border: "1px solid #2d7dbd",
                   padding: "1px 8px", cursor: "pointer", fontFamily: "inherit" }}
@@ -666,6 +671,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
           });
           })()
         )}
+        {!suchQuery.trim() && unterListe}
         {/* Drop-Zone am Ende */}
         {dragIdx !== null && (
           <div style={{ height: 24, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#8a9baa" }}
@@ -699,7 +705,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
       </>)}
 
       {/* Task-Detail */}
-      {aktivTask ? (
+      {detailErsatz ? detailErsatz : aktivTask ? (
         <div className="detail-section">
           <div className="detail-header">
             {!aktivIsGroup && <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: aktivTask.typ === "neubau" ? "#22C55E" : aktivTask.typ === "abbruch" ? "#EAB308" : aktivTask.typ === "bestand" ? "#999" : TASK_TYP_FARBE[aktivTask.typ] }} />}
@@ -881,7 +887,9 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                         {val1 || `Objekt ${g.split(":::")[1] ?? i}`}
                         {val2 && <span style={{ fontSize: 9, opacity: 0.5, marginLeft: 6 }}>{val2}</span>}
                       </div>
-                      {!readOnly && !aktivIsGroup && <button className="guid-row-x" style={{ fontSize: 12 }} onClick={e => { e.stopPropagation(); guidEntfernen(aktivTask.id, g); }}>✕</button>}
+                      {!readOnly && !aktivIsGroup && <button className="guid-row-x" style={{ fontSize: 11 }} title="Aus der Simulation entfernen (ausblenden, nicht rechnen) — unter „Aus Simulation entfernt“ wieder aufnehmbar"
+                        onClick={e => { e.stopPropagation(); updateSim(bauteileAusschliessen(aktiveSim, [g])); }}>⊘</button>}
+                      {!readOnly && !aktivIsGroup && <button className="guid-row-x" style={{ fontSize: 12 }} title="Nur aus diesem Task nehmen (bleibt in der Simulation)" onClick={e => { e.stopPropagation(); guidEntfernen(aktivTask.id, g); }}>✕</button>}
                     </div>
                   );
                 })}

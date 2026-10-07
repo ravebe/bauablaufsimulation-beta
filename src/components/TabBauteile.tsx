@@ -11,6 +11,8 @@ import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import { pruefeZeitplanBereitschaft, berechneZeitplanUebernahme, zeitplanHatAenderungen } from "./zeitplanUebernahmeHelpers";
 import TabTasks from "./TabTasks";
+import { UnbenutzteZeilen, UnbenutzteDetail } from "./UnbenutzteBauteile";
+import type { UnbenutztArt } from "./UnbenutzteBauteile";
 import AttributeFilter from "./AttributeFilter";
 import GanttChart from "./GanttChart";
 
@@ -30,6 +32,10 @@ interface Props {
 export default function TabBauteile({ api, projectId = null, aktiveSim, updateSim, aktivesModellId, taskSort, readOnly, sharedNadelTag, sichtbar }: Props) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [totalObjekte, setTotalObjekte] = useState<number | null>(null);
+  // alle Bauteile der Modelle ("modelId:::runtimeId") — für "Noch nicht verknüpft" (UnbenutzteBauteile.tsx)
+  const [alleGuids, setAlleGuids] = useState<string[] | null>(null);
+  // statt eines Tasks gewählt: "Noch nicht verknüpft" bzw. "Aus Simulation entfernt"
+  const [unbenutzt, setUnbenutzt] = useState<UnbenutztArt | null>(null);
   const [resetSignal, setResetSignal] = useState(0);
   const [selGuids, setSelGuids] = useState<Set<string>>(new Set());
   const [ganttOffen, setGanttOffen] = useState(false);
@@ -92,6 +98,7 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
   }, [sichtbar]);
 
   function taskAnklicken(taskId: string, event?: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }) {
+    setUnbenutzt(null);
     const tasks = aktiveSim?.tasks ?? [];
     const idx = tasks.findIndex(t => t.id === taskId);
     if (event?.shiftKey && lastClickIdx.current >= 0) {
@@ -123,14 +130,15 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
     clearEchteBauteileCache();
     let abgebrochen = false;
     (async () => {
-      let gesamt = 0;
+      const guids: string[] = [];
       for (const modell of aktiveSim.modelle) {
         if (!modell.id) continue;
         const echte = await getEchteBauteile(api, aktiveSim.id, modell.id);
-        gesamt += echte.length;
+        for (const rId of echte) guids.push(`${modell.id}:::${rId}`);
       }
       if (abgebrochen) return;
-      setTotalObjekte(gesamt > 0 ? gesamt : null);
+      setTotalObjekte(guids.length > 0 ? guids.length : null);
+      setAlleGuids(guids.length > 0 ? guids : null);
     })();
     return () => { abgebrochen = true; };
   }, [aktiveSim?.id, api]);
@@ -169,6 +177,16 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
 
   // Gantt-Daten (bereits oben berechnet)
   const tasks = aktiveSim?.tasks ?? [];
+
+  // Zu unterst: "Noch nicht verknüpft" / "Aus Simulation entfernt" — wie Tasks wählbar, Detail statt Task-Detail
+  const unbenutztZeilen = (
+    <UnbenutzteZeilen sim={aktiveSim} alleGuids={alleGuids} aktiv={unbenutzt}
+      onWaehlen={a => { setUnbenutzt(a); if (a) setSelectedIds([]); }} />
+  );
+  const unbenutztDetail = unbenutzt ? (
+    <UnbenutzteDetail api={api} sim={aktiveSim} alleGuids={alleGuids} art={unbenutzt} selGuids={selGuids}
+      readOnly={readOnly} updateSim={updateSim} />
+  ) : undefined;
 
   function ganttDateChange(taskId: string, newStart: string, newEnd: string) {
     if (!aktiveSim) return;
@@ -445,7 +463,9 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
           }} style={{ height: 6, cursor: "ns-resize", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <div style={{ width: 40, height: 3, background: "#d4dce4", borderRadius: 2 }} />
           </div>
+          <div style={{ borderTop: "1px solid var(--tc-border-light)" }}>{unbenutztZeilen}</div>
           <TabTasks
+            detailErsatz={unbenutztDetail}
             api={api}
             projectId={projectId}
             aktiveSim={aktiveSim}
@@ -463,6 +483,8 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
         </>
       ) : (
         <TabTasks
+          unterListe={unbenutztZeilen}
+          detailErsatz={unbenutztDetail}
           api={api}
           projectId={projectId}
           aktiveSim={aktiveSim}
