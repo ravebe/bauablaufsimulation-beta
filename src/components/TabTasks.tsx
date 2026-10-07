@@ -717,7 +717,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
               {!aktivIsGroup && totalObjekte != null ? `⬡ ${bauteilGuids.length} / ${totalObjekte}` : `⬡ ${bauteilGuids.length}`}
             </span>
             {!readOnly && <button className="tc-btn-ghost" style={{ color: "#333", fontSize: 12, padding: "0 4px", marginLeft: "auto" }}
-              title="Löschen"
+              title={aktivIsGroup ? "Gruppe (und ihre Tasks samt Zuordnungen) löschen" : selInfo.total > 1 ? `${selInfo.total} Tasks und Zuordnungen löschen` : "Task und Zuordnungen löschen"}
               onClick={e => {
                 e.stopPropagation();
                 if (selInfo.groups > 0) setLoeschDialogOffen(true);
@@ -789,7 +789,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                 {bauteilGuids.length > 0 && (
                   <>
                     <button className="tc-btn-primary" title="Nur diese anzeigen" style={{ fontSize: 10, padding: "3px 8px" }} onClick={() => nurAnzeigen(bauteilGuids)}>👁 Nur diese</button>
-                    {!readOnly && !aktivIsGroup && <button className="tc-btn-ghost" style={{ color: "#333" }} onClick={() => setLoeschenBestaetigen(true)}><svg width="12" height="12" viewBox="0 0 16 16" fill="#333" stroke="none"><path d="M5 1h6v1H5zM2 3h12v1H2zm1.5 1l.8 11h7.4l.8-11h-9zm2.5 2h1v7H6zm3 0h1v7H9z"/></svg></button>}
+                    {!readOnly && !aktivIsGroup && <button className="tc-btn-ghost" style={{ color: "#333" }} title="Nur die Bauteil-Zuordnungen entfernen (Task bleibt)" onClick={() => setLoeschenBestaetigen(true)}><svg width="12" height="12" viewBox="0 0 16 16" fill="#333" stroke="none"><path d="M5 1h6v1H5zM2 3h12v1H2zm1.5 1l.8 11h7.4l.8-11h-9zm2.5 2h1v7H6zm3 0h1v7H9z"/></svg></button>}
                   </>
                 )}
                 <button className="tc-btn-ghost" title="Anzeige-Einstellungen" style={{ fontSize: 12 }}
