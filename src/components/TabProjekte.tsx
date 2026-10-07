@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import type { SimModell, SimProjekt, Task } from "../types";
+import { darfBearbeiten as darfSimBearbeiten } from "../zugriff";
 import type { ApiInstance } from "../hooks/useApi";
 import GanttImport from "./GanttImport";
 import AutoVerknuepfung from "./AutoVerknuepfung";
@@ -378,11 +379,8 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
       {angezeigteSims.map(sim => {
         const offen = aufgeklappt === sim.id;
         const istAktiv = aktivId === sim.id;
-        const istErsteller = !!userId && sim.erstellerId === userId;
-        // Zugriffskontrolle: Ersteller dürfen immer, sonst zählt der individuelle Zugriff
-        // (Fallback Standardzugriff) — Personen mit "edit" sollen dieselben Rechte haben wie der Ersteller.
-        const darfBearbeiten = istErsteller ||
-          (!!userId && (sim.zugriff?.[userId] ?? sim.zugriff?.["__default__"]) === "edit");
+        // Personen mit "edit" haben dieselben Rechte wie der Ersteller — Regeln in zugriff.ts
+        const darfBearbeiten = darfSimBearbeiten(sim, userId);
 
         return (
           <div key={sim.id} className={`sim-card ${istAktiv ? "aktiv" : ""}`}>

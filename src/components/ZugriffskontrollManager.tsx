@@ -8,6 +8,7 @@
 import { useState, useEffect } from "react";
 import type { ApiInstance, TcProjectMember } from "../hooks/useApi";
 import type { SimProjekt } from "../types";
+import { darfRechteVerwalten, STANDARD_ZUGRIFF_KEY } from "../zugriff";
 import { useClickOutside } from "../hooks/useClickOutside";
 
 type Zugriff = "edit" | "read" | "none";
@@ -109,9 +110,8 @@ export default function ZugriffskontrollManager({ api, onClose, sims, setSims, a
     })();
   }, [api, userId, userEmail]);
 
-  const istErsteller = !!aktiveSim && !!userId && aktiveSim.erstellerId === userId;
-  const darfBearbeiten = !!aktiveSim && (istAdmin || istErsteller);
-  const standard: Zugriff = (aktiveSim?.zugriff?.["__default__"] as Zugriff) ?? "read";
+  const darfBearbeiten = darfRechteVerwalten(aktiveSim, userId, istAdmin);
+  const standard: Zugriff = (aktiveSim?.zugriff?.[STANDARD_ZUGRIFF_KEY] as Zugriff) ?? "read";
 
   function zugriffSetzen(key: string, wert: Zugriff) {
     if (!aktiveSim) return;
@@ -167,7 +167,7 @@ export default function ZugriffskontrollManager({ api, onClose, sims, setSims, a
               <div style={{ fontSize: 12, fontWeight: 600 }}>Standardzugriff</div>
               <div style={{ fontSize: 10, color: "var(--tc-text-3)" }}>Alle Projektmitglieder ohne eigene Regel</div>
             </div>
-            <AccessDropdown id="standard" aktuell={standard} onSelect={v => zugriffSetzen("__default__", v)}
+            <AccessDropdown id="standard" aktuell={standard} onSelect={v => zugriffSetzen(STANDARD_ZUGRIFF_KEY, v)}
               offenerDropdown={offenerDropdown} setOffenerDropdown={setOffenerDropdown} disabled={!darfBearbeiten} />
           </div>
 

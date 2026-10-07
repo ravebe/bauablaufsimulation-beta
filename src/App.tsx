@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useApi, cloudSave, cloudLoad, cloudLaden, sendPresence } from "./hooks/useApi";
-import type { SimProjekt, Zugriff } from "./types";
+import type { SimProjekt } from "./types";
 import { SIMS_KEY, AKTIV_KEY, nsKey } from "./types";
+import { darfBearbeiten, istSichtbar, mitBearbeitungGeteilt } from "./zugriff";
 import TabProjekte from "./components/TabProjekte";
 import TabBauteile from "./components/TabBauteile";
 import TabAbspielen from "./components/TabAbspielen";
@@ -238,22 +239,8 @@ export default function App() {
     if (changed) setSims(updated);
   }, [userId, sims.length]);
 
-  // Zugriffskontrolle
-  function istErsteller(sim: SimProjekt | null): boolean {
-    if (!sim) return false;
-    if (!userId) return false;
-    return sim.erstellerId === userId;
-  }
-
-  function getZugriff(sim: SimProjekt | null): Zugriff {
-    if (!sim) return "read";
-    if (istErsteller(sim)) return "edit";
-    if (!userId) return "read";
-    // Erst user-spezifisch, dann default, dann "read"
-    return sim.zugriff?.[userId] ?? sim.zugriff?.["__default__"] ?? "read";
-  }
-  const aktZugriff = getZugriff(aktiveSim);
-  const readOnly = aktZugriff !== "edit";
+  // Zugriffskontrolle — Regeln zentral in zugriff.ts
+  const readOnly = !darfBearbeiten(aktiveSim, userId);
 
   // Anwesenheit: leichter Heartbeat alle 25s, nur wenn die aktive Simulation
   // mit Bearbeitungsrechten für andere geteilt ist — zeigt den Namen des anderen
@@ -267,13 +254,7 @@ export default function App() {
     const heartbeat = async () => {
       const sim = aktiveSimRef.current;
       if (!sim) { if (!abgebrochen) setAndererBearbeiter(null); return; }
-      const z = sim.zugriff;
-      const binErsteller = sim.erstellerId === userId;
-      const meinZugriff: Zugriff = binErsteller ? "edit" : (z?.[userId] ?? z?.["__default__"] ?? "read");
-      if (meinZugriff !== "edit") { if (!abgebrochen) setAndererBearbeiter(null); return; }
-      const geteiltMitBearbeitung = z?.["__default__"] === "edit" ||
-        Object.entries(z ?? {}).some(([uid, zz]) => uid !== "__default__" && uid !== userId && zz === "edit");
-      if (!geteiltMitBearbeitung) { if (!abgebrochen) setAndererBearbeiter(null); return; }
+      if (!darfBearbeiten(sim, userId) || !mitBearbeitungGeteilt(sim, userId)) { if (!abgebrochen) setAndererBearbeiter(null); return; }
       const presence = await sendPresence(api, sim.id, userId, userName || "Kollege");
       if (abgebrochen) return;
       const andere = Object.entries(presence).find(([uid, e]) => uid !== userId && e.simId === sim.id);
@@ -285,12 +266,7 @@ export default function App() {
   }, [api, userId, userName]);
 
   // Nur Sims anzeigen die nicht "none" sind
-  const sichtbareSims = sims.filter(s => {
-    if (istErsteller(s)) return true;
-    if (!userId) return true;
-    const z = s.zugriff?.[userId] ?? s.zugriff?.["__default__"] ?? "read";
-    return z !== "none";
-  });
+  const sichtbareSims = sims.filter(s => istSichtbar(s, userId));
 
   function updateSim(updated: SimProjekt) {
     // Undo: aktuellen Stand speichern bevor Änderung
@@ -702,7 +678,7 @@ export default function App() {
         sims={sims} setSims={setSims} aktivId={aktivId} onWechsel={setAktivId} userId={userId} userEmail={userEmail} />}
       {kalenderManagerOffen && aktiveSim && <KalenderManager sim={aktiveSim} updateSim={updateSim} onClose={() => setKalenderManagerOffen(false)} />}
       {ifcExportOffen && aktiveSim && <IfcExportDialog sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} api={api} geladeneModelle={geladeneModelle} benutzer={userName} onClose={() => setIfcExportOffen(false)} />}
-      {verlaufOffen && <VersionsVerlauf api={api} sims={sims} darfBearbeiten={s => getZugriff(s) === "edit"} onClose={() => setVerlaufOffen(false)}
+      {verlaufOffen && <VersionsVerlauf api={api} sims={sims} darfBearbeiten={s => darfBearbeiten(s, userId)} onClose={() => setVerlaufOffen(false)}
         onWiederherstellen={(frueher, modus, standZeit) => setSims(prev => stelleSimWiederHer(prev, frueher, modus, standZeit, userId).sims)} />}
       {hilfeOffen && <HilfeManager initialTab={aktTab} onClose={() => setHilfeOffen(false)} />}
       </FehlerGrenze>
