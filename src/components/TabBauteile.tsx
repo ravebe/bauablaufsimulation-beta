@@ -131,9 +131,10 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
     let abgebrochen = false;
     (async () => {
       const guids: string[] = [];
+      const verknuepft = new Set(aktiveSim.tasks.flatMap(t => t.objektGuids));
       for (const modell of aktiveSim.modelle) {
         if (!modell.id) continue;
-        const echte = await getEchteBauteile(api, aktiveSim.id, modell.id);
+        const echte = await getEchteBauteile(api, aktiveSim.id, modell.id, verknuepft);
         for (const rId of echte) guids.push(`${modell.id}:::${rId}`);
       }
       if (abgebrochen) return;

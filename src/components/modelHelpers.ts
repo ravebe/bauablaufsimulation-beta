@@ -187,12 +187,22 @@ const KEINE_BAUTEIL_KLASSEN = new Set([
   "virtualelement", "annotation", "grid", "gridaxis", "distributionport", "port", "alignment", "referent",
 ]);
 
+// Behälter: IfcElementAssembly fasst Einzelteile zusammen, die selbst verknüpft werden — die Baugruppe ist
+// kein eigenes Bauteil (sonst stünde jede Baugruppe dauerhaft unter "Noch nicht verknüpft"). Ausnahme:
+// in der Simulation direkt einem Task zugeordnete Baugruppen (dann als Einheit verwendet) zählen.
+const BEHAELTER_KLASSEN = new Set(["elementassembly"]);
+
+const klasseNorm = (klasse: string) => klasse.toLowerCase().replace(/^ifc/, "").replace(/standardcase$/, "").replace(/[^a-z]/g, "");
+
+export function istBehaelterKlasse(klasse: string | undefined | null): boolean {
+  return !!klasse && BEHAELTER_KLASSEN.has(klasseNorm(klasse));
+}
+
 /** IFC-Klasse ("IfcOpeningElement", "IFCOPENINGELEMENT", "IfcWallStandardCase" …) → physisches Bauteil?
  *  Unbekannt/leer → ja (lieber zu viel zeigen als ein echtes Bauteil verstecken). */
 export function istBauteilKlasse(klasse: string | undefined | null): boolean {
   if (!klasse) return true;
-  const k = klasse.toLowerCase().replace(/^ifc/, "").replace(/standardcase$/, "").replace(/[^a-z]/g, "");
-  return !KEINE_BAUTEIL_KLASSEN.has(k);
+  return !KEINE_BAUTEIL_KLASSEN.has(klasseNorm(klasse));
 }
 
 // IFC-Klasse je Objekt — einmal je Modell und Sitzung geladen (Modell ändert sich nicht; neue Version = neue
@@ -225,7 +235,9 @@ export async function ladeObjektKlassen(api: ApiInstance, mid: string, rIds: num
   return new Map(rIds.map(id => [id, cache.get(id) ?? null]));
 }
 
-export async function getEchteBauteile(api: ApiInstance, simId: string, mid: string): Promise<number[]> {
+/** @param verknuepft Bauteile ("modelId:::runtimeId"), die in der Simulation einem Task zugeordnet sind —
+ *  Baugruppen zählen nur, wenn sie selbst darunter sind (siehe BEHAELTER_KLASSEN) */
+export async function getEchteBauteile(api: ApiInstance, simId: string, mid: string, verknuepft: Set<string> = new Set()): Promise<number[]> {
   const key = `${simId}_${mid}`;
   if (echteBauteileCache[key]) return echteBauteileCache[key];
   const allIds = await getModellObjekte(api, mid);
@@ -237,7 +249,7 @@ export async function getEchteBauteile(api: ApiInstance, simId: string, mid: str
     const weg = new Map<string, number>();
     echte = allIds.filter(id => {
       const k = klassen.get(id);
-      const ok = k !== null && istBauteilKlasse(k);
+      const ok = k !== null && istBauteilKlasse(k) && (!istBehaelterKlasse(k) || verknuepft.has(`${mid}:::${id}`));
       if (!ok) { const n = k === null ? "(ohne Eigenschaften)" : (k || "?"); weg.set(n, (weg.get(n) ?? 0) + 1); }
       return ok;
     });

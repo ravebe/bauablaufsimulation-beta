@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { istBauteilKlasse } from "./modelHelpers";
+import { istBauteilKlasse, istBehaelterKlasse } from "./modelHelpers";
 
 describe("istBauteilKlasse", () => {
   it("physische Bauteile zählen", () => {
@@ -16,5 +16,14 @@ describe("istBauteilKlasse", () => {
   it("unbekannt/leer → zählt (lieber zeigen als verstecken)", () => {
     expect(istBauteilKlasse(undefined)).toBe(true);
     expect(istBauteilKlasse("")).toBe(true);
+  });
+});
+
+describe("istBehaelterKlasse", () => {
+  it("Baugruppen sind Behälter, Einzelteile nicht", () => {
+    expect(istBehaelterKlasse("IFCELEMENTASSEMBLY")).toBe(true);
+    expect(istBehaelterKlasse("IfcElementAssembly")).toBe(true);
+    expect(istBehaelterKlasse("IfcWall")).toBe(false);
+    expect(istBehaelterKlasse(undefined)).toBe(false);
   });
 });
