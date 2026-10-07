@@ -306,7 +306,10 @@ export async function cloudLoad(api: ApiInstance): Promise<Record<string, unknow
   try {
     const projectId = await getProjectId(api);
     if (!projectId) { console.warn("[CloudSync] Keine Projekt-ID"); return null; }
-    const res = await fetch(`/api/sync?projectId=${projectId}`);
+    // Zeitlimit: hängt das Laden, startet das Speichern nie (App.tsx wartet auf cloudLoadDone)
+    const abbruch = new AbortController();
+    const timer = setTimeout(() => abbruch.abort(), SPEICHER_TIMEOUT_MS);
+    const res = await fetch(`/api/sync?projectId=${projectId}`, { signal: abbruch.signal }).finally(() => clearTimeout(timer));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await entpacke(await res.json());
     if (data && Array.isArray(data.sims)) {

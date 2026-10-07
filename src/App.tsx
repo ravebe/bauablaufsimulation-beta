@@ -49,22 +49,40 @@ export default function App() {
   const undoStack = useRef<SimProjekt[]>([]);
   const redoStack = useRef<SimProjekt[]>([]); // stores timestamp (ms)
 
-  // User ID laden
+  // User ID laden — ohne userId gilt niemand als Ersteller: alles schreibgeschützt, Löschen/Bearbeiten
+  // ausgeblendet. getUser() kann (wie getAccessToken) mit "Operation timed out" scheitern oder hängen,
+  // solange der Viewer ein Modell lädt — daher mit Zeitlimit und mehreren Versuchen.
+  const [userFehler, setUserFehler] = useState<string | null>(null);
+  const [userVersuch, setUserVersuch] = useState(0);
   useEffect(() => {
     if (!api) return;
+    let abgebrochen = false;
     (async () => {
-      try {
-        const user = await (api as any).user.getUser();
-        if (user?.id) {
-          setUserId(user.id);
-          setUserEmail(user.email ?? null);
-          const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
-          setUserName(name || user.email || "Kollege");
-          console.log("[Auth] User:", user.id, user.email);
-        }
-      } catch { /* ignore */ }
+      let letzterFehler = "keine Benutzer-ID erhalten";
+      for (let versuch = 1; versuch <= 6 && !abgebrochen; versuch++) {
+        try {
+          const user = await Promise.race([
+            (api as any).user.getUser(),
+            new Promise<never>((_, rej) => setTimeout(() => rej(new Error("Zeitüberschreitung")), 8000)),
+          ]);
+          if (abgebrochen) return;
+          if (user?.id) {
+            setUserId(user.id);
+            setUserEmail(user.email ?? null);
+            const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
+            setUserName(name || user.email || "Kollege");
+            setUserFehler(null);
+            console.log("[Auth] User:", user.id, user.email);
+            return;
+          }
+        } catch (e) { letzterFehler = e instanceof Error ? e.message : String(e); }
+        console.warn(`[Auth] Benutzer nicht ermittelt (Versuch ${versuch}/6):`, letzterFehler);
+        await new Promise(r => setTimeout(r, 3000));
+      }
+      if (!abgebrochen) setUserFehler(letzterFehler);
     })();
-  }, [api]);
+    return () => { abgebrochen = true; };
+  }, [api, userVersuch]);
 
   // 1. localStorage laden (sobald bekannt ist, ob/welches Projekt aktiv ist)
   useEffect(() => {
@@ -471,13 +489,22 @@ export default function App() {
               </svg>
             </button>
             {/* Sync Status */}
-            <span title={syncStatus === "saved" ? "Cloud gespeichert" : syncStatus === "saving" ? "Speichern…" : syncStatus === "error" ? `Nicht gespeichert: ${syncFehler ?? "Sync-Fehler"}` : ""}
+            <span title={syncStatus === "saved" ? "Cloud gespeichert" : syncStatus === "saving" ? "Speichern…" : syncStatus === "error" ? `Nicht gespeichert: ${syncFehler ?? "Sync-Fehler"}` : api && !cloudLoadDone ? "Cloud-Daten werden geladen — gespeichert wird erst danach" : ""}
               style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
-                background: syncStatus === "saved" ? "#6cc07a" : syncStatus === "saving" ? "#edb94c" : syncStatus === "error" ? "var(--tc-red)" : "transparent",
+                background: syncStatus === "saved" ? "#6cc07a" : syncStatus === "saving" ? "#edb94c" : syncStatus === "error" ? "var(--tc-red)" : api && !cloudLoadDone ? "#b8c2cc" : "transparent",
                 transition: "background 0.3s" }} />
           </div>
         </div>
       </div>
+
+      {/* Benutzer nicht ermittelt → alles schreibgeschützt; sonst rätselt man, warum nichts mehr geht */}
+      {userFehler && !userId && (
+        <div className="alert err" style={{ justifyContent: "space-between", gap: 8 }}>
+          <span title={userFehler}>⚠ Benutzer konnte nicht ermittelt werden ({userFehler}) — Bearbeiten, Löschen und Speichern sind gesperrt.</span>
+          <button className="tc-btn-secondary" style={{ flexShrink: 0, height: 22, fontSize: 11 }}
+            onClick={() => { setUserFehler(null); setUserVersuch(v => v + 1); }}>Erneut versuchen</button>
+        </div>
+      )}
 
       {/* Speicher-Konflikt: jemand anderes hat zwischenzeitlich gespeichert */}
       {konflikt && (
