@@ -179,12 +179,15 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
   const resizingRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Scroll zum aktiven Task wenn er sich ändert (z.B. nach Suche)
+  // Zum gewählten Task scrollen, falls er nicht sichtbar ist (z.B. nach Suche). Ziel ist der ZUERST gewählte
+  // Eintrag — bei Klick auf eine Gruppe die Gruppe selbst (aktivTaskId wäre ihr letzter Task → sprang ans
+  // Gruppenende); "nearest" bewegt die Liste nicht, wenn die Zeile schon sichtbar ist.
+  const scrollZielId = selectedIds[0] ?? aktivTaskId;
   useEffect(() => {
-    if (!aktivTaskId || !scrollRef.current) return;
-    const el = scrollRef.current.querySelector(`[data-taskid="${aktivTaskId}"]`) as HTMLElement;
-    if (el) el.scrollIntoView({ block: "center", behavior: "smooth" });
-  }, [aktivTaskId]);
+    if (!scrollZielId || !scrollRef.current) return;
+    const el = scrollRef.current.querySelector(`[data-taskid="${scrollZielId}"]`) as HTMLElement;
+    if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [scrollZielId]);
 
   // Mausrad scrollt zeilenweise (wie im Gantt), statt in großen, browserabhängigen Pixel-Sprüngen
   useEffect(() => {
