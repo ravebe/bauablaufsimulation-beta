@@ -13,6 +13,7 @@ import type { ApiInstance } from "./useApi";
 import { cloudSave, cloudLoad, cloudLaden } from "./useApi";
 import { lsGet, lsGetJson, lsSet, lsSetSimsCache } from "./lokalSpeicher";
 import { CLOUD_IDS_KEY, fuehreZusammen, waehleAktivId } from "./syncHelpers";
+import { fehlerMelden } from "./fehlerMelden";
 
 export type SyncStatus = "idle" | "saving" | "saved" | "error";
 
@@ -60,6 +61,7 @@ export function useCloudSync({ api, ready, projectId, sims, setSims, aktivId, se
         onStandErsetztRef.current?.();
         setAktivId(waehleAktivId(lokalAid, null, lokal));
         setLadeFehler(r.fehler);
+        fehlerMelden("Cloud-Laden", r.fehler);
         return;
       }
       const cloudSims = r.status === "ok" && Array.isArray(r.data.sims) ? r.data.sims as SimProjekt[] : [];
@@ -134,11 +136,13 @@ export function useCloudSync({ api, ready, projectId, sims, setSims, aktivId, se
         } else {
           setSyncFehler(result.fehler);
           setSyncStatus("error");
+          fehlerMelden("Cloud-Speichern", result.fehler);
         }
-      } catch (e) { setSyncFehler(e instanceof Error ? e.message : String(e)); setSyncStatus("error"); }
+      } catch (e) { setSyncFehler(e instanceof Error ? e.message : String(e)); setSyncStatus("error"); fehlerMelden("Cloud-Speichern", e); }
     }).catch(e => {
       // Eine abgelehnte Queue überspringt jeden weiteren .then() — danach würde nie wieder gespeichert
       console.error("[CloudSync] Speichern fehlgeschlagen:", e);
+      fehlerMelden("Speicher-Queue", e);
       setSyncFehler(e instanceof Error ? e.message : String(e));
       setSyncStatus("error");
     });

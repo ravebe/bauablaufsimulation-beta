@@ -4,6 +4,7 @@ import { useAuth } from "./hooks/useAuth";
 import { useCloudSync } from "./hooks/useCloudSync";
 import { usePresence } from "./hooks/usePresence";
 import { useUndo } from "./hooks/useUndo";
+import { fehlerKontextSetzen } from "./hooks/fehlerMelden";
 import type { SimProjekt } from "./types";
 import { darfBearbeiten, istSichtbar } from "./zugriff";
 import TabProjekte from "./components/TabProjekte";
@@ -51,6 +52,8 @@ export default function App() {
   const { syncStatus, syncFehler, geladen: cloudLoadDone, konflikt, konfliktAufloesen, ladeFehler, erneutLaden } =
     useCloudSync({ api, ready, projectId, sims, setSims, aktivId, setAktivId, onStandErsetzt: verlaufLeeren });
   const [verlaufOffen, setVerlaufOffen] = useState(false);
+  // Fehlermeldungen (hooks/fehlerMelden.ts) brauchen Projekt + Benutzer für Zuordnung und Anmeldung
+  useEffect(() => { fehlerKontextSetzen({ api, projectId, benutzer: userEmail ?? userName }); }, [api, projectId, userEmail, userName]);
 
   const aktiveSim = sims.find(s => s.id === aktivId) ?? null;
 

@@ -3,6 +3,7 @@
 // "Erneut versuchen". Daten und Cloud-Sync (in App.tsx) laufen unabhängig davon weiter.
 import { Component } from "react";
 import type { ErrorInfo, ReactNode } from "react";
+import { fehlerMelden } from "../hooks/fehlerMelden";
 
 interface Props {
   bereich: string; // z.B. "Tab Projekte" — erscheint in der Meldung und im Konsolen-Log
@@ -20,6 +21,7 @@ export default class FehlerGrenze extends Component<Props, State> {
 
   componentDidCatch(fehler: Error, info: ErrorInfo) {
     console.error(`[FehlerGrenze] ${this.props.bereich}:`, fehler, info.componentStack);
+    fehlerMelden(`Anzeige: ${this.props.bereich}`, fehler);
   }
 
   render() {
