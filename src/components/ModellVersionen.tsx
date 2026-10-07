@@ -91,7 +91,15 @@ export default function ModellVersionen({ api, modell, darfBearbeiten, beschaeft
             </div>
           )}
           {!versionen && !fehler && <div style={{ padding: "8px 10px", fontSize: 10, color: "var(--tc-text-3)" }}>⟳ Lade Versionen…</div>}
-          {fehler && <div style={{ padding: "8px 10px", fontSize: 10, color: "#c0392b" }}>{fehler}</div>}
+          {fehler && (
+            <div style={{ padding: "8px 10px", fontSize: 10, color: "#c0392b" }}>
+              {fehler}
+              <button className="tc-btn-secondary" style={{ display: "block", marginTop: 6, fontSize: 10, padding: "3px 8px" }}
+                onClick={() => { setFehler(null); laden(); }}>
+                ⟳ Erneut versuchen
+              </button>
+            </div>
+          )}
           {versionen?.map((v, i) => {
             const istAktiv = v.versionId === modell.versionId || (!modell.versionId && i === 0);
             const klickbar = darfBearbeiten && !beschaeftigt && !istAktiv;

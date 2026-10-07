@@ -3,7 +3,7 @@
 // "pending" — dann kommt es nach Zustimmung des Benutzers als Event "extension.accessToken", das
 // useApi.ts über tcEventHandler hierher weiterreicht.
 import type { ApiInstance } from "./useApi";
-import { fetchMitTimeout, mitTimeout, mitTimeoutOder } from "./mitTimeout";
+import { fetchMitTimeout, mitTimeout, mitTimeoutOder, mitWiederholung } from "./mitTimeout";
 
 // Zeitlimits je Art: Metadaten/Steuerung kurz, Datei-Download/-Upload (IFC bis einige 100 MB) lang
 const META_MS = 30000, DOWNLOAD_MS = 5 * 60000, UPLOAD_MS = 10 * 60000;
@@ -151,15 +151,21 @@ export interface TcVersion {
   modifiedBy?: { firstName?: string; lastName?: string };
 }
 
-/** Alle Versionen einer Datei, neueste zuerst */
+/** Alle Versionen einer Datei, neueste zuerst. Wiederholt bei "Failed to fetch" — während der Viewer
+ *  mehrere Modelle lädt, antwortet die TC-API manchmal kurz gar nicht (siehe holeAccessToken). */
 export async function tcDateiVersionen(api: ApiInstance, fileId: string): Promise<TcVersion[]> {
-  const token = await holeAccessToken(api);
-  const params = new URLSearchParams({ fileId, location: await projektRegion(api), mode: "versions" });
-  const res = await fetchMitTimeout(`/api/tc-datei?${params}`, { headers: { Authorization: `Bearer ${token}` } }, META_MS, "Trimble Connect");
-  if (!res.ok) throw new Error(`Versionen nicht erhalten: ${await fehlerText(res)}`);
-  const { versions } = await res.json() as { versions: TcVersion[] };
-  return versions.filter(v => v?.versionId).sort((a, b) =>
-    (b.revision ?? 0) - (a.revision ?? 0) || String(b.createdOn ?? b.modifiedOn ?? "").localeCompare(String(a.createdOn ?? a.modifiedOn ?? "")));
+  return mitWiederholung(async () => {
+    const token = await holeAccessToken(api);
+    const params = new URLSearchParams({ fileId, location: await projektRegion(api), mode: "versions" });
+    const res = await fetchMitTimeout(`/api/tc-datei?${params}`, { headers: { Authorization: `Bearer ${token}` } }, META_MS, "Trimble Connect");
+    if (!res.ok) throw new Error(`Versionen nicht erhalten: ${await fehlerText(res)}`);
+    const { versions } = await res.json() as { versions: TcVersion[] };
+    return versions.filter(v => v?.versionId).sort((a, b) =>
+      (b.revision ?? 0) - (a.revision ?? 0) || String(b.createdOn ?? b.modifiedOn ?? "").localeCompare(String(a.createdOn ?? a.modifiedOn ?? "")));
+  }, {
+    versuche: 3, pauseMs: 2000,
+    onFehler: (e, v) => console.warn(`[Versionen] ${fileId} nicht geladen (Versuch ${v}/3):`, e instanceof Error ? e.message : e),
+  });
 }
 
 /** Lädt `inhalt` als neue Version hoch (gleicher Name im gleichen Ordner wie `ziel`) — Ablauf wie
