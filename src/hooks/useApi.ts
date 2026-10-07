@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { TcModel, TcObjectWithProps, TcSelectionEvent } from "../types";
 import { parseObjectIds } from "../types";
-import { tcEventHandler } from "./tcDateien";
+import { tcEventHandler, syncHeaders, syncTokenVerwerfen } from "./tcDateien";
 
 // Entspricht ModelSpec der Trimble Connect Workspace API (viewer.getModels())
 export interface TcModelSpec {
@@ -259,10 +259,11 @@ export async function cloudSave(api: ApiInstance, data: Record<string, unknown>,
     const timer = setTimeout(() => abbruch.abort(), SPEICHER_TIMEOUT_MS);
     const res = await fetch(`/api/sync?projectId=${projectId}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...await syncHeaders(api) },
       body,
       signal: abbruch.signal,
     }).finally(() => clearTimeout(timer));
+    if (res.status === 401) syncTokenVerwerfen();
     if (res.status === 409) {
       const json = await res.json().catch(() => null);
       console.warn("[CloudSync] Konflikt — jemand anderes hat inzwischen gespeichert");
@@ -293,7 +294,7 @@ export async function sendPresence(api: ApiInstance, simId: string, userId: stri
     if (!projectId) return {};
     const res = await fetch(`/api/presence`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...await syncHeaders(api) },
       body: JSON.stringify({ projectId, simId, userId, name }),
     });
     if (!res.ok) return {};
@@ -316,8 +317,14 @@ export async function cloudLaden(api: ApiInstance): Promise<CloudLadeErgebnis> {
     // Zeitlimit: hängt das Laden, startet das Speichern nie (App.tsx wartet auf das Lade-Ergebnis)
     const abbruch = new AbortController();
     const timer = setTimeout(() => abbruch.abort(), SPEICHER_TIMEOUT_MS);
-    const res = await fetch(`/api/sync?projectId=${projectId}`, { signal: abbruch.signal }).finally(() => clearTimeout(timer));
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const headers = await syncHeaders(api);
+    const res = await fetch(`/api/sync?projectId=${projectId}`, { headers, signal: abbruch.signal }).finally(() => clearTimeout(timer));
+    console.log("[Auth] Server-Prüfung:", res.headers.get("X-Sync-Auth") ?? "(keine — Server noch alte Version)", headers.Authorization ? "· Token gesendet" : "· OHNE Token");
+    if (res.status === 401) syncTokenVerwerfen();
+    if (!res.ok) {
+      const json = await res.json().catch(() => null) as { error?: string } | null;
+      throw new Error(`HTTP ${res.status}${json?.error ? ` — ${json.error}` : ""}`);
+    }
     const data = await entpacke(await res.json());
     const version = typeof data?.version === "number" ? data.version : 0;
     if (data && Array.isArray(data.sims)) {

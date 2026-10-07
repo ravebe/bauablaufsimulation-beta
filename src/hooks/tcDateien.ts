@@ -51,6 +51,35 @@ async function projektRegion(api: ApiInstance): Promise<string> {
   } catch { return letzteRegion; }
 }
 
+/**
+ * Header für die eigenen Sync-Endpunkte (api/sync.js, api/presence.js): Access-Token des Benutzers, damit
+ * der Server die Projekt-Mitgliedschaft prüfen kann (api/_auth.js), plus Projekt-Region. Das Token wird
+ * 10 min wiederverwendet (sonst eine Workspace-API-Anfrage je Speichern). Ohne Token wird trotzdem
+ * gesendet — ob das abgelehnt wird, entscheidet der Server-Modus (SYNC_AUTH).
+ */
+let syncToken: { wert: string; am: number } | null = null;
+export async function syncHeaders(api: ApiInstance): Promise<Record<string, string>> {
+  const h: Record<string, string> = {};
+  if (!syncToken || Date.now() - syncToken.am > 10 * 60 * 1000) {
+    try {
+      const wert = await Promise.race([
+        holeAccessToken(api),
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error("Zeitüberschreitung")), 15000)),
+      ]);
+      syncToken = { wert, am: Date.now() };
+    } catch (e) {
+      console.warn("[Auth] Kein Access-Token für Cloud-Sync:", e instanceof Error ? e.message : e);
+    }
+  }
+  if (syncToken) h.Authorization = `Bearer ${syncToken.wert}`;
+  const region = letzteRegion || await Promise.race([projektRegion(api), new Promise<string>(r => setTimeout(() => r(""), 3000))]);
+  if (region) h["X-TC-Region"] = region;
+  return h;
+}
+
+/** Server meldet 401 (Token abgelaufen) → beim nächsten Aufruf neues Token holen */
+export function syncTokenVerwerfen() { syncToken = null; }
+
 async function fehlerText(res: Response): Promise<string> {
   const json = await res.json().catch(() => null) as { error?: string } | null;
   return json?.error ?? `HTTP ${res.status}`;

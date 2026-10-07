@@ -1,5 +1,6 @@
 // api/presence.js — leichte "wer bearbeitet gerade mit"-Anzeige via Upstash Redis
 // Kurzlebige Eintraege (TTL), ein POST pro Heartbeat liefert gleich die aktuelle Liste zurueck
+import { zugriffErlaubt } from "./_auth.js";
 
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -21,7 +22,8 @@ async function redis(command) {
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-TC-Region");
+  res.setHeader("Access-Control-Expose-Headers", "X-Sync-Auth");
   if (req.method === "OPTIONS") return res.status(200).end();
 
   if (!REDIS_URL || !REDIS_TOKEN) {
@@ -33,6 +35,8 @@ export default async function handler(req, res) {
   if (!projectId || !simId || !userId || typeof projectId !== "string" || projectId.length > 100) {
     return res.status(400).json({ error: "Felder fehlen" });
   }
+
+  if (!(await zugriffErlaubt(req, res, projectId))) return;
 
   const key = `4dsim-presence:${projectId}`;
 

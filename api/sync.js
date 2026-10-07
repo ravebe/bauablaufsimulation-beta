@@ -1,4 +1,5 @@
 // api/sync.js — Vercel Serverless Function für Cloud-Sync via Upstash Redis
+import { zugriffErlaubt } from "./_auth.js";
 import { gzipSync } from "node:zlib";
 
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
@@ -50,7 +51,8 @@ export default async function handler(req, res) {
   // CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-TC-Region");
+  res.setHeader("Access-Control-Expose-Headers", "X-Sync-Auth");
   if (req.method === "OPTIONS") return res.status(200).end();
 
   if (!REDIS_URL || !REDIS_TOKEN) {
@@ -61,6 +63,8 @@ export default async function handler(req, res) {
   if (!projectId || typeof projectId !== "string" || projectId.length > 100) {
     return res.status(400).json({ error: "projectId fehlt" });
   }
+
+  if (!(await zugriffErlaubt(req, res, projectId))) return;
 
   const key = `4dsim:${projectId}`;
   const versionKey = `4dsim-version:${projectId}`;
