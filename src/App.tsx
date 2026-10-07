@@ -13,6 +13,7 @@ import ZugriffskontrollManager from "./components/ZugriffskontrollManager";
 import KalenderManager from "./components/KalenderManager";
 import IfcExportDialog from "./components/IfcExportDialog";
 import HilfeManager from "./components/HilfeManager";
+import FehlerGrenze from "./components/FehlerGrenze";
 import { EXPORT_FORMATE } from "./components/ganttExportFormate";
 import { useClickOutside } from "./hooks/useClickOutside";
 import { lsSet, lsSetSimsCache } from "./hooks/lokalSpeicher";
@@ -604,61 +605,77 @@ export default function App() {
       {/* Tab Content */}
       <div className="tc-tab-content">
         <div className="tc-tab-pane" style={{ display: aktTab === "projekte" ? "block" : "none" }}>
-          <TabProjekte
-            api={api}
-            ready={ready}
-            sims={sichtbareSims}
-            setSims={setSims}
-            aktivId={aktivId}
-            setAktivId={setAktivId}
-            geladeneModelle={geladeneModelle}
-            userId={userId}
-            sichtbar={aktTab === "projekte"}
-          />
+          <FehlerGrenze bereich="Tab Projekte">
+            <TabProjekte
+              api={api}
+              ready={ready}
+              sims={sichtbareSims}
+              setSims={setSims}
+              aktivId={aktivId}
+              setAktivId={setAktivId}
+              geladeneModelle={geladeneModelle}
+              userId={userId}
+              sichtbar={aktTab === "projekte"}
+            />
+          </FehlerGrenze>
         </div>
         <div className="tc-tab-pane" style={{ display: aktTab === "bauteile" ? "block" : "none" }}>
-          <TabBauteile
-            api={api}
-            projectId={projectId}
-            aktiveSim={aktiveSim}
-            updateSim={updateSim}
-            selektion={selektion}
-            aktivesModellId={aktivesModellId}
-            taskSort={taskSort}
-            readOnly={readOnly}
-            sharedNadelTag={sharedNadelTag}
-            sichtbar={aktTab === "bauteile"}
-          />
+          <FehlerGrenze bereich="Tab Bauteile">
+            <TabBauteile
+              api={api}
+              projectId={projectId}
+              aktiveSim={aktiveSim}
+              updateSim={updateSim}
+              selektion={selektion}
+              aktivesModellId={aktivesModellId}
+              taskSort={taskSort}
+              readOnly={readOnly}
+              sharedNadelTag={sharedNadelTag}
+              sichtbar={aktTab === "bauteile"}
+            />
+          </FehlerGrenze>
         </div>
         <div className="tc-tab-pane" style={{ display: aktTab === "abspielen" ? "block" : "none" }}>
-          <TabAbspielen
-            api={api}
-            projectId={projectId}
-            aktiveSim={aktiveSim}
-            aktivesModellId={aktivesModellId}
-            taskSort={taskSort}
-            sharedNadelTag={sharedNadelTag}
-          />
+          <FehlerGrenze bereich="Tab Abspielen">
+            <TabAbspielen
+              api={api}
+              projectId={projectId}
+              aktiveSim={aktiveSim}
+              aktivesModellId={aktivesModellId}
+              taskSort={taskSort}
+              sharedNadelTag={sharedNadelTag}
+            />
+          </FehlerGrenze>
         </div>
         <div className="tc-tab-pane" style={{ display: aktTab === "kalkulation" ? "block" : "none" }}>
-          <TabKalkulation sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} api={api} projectId={projectId} taskSort={taskSort} />
+          <FehlerGrenze bereich="Tab Kalkulation">
+            <TabKalkulation sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} api={api} projectId={projectId} taskSort={taskSort} />
+          </FehlerGrenze>
         </div>
         <div className="tc-tab-pane" style={{ display: aktTab === "ressourcen" ? "block" : "none" }}>
-          <TabRessourcen sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} api={api} selektion={selektion} aktivesModellId={aktivesModellId} projectId={projectId} />
+          <FehlerGrenze bereich="Tab Ressourcen">
+            <TabRessourcen sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} api={api} selektion={selektion} aktivesModellId={aktivesModellId} projectId={projectId} />
+          </FehlerGrenze>
         </div>
         <div className="tc-tab-pane" style={{ display: aktTab === "avor" ? "block" : "none" }}>
-          <TabAvor sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} projectId={projectId} api={api} sharedNadelTag={sharedNadelTag} />
+          <FehlerGrenze bereich="Tab AVOR">
+            <TabAvor sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} projectId={projectId} api={api} sharedNadelTag={sharedNadelTag} />
+          </FehlerGrenze>
         </div>
         <div className="tc-tab-pane" style={{ display: aktTab === "kosten" ? "block" : "none" }}>
-          <TabKosten sim={aktiveSim} projectId={projectId} api={api} sharedNadelTag={sharedNadelTag} />
+          <FehlerGrenze bereich="Tab Kosten">
+            <TabKosten sim={aktiveSim} projectId={projectId} api={api} sharedNadelTag={sharedNadelTag} />
+          </FehlerGrenze>
         </div>
       </div>
 
+      <FehlerGrenze bereich="Dialog">
       {zugriffsManagerOffen && <ZugriffskontrollManager api={api} onClose={() => setZugriffsManagerOffen(false)}
         sims={sims} setSims={setSims} aktivId={aktivId} onWechsel={setAktivId} userId={userId} userEmail={userEmail} />}
       {kalenderManagerOffen && aktiveSim && <KalenderManager sim={aktiveSim} updateSim={updateSim} onClose={() => setKalenderManagerOffen(false)} />}
       {ifcExportOffen && aktiveSim && <IfcExportDialog sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} api={api} geladeneModelle={geladeneModelle} benutzer={userName} onClose={() => setIfcExportOffen(false)} />}
       {hilfeOffen && <HilfeManager initialTab={aktTab} onClose={() => setHilfeOffen(false)} />}
+      </FehlerGrenze>
     </div>
   );
 }
