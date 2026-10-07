@@ -32,9 +32,9 @@ export async function zeigeBauteileImModell(api: ApiInstance, batch: { modelId: 
   const modelle = await api.viewer.getModels();
   for (const m of modelle) {
     const alleIds = await getModellObjekte(api, m.id);
-    if (alleIds.length > 0) await api.viewer.setObjectState([{ modelId: m.id, objectRuntimeIds: alleIds }], { visible: false });
+    if (alleIds.length > 0) await api.viewer.setObjectState({ modelObjectIds: [{ modelId: m.id, objectRuntimeIds: alleIds }] }, { visible: false });
   }
-  await api.viewer.setObjectState(batch, { visible: true });
+  await api.viewer.setObjectState({ modelObjectIds: batch }, { visible: true });
   const viewerSetSelection = api.viewer as unknown as {
     setSelection: (sel: { modelObjectIds: { modelId: string; objectRuntimeIds: number[] }[] }, mode: string) => Promise<void>;
   };

@@ -31,8 +31,10 @@ export interface ApiInstance {
     convertToObjectIds: (modelId: string, ids: number[]) => Promise<string[]>;
     convertToObjectRuntimeIds: (modelId: string, externalIds: string[]) => Promise<number[]>;
     setSelection: (ids: number[]) => Promise<void>;
+    // Achtung: erwartet einen Selektor { modelObjectIds: [...] } — ein nacktes Array wird vom Viewer nicht als
+    // Auswahl erkannt und wirkt auf ALLE Objekte (blendete z.B. beim Entfernen eines Bauteils das ganze Modell aus)
     setObjectState: (
-      entities: { modelId: string; objectRuntimeIds?: number[] }[],
+      selector: { modelObjectIds: { modelId: string; objectRuntimeIds?: number[] }[] },
       state: { visible?: boolean; color?: { r: number; g: number; b: number; a: number } | null }
     ) => Promise<void>;
     isolateEntities: (

@@ -72,7 +72,7 @@ export function UnbenutzteDetail({ api, sim, alleGuids, art, selGuids, readOnly,
     if (!api || liste.length === 0) return;
     const batch = guidsZuBatch(liste);
     try {
-      if (einblenden) await api.viewer.setObjectState(batch, { visible: true });
+      if (einblenden) await api.viewer.setObjectState({ modelObjectIds: batch }, { visible: true });
       await (api.viewer as unknown as { setSelection: (s: unknown, m: string) => Promise<void> }).setSelection({ modelObjectIds: batch }, "set");
     } catch { /* Viewer nicht bereit */ }
   }

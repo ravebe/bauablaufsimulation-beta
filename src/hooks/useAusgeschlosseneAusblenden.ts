@@ -12,7 +12,7 @@ async function setzeSichtbar(api: ApiInstance, guids: string[], visible: boolean
   const batch = guidsZuBatch(guids);
   if (batch.length === 0) return;
   try {
-    await mitTimeout(api.viewer.setObjectState(batch, { visible }), 30000, "Ausblenden");
+    await mitTimeout(api.viewer.setObjectState({ modelObjectIds: batch }, { visible }), 30000, "Ausblenden");
   } catch (e) { console.warn("[Ausschluss] Ein-/Ausblenden fehlgeschlagen:", e); }
 }
 
