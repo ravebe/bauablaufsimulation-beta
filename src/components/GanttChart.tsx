@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
+import { lsGet, lsSet } from "../hooks/lokalSpeicher";
 import { createPortal } from "react-dom";
 import type { Task } from "../types";
 import { parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks, nsKey, TASK_TYP_FARBE } from "../types";
@@ -143,8 +144,8 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
     setPredListOffen(!t.predecessorId);
   }
 
-  useEffect(() => { localStorage.setItem(lsLabelWKey, String(labelW)); }, [lsLabelWKey, labelW]);
-  useEffect(() => { localStorage.setItem(lsZoomKey, String(pxProTag)); }, [lsZoomKey, pxProTag]);
+  useEffect(() => { lsSet(lsLabelWKey, String(labelW)); }, [lsLabelWKey, labelW]);
+  useEffect(() => { lsSet(lsZoomKey, String(pxProTag)); }, [lsZoomKey, pxProTag]);
 
   // Drag safety: reset wenn abgebrochen
   useEffect(() => {
@@ -158,7 +159,7 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
   // Initial zoom nur wenn kein gespeicherter Wert
   useEffect(() => {
     if (initDone.current) return; initDone.current = true;
-    const saved = Number(localStorage.getItem(lsZoomKey));
+    const saved = Number(lsGet(lsZoomKey));
     if (saved > 0) { setPxProTag(saved); return; }
     if (!bodyRef.current || totalTage <= 0) return;
     setPxProTag(Math.max(MIN_PX, Math.min(10, bodyRef.current.clientWidth / totalTage)));

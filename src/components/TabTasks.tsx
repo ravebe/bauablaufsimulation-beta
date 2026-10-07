@@ -1,5 +1,6 @@
 // TabTasks.tsx — Task-Liste + Task-Detail + Visibility-Buttons + Guid-Liste
 import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
+import { lsSet } from "../hooks/lokalSpeicher";
 import { createPortal } from "react-dom";
 import type { SimProjekt, Task, TaskTyp } from "../types";
 import { formatDatum, normalizeDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, getKinder,
@@ -192,7 +193,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
     return () => el.removeEventListener("wheel", handler);
   }, []);
 
-  useEffect(() => { localStorage.setItem(lsBauteilListHKey, String(bauteilListHeight)); }, [lsBauteilListHKey, bauteilListHeight]);
+  useEffect(() => { lsSet(lsBauteilListHKey, String(bauteilListHeight)); }, [lsBauteilListHKey, bauteilListHeight]);
 
   // Display-Config neu laden wenn Sim wechselt
   useEffect(() => {
@@ -296,7 +297,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
 
   function saveDisplayConfig(cfg: { zeile1: string; zeile2: string }) {
     setDisplayConfig(cfg);
-    localStorage.setItem(nsKey(STORAGE_PREFIX + aktiveSim.id, projectId), JSON.stringify(cfg));
+    lsSet(nsKey(STORAGE_PREFIX + aktiveSim.id, projectId), JSON.stringify(cfg));
   }
 
   function typAendern(taskId: string, typ: TaskTyp) {

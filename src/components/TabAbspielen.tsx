@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { lsSet } from "../hooks/lokalSpeicher";
 import { createPortal } from "react-dom";
 import type { SimProjekt, Task } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
@@ -52,7 +53,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
   });
   const resizingRef = useRef(false);
 
-  useEffect(() => { localStorage.setItem(lsTaskListHKey, String(taskListHeight)); }, [lsTaskListHKey, taskListHeight]);
+  useEffect(() => { lsSet(lsTaskListHKey, String(taskListHeight)); }, [lsTaskListHKey, taskListHeight]);
   // Tracking: welche Tasks bereits gestartet/beendet wurden
   const gestartet = useRef(new Set<string>());
   const beendet = useRef(new Set<string>());

@@ -1,5 +1,6 @@
 // TabBauteile.tsx — Orchestrator mit Selektions-Tracking + Gantt-Toggle
 import { useState, useEffect, useRef } from "react";
+import { lsSet } from "../hooks/lokalSpeicher";
 import type { SimProjekt, Task } from "../types";
 import { parseDateUniversal, istGruppe, getKinder, getOutlineLevel, kaskadiereNachfolger, verschiebeAufStart, gruppenDaten, datumPlusTage,
   taskVerschieben as verschiebeTaskBlock, nsKey } from "../types";
@@ -436,7 +437,7 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
             const onMove = (ev: MouseEvent) => {
               const newH = Math.max(120, sh + ev.clientY - sy);
               setGanttH(newH);
-              localStorage.setItem(lsGanttHKey, String(newH));
+              lsSet(lsGanttHKey, String(newH));
             };
             const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
             document.addEventListener("mousemove", onMove);
