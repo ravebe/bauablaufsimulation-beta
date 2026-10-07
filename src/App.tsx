@@ -1,8 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { useApi, cloudSave, cloudLoad, cloudLaden, sendPresence } from "./hooks/useApi";
+import { useState, useEffect, useRef } from "react";
+import { useApi } from "./hooks/useApi";
+import { useAuth } from "./hooks/useAuth";
+import { useCloudSync } from "./hooks/useCloudSync";
+import { usePresence } from "./hooks/usePresence";
+import { useUndo } from "./hooks/useUndo";
 import type { SimProjekt } from "./types";
-import { SIMS_KEY, AKTIV_KEY, nsKey } from "./types";
-import { darfBearbeiten, istSichtbar, mitBearbeitungGeteilt } from "./zugriff";
+import { darfBearbeiten, istSichtbar } from "./zugriff";
 import TabProjekte from "./components/TabProjekte";
 import TabBauteile from "./components/TabBauteile";
 import TabAbspielen from "./components/TabAbspielen";
@@ -18,16 +21,13 @@ import VersionsVerlauf from "./components/VersionsVerlauf";
 import FehlerGrenze from "./components/FehlerGrenze";
 import { EXPORT_FORMATE } from "./components/ganttExportFormate";
 import { useClickOutside } from "./hooks/useClickOutside";
-import { lsGet, lsGetJson, lsSet, lsSetSimsCache } from "./hooks/lokalSpeicher";
-import { mitTimeout } from "./hooks/mitTimeout";
-import { CLOUD_IDS_KEY, fuehreZusammen, waehleAktivId, stelleSimWiederHer } from "./hooks/syncHelpers";
+import { stelleSimWiederHer } from "./hooks/syncHelpers";
 import "./App.css";
 
 export type Tab = "projekte" | "bauteile" | "abspielen" | "kalkulation" | "ressourcen" | "avor" | "kosten";
 export type TabGruppe = "haupt" | "erweitert";
 const HAUPT_TABS: Tab[] = ["projekte", "bauteile", "abspielen"];
 
-interface TcUser { id?: string; email?: string; firstName?: string; lastName?: string; }
 
 export default function App() {
   const { api, ready, selektion, aktivesModellId, geladeneModelle, projectId } = useApi();
@@ -42,189 +42,13 @@ export default function App() {
   }, [aktTab]);
   const [sims, setSims] = useState<SimProjekt[]>([]);
   const [aktivId, setAktivId] = useState<string | null>(null);
-  const [syncStatus, setSyncStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [syncFehler, setSyncFehler] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
-  const [userName, setUserName] = useState<string>("");
-  const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [andererBearbeiter, setAndererBearbeiter] = useState<string | null>(null);
-  const [cloudLoadDone, setCloudLoadDone] = useState(false);
-  const [konflikt, setKonflikt] = useState(false);
-  const cloudVersion = useRef(0);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sharedNadelTag = useRef<number>(-1);
-  const undoStack = useRef<SimProjekt[]>([]);
-  const redoStack = useRef<SimProjekt[]>([]); // stores timestamp (ms)
 
-  // User ID laden — ohne userId gilt niemand als Ersteller: alles schreibgeschützt, Löschen/Bearbeiten
-  // ausgeblendet. getUser() kann (wie getAccessToken) mit "Operation timed out" scheitern oder hängen,
-  // solange der Viewer ein Modell lädt — daher mit Zeitlimit und mehreren Versuchen.
-  const [userFehler, setUserFehler] = useState<string | null>(null);
-  const [userVersuch, setUserVersuch] = useState(0);
-  useEffect(() => {
-    if (!api) return;
-    let abgebrochen = false;
-    (async () => {
-      let letzterFehler = "keine Benutzer-ID erhalten";
-      for (let versuch = 1; versuch <= 6 && !abgebrochen; versuch++) {
-        try {
-          const user = await mitTimeout<TcUser | null>((api as unknown as { user: { getUser(): Promise<TcUser | null> } }).user.getUser(), 8000, "Benutzer-Abfrage");
-          if (abgebrochen) return;
-          if (user?.id) {
-            setUserId(user.id);
-            setUserEmail(user.email ?? null);
-            const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
-            setUserName(name || user.email || "Kollege");
-            setUserFehler(null);
-            console.log("[Auth] User:", user.id, user.email);
-            return;
-          }
-        } catch (e) { letzterFehler = e instanceof Error ? e.message : String(e); }
-        console.warn(`[Auth] Benutzer nicht ermittelt (Versuch ${versuch}/6):`, letzterFehler);
-        await new Promise(r => setTimeout(r, 3000));
-      }
-      if (!abgebrochen) setUserFehler(letzterFehler);
-    })();
-    return () => { abgebrochen = true; };
-  }, [api, userVersuch]);
-
-  // Laden: lokale Kopie + Cloud in EINEM Ablauf zusammenführen (siehe fuehreZusammen in syncHelpers.ts).
-  // Früher zwei getrennte Effekte: die lokale Kopie wurde u.U. erst NACH dem Cloud-Stand geladen
-  // (projectId/ready kommen später als api) und überschrieb ihn — der alte Stand landete dann wieder in
-  // der Cloud; ausserdem wurden von anderen gelöschte Sims aus der lokalen Kopie wiederbelebt.
-  const [ladeFehler, setLadeFehler] = useState<string | null>(null);
+  // Logik in eigenen Bausteinen (hooks/): Benutzer, Laden/Speichern, Anwesenheit, Rückgängig
+  const { userId, userName, userEmail, userFehler, erneutVersuchen: benutzerErneutVersuchen } = useAuth(api);
+  const { syncStatus, syncFehler, geladen: cloudLoadDone, konflikt, konfliktAufloesen, ladeFehler, erneutLaden } =
+    useCloudSync({ api, ready, projectId, sims, setSims, aktivId, setAktivId });
   const [verlaufOffen, setVerlaufOffen] = useState(false);
-  const [ladeVersuch, setLadeVersuch] = useState(0);
-  const projektIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!api || !ready) return;
-    let abgebrochen = false;
-    (async () => {
-      const r = await cloudLaden(api);
-      if (abgebrochen) return;
-      const pid = r.projectId ?? projectId;
-      projektIdRef.current = pid;
-      const lokal = lsGetJson<SimProjekt[]>(nsKey(SIMS_KEY, pid), []);
-      const lokalAid = lsGet(nsKey(AKTIV_KEY, pid));
-      if (r.status === "fehler") {
-        // Cloud nicht erreichbar: lokalen Stand anzeigen, aber NICHT speichern (würde sonst als Konflikt
-        // enden oder einen veralteten Stand hochladen) — Hinweis mit "Erneut laden"
-        setSims(lokal);
-        setAktivId(waehleAktivId(lokalAid, null, lokal));
-        setLadeFehler(r.fehler);
-        return;
-      }
-      const cloudSims = r.status === "ok" && Array.isArray(r.data.sims) ? r.data.sims as SimProjekt[] : [];
-      const bekannt = lsGetJson<string[] | null>(nsKey(CLOUD_IDS_KEY, pid), null);
-      const erg = fuehreZusammen(lokal, cloudSims, bekannt);
-      if (erg.geloeschtVerworfen.length) console.log("[CloudSync] In der Cloud gelöscht, lokale Kopie verworfen:", erg.geloeschtVerworfen.length);
-      if (erg.nurLokalBehalten.length) console.log("[CloudSync] Nur lokal vorhanden, wird hochgeladen:", erg.nurLokalBehalten.length);
-      lsSet(nsKey(CLOUD_IDS_KEY, pid), JSON.stringify(cloudSims.map(s => s.id)));
-      cloudVersion.current = r.version;
-      setSims(erg.sims);
-      setAktivId(waehleAktivId(lokalAid, r.status === "ok" ? (r.data.aktivId as string | null) ?? null : null, erg.sims));
-      setLadeFehler(null);
-      setCloudLoadDone(true);
-    })();
-    return () => { abgebrochen = true; };
-    // projectId nur als Fallback-Schlüssel — kein Neuladen, wenn er später nachkommt
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, ready, ladeVersuch]);
-
-  // Bei Speicher-Konflikt: aktuelle Cloud-Version übernehmen und weiterarbeiten
-  const konfliktAufloesen = useCallback(async () => {
-    if (!api) return;
-    try {
-      const data = await cloudLoad(api);
-      if (data) {
-        if (Array.isArray(data.sims)) {
-          setSims(data.sims as SimProjekt[]);
-          const pid = projektIdRef.current ?? projectId;
-          lsSetSimsCache(nsKey(SIMS_KEY, pid), JSON.stringify(data.sims));
-          lsSet(nsKey(CLOUD_IDS_KEY, pid), JSON.stringify((data.sims as SimProjekt[]).map(s => s.id)));
-        }
-        if (data.aktivId) setAktivId(data.aktivId as string);
-        if (typeof data.version === "number") cloudVersion.current = data.version;
-      }
-    } catch { /* ignore */ }
-    setKonflikt(false);
-  }, [api, projectId]);
-
-  // 3. localStorage + Cloud speichern (debounced)
-  // Speichervorgänge werden strikt nacheinander abgearbeitet (Queue) — sonst können sich
-  // zwei sich überschneidende Speichervorgänge (z.B. Debounce + Sofort-Speichern beim
-  // Tab-Wechsel) gegenseitig als "Konflikt" blockieren und danach speichert gar nichts mehr.
-  const saveQueue = useRef<Promise<void>>(Promise.resolve());
-  const saveToCloud = useCallback((simsData: SimProjekt[], aid: string | null) => {
-    saveQueue.current = saveQueue.current.then(async () => {
-      // Lokale Kopie ist nur ein Cache — darf das Cloud-Speichern nie verhindern (localStorage voll)
-      const pid = projektIdRef.current ?? projectId;
-      lsSetSimsCache(nsKey(SIMS_KEY, pid), JSON.stringify(simsData));
-      if (aid) lsSet(nsKey(AKTIV_KEY, pid), aid);
-      if (!api) return;
-      setSyncStatus("saving");
-      try {
-        // Sicherheitsnetz: ein leerer Zustand darf bestehende Cloud-Daten nie stillschweigend
-        // überschreiben (Schutz gegen Timing-Bugs, fehlgeschlagenes Laden etc.)
-        if (simsData.length === 0) {
-          const bestehend = await cloudLoad(api);
-          if (bestehend && Array.isArray(bestehend.sims) && bestehend.sims.length > 0) {
-            console.warn("[CloudSync] Speichern übersprungen — Cloud hat noch Daten, lokal aber leer");
-            setSyncStatus("idle");
-            return;
-          }
-        }
-        const result = await cloudSave(api, { sims: simsData, aktivId: aid }, cloudVersion.current);
-        if (result.ok) {
-          cloudVersion.current = result.version;
-          lsSet(nsKey(CLOUD_IDS_KEY, pid), JSON.stringify(simsData.map(s => s.id))); // diese Sims sind jetzt in der Cloud
-          setSyncFehler(null);
-          setSyncStatus("saved");
-          setTimeout(() => setSyncStatus("idle"), 2000);
-        } else if (result.conflict) {
-          // Jemand anderes hat zwischenzeitlich gespeichert — nicht überschreiben,
-          // sondern den Nutzer entscheiden lassen (Banner mit "Neu laden")
-          setKonflikt(true);
-          setSyncFehler("Konflikt — jemand anderes hat inzwischen gespeichert");
-          setSyncStatus("error");
-        } else {
-          setSyncFehler(result.fehler);
-          setSyncStatus("error");
-        }
-      } catch (e) { setSyncFehler(e instanceof Error ? e.message : String(e)); setSyncStatus("error"); }
-    }).catch(e => {
-      // Eine abgelehnte Queue überspringt jeden weiteren .then() — danach würde nie wieder gespeichert
-      console.error("[CloudSync] Speichern fehlgeschlagen:", e);
-      setSyncFehler(e instanceof Error ? e.message : String(e));
-      setSyncStatus("error");
-    });
-  }, [api, projectId]);
-
-  useEffect(() => {
-    // Erst speichern, wenn der initiale Ladevorgang (Cloud) abgeschlossen ist —
-    // sonst überschreibt der leere Startzustand echte Cloud-Daten (Race Condition).
-    // Bei einem ungelösten Speicher-Konflikt pausieren, bis der Nutzer neu geladen hat.
-    if (!ready || !cloudLoadDone || konflikt) return;
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => saveToCloud(sims, aktivId), 400);
-    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
-  }, [sims, aktivId, saveToCloud, ready, cloudLoadDone, konflikt]);
-
-  // Sicherheitsnetz: beim Tab-Wechsel/Schließen sofort speichern statt auf die
-  // (kurze) Verzögerung zu warten — verhindert Datenverlust bei schnellem Reload
-  useEffect(() => {
-    const sofortSpeichern = () => {
-      if (document.visibilityState === "visible") return; // nur beim Verlassen/Verstecken, nicht beim Zurückkommen
-      if (konflikt) return; // bei ungelöstem Konflikt nicht blind weiterspeichern
-      if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; saveToCloud(sims, aktivId); }
-    };
-    document.addEventListener("visibilitychange", sofortSpeichern);
-    window.addEventListener("pagehide", sofortSpeichern);
-    return () => {
-      document.removeEventListener("visibilitychange", sofortSpeichern);
-      window.removeEventListener("pagehide", sofortSpeichern);
-    };
-  }, [sims, aktivId, saveToCloud, konflikt]);
 
   const aktiveSim = sims.find(s => s.id === aktivId) ?? null;
 
@@ -241,62 +65,10 @@ export default function App() {
 
   // Zugriffskontrolle — Regeln zentral in zugriff.ts
   const readOnly = !darfBearbeiten(aktiveSim, userId);
-
-  // Anwesenheit: leichter Heartbeat alle 25s, nur wenn die aktive Simulation
-  // mit Bearbeitungsrechten für andere geteilt ist — zeigt den Namen des anderen
-  // Bearbeiters an, falls er/sie gerade ebenfalls in derselben Simulation ist.
-  // Kein zusätzliches Dauer-Polling nebenher, nur dieser eine Heartbeat.
-  const aktiveSimRef = useRef(aktiveSim);
-  useEffect(() => { aktiveSimRef.current = aktiveSim; });
-  useEffect(() => {
-    if (!api || !userId) { setAndererBearbeiter(null); return; }
-    let abgebrochen = false;
-    const heartbeat = async () => {
-      const sim = aktiveSimRef.current;
-      if (!sim) { if (!abgebrochen) setAndererBearbeiter(null); return; }
-      if (!darfBearbeiten(sim, userId) || !mitBearbeitungGeteilt(sim, userId)) { if (!abgebrochen) setAndererBearbeiter(null); return; }
-      const presence = await sendPresence(api, sim.id, userId, userName || "Kollege");
-      if (abgebrochen) return;
-      const andere = Object.entries(presence).find(([uid, e]) => uid !== userId && e.simId === sim.id);
-      setAndererBearbeiter(andere ? andere[1].name : null);
-    };
-    heartbeat();
-    const interval = setInterval(heartbeat, 25000);
-    return () => { abgebrochen = true; clearInterval(interval); };
-  }, [api, userId, userName]);
-
+  const andererBearbeiter = usePresence(api, aktiveSim, userId, userName);
   // Nur Sims anzeigen die nicht "none" sind
   const sichtbareSims = sims.filter(s => istSichtbar(s, userId));
-
-  function updateSim(updated: SimProjekt) {
-    // Undo: aktuellen Stand speichern bevor Änderung
-    const current = sims.find(s => s.id === updated.id);
-    if (current) {
-      undoStack.current = [...undoStack.current.slice(-14), current];
-      redoStack.current = [];
-      setUndoLen(undoStack.current.length); setRedoLen(0);
-    }
-    const gestempelt = { ...updated, geaendertAm: new Date().toISOString(), geaendertVon: userName || undefined };
-    setSims(prev => prev.map(s => s.id === updated.id ? gestempelt : s));
-  }
-
-  function undo() {
-    if (undoStack.current.length === 0) return;
-    const prev = undoStack.current.pop()!;
-    const current = sims.find(s => s.id === prev.id);
-    if (current) redoStack.current.push(current);
-    setSims(s => s.map(sim => sim.id === prev.id ? prev : sim));
-    setUndoLen(undoStack.current.length); setRedoLen(redoStack.current.length);
-  }
-
-  function redo() {
-    if (redoStack.current.length === 0) return;
-    const next = redoStack.current.pop()!;
-    const current = sims.find(s => s.id === next.id);
-    if (current) undoStack.current.push(current);
-    setSims(s => s.map(sim => sim.id === next.id ? next : sim));
-    setUndoLen(undoStack.current.length); setRedoLen(redoStack.current.length);
-  }
+  const { updateSim, undo, redo, undoLen, redoLen } = useUndo(sims, setSims, userName);
 
   const [headerDropdown, setHeaderDropdown] = useState(false);
   const [headerFilter, setHeaderFilter] = useState<"alle" | "meine" | "freigegeben">("alle");
@@ -314,10 +86,6 @@ export default function App() {
   const [kalenderManagerOffen, setKalenderManagerOffen] = useState(false);
   const [ifcExportOffen, setIfcExportOffen] = useState(false);
   const [hilfeOffen, setHilfeOffen] = useState(false);
-  // Spiegelt undoStack/redoStack.length als echten State (statt die Refs während des Renderns direkt
-  // zu lesen) — nur so ist garantiert, dass Undo-/Redo-Buttons nach jeder Änderung korrekt neu rendern.
-  const [undoLen, setUndoLen] = useState(0);
-  const [redoLen, setRedoLen] = useState(0);
 
   const appRef = useRef<HTMLDivElement>(null);
   const [maximiert, setMaximiert] = useState(false);
@@ -505,7 +273,7 @@ export default function App() {
         <div className="alert err" style={{ justifyContent: "space-between", gap: 8 }}>
           <span title={ladeFehler}>⚠ Cloud nicht erreichbar ({ladeFehler}) — angezeigt wird die lokale Kopie, Änderungen werden nicht gespeichert.</span>
           <button className="tc-btn-secondary" style={{ flexShrink: 0, height: 22, fontSize: 11 }}
-            onClick={() => { setLadeFehler(null); setLadeVersuch(v => v + 1); }}>Erneut laden</button>
+            onClick={erneutLaden}>Erneut laden</button>
         </div>
       )}
 
@@ -514,7 +282,7 @@ export default function App() {
         <div className="alert err" style={{ justifyContent: "space-between", gap: 8 }}>
           <span title={userFehler}>⚠ Benutzer konnte nicht ermittelt werden ({userFehler}) — Bearbeiten, Löschen und Speichern sind gesperrt.</span>
           <button className="tc-btn-secondary" style={{ flexShrink: 0, height: 22, fontSize: 11 }}
-            onClick={() => { setUserFehler(null); setUserVersuch(v => v + 1); }}>Erneut versuchen</button>
+            onClick={benutzerErneutVersuchen}>Erneut versuchen</button>
         </div>
       )}
 
