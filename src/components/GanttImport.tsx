@@ -3,6 +3,8 @@ import * as XLSX from "xlsx";
 import type { Task, TaskTyp } from "../types";
 import { isValidDatum, normalizeDatum } from "../types";
 import { istMsProjectXml, parseMsProjectXml } from "./msProjectXml";
+import { baueImportTasks, leseGruppenFlag } from "./ganttTabelle";
+import type { ImportZeile } from "./ganttTabelle";
 
 interface Props {
   onImport: (tasks: Task[], dateiname: string) => void;
@@ -59,26 +61,14 @@ export default function GanttImport({ onImport, taskCount, ganttInfo }: Props) {
   }
 
   // Standard-Spaltennamen die NICHT als Extra gelten
-  const STANDARD = new Set(["name","start","startdatum","ende","enddatum","end","finish","fertig","anfang","begin","von","bis","typ","type","kategorie","vorgangsname","vorgang","task","bezeichnung","vorgänger","vorganger","predecessor","wartetage","lag","lagdays","lag days","kürzel","kuerzel","bauteil-kürzel","bauteil-kuerzel","bauteile"]);
+  const STANDARD = new Set(["name","start","startdatum","ende","enddatum","end","finish","fertig","anfang","begin","von","bis","typ","type","kategorie","vorgangsname","vorgang","task","bezeichnung","vorgänger","vorganger","predecessor","wartetage","lag","lagdays","lag days","kürzel","kuerzel","bauteil-kürzel","bauteil-kuerzel","bauteile","nr","nr.","nummer","gruppe","ebene","gliederungsebene","outlinelevel"]);
   const VORGAENGER_SPALTEN = ["Vorgänger", "vorgänger", "Vorganger", "Predecessor", "predecessor"];
   const WARTETAGE_SPALTEN = ["Wartetage", "wartetage", "Lag", "lag", "Lag Days", "LagDays"];
   const KUERZEL_SPALTEN = ["Kürzel", "kürzel", "Kuerzel", "kuerzel", "Bauteil-Kürzel", "bauteil-kürzel"];
-
-  // Vorgänger-Spalte (Nummer wie in der App, oder Task-Name) → predecessorId auflösen.
-  // Import erzeugt keine Gruppen, daher entspricht die Nummer 1,2,3… exakt der Zeilenreihenfolge
-  // (dieselbe Logik wie berechneNummern() für eine reine Task-Liste ohne Gruppen).
-  function loeseVorgaenger(rows: { task: Task; vorgRoh: string; lagRoh: string }[]): Task[] {
-    const idByNummer = new Map(rows.map((r, i) => [String(i + 1), r.task.id]));
-    const idByName = new Map(rows.map(r => [r.task.name.trim().toLowerCase(), r.task.id]));
-    return rows.map(r => {
-      const roh = r.vorgRoh.trim();
-      if (!roh) return r.task;
-      const predId = idByNummer.get(roh) ?? idByName.get(roh.toLowerCase());
-      if (!predId || predId === r.task.id) return r.task;
-      const lag = Number(String(r.lagRoh ?? "0").replace(",", ".")) || 0;
-      return { ...r.task, predecessorId: predId, lagDays: lag };
-    });
-  }
+  // Gruppen/Untergruppen + Nummer, auf die sich "Vorgänger" bezieht — ausgewertet in baueImportTasks() (ganttTabelle.ts)
+  const NR_SPALTEN = ["Nr", "Nr.", "Nummer"];
+  const GRUPPE_SPALTEN = ["Gruppe"];
+  const EBENE_SPALTEN = ["Ebene", "Gliederungsebene", "OutlineLevel"];
 
   function extraSpalten(row: Record<string, unknown>): Record<string, string> {
     const extra: Record<string, string> = {};
@@ -128,8 +118,11 @@ export default function GanttImport({ onImport, taskCount, ganttInfo }: Props) {
     const vorgCol = findHeader(VORGAENGER_SPALTEN);
     const lagCol = findHeader(WARTETAGE_SPALTEN);
     const kuerzelCol = findHeader(KUERZEL_SPALTEN);
+    const nrCol = findHeader(NR_SPALTEN);
+    const gruppeCol = findHeader(GRUPPE_SPALTEN);
+    const ebeneCol = findHeader(EBENE_SPALTEN);
 
-    const rows: { task: Task; vorgRoh: string; lagRoh: string }[] = [];
+    const rows: ImportZeile[] = [];
     for (let r = 2; r <= range.e.r + 1; r++) {
       const name = nameCol ? getCachedValue(ws, nameCol, r) : "";
       if (!name.trim()) continue;
@@ -160,16 +153,19 @@ export default function GanttImport({ onImport, taskCount, ganttInfo }: Props) {
         },
         vorgRoh: vorgCol ? getCachedValue(ws, vorgCol, r) : "",
         lagRoh: lagCol ? getCachedValue(ws, lagCol, r) : "0",
+        nrRoh: nrCol ? getCachedValue(ws, nrCol, r) : "",
+        gruppeRoh: gruppeCol ? getCachedValue(ws, gruppeCol, r) : "",
+        ebeneRoh: ebeneCol ? getCachedValue(ws, ebeneCol, r) : "",
       });
     }
-    return loeseVorgaenger(rows);
+    return baueImportTasks(rows);
   }
 
   function parseCsv(text: string): Task[] {
     const wb = XLSX.read(text, { type: "string", cellFormula: false });
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
-    const rows = rawRows.map((row, i) => ({
+    const rows: ImportZeile[] = rawRows.map((row, i) => ({
       task: {
         id: crypto.randomUUID(),
         name: String(findCol(row, ["Name", "name", "Vorgangsname", "Vorgang", "Task", "Bezeichnung"]) ?? `Task ${i + 1}`),
@@ -182,17 +178,20 @@ export default function GanttImport({ onImport, taskCount, ganttInfo }: Props) {
       },
       vorgRoh: String(findCol(row, VORGAENGER_SPALTEN) ?? ""),
       lagRoh: String(findCol(row, WARTETAGE_SPALTEN) ?? "0"),
+      nrRoh: String(findCol(row, NR_SPALTEN) ?? ""),
+      gruppeRoh: findCol(row, GRUPPE_SPALTEN) ?? "",
+      ebeneRoh: String(findCol(row, EBENE_SPALTEN) ?? ""),
     })).filter(r => r.task.name.trim() !== "");
-    return loeseVorgaenger(rows);
+    return baueImportTasks(rows);
   }
 
-  const XML_STANDARD_TAGS = new Set(["name","start","earlystart","finish","end","ende","typ","type","kuerzel","kürzel","objects","bauteile","vorgaenger","vorgänger","predecessor","wartetage","lag"]);
+  const XML_STANDARD_TAGS = new Set(["name","start","earlystart","finish","end","ende","typ","type","kuerzel","kürzel","objects","bauteile","vorgaenger","vorgänger","predecessor","wartetage","lag","nr","gruppe","ebene"]);
 
   function parseXml(text: string): Task[] {
     if (istMsProjectXml(text)) return parseMsProjectXml(text);
     const parser = new DOMParser();
     const doc = parser.parseFromString(text, "text/xml");
-    const rows: { task: Task; vorgRoh: string; lagRoh: string }[] = [];
+    const rows: ImportZeile[] = [];
     doc.querySelectorAll("Task, task").forEach((el, i) => {
       const g = (tag: string) => el.querySelector(tag)?.textContent?.trim() ?? "";
       const extra: Record<string, string> = {};
@@ -214,14 +213,54 @@ export default function GanttImport({ onImport, taskCount, ganttInfo }: Props) {
         },
         vorgRoh: g("Vorgaenger") || g("Vorgänger") || g("Predecessor") || "",
         lagRoh: g("Wartetage") || g("Lag") || "0",
+        nrRoh: g("Nr"),
+        gruppeRoh: g("Gruppe"),
+        ebeneRoh: g("Ebene"),
       });
     });
-    return loeseVorgaenger(rows);
+    return baueImportTasks(rows);
+  }
+
+  // JSON aus dem eigenen Export (Array von Tasks, oder { tasks: [...] })
+  const JSON_STANDARD = new Set(["nr", "gruppe", "ebene", "name", "start", "end", "ende", "typ", "kuerzel", "bauteile", "guids", "vorgaenger", "wartetage"]);
+
+  function parseJson(text: string): Task[] {
+    const roh: unknown = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text); // BOM entfernen
+    const liste = Array.isArray(roh) ? roh : (roh as { tasks?: unknown })?.tasks;
+    if (!Array.isArray(liste)) throw new Error("JSON enthält keine Task-Liste");
+    const s = (v: unknown) => (v === null || v === undefined ? "" : String(v));
+    const rows: ImportZeile[] = liste.filter(o => o && typeof o === "object").map((o: Record<string, unknown>, i) => {
+      const extra: Record<string, string> = {};
+      for (const [k, v] of Object.entries(o)) {
+        if (JSON_STANDARD.has(k.toLowerCase()) || v === null || typeof v === "object") continue;
+        if (s(v).trim()) extra[k] = s(v).trim();
+      }
+      const istGrp = leseGruppenFlag(o.gruppe) === true;
+      return {
+        task: {
+          id: crypto.randomUUID(),
+          name: s(o.name) || `Task ${i + 1}`,
+          start: parseDatum(o.start),
+          end: parseDatum(o.end ?? o.ende),
+          typ: parseTyp(o.typ),
+          objektGuids: !istGrp && Array.isArray(o.guids) ? o.guids.map(String) : [],
+          bauteilKuerzel: s(o.kuerzel).trim() || undefined,
+          extraSpalten: Object.keys(extra).length > 0 ? extra : undefined,
+        },
+        vorgRoh: s(o.vorgaenger),
+        lagRoh: s(o.wartetage) || "0",
+        nrRoh: s(o.nr),
+        gruppeRoh: o.gruppe ?? "",
+        ebeneRoh: s(o.ebene),
+      };
+    });
+    return baueImportTasks(rows);
   }
 
   function validiere(tasks: Task[]): ImportFehler[] {
     const errs: ImportFehler[] = [];
     tasks.forEach((t, i) => {
+      if (t.isGroup) return; // Termine von Gruppen ergeben sich aus ihren Tasks
       if (!isValidDatum(t.start)) errs.push({ zeile: i + 1, name: t.name, feld: "Start", wert: t.start });
       if (t.end && !isValidDatum(t.end)) errs.push({ zeile: i + 1, name: t.name, feld: "Ende", wert: t.end });
     });
@@ -244,11 +283,13 @@ export default function GanttImport({ onImport, taskCount, ganttInfo }: Props) {
       } else if (ext === "xml" || ext === "msp") {
         const text = await file.text();
         tasks = parseXml(text);
+      } else if (ext === "json") {
+        tasks = parseJson(await file.text());
       } else if (ext === "mpp") {
         setMsg(".mpp wird nicht unterstützt — bitte in MS Project über Datei → Speichern unter → XML-Format exportieren und diese Datei importieren.");
         return;
       } else {
-        setMsg("Unterstützte Formate: .xlsx, .xls, .csv, .xml (auch MS-Project-XML)");
+        setMsg("Unterstützte Formate: .xlsx, .xls, .csv, .xml (auch MS-Project-XML), .json");
         return;
       }
 
@@ -261,7 +302,8 @@ export default function GanttImport({ onImport, taskCount, ganttInfo }: Props) {
       setFehler(errs);
 
       onImport(tasks, file.name);
-      setMsg(`${tasks.length} Tasks importiert${errs.length > 0 ? ` · ${errs.length} Datumsfehler` : ""}`);
+      const gruppen = tasks.filter(t => t.isGroup).length;
+      setMsg(`${tasks.length - gruppen} Tasks${gruppen > 0 ? ` in ${gruppen} Gruppen` : ""} importiert${errs.length > 0 ? ` · ${errs.length} Datumsfehler` : ""}`);
     } catch (e) {
       setMsg(`Fehler: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -286,11 +328,11 @@ export default function GanttImport({ onImport, taskCount, ganttInfo }: Props) {
           onDrop={handleDrop}
           onClick={() => inputRef.current?.click()}
         >
-          <span className="gantt-upload-text">xlsx, xml oder MS-Project-XML importieren</span>
+          <span className="gantt-upload-text">xlsx, csv, xml, json oder MS-Project-XML importieren</span>
           <input
             ref={inputRef}
             type="file"
-            accept=".xlsx,.xls,.csv,.tsv,.xml,.msp,.mpp"
+            accept=".xlsx,.xls,.csv,.tsv,.xml,.msp,.mpp,.json"
             style={{ display: "none" }}
             onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])}
           />

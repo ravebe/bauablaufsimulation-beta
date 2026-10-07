@@ -17,22 +17,41 @@ interface Props {
   onLoeschen: () => void;
 }
 
-const GANTT_VORLAGE_HEADER = ["Name", "Start", "Ende", "Typ", "Vorgänger", "Wartetage", "Bauabschnitt", "Geschoss", "Etappe", "Objektname", "Layer"];
+// Spalten wie beim Excel-Export (ganttExportFormate.ts) — Gruppen über "Gruppe"/"Ebene", siehe ganttTabelle.ts
+const GANTT_VORLAGE_HEADER = ["Nr", "Gruppe", "Ebene", "Name", "Start", "Ende", "Typ", "Vorgänger", "Wartetage", "Bauabschnitt", "Geschoss", "Etappe", "Objektname", "Layer"];
 const GANTT_VORLAGE_BEISPIEL = [
-  ["Erdarbeiten", "01.01.2025", "15.01.2025", "neubau", "", "", "BA1", "UG", "1", "Bodenplatte", "Fundament"],
-  ["Bestandswand", "01.01.2025", "01.01.2025", "bestand", "", "", "BA1", "EG", "", "Wand Beton", "Bestand"],
-  ["Abbruch Altbau", "16.01.2025", "20.01.2025", "abbruch", "1", "0", "BA1", "EG", "1", "Altbau Wand", "Abbruch"],
-  ["Rohbau EG", "21.01.2025", "15.02.2025", "neubau", "3", "2", "BA1", "EG", "2", "Decke Beton", "Rohbau"],
-  ["Gerüst", "01.02.2025", "28.02.2025", "temporaer", "", "", "BA1", "EG", "2", "Gerüst", "Bauhilfsmassnahme"],
-  ["Baustellenkran", "01.01.2025", "28.02.2025", "baustelleneinrichtung", "", "", "BA1", "-", "", "Kran", "Baustelleneinrichtung"],
-  ["Nachbargebäude", "01.01.2025", "28.02.2025", "drittprojekt", "", "", "BA1", "-", "", "Nachbarbau", "Drittprojekt"],
+  ["A", "x", 1, "Vorbereitung", "", "", "", "", "", "", "", "", "", ""],
+  ["1", "", 2, "   Baustellenkran", "01.01.2025", "28.02.2025", "baustelleneinrichtung", "", "", "BA1", "-", "", "Kran", "Baustelleneinrichtung"],
+  ["2", "", 2, "   Bestandswand", "01.01.2025", "01.01.2025", "bestand", "", "", "BA1", "EG", "", "Wand Beton", "Bestand"],
+  ["3", "", 2, "   Nachbargebäude", "01.01.2025", "28.02.2025", "drittprojekt", "", "", "BA1", "-", "", "Nachbarbau", "Drittprojekt"],
+  ["B", "x", 1, "Rohbau", "", "", "", "", "", "", "", "", "", ""],
+  ["C", "x", 2, "   UG", "", "", "", "", "", "", "", "", "", ""],
+  ["4", "", 3, "      Erdarbeiten", "01.01.2025", "15.01.2025", "neubau", "", "", "BA1", "UG", "1", "Bodenplatte", "Fundament"],
+  ["5", "", 3, "      Abbruch Altbau", "16.01.2025", "20.01.2025", "abbruch", "4", "0", "BA1", "EG", "1", "Altbau Wand", "Abbruch"],
+  ["D", "x", 2, "   EG", "", "", "", "", "", "", "", "", "", ""],
+  ["6", "", 3, "      Rohbau EG", "21.01.2025", "15.02.2025", "neubau", "5", "2", "BA1", "EG", "2", "Decke Beton", "Rohbau"],
+  ["7", "", 3, "      Gerüst", "01.02.2025", "28.02.2025", "temporaer", "", "", "BA1", "EG", "2", "Gerüst", "Bauhilfsmassnahme"],
+];
+const GANTT_VORLAGE_HINWEISE = [
+  ["Spalte", "Bedeutung"],
+  ["Nr", "Nummer der Zeile — Gruppen A, B, C…, Tasks 1, 2, 3… (wie in der App). Die Spalte Vorgänger bezieht sich darauf. Optional: leer = wird automatisch nummeriert."],
+  ["Gruppe", "x = Zeile ist eine Gruppe (Sammelzeile ohne Bauteile). Leer = normaler Task."],
+  ["Ebene", "1 = Hauptebene, 2 = innerhalb einer Gruppe der Ebene 1, 3 = innerhalb einer Untergruppe usw. Eine Zeile gehört zur letzten Gruppe darüber mit kleinerer Ebene."],
+  ["Name", "Name des Tasks bzw. der Gruppe. Leerzeichen am Anfang (Einrückung) werden beim Import ignoriert."],
+  ["Start / Ende", "Datum TT.MM.JJJJ. Bei Gruppen leer lassen — ergibt sich aus den Tasks der Gruppe."],
+  ["Typ", "neubau, bestand, abbruch, temporaer, baustelleneinrichtung oder drittprojekt. Bei Gruppen leer."],
+  ["Vorgänger / Wartetage", "Nr (oder Name) des Vorgängers und Wartetage nach dessen Ende."],
+  ["weitere Spalten", "Beliebige Zusatzspalten (z.B. Bauabschnitt, Geschoss) — nutzbar für die Auto-Verknüpfung."],
 ];
 
 function downloadGanttVorlage() {
   const ws = XLSX.utils.aoa_to_sheet([GANTT_VORLAGE_HEADER, ...GANTT_VORLAGE_BEISPIEL]);
-  ws["!cols"] = GANTT_VORLAGE_HEADER.map(() => ({ wch: 16 }));
+  ws["!cols"] = GANTT_VORLAGE_HEADER.map(h => ({ wch: h === "Name" ? 26 : h.length <= 6 ? 7 : 16 }));
+  const hinweise = XLSX.utils.aoa_to_sheet(GANTT_VORLAGE_HINWEISE);
+  hinweise["!cols"] = [{ wch: 22 }, { wch: 110 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Gantt-Vorlage");
+  XLSX.utils.book_append_sheet(wb, hinweise, "Hinweise");
   XLSX.writeFile(wb, "4D_Gantt_Vorlage.xlsx");
 }
 

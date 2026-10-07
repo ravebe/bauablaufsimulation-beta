@@ -1,11 +1,13 @@
 // ganttExportFormate.ts — gemeinsame Export-Funktionen für Tasks (Excel/CSV/XML/MS-Project/JSON),
-// genutzt von GanttExport.tsx (Tab Projekte) und dem Optionen-Menü (App.tsx)
+// genutzt von GanttExport.tsx (Tab Projekte) und dem Optionen-Menü (App.tsx). Gruppen/Untergruppen
+// stehen in den Spalten "Gruppe"/"Ebene" (siehe ganttTabelle.ts) und werden beim Import wieder erkannt.
 import * as XLSX from "xlsx";
 import type { Task } from "../types";
-import { formatDatum, berechneNummern } from "../types";
 import type { Kalender } from "./kalenderHelpers";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import { generateMsProjectXml } from "./msProjectXml";
+import { exportZeilen, GRUPPEN_SPALTEN } from "./ganttTabelle";
+import type { ExportZeile } from "./ganttTabelle";
 
 function download(content: string, filename: string, mime: string) {
   const blob = new Blob([content], { type: mime });
@@ -17,12 +19,13 @@ function download(content: string, filename: string, mime: string) {
 
 function esc(s: string) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
-// Reihenfolge wie in der Gantt-Vorlage (GanttVorlage.tsx), zusätzliche Spalten alphabetisch dahinter
+// Reihenfolge wie in der Gantt-Vorlage (SimKebabMenu.tsx), zusätzliche Spalten alphabetisch dahinter
 const VORLAGE_SPALTEN = ["Bauabschnitt", "Geschoss", "Etappe", "Objektname", "Layer"];
 
 function sammleExtraSpalten(tasks: Task[]): string[] {
   const set = new Set<string>();
   for (const t of tasks) if (t.extraSpalten) for (const k of Object.keys(t.extraSpalten)) set.add(k);
+  for (const k of [...set]) if (GRUPPEN_SPALTEN.some(g => g.toLowerCase() === k.toLowerCase())) set.delete(k);
   const vorlage = VORLAGE_SPALTEN.filter(k => set.has(k));
   const rest = [...set].filter(k => !VORLAGE_SPALTEN.includes(k)).sort();
   return [...vorlage, ...rest];
@@ -33,53 +36,61 @@ function xmlTag(name: string): string {
   return name.replace(/[^a-zA-Z0-9_]/g, "_").replace(/^(?=\d)/, "_");
 }
 
-export function exportXlsx(tasks: Task[], simName: string) {
-  const nummern = berechneNummern(tasks);
+/** Tabellenzeile (Excel/CSV) in Spaltenreihenfolge; einzug = Name je Ebene optisch einrücken */
+function tabellenZeile(z: ExportZeile, extraSpalten: string[], einzug: boolean): Record<string, string | number> {
+  return {
+    Nr: z.nr,
+    Gruppe: z.gruppe ? "x" : "",
+    Ebene: z.ebene,
+    Name: einzug ? "   ".repeat(z.ebene - 1) + z.name : z.name,
+    Start: z.start,
+    Ende: z.ende,
+    Typ: z.typ,
+    Vorgänger: z.vorgaenger,
+    Wartetage: z.wartetage,
+    ...Object.fromEntries(extraSpalten.map(k => [k, z.extra[k] ?? ""])),
+    Kürzel: z.kuerzel,
+    Bauteile: z.bauteile,
+  };
+}
+
+export function exportXlsx(tasks: Task[], simName: string, kalender?: Kalender) {
   const extraSpalten = sammleExtraSpalten(tasks);
-  const rows = tasks.map(t => ({
-    Name: t.name,
-    Start: formatDatum(t.start),
-    Ende: formatDatum(t.end),
-    Typ: t.typ,
-    Vorgänger: t.predecessorId ? nummern.get(t.predecessorId) ?? "" : "",
-    Wartetage: t.predecessorId ? (t.lagDays ?? 0) : "",
-    ...Object.fromEntries(extraSpalten.map(k => [k, t.extraSpalten?.[k] ?? ""])),
-    Kürzel: t.bauteilKuerzel ?? "",
-    Bauteile: t.objektGuids.length,
-  }));
+  const rows = exportZeilen(tasks, kalender).map(z => tabellenZeile(z, extraSpalten, true));
   const ws = XLSX.utils.json_to_sheet(rows);
-  ws["!cols"] = [{ wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, ...extraSpalten.map(() => ({ wch: 14 })), { wch: 8 }, { wch: 10 }];
+  ws["!cols"] = [{ wch: 5 }, { wch: 7 }, { wch: 6 }, { wch: 34 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, ...extraSpalten.map(() => ({ wch: 14 })), { wch: 8 }, { wch: 10 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Gantt");
   XLSX.writeFile(wb, `${simName}_Gantt.xlsx`);
 }
 
-export function exportCsv(tasks: Task[], simName: string) {
-  const nummern = berechneNummern(tasks);
+export function exportCsv(tasks: Task[], simName: string, kalender?: Kalender) {
   const extraSpalten = sammleExtraSpalten(tasks);
   const sep = ";";
-  const header = ["Name", "Start", "Ende", "Typ", "Vorgänger", "Wartetage", ...extraSpalten, "Kürzel", "Bauteile"].join(sep);
-  const rows = tasks.map(t =>
-    [t.name, formatDatum(t.start), formatDatum(t.end), t.typ,
-      t.predecessorId ? nummern.get(t.predecessorId) ?? "" : "",
-      t.predecessorId ? (t.lagDays ?? 0) : "",
-      ...extraSpalten.map(k => t.extraSpalten?.[k] ?? ""),
-      t.bauteilKuerzel ?? "",
-      t.objektGuids.length].join(sep)
-  );
-  const csv = "﻿" + [header, ...rows].join("\n"); // BOM for Excel
+  const feld = (v: string | number) => {
+    const s = String(v);
+    return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const rows = exportZeilen(tasks, kalender).map(z => tabellenZeile(z, extraSpalten, false));
+  const header = Object.keys(tabellenZeile(leereZeile(), extraSpalten, false));
+  const lines = [header.map(feld).join(sep), ...rows.map(r => header.map(h => feld(r[h] ?? "")).join(sep))];
+  const csv = "﻿" + lines.join("\n"); // BOM for Excel
   download(csv, `${simName}_Gantt.csv`, "text/csv;charset=utf-8");
 }
 
-export function exportXml(tasks: Task[], simName: string) {
-  const nummern = berechneNummern(tasks);
+function leereZeile(): ExportZeile {
+  return { nr: "", gruppe: false, ebene: 1, name: "", start: "", ende: "", typ: "", vorgaenger: "", wartetage: "", kuerzel: "", bauteile: "", extra: {} };
+}
+
+export function exportXml(tasks: Task[], simName: string, kalender?: Kalender) {
   const extraSpalten = sammleExtraSpalten(tasks);
-  const tasksXml = tasks.map(t => {
-    const vorgLines = t.predecessorId
-      ? `\n    <Vorgaenger>${esc(nummern.get(t.predecessorId) ?? "")}</Vorgaenger>\n    <Wartetage>${t.lagDays ?? 0}</Wartetage>`
+  const tasksXml = exportZeilen(tasks, kalender).map(z => {
+    const vorgLines = z.vorgaenger
+      ? `\n    <Vorgaenger>${esc(z.vorgaenger)}</Vorgaenger>\n    <Wartetage>${z.wartetage}</Wartetage>`
       : "";
-    const extraLines = extraSpalten.map(k => `\n    <${xmlTag(k)}>${esc(t.extraSpalten?.[k] ?? "")}</${xmlTag(k)}>`).join("");
-    return `  <Task>\n    <Name>${esc(t.name)}</Name>\n    <Start>${formatDatum(t.start)}</Start>\n    <Finish>${formatDatum(t.end)}</Finish>\n    <Type>${t.typ}</Type>\n    <Kuerzel>${esc(t.bauteilKuerzel ?? "")}</Kuerzel>\n    <Objects>${t.objektGuids.length}</Objects>${vorgLines}${extraLines}\n  </Task>`;
+    const extraLines = extraSpalten.map(k => `\n    <${xmlTag(k)}>${esc(z.extra[k] ?? "")}</${xmlTag(k)}>`).join("");
+    const taskLines = z.gruppe ? "" : `\n    <Type>${z.typ}</Type>\n    <Kuerzel>${esc(z.kuerzel)}</Kuerzel>\n    <Objects>${z.bauteile}</Objects>`;
+    return `  <Task>\n    <Nr>${esc(z.nr)}</Nr>\n    <Gruppe>${z.gruppe ? 1 : 0}</Gruppe>\n    <Ebene>${z.ebene}</Ebene>\n    <Name>${esc(z.name)}</Name>\n    <Start>${z.start}</Start>\n    <Finish>${z.ende}</Finish>${taskLines}${vorgLines}${extraLines}\n  </Task>`;
   }).join("\n");
   const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<Gantt>\n${tasksXml}\n</Gantt>`;
   download(xml, `${simName}_Gantt.xml`, "application/xml");
@@ -90,14 +101,15 @@ export function exportMsProject(tasks: Task[], simName: string, kalender: Kalend
   download(xml, `${simName}_MSProject.xml`, "application/xml");
 }
 
-export function exportJson(tasks: Task[], simName: string) {
-  const nummern = berechneNummern(tasks);
-  const data = tasks.map(t => ({
-    name: t.name, start: formatDatum(t.start), end: formatDatum(t.end),
-    typ: t.typ, kuerzel: t.bauteilKuerzel ?? null, bauteile: t.objektGuids.length, guids: t.objektGuids,
-    vorgaenger: t.predecessorId ? nummern.get(t.predecessorId) ?? null : null,
-    wartetage: t.predecessorId ? (t.lagDays ?? 0) : null,
-    ...t.extraSpalten,
+export function exportJson(tasks: Task[], simName: string, kalender?: Kalender) {
+  const data = exportZeilen(tasks, kalender).map((z, i) => ({
+    nr: z.nr, gruppe: z.gruppe, ebene: z.ebene,
+    name: z.name, start: z.start, end: z.ende,
+    typ: z.gruppe ? null : z.typ, kuerzel: z.kuerzel || null,
+    bauteile: z.gruppe ? 0 : z.bauteile, guids: z.gruppe ? [] : tasks[i].objektGuids,
+    vorgaenger: z.vorgaenger || null,
+    wartetage: z.vorgaenger ? z.wartetage : null,
+    ...Object.fromEntries(Object.entries(z.extra).filter(([k]) => !GRUPPEN_SPALTEN.some(g => g.toLowerCase() === k.toLowerCase()))),
   }));
   download(JSON.stringify(data, null, 2), `${simName}_Gantt.json`, "application/json");
 }
