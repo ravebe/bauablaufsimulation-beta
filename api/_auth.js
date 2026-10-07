@@ -5,8 +5,9 @@
 // Connect liefert das Projekt nur an Mitglieder aus. Ergebnis wird je Token+Projekt kurz gecacht.
 //
 // Modus über Umgebungsvariable SYNC_AUTH (Vercel → Settings → Environment Variables):
-//   "protokoll" (Standard) — prüfen und im Header X-Sync-Auth melden, aber nichts sperren
-//   "pflicht"              — ohne gültiges Token/Mitgliedschaft → 401/403
+//   "pflicht" (Standard)   — ohne gültiges Token/Mitgliedschaft → 401/403 (seit 2026-10-07, nachdem
+//                            der Protokoll-Modus im echten TC "ok" gemeldet hat)
+//   "protokoll"            — prüfen und im Header X-Sync-Auth melden, aber nichts sperren (Notschalter)
 //   "aus"                  — gar nicht prüfen
 import { createHash } from "node:crypto";
 
@@ -20,8 +21,8 @@ const CACHE_MS = 5 * 60 * 1000;
 const cache = new Map(); // sha256(token|projekt) → { ergebnis, bis }
 
 export const authModus = () => {
-  const m = String(process.env.SYNC_AUTH || "protokoll").toLowerCase();
-  return m === "pflicht" || m === "aus" ? m : "protokoll";
+  const m = String(process.env.SYNC_AUTH || "pflicht").toLowerCase();
+  return m === "protokoll" || m === "aus" ? m : "pflicht";
 };
 
 /** @returns {"ok" | "fehlt" | "ungueltig" | "kein-mitglied" | "fehler"} */

@@ -52,13 +52,13 @@ describe("zugriffErlaubt (Modus)", () => {
   };
   afterEach(() => { delete process.env.SYNC_AUTH; });
 
-  it("Protokoll-Modus (Standard): ohne Token trotzdem erlaubt, Ergebnis im Header", async () => {
+  it("Protokoll-Modus: ohne Token trotzdem erlaubt, Ergebnis im Header", async () => {
+    process.env.SYNC_AUTH = "protokoll";
     const res = antwort();
     expect(await zugriffErlaubt({ headers: {} }, res, id())).toBe(true);
     expect(res.headers["X-Sync-Auth"]).toBe("fehlt; modus=protokoll");
   });
-  it("Pflicht-Modus: ohne Token → 401", async () => {
-    process.env.SYNC_AUTH = "pflicht";
+  it("Pflicht-Modus (Standard): ohne Token → 401", async () => {
     const res = antwort();
     expect(await zugriffErlaubt({ headers: {} }, res, id())).toBe(false);
     expect(res.code).toBe(401);
