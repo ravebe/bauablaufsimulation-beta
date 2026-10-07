@@ -342,6 +342,31 @@ export async function cloudLaden(api: ApiInstance): Promise<CloudLadeErgebnis> {
   }
 }
 
+// --- Versionsgeschichte (Schnappschüsse, angelegt beim Speichern — siehe SPEICHERN_LUA in api/sync.js) ---
+export interface VerlaufEintrag { index: number; ts: number; version: number; bytes: number; }
+
+async function verlaufAbruf(api: ApiInstance, verlauf: string): Promise<Record<string, unknown>> {
+  const projectId = await getProjectId(api);
+  if (!projectId) throw new Error("Keine Projekt-ID von Trimble Connect erhalten");
+  const res = await fetch(`/api/sync?projectId=${projectId}&verlauf=${verlauf}`, { headers: await syncHeaders(api) });
+  if (res.status === 401) syncTokenVerwerfen();
+  const json = await res.json().catch(() => null) as Record<string, unknown> | null;
+  if (!res.ok) throw new Error(`HTTP ${res.status}${json?.error ? ` — ${json.error}` : ""}`);
+  return json ?? {};
+}
+
+/** Schnappschüsse des Projekts, neueste zuerst. ts = Zeitpunkt, bis zu dem dieser Stand galt. */
+export async function cloudVerlaufListe(api: ApiInstance): Promise<VerlaufEintrag[]> {
+  return ((await verlaufAbruf(api, "liste")).eintraege as VerlaufEintrag[] | undefined) ?? [];
+}
+
+/** Daten eines Schnappschusses ({ sims, aktivId, … }) */
+export async function cloudVerlaufLaden(api: ApiInstance, index: number): Promise<Record<string, unknown>> {
+  const data = await entpacke(await verlaufAbruf(api, String(index)) as Parameters<typeof entpacke>[0]);
+  if (!data) throw new Error("Stand ist leer");
+  return data;
+}
+
 /** Kurzform: Daten oder null (leer wie Fehler) — nur wo die Unterscheidung keine Rolle spielt */
 export async function cloudLoad(api: ApiInstance): Promise<Record<string, unknown> | null> {
   const r = await cloudLaden(api);

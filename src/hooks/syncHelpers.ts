@@ -34,6 +34,25 @@ export function fuehreZusammen(lokal: SimProjekt[], cloud: SimProjekt[], bekannt
   return { sims: [...cloud, ...behalten], nurLokalBehalten, geloeschtVerworfen };
 }
 
+/**
+ * Simulation aus einem früheren Stand (Versionsgeschichte) zurückholen — betrifft nur diese eine Sim,
+ * nie das ganze Projekt. "kopie": als neue Sim daneben (Name mit Zeitstempel, Ersteller = wer
+ * wiederherstellt), "ersetzen": die heutige Sim gleicher ID durch den früheren Stand ersetzen (fehlt sie
+ * inzwischen, wird sie wieder angelegt).
+ */
+export function stelleSimWiederHer(sims: SimProjekt[], frueher: SimProjekt, modus: "kopie" | "ersetzen",
+  standZeit: number, userId: string | null, neueId: () => string = () => crypto.randomUUID()): { sims: SimProjekt[]; id: string } {
+  if (modus === "ersetzen") {
+    const idx = sims.findIndex(s => s.id === frueher.id);
+    if (idx < 0) return { sims: [...sims, frueher], id: frueher.id };
+    return { sims: sims.map((s, i) => (i === idx ? frueher : s)), id: frueher.id };
+  }
+  const d = new Date(standZeit);
+  const stempel = `${d.toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" })} ${d.toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" })}`;
+  const kopie: SimProjekt = { ...frueher, id: neueId(), name: `${frueher.name} (Stand ${stempel})`, erstellerId: userId ?? frueher.erstellerId };
+  return { sims: [...sims, kopie], id: kopie.id };
+}
+
 /** Aktive Simulation ist persönlich: eigene Wahl vor der in der Cloud gespeicherten, sonst die erste */
 export function waehleAktivId(lokal: string | null, cloud: string | null, sims: SimProjekt[]): string | null {
   const gibt = (id: string | null) => !!id && sims.some(s => s.id === id);

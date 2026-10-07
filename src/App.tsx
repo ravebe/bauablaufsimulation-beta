@@ -13,11 +13,12 @@ import ZugriffskontrollManager from "./components/ZugriffskontrollManager";
 import KalenderManager from "./components/KalenderManager";
 import IfcExportDialog from "./components/IfcExportDialog";
 import HilfeManager from "./components/HilfeManager";
+import VersionsVerlauf from "./components/VersionsVerlauf";
 import FehlerGrenze from "./components/FehlerGrenze";
 import { EXPORT_FORMATE } from "./components/ganttExportFormate";
 import { useClickOutside } from "./hooks/useClickOutside";
 import { lsGet, lsGetJson, lsSet, lsSetSimsCache } from "./hooks/lokalSpeicher";
-import { CLOUD_IDS_KEY, fuehreZusammen, waehleAktivId } from "./hooks/syncHelpers";
+import { CLOUD_IDS_KEY, fuehreZusammen, waehleAktivId, stelleSimWiederHer } from "./hooks/syncHelpers";
 import "./App.css";
 
 export type Tab = "projekte" | "bauteile" | "abspielen" | "kalkulation" | "ressourcen" | "avor" | "kosten";
@@ -91,6 +92,7 @@ export default function App() {
   // (projectId/ready kommen später als api) und überschrieb ihn — der alte Stand landete dann wieder in
   // der Cloud; ausserdem wurden von anderen gelöschte Sims aus der lokalen Kopie wiederbelebt.
   const [ladeFehler, setLadeFehler] = useState<string | null>(null);
+  const [verlaufOffen, setVerlaufOffen] = useState(false);
   const [ladeVersuch, setLadeVersuch] = useState(0);
   const projektIdRef = useRef<string | null>(null);
   useEffect(() => {
@@ -480,6 +482,13 @@ export default function App() {
                     </div>
                   </div>
                   <div className="tc-header-dropdown-item"
+                    onClick={() => { setVerlaufOffen(true); setOptionsDropdown(false); }}>
+                    <div>
+                      <div style={{ fontWeight: 500 }}>Frühere Versionen …</div>
+                      <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>Simulation aus älterem Stand zurückholen</div>
+                    </div>
+                  </div>
+                  <div className="tc-header-dropdown-item"
                     onClick={() => { setZugriffsManagerOffen(true); setOptionsDropdown(false); }}>
                     <div>
                       <div style={{ fontWeight: 500 }}>Zugriffskontrolle verwalten</div>
@@ -693,6 +702,8 @@ export default function App() {
         sims={sims} setSims={setSims} aktivId={aktivId} onWechsel={setAktivId} userId={userId} userEmail={userEmail} />}
       {kalenderManagerOffen && aktiveSim && <KalenderManager sim={aktiveSim} updateSim={updateSim} onClose={() => setKalenderManagerOffen(false)} />}
       {ifcExportOffen && aktiveSim && <IfcExportDialog sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} api={api} geladeneModelle={geladeneModelle} benutzer={userName} onClose={() => setIfcExportOffen(false)} />}
+      {verlaufOffen && <VersionsVerlauf api={api} sims={sims} darfBearbeiten={s => getZugriff(s) === "edit"} onClose={() => setVerlaufOffen(false)}
+        onWiederherstellen={(frueher, modus, standZeit) => setSims(prev => stelleSimWiederHer(prev, frueher, modus, standZeit, userId).sims)} />}
       {hilfeOffen && <HilfeManager initialTab={aktTab} onClose={() => setHilfeOffen(false)} />}
       </FehlerGrenze>
     </div>

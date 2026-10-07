@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { SimProjekt } from "../types";
-import { fuehreZusammen, waehleAktivId } from "./syncHelpers";
+import { fuehreZusammen, waehleAktivId, stelleSimWiederHer } from "./syncHelpers";
 
 const sim = (id: string, name = id) => ({ id, name, tasks: [], modelle: [] }) as unknown as SimProjekt;
 
@@ -38,4 +38,29 @@ describe("waehleAktivId", () => {
   it("eigene Wahl existiert nicht mehr → Cloud", () => expect(waehleAktivId("weg", "a", sims)).toBe("a"));
   it("beides ungültig → erste Sim", () => expect(waehleAktivId(null, "weg", sims)).toBe("a"));
   it("keine Sims → null", () => expect(waehleAktivId("a", "a", [])).toBeNull());
+});
+
+describe("stelleSimWiederHer", () => {
+  const heute = [sim("a", "Rohbau"), sim("b", "Ausbau")];
+  const frueherA = { ...sim("a", "Rohbau"), tasks: [{}, {}] } as unknown as SimProjekt;
+
+  it("Ersetzen tauscht nur diese Sim aus, Position bleibt", () => {
+    const r = stelleSimWiederHer(heute, frueherA, "ersetzen", 0, "u1");
+    expect(r.sims.map(s => s.id)).toEqual(["a", "b"]);
+    expect(r.sims[0].tasks.length).toBe(2);
+    expect(r.sims[1]).toBe(heute[1]);
+  });
+
+  it("Ersetzen einer inzwischen gelöschten Sim legt sie wieder an", () => {
+    const r = stelleSimWiederHer([heute[1]], frueherA, "ersetzen", 0, "u1");
+    expect(r.sims.map(s => s.id)).toEqual(["b", "a"]);
+  });
+
+  it("Kopie: neue ID, Name mit Stand, Ersteller = wer wiederherstellt, Original unberührt", () => {
+    const r = stelleSimWiederHer(heute, frueherA, "kopie", new Date(2026, 9, 7, 14, 5).getTime(), "u1", () => "neu");
+    expect(r.sims.map(s => s.id)).toEqual(["a", "b", "neu"]);
+    expect(r.sims[2].name).toMatch(/^Rohbau \(Stand 07\.10\.2026 14:05\)$/);
+    expect(r.sims[2].erstellerId).toBe("u1");
+    expect(r.sims[0]).toBe(heute[0]);
+  });
 });
