@@ -9,6 +9,7 @@ import SimKebabMenu from "./SimKebabMenu";
 import ModellVersionen from "./ModellVersionen";
 import { stelleVersionUm, wendeUmstellungAn } from "./modellVersionHelpers";
 import { mitAusschlussTask, ausschluesseUmstellen } from "./ausschlussHelpers";
+import { gleicheGanttAb } from "./ganttAbgleich";
 import IfcImportDialog from "./IfcImportDialog";
 import type { IfcImportUebernahme } from "./IfcImportDialog";
 import { enthaeltBauablauf } from "./ifcImport";
@@ -467,12 +468,20 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                 <>
                 <div className="tc-section-label" style={{ marginBottom: 4 }}>Gantt</div>
                 <GanttImport
-                  onImport={(tasks, dateiname) => setSims(prev =>
-                    prev.map(s => s.id === sim.id ? {
-                      ...s, tasks, autoVerknuepft: false,
+                  onImport={(neueTasks, dateiname) => {
+                    // Bisherige Tasks zuordnen: Bauteil-Verknüpfungen, IDs und Kalkulationsdaten bleiben erhalten
+                    const ab = gleicheGanttAb(simsRef.current.find(s => s.id === sim.id)?.tasks ?? [], neueTasks);
+                    setSims(prev => prev.map(s => s.id === sim.id ? {
+                      ...s, tasks: ab.tasks,
+                      autoVerknuepft: ab.bauteileUebernommen > 0 ? s.autoVerknuepft : false,
                       ganttImport: { dateiname, version: (s.ganttImport?.version ?? 0) + 1 },
-                    } : s)
-                  )}
+                    } : s));
+                    if (ab.bauteileUebernommen > 0 || ab.wegfallend.bauteile > 0) {
+                      setModellMsg({ simId: sim.id, typ: ab.wegfallend.bauteile > 0 ? "err" : "ok",
+                        text: `✓ ${ab.bauteileUebernommen} Bauteil-Verknüpfungen übernommen (${ab.zugeordnet} Tasks wiedererkannt)`
+                          + (ab.wegfallend.bauteile > 0 ? ` — ${ab.wegfallend.tasks} bisherige Task(s) nicht mehr in der Datei, deren ${ab.wegfallend.bauteile} Bauteile stehen jetzt unter „Noch nicht verknüpft“` : "") });
+                    }
+                  }}
                   taskCount={sim.tasks.length}
                   ganttInfo={sim.ganttImport}
                 />
