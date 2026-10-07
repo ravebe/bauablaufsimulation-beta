@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { SimProjekt } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { bauteileAusschliessen, bauteileWiederAufnehmen, unbenutzteListen } from "./ausschlussHelpers";
-import { guidsZuBatch, ladeObjektAttribute } from "./modelHelpers";
+import { bekannteKlasse, guidsZuBatch, ladeObjektAttribute } from "./modelHelpers";
 import type { ObjWerte } from "./modelHelpers";
 
 export type UnbenutztArt = "offen" | "entfernt";
@@ -38,7 +38,8 @@ export function UnbenutzteZeilen({ sim, alleGuids, aktiv, onWaehlen }: {
 
 const anzeigeName = (w: ObjWerte | undefined, g: string) => {
   if (w) {
-    for (const k of ["Reference Object||Name", "Product||Name", "IFC||Name"]) if (w[k]) return w[k];
+    // ladeObjektAttribute legt den Namen unter "Product||Product Name" ab
+    for (const k of ["Product||Product Name", "Reference Object||Name", "Product||Name", "IFC||Name"]) if (w[k]) return w[k];
     const k = Object.keys(w).find(x => x.endsWith("||Name") && w[x]);
     if (k) return w[k];
   }
@@ -153,6 +154,8 @@ export function UnbenutzteDetail({ api, sim, alleGuids, art, selGuids, readOnly,
                   <div style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11,
                     fontWeight: istSel ? 600 : 400, color: istSel ? "#2d7dbd" : "#555" }}>
                     {anzeigeName(werte.get(g), g)}
+                    {(() => { const sep = g.indexOf(":::"); const k = bekannteKlasse(g.slice(0, sep), Number(g.slice(sep + 3)));
+                      return k ? <span style={{ fontSize: 9, opacity: 0.5, marginLeft: 6 }}>{k}</span> : null; })()}
                   </div>
                   {!readOnly && (
                     <button className="guid-row-x" style={{ fontSize: 12 }}

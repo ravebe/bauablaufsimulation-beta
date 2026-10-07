@@ -176,6 +176,55 @@ export async function ladeAttributListe(api: ApiInstance, modelId: string): Prom
   return attrItemsAusWerten(werte.values());
 }
 
+// --- Was ist ein "echtes" Bauteil? ---
+// IFC-Klassen ohne physisches Bauteil: Struktur (Projekt/Gelände/Gebäude/Geschoss), Räume/Zonen, Öffnungen,
+// Raster, Beschriftungen, virtuelle Elemente, Anschlüsse. Früher zählten diese bei normalen IFC-Modellen mit
+// (es wurden nur die ersten 15 Objekte geprüft) und standen dauerhaft unter "Noch nicht verknüpft"/"offen".
+const KEINE_BAUTEIL_KLASSEN = new Set([
+  "project", "site", "building", "buildingstorey", "facility", "facilitypart", "bridge", "road", "railway",
+  "space", "spatialzone", "externalspatialelement", "zone", "spatialelement",
+  "openingelement", "opening", "voidingfeature", "projectionelement", "surfacefeature",
+  "virtualelement", "annotation", "grid", "gridaxis", "distributionport", "port", "alignment", "referent",
+]);
+
+/** IFC-Klasse ("IfcOpeningElement", "IFCOPENINGELEMENT", "IfcWallStandardCase" …) → physisches Bauteil?
+ *  Unbekannt/leer → ja (lieber zu viel zeigen als ein echtes Bauteil verstecken). */
+export function istBauteilKlasse(klasse: string | undefined | null): boolean {
+  if (!klasse) return true;
+  const k = klasse.toLowerCase().replace(/^ifc/, "").replace(/standardcase$/, "").replace(/[^a-z]/g, "");
+  return !KEINE_BAUTEIL_KLASSEN.has(k);
+}
+
+// IFC-Klasse je Objekt — einmal je Modell und Sitzung geladen (Modell ändert sich nicht; neue Version = neue
+// Runtime-IDs, dann wird neu geladen). null = Objekt liefert keine Eigenschaften (Datei-/Gruppenknoten).
+const klassenCache = new Map<string, Map<number, string | null>>();
+
+export async function ladeObjektKlassen(api: ApiInstance, mid: string, rIds: number[]): Promise<Map<number, string | null>> {
+  if (!klassenCache.has(mid)) klassenCache.set(mid, new Map());
+  const cache = klassenCache.get(mid)!;
+  const fehlend = rIds.filter(id => !cache.has(id));
+  const BATCH = 100, PARALLEL = 4;
+  const pakete: number[][] = [];
+  for (let i = 0; i < fehlend.length; i += BATCH) pakete.push(fehlend.slice(i, i + BATCH));
+  for (let i = 0; i < pakete.length; i += PARALLEL) {
+    await Promise.all(pakete.slice(i, i + PARALLEL).map(async paket => {
+      try {
+        const res = await api.viewer.getObjectProperties(mid, paket);
+        const gefunden = new Set<number>();
+        for (const o of Array.isArray(res) ? res : []) { cache.set(o.id, o.class ?? ""); gefunden.add(o.id); }
+        for (const id of paket) if (!gefunden.has(id)) cache.set(id, null);
+      } catch {
+        // ganzes Paket abgelehnt → einzeln (ein einzelnes Problem-Objekt soll nicht 100 andere mitreissen)
+        for (const id of paket) {
+          try { const r = await api.viewer.getObjectProperties(mid, [id]); cache.set(id, r?.[0]?.class ?? ""); }
+          catch { cache.set(id, null); }
+        }
+      }
+    }));
+  }
+  return new Map(rIds.map(id => [id, cache.get(id) ?? null]));
+}
+
 export async function getEchteBauteile(api: ApiInstance, simId: string, mid: string): Promise<number[]> {
   const key = `${simId}_${mid}`;
   if (echteBauteileCache[key]) return echteBauteileCache[key];
@@ -184,14 +233,24 @@ export async function getEchteBauteile(api: ApiInstance, simId: string, mid: str
   const istTekla = await detectIstTekla(api, mid, allIds);
   let echte: number[];
   if (!istTekla) {
-    const hierarchie = new Set<number>();
-    for (const rId of allIds.slice(0, 15)) {
-      try { await api.viewer.getObjectProperties(mid, [rId]); hierarchie.add(rId); } catch { break; }
-    }
-    echte = allIds.filter(id => !hierarchie.has(id));
+    const klassen = await ladeObjektKlassen(api, mid, allIds);
+    const weg = new Map<string, number>();
+    echte = allIds.filter(id => {
+      const k = klassen.get(id);
+      const ok = k !== null && istBauteilKlasse(k);
+      if (!ok) { const n = k === null ? "(ohne Eigenschaften)" : (k || "?"); weg.set(n, (weg.get(n) ?? 0) + 1); }
+      return ok;
+    });
+    console.log(`[Bauteile] Modell ${mid}: ${allIds.length} Objekte, davon ${echte.length} Bauteile — nicht gezählt:`,
+      Object.fromEntries([...weg].sort((a, b) => b[1] - a[1])));
   } else {
     echte = await filterEchteBauteile(api, mid, allIds);
   }
   echteBauteileCache[key] = echte;
   return echte;
+}
+
+/** IFC-Klasse aus dem Cache (für Anzeige), falls schon geladen */
+export function bekannteKlasse(mid: string, rId: number): string | null | undefined {
+  return klassenCache.get(mid)?.get(rId);
 }
