@@ -21,6 +21,25 @@ export type Tab = "projekte" | "bauteile" | "abspielen" | "kalkulation" | "resso
 export type TabGruppe = "haupt" | "erweitert";
 const HAUPT_TABS: Tab[] = ["projekte", "bauteile", "abspielen"];
 
+/**
+ * Lokale Kopie der Simulationen (Cache, massgebend ist die Cloud). localStorage fasst je Herkunft nur
+ * ca. 5 MB für ALLE Projekte zusammen — ist er voll, werden die Kopien der anderen Projekte geräumt
+ * (die liegen in der Cloud) und es wird nochmals versucht; reicht es dann immer noch nicht, wird die
+ * eigene (veraltete) Kopie entfernt. Wirft nie.
+ */
+function lokalSpeichern(key: string, wert: string) {
+  try { localStorage.setItem(key, wert); return; } catch { /* voll → aufräumen */ }
+  try {
+    const andere = Object.keys(localStorage).filter(k => k !== key && k.startsWith(`${SIMS_KEY}::`));
+    for (const k of andere) localStorage.removeItem(k);
+    localStorage.setItem(key, wert);
+    console.warn(`[CloudSync] localStorage voll — ${andere.length} lokale Kopie(n) anderer Projekte entfernt`);
+  } catch (e) {
+    try { localStorage.removeItem(key); } catch { /* ignore */ }
+    console.warn("[CloudSync] Lokale Kopie nicht möglich (localStorage voll), nur Cloud:", e);
+  }
+}
+
 export default function App() {
   const { api, ready, selektion, aktivesModellId, geladeneModelle, projectId } = useApi();
 
@@ -128,7 +147,7 @@ export default function App() {
       if (data) {
         if (Array.isArray(data.sims)) {
           setSims(data.sims as SimProjekt[]);
-          localStorage.setItem(nsKey(SIMS_KEY, projectId), JSON.stringify(data.sims));
+          lokalSpeichern(nsKey(SIMS_KEY, projectId), JSON.stringify(data.sims));
         }
         if (data.aktivId) setAktivId(data.aktivId as string);
         if (typeof data.version === "number") cloudVersion.current = data.version;
@@ -144,8 +163,9 @@ export default function App() {
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const saveToCloud = useCallback((simsData: SimProjekt[], aid: string | null) => {
     saveQueue.current = saveQueue.current.then(async () => {
-      localStorage.setItem(nsKey(SIMS_KEY, projectId), JSON.stringify(simsData));
-      if (aid) localStorage.setItem(nsKey(AKTIV_KEY, projectId), aid);
+      // Lokale Kopie ist nur ein Cache — darf das Cloud-Speichern nie verhindern (localStorage voll)
+      lokalSpeichern(nsKey(SIMS_KEY, projectId), JSON.stringify(simsData));
+      if (aid) lokalSpeichern(nsKey(AKTIV_KEY, projectId), aid);
       if (!api) return;
       setSyncStatus("saving");
       try {
@@ -176,6 +196,11 @@ export default function App() {
           setSyncStatus("error");
         }
       } catch (e) { setSyncFehler(e instanceof Error ? e.message : String(e)); setSyncStatus("error"); }
+    }).catch(e => {
+      // Eine abgelehnte Queue überspringt jeden weiteren .then() — danach würde nie wieder gespeichert
+      console.error("[CloudSync] Speichern fehlgeschlagen:", e);
+      setSyncFehler(e instanceof Error ? e.message : String(e));
+      setSyncStatus("error");
     });
   }, [api, projectId]);
 
