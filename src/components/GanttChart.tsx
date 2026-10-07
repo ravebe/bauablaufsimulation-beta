@@ -468,7 +468,7 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
                   )}
                   <div
                     onMouseDown={(e) => { if (e.shiftKey || e.ctrlKey || e.metaKey) e.preventDefault(); }}
-                    onClick={(e) => onTaskClick?.(origIdx, { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey })}
+                    onClick={(e) => { if (e.detail > 1) return; onTaskClick?.(origIdx, { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey }); }} // 2. Klick eines Doppelklicks (Umbenennen) ändert die Auswahl nicht
                     onMouseEnter={() => setHoverIdx(i)}
                     onMouseLeave={() => setHoverIdx(null)}
                     style={{

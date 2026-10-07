@@ -534,7 +534,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                 style={{ borderBottom: "1px solid #eef1f4", padding: "6px 10px", paddingLeft: 10 + indent, gap: 7,
                   background: isGroup && istDropTarget && dragIdx !== null ? "#dbeafe" : selectedIds.includes(task.id) ? "#e8f2fa" : hatSelektierte ? "#f0f0f0" : undefined,
                   opacity: dragIdx !== null && selectedIds.includes(task.id) ? 0.4 : 1, fontWeight: isGroup ? 700 : undefined }}
-                onClick={(e) => onTaskClick(task.id, { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey })}
+                onClick={(e) => { if (e.detail > 1) return; onTaskClick(task.id, { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey }); }} // 2. Klick eines Doppelklicks (Umbenennen) ändert die Auswahl nicht
                 onMouseEnter={() => setHoverTaskId(task.id)}
                 onMouseLeave={() => setHoverTaskId(null)}
                 onDragOver={e => { e.preventDefault(); setDropIdx(idx); }}
