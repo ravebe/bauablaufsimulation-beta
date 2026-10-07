@@ -713,9 +713,6 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
             {!aktivIsGroup && <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: aktivTask.typ === "neubau" ? "#22C55E" : aktivTask.typ === "abbruch" ? "#EAB308" : aktivTask.typ === "bestand" ? "#999" : TASK_TYP_FARBE[aktivTask.typ] }} />}
             {aktivIsGroup && <span style={{ fontSize: 11, color: "#555", marginRight: 2 }}>📁</span>}
             <span className="detail-task-name">{aktivTask.name}</span>
-            <span style={{ fontSize: 9, color: "var(--tc-blue)", fontWeight: 500 }}>
-              {!aktivIsGroup && totalObjekte != null ? `⬡ ${bauteilGuids.length} / ${totalObjekte}` : `⬡ ${bauteilGuids.length}`}
-            </span>
             {!readOnly && <button className="tc-btn-ghost" style={{ color: "#333", fontSize: 12, padding: "0 4px", marginLeft: "auto" }}
               title={aktivIsGroup ? "Gruppe (und ihre Tasks samt Zuordnungen) löschen" : selInfo.total > 1 ? `${selInfo.total} Tasks und Zuordnungen löschen` : "Task und Zuordnungen löschen"}
               onClick={e => {
