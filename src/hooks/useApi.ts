@@ -302,26 +302,43 @@ export async function sendPresence(api: ApiInstance, simId: string, userId: stri
   } catch { return {}; }
 }
 
-export async function cloudLoad(api: ApiInstance): Promise<Record<string, unknown> | null> {
+/** Ergebnis des Cloud-Ladens — "leer" (Projekt hat noch keine Daten) und "fehler" (Server/Netz nicht
+ *  erreichbar) müssen unterschieden werden: bei "fehler" darf der lokale Stand nicht als Wahrheit gelten. */
+export type CloudLadeErgebnis =
+  | { status: "ok"; projectId: string; data: Record<string, unknown>; version: number }
+  | { status: "leer"; projectId: string; version: number }
+  | { status: "fehler"; projectId: string | null; fehler: string };
+
+export async function cloudLaden(api: ApiInstance): Promise<CloudLadeErgebnis> {
+  const projectId = await getProjectId(api);
+  if (!projectId) { console.warn("[CloudSync] Keine Projekt-ID"); return { status: "fehler", projectId: null, fehler: "Keine Projekt-ID von Trimble Connect erhalten" }; }
   try {
-    const projectId = await getProjectId(api);
-    if (!projectId) { console.warn("[CloudSync] Keine Projekt-ID"); return null; }
-    // Zeitlimit: hängt das Laden, startet das Speichern nie (App.tsx wartet auf cloudLoadDone)
+    // Zeitlimit: hängt das Laden, startet das Speichern nie (App.tsx wartet auf das Lade-Ergebnis)
     const abbruch = new AbortController();
     const timer = setTimeout(() => abbruch.abort(), SPEICHER_TIMEOUT_MS);
     const res = await fetch(`/api/sync?projectId=${projectId}`, { signal: abbruch.signal }).finally(() => clearTimeout(timer));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await entpacke(await res.json());
+    const version = typeof data?.version === "number" ? data.version : 0;
     if (data && Array.isArray(data.sims)) {
       console.log("[CloudSync] ✓ Geladen aus Cloud:", data.sims.length, "Simulationen (Projekt:", projectId + ")");
-      return data;
+      return { status: "ok", projectId, data, version };
     }
     console.log("[CloudSync] Keine Cloud-Daten für Projekt", projectId);
-    return null;
+    return { status: "leer", projectId, version };
   } catch (e) {
     console.warn("[CloudSync] Laden fehlgeschlagen:", e);
-    return null;
+    const fehler = e instanceof DOMException && e.name === "AbortError"
+      ? `Keine Antwort vom Server innerhalb von ${SPEICHER_TIMEOUT_MS / 1000} s`
+      : e instanceof Error ? e.message : String(e);
+    return { status: "fehler", projectId, fehler };
   }
+}
+
+/** Kurzform: Daten oder null (leer wie Fehler) — nur wo die Unterscheidung keine Rolle spielt */
+export async function cloudLoad(api: ApiInstance): Promise<Record<string, unknown> | null> {
+  const r = await cloudLaden(api);
+  return r.status === "ok" ? r.data : null;
 }
 
 export async function batchGetProperties(

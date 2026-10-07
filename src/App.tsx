@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useApi, cloudSave, cloudLoad, sendPresence } from "./hooks/useApi";
+import { useApi, cloudSave, cloudLoad, cloudLaden, sendPresence } from "./hooks/useApi";
 import type { SimProjekt, Zugriff } from "./types";
 import { SIMS_KEY, AKTIV_KEY, nsKey } from "./types";
 import TabProjekte from "./components/TabProjekte";
@@ -16,7 +16,8 @@ import HilfeManager from "./components/HilfeManager";
 import FehlerGrenze from "./components/FehlerGrenze";
 import { EXPORT_FORMATE } from "./components/ganttExportFormate";
 import { useClickOutside } from "./hooks/useClickOutside";
-import { lsSet, lsSetSimsCache } from "./hooks/lokalSpeicher";
+import { lsGet, lsGetJson, lsSet, lsSetSimsCache } from "./hooks/lokalSpeicher";
+import { CLOUD_IDS_KEY, fuehreZusammen, waehleAktivId } from "./hooks/syncHelpers";
 import "./App.css";
 
 export type Tab = "projekte" | "bauteile" | "abspielen" | "kalkulation" | "ressourcen" | "avor" | "kosten";
@@ -45,7 +46,6 @@ export default function App() {
   const [cloudLoadDone, setCloudLoadDone] = useState(false);
   const [konflikt, setKonflikt] = useState(false);
   const cloudVersion = useRef(0);
-  const cloudInitDone = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sharedNadelTag = useRef<number>(-1);
   const undoStack = useRef<SimProjekt[]>([]);
@@ -86,41 +86,47 @@ export default function App() {
     return () => { abgebrochen = true; };
   }, [api, userVersuch]);
 
-  // 1. localStorage laden (sobald bekannt ist, ob/welches Projekt aktiv ist)
+  // Laden: lokale Kopie + Cloud in EINEM Ablauf zusammenführen (siehe fuehreZusammen in syncHelpers.ts).
+  // Früher zwei getrennte Effekte: die lokale Kopie wurde u.U. erst NACH dem Cloud-Stand geladen
+  // (projectId/ready kommen später als api) und überschrieb ihn — der alte Stand landete dann wieder in
+  // der Cloud; ausserdem wurden von anderen gelöschte Sims aus der lokalen Kopie wiederbelebt.
+  const [ladeFehler, setLadeFehler] = useState<string | null>(null);
+  const [ladeVersuch, setLadeVersuch] = useState(0);
+  const projektIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!ready) return;
-    try {
-      const raw = localStorage.getItem(nsKey(SIMS_KEY, projectId));
-      if (raw) setSims(JSON.parse(raw));
-      const aid = localStorage.getItem(nsKey(AKTIV_KEY, projectId));
-      if (aid) setAktivId(aid);
-    } catch { /* ignore */ }
-  }, [ready, projectId]);
-
-  // 2. Cloud laden (wenn API ready)
-  useEffect(() => {
-    if (!api || cloudInitDone.current) return;
-    cloudInitDone.current = true;
+    if (!api || !ready) return;
+    let abgebrochen = false;
     (async () => {
-      try {
-        const data = await cloudLoad(api);
-        if (data && Array.isArray(data.sims) && data.sims.length > 0) {
-          const cloudSims = data.sims as SimProjekt[];
-          // Merge: Cloud-Daten mit lokalen mergen (Cloud gewinnt bei gleichem ID)
-          setSims(prev => {
-            const merged = new Map<string, SimProjekt>();
-            for (const s of prev) merged.set(s.id, s);
-            for (const s of cloudSims) merged.set(s.id, s); // Cloud überschreibt lokal
-            return [...merged.values()];
-          });
-          if (data.aktivId) setAktivId(data.aktivId as string);
-          console.log("[CloudSync] Cloud-Daten geladen:", cloudSims.length, "Simulationen");
-        }
-        if (data && typeof data.version === "number") cloudVersion.current = data.version;
-      } catch (e) { console.warn("[CloudSync] Cloud-Load Fehler:", e); }
-      finally { setCloudLoadDone(true); }
+      const r = await cloudLaden(api);
+      if (abgebrochen) return;
+      const pid = r.projectId ?? projectId;
+      projektIdRef.current = pid;
+      const lokal = lsGetJson<SimProjekt[]>(nsKey(SIMS_KEY, pid), []);
+      const lokalAid = lsGet(nsKey(AKTIV_KEY, pid));
+      if (r.status === "fehler") {
+        // Cloud nicht erreichbar: lokalen Stand anzeigen, aber NICHT speichern (würde sonst als Konflikt
+        // enden oder einen veralteten Stand hochladen) — Hinweis mit "Erneut laden"
+        setSims(lokal);
+        setAktivId(waehleAktivId(lokalAid, null, lokal));
+        setLadeFehler(r.fehler);
+        return;
+      }
+      const cloudSims = r.status === "ok" && Array.isArray(r.data.sims) ? r.data.sims as SimProjekt[] : [];
+      const bekannt = lsGetJson<string[] | null>(nsKey(CLOUD_IDS_KEY, pid), null);
+      const erg = fuehreZusammen(lokal, cloudSims, bekannt);
+      if (erg.geloeschtVerworfen.length) console.log("[CloudSync] In der Cloud gelöscht, lokale Kopie verworfen:", erg.geloeschtVerworfen.length);
+      if (erg.nurLokalBehalten.length) console.log("[CloudSync] Nur lokal vorhanden, wird hochgeladen:", erg.nurLokalBehalten.length);
+      lsSet(nsKey(CLOUD_IDS_KEY, pid), JSON.stringify(cloudSims.map(s => s.id)));
+      cloudVersion.current = r.version;
+      setSims(erg.sims);
+      setAktivId(waehleAktivId(lokalAid, r.status === "ok" ? (r.data.aktivId as string | null) ?? null : null, erg.sims));
+      setLadeFehler(null);
+      setCloudLoadDone(true);
     })();
-  }, [api]);
+    return () => { abgebrochen = true; };
+    // projectId nur als Fallback-Schlüssel — kein Neuladen, wenn er später nachkommt
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, ready, ladeVersuch]);
 
   // Bei Speicher-Konflikt: aktuelle Cloud-Version übernehmen und weiterarbeiten
   const konfliktAufloesen = useCallback(async () => {
@@ -130,7 +136,9 @@ export default function App() {
       if (data) {
         if (Array.isArray(data.sims)) {
           setSims(data.sims as SimProjekt[]);
-          lsSetSimsCache(nsKey(SIMS_KEY, projectId), JSON.stringify(data.sims));
+          const pid = projektIdRef.current ?? projectId;
+          lsSetSimsCache(nsKey(SIMS_KEY, pid), JSON.stringify(data.sims));
+          lsSet(nsKey(CLOUD_IDS_KEY, pid), JSON.stringify((data.sims as SimProjekt[]).map(s => s.id)));
         }
         if (data.aktivId) setAktivId(data.aktivId as string);
         if (typeof data.version === "number") cloudVersion.current = data.version;
@@ -147,8 +155,9 @@ export default function App() {
   const saveToCloud = useCallback((simsData: SimProjekt[], aid: string | null) => {
     saveQueue.current = saveQueue.current.then(async () => {
       // Lokale Kopie ist nur ein Cache — darf das Cloud-Speichern nie verhindern (localStorage voll)
-      lsSetSimsCache(nsKey(SIMS_KEY, projectId), JSON.stringify(simsData));
-      if (aid) lsSet(nsKey(AKTIV_KEY, projectId), aid);
+      const pid = projektIdRef.current ?? projectId;
+      lsSetSimsCache(nsKey(SIMS_KEY, pid), JSON.stringify(simsData));
+      if (aid) lsSet(nsKey(AKTIV_KEY, pid), aid);
       if (!api) return;
       setSyncStatus("saving");
       try {
@@ -165,6 +174,7 @@ export default function App() {
         const result = await cloudSave(api, { sims: simsData, aktivId: aid }, cloudVersion.current);
         if (result.ok) {
           cloudVersion.current = result.version;
+          lsSet(nsKey(CLOUD_IDS_KEY, pid), JSON.stringify(simsData.map(s => s.id))); // diese Sims sind jetzt in der Cloud
           setSyncFehler(null);
           setSyncStatus("saved");
           setTimeout(() => setSyncStatus("idle"), 2000);
@@ -504,6 +514,15 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {/* Cloud beim Start nicht erreichbar → lokaler Stand sichtbar, Speichern pausiert */}
+      {ladeFehler && (
+        <div className="alert err" style={{ justifyContent: "space-between", gap: 8 }}>
+          <span title={ladeFehler}>⚠ Cloud nicht erreichbar ({ladeFehler}) — angezeigt wird die lokale Kopie, Änderungen werden nicht gespeichert.</span>
+          <button className="tc-btn-secondary" style={{ flexShrink: 0, height: 22, fontSize: 11 }}
+            onClick={() => { setLadeFehler(null); setLadeVersuch(v => v + 1); }}>Erneut laden</button>
+        </div>
+      )}
 
       {/* Benutzer nicht ermittelt → alles schreibgeschützt; sonst rätselt man, warum nichts mehr geht */}
       {userFehler && !userId && (
