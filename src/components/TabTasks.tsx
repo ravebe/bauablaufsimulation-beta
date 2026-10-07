@@ -23,6 +23,8 @@ interface Props {
   aktivTaskId: string | null;
   selectedIds?: string[];
   totalObjekte: number | null;
+  /** Anzahl "Noch nicht verknüpft" (aus TabBauteile, gleiche Rechnung wie dort) — sonst geschätzt */
+  offenAnzahl?: number | null;
   updateSim: (sim: SimProjekt) => void;
   onTaskClick: (id: string, event?: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }) => void;
   selGuids: Set<string>;
@@ -46,7 +48,7 @@ function ladeDisplayConfig(simId: string, projectId: string | null): { zeile1: s
   return { zeile1: "Layer||Layer", zeile2: "Reference Object||Common Type" };
 }
 
-export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, aktivTaskId, selectedIds = [], totalObjekte, updateSim, onTaskClick, selGuids, taskSort = "gantt", readOnly = false, detailOnly = false, suchQuery = "", unterListe, detailErsatz }: Props) {
+export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, aktivTaskId, selectedIds = [], totalObjekte, offenAnzahl, updateSim, onTaskClick, selGuids, taskSort = "gantt", readOnly = false, detailOnly = false, suchQuery = "", unterListe, detailErsatz }: Props) {
   const [guidWerte, setGuidWerte] = useState<Map<string, ObjWerte>>(new Map());
   const [verfuegbareAttrs, setVerfuegbareAttrs] = useState<string[]>([]);
   const [displayConfig, setDisplayConfig] = useState(() => ladeDisplayConfig(aktiveSim.id, projectId));
@@ -439,7 +441,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
           <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
             {totalObjekte != null && (() => {
               const vergeben = new Set(aktiveSim.tasks.flatMap(t => t.objektGuids)).size;
-              const offen = Math.max(0, totalObjekte - vergeben - (aktiveSim.ausgeschlossen?.length ?? 0)); // entfernte zählen nicht als offen
+              const offen = offenAnzahl ?? Math.max(0, totalObjekte - vergeben - (aktiveSim.ausgeschlossen?.length ?? 0)); // entfernte zählen nicht als offen
               return offen > 0 ? (
                 <button style={{ fontSize: 11, color: "#2d7dbd", fontWeight: 600, background: "none", border: "1px solid #2d7dbd",
                   padding: "1px 8px", cursor: "pointer", fontFamily: "inherit" }}

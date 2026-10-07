@@ -12,6 +12,7 @@ import { LEERER_KALENDER } from "./kalenderHelpers";
 import { pruefeZeitplanBereitschaft, berechneZeitplanUebernahme, zeitplanHatAenderungen } from "./zeitplanUebernahmeHelpers";
 import TabTasks from "./TabTasks";
 import { UnbenutzteZeilen, UnbenutzteDetail } from "./UnbenutzteBauteile";
+import { unbenutzteListen } from "./ausschlussHelpers";
 import type { UnbenutztArt } from "./UnbenutzteBauteile";
 import AttributeFilter from "./AttributeFilter";
 import GanttChart from "./GanttChart";
@@ -126,7 +127,7 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
 
   // Gesamtzählung
   useEffect(() => {
-    if (!api || !aktiveSim || aktiveSim.modelle.length === 0) { setTotalObjekte(null); return; }
+    if (!api || !aktiveSim || aktiveSim.modelle.length === 0) { setTotalObjekte(null); setAlleGuids(null); return; }
     clearEchteBauteileCache();
     let abgebrochen = false;
     (async () => {
@@ -138,8 +139,12 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
         for (const rId of echte) guids.push(`${modell.id}:::${rId}`);
       }
       if (abgebrochen) return;
-      setTotalObjekte(guids.length > 0 ? guids.length : null);
-      setAlleGuids(guids.length > 0 ? guids : null);
+      // doppelte Einträge (Viewer meldet ein Objekt mehrfach, Modell doppelt in der Simulation) sonst im
+      // Total mitgezählt — "OFFEN" stimmte dann nicht mit "Noch nicht verknüpft" überein
+      const eindeutig = [...new Set(guids)];
+      if (eindeutig.length !== guids.length) console.log(`[Bauteile] ${guids.length - eindeutig.length} doppelte Objekte ignoriert`);
+      setTotalObjekte(eindeutig.length > 0 ? eindeutig.length : null);
+      setAlleGuids(eindeutig.length > 0 ? eindeutig : null);
     })();
     return () => { abgebrochen = true; };
   }, [aktiveSim?.id, api]);
@@ -178,6 +183,9 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
 
   // Gantt-Daten (bereits oben berechnet)
   const tasks = aktiveSim?.tasks ?? [];
+
+  // "OFFEN" (Kopf der Task-Liste) = genau die Bauteile unter "Noch nicht verknüpft"
+  const offenAnzahl = alleGuids ? unbenutzteListen(aktiveSim, alleGuids).offen?.length ?? null : null;
 
   // Zu unterst: "Noch nicht verknüpft" / "Aus Simulation entfernt" — wie Tasks wählbar, Detail statt Task-Detail
   const unbenutztZeilen = (
@@ -474,6 +482,7 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
             aktivTaskId={aktivTaskId}
             selectedIds={selectedIds}
             totalObjekte={totalObjekte}
+            offenAnzahl={offenAnzahl}
             updateSim={updateSim}
             onTaskClick={taskAnklicken}
             selGuids={selGuids}
@@ -493,6 +502,7 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
           aktivTaskId={aktivTaskId}
           selectedIds={selectedIds}
           totalObjekte={totalObjekte}
+          offenAnzahl={offenAnzahl}
           updateSim={updateSim}
           onTaskClick={taskAnklicken}
           selGuids={selGuids}
