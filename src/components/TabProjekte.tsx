@@ -20,6 +20,8 @@ import ModellOrdnerBaum from "./ModellOrdnerBaum";
 interface Props {
   api: ApiInstance | null;
   ready: boolean;
+  /** Cloud-Daten noch nicht da — leere Liste heisst dann "wird geladen", nicht "keine Simulationen" */
+  laedt?: boolean;
   sims: SimProjekt[];
   setSims: React.Dispatch<React.SetStateAction<SimProjekt[]>>;
   aktivId: string | null;
@@ -30,7 +32,7 @@ interface Props {
   sichtbar?: boolean;
 }
 
-export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, userId, sichtbar = true }: Props) {
+export default function TabProjekte({ api, laedt, sims, setSims, aktivId, setAktivId, userId, sichtbar = true }: Props) {
   const [aufgeklappt, setAufgeklappt] = useState<string | null>(aktivId);
   // Sim-ID, deren Verknüpfungs-Aktion (Auto-Verknüpfung / Attribut-Tasks) nach Klick auf den Umschalter
   // eingeblendet ist — Klick ausserhalb oder Tab-Wechsel blendet sie wieder aus (Komponente bleibt gemountet,
@@ -400,7 +402,12 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
       )}
 
       {/* Leer */}
-      {sims.length === 0 && !zeigeNeu && (
+      {sims.length === 0 && !zeigeNeu && laedt && (
+        <div className="tc-empty">
+          <div className="tc-empty-title">⟳ Simulationen werden geladen…</div>
+        </div>
+      )}
+      {sims.length === 0 && !zeigeNeu && !laedt && (
         <div className="tc-empty">
           <div className="tc-empty-icon">📊</div>
           <div className="tc-empty-title">Keine Simulationen</div>

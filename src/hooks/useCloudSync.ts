@@ -6,13 +6,17 @@
 //             blockierten sich sonst als "Konflikt". Ein Fehler darf die Queue nie abbrechen (sonst wird
 //             nie wieder gespeichert, siehe QuotaExceededError 2026-10-07). Beim Verlassen sofort speichern.
 //  Konflikt:  jemand anderes hat gespeichert → pausieren, Nutzer entscheidet ("Neu laden").
+//  Vorschau:  sobald die Projekt-ID bekannt ist, sofort die lokale Kopie anzeigen — das Cloud-Laden wartet
+//             oft lange auf das Zugriffs-Token (Viewer lädt Modelle). Bis zur Cloud-Antwort wird nicht
+//             gespeichert. Änderungen in dieser Zeit bleiben nur erhalten, wenn die Cloud noch auf dem Stand
+//             der lokalen Kopie ist (gleiche Version), sonst gilt die Cloud (ladeHinweis).
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SimProjekt } from "../types";
 import { SIMS_KEY, AKTIV_KEY, nsKey } from "../types";
 import type { ApiInstance } from "./useApi";
 import { cloudSave, cloudLoad, cloudLaden } from "./useApi";
 import { lsGet, lsGetJson, lsSet, lsSetSimsCache } from "./lokalSpeicher";
-import { CLOUD_IDS_KEY, fuehreZusammen, waehleAktivId } from "./syncHelpers";
+import { CLOUD_IDS_KEY, CLOUD_VERSION_KEY, fuehreZusammen, waehleAktivId } from "./syncHelpers";
 import { fehlerMelden } from "./fehlerMelden";
 
 export type SyncStatus = "idle" | "saving" | "saved" | "error";
@@ -38,6 +42,23 @@ export function useCloudSync({ api, ready, projectId, sims, setSims, aktivId, se
   const [konflikt, setKonflikt] = useState(false);
   const [ladeFehler, setLadeFehler] = useState<string | null>(null);
   const [ladeVersuch, setLadeVersuch] = useState(0);
+  const [ladeHinweis, setLadeHinweis] = useState<string | null>(null);
+  const vorschauRef = useRef<SimProjekt[] | null>(null); // angezeigte lokale Kopie vor der Cloud-Antwort
+  const simsRef = useRef(sims);
+  useEffect(() => { simsRef.current = sims; });
+  const merkeVersion = (pid: string | null, v: number) => { cloudVersion.current = v; lsSet(nsKey(CLOUD_VERSION_KEY, pid), String(v)); };
+
+  // --- Vorschau aus der lokalen Kopie, bis die Cloud antwortet ---
+  useEffect(() => {
+    if (!projectId || geladen || vorschauRef.current) return;
+    const lokal = lsGetJson<SimProjekt[]>(nsKey(SIMS_KEY, projectId), []);
+    if (lokal.length === 0) return;
+    vorschauRef.current = lokal;
+    setSims(lokal);
+    onStandErsetztRef.current?.();
+    setAktivId(waehleAktivId(lsGet(nsKey(AKTIV_KEY, projectId)), null, lokal));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, geladen]);
   const cloudVersion = useRef(0);
   const projektIdRef = useRef<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -54,9 +75,13 @@ export function useCloudSync({ api, ready, projectId, sims, setSims, aktivId, se
       projektIdRef.current = pid;
       const lokal = lsGetJson<SimProjekt[]>(nsKey(SIMS_KEY, pid), []);
       const lokalAid = lsGet(nsKey(AKTIV_KEY, pid));
+      // In der Vorschau (lokale Kopie) schon etwas geändert?
+      const vorschau = vorschauRef.current;
+      const vorschauGeaendert = !!vorschau && simsRef.current !== vorschau;
       if (r.status === "fehler") {
         // Cloud nicht erreichbar: lokalen Stand anzeigen, aber NICHT speichern (würde sonst als Konflikt
         // enden oder einen veralteten Stand hochladen) — Hinweis mit "Erneut laden"
+        if (vorschauGeaendert) { setLadeFehler(r.fehler); fehlerMelden("Cloud-Laden", r.fehler); return; }
         setSims(lokal);
         onStandErsetztRef.current?.();
         setAktivId(waehleAktivId(lokalAid, null, lokal));
@@ -70,10 +95,18 @@ export function useCloudSync({ api, ready, projectId, sims, setSims, aktivId, se
       if (erg.geloeschtVerworfen.length) console.log("[CloudSync] In der Cloud gelöscht, lokale Kopie verworfen:", erg.geloeschtVerworfen.length);
       if (erg.nurLokalBehalten.length) console.log("[CloudSync] Nur lokal vorhanden, wird hochgeladen:", erg.nurLokalBehalten.length);
       lsSet(nsKey(CLOUD_IDS_KEY, pid), JSON.stringify(cloudSims.map(s => s.id)));
-      cloudVersion.current = r.version;
-      setSims(erg.sims);
-      onStandErsetztRef.current?.();
-      setAktivId(waehleAktivId(lokalAid, r.status === "ok" ? (r.data.aktivId as string | null) ?? null : null, erg.sims));
+      const lokalVersion = Number(lsGet(nsKey(CLOUD_VERSION_KEY, pid)) ?? NaN);
+      merkeVersion(pid, r.version);
+      vorschauRef.current = null;
+      if (vorschauGeaendert && lokalVersion === r.version) {
+        // Cloud unverändert seit der lokalen Kopie → Änderungen aus der Vorschau behalten (werden gleich gespeichert)
+        setLadeHinweis(null);
+      } else {
+        if (vorschauGeaendert) setLadeHinweis("Während des Ladens hat jemand anderes gespeichert — deine Änderungen aus dieser Zeit wurden durch den aktuellen Stand ersetzt.");
+        setSims(erg.sims);
+        onStandErsetztRef.current?.();
+        setAktivId(waehleAktivId(lokalAid, r.status === "ok" ? (r.data.aktivId as string | null) ?? null : null, erg.sims));
+      }
       setLadeFehler(null);
       setGeladen(true);
     })();
@@ -96,7 +129,7 @@ export function useCloudSync({ api, ready, projectId, sims, setSims, aktivId, se
           lsSet(nsKey(CLOUD_IDS_KEY, pid), JSON.stringify((data.sims as SimProjekt[]).map(s => s.id)));
         }
         if (data.aktivId) setAktivId(data.aktivId as string);
-        if (typeof data.version === "number") cloudVersion.current = data.version;
+        if (typeof data.version === "number") merkeVersion(projektIdRef.current ?? projectId, data.version);
       }
     } catch { /* ignore */ }
     setKonflikt(false);
@@ -124,7 +157,7 @@ export function useCloudSync({ api, ready, projectId, sims, setSims, aktivId, se
         }
         const result = await cloudSave(api, { sims: simsData, aktivId: aid }, cloudVersion.current);
         if (result.ok) {
-          cloudVersion.current = result.version;
+          merkeVersion(pid, result.version);
           lsSet(nsKey(CLOUD_IDS_KEY, pid), JSON.stringify(simsData.map(s => s.id))); // diese Sims sind jetzt in der Cloud
           setSyncFehler(null);
           setSyncStatus("saved");
@@ -173,7 +206,7 @@ export function useCloudSync({ api, ready, projectId, sims, setSims, aktivId, se
   }, [sims, aktivId, speichern, konflikt]);
 
   return {
-    syncStatus, syncFehler, geladen, konflikt, konfliktAufloesen, ladeFehler,
+    syncStatus, syncFehler, geladen, konflikt, konfliktAufloesen, ladeFehler, ladeHinweis, ladeHinweisSchliessen: () => setLadeHinweis(null),
     erneutLaden: () => { setLadeFehler(null); setLadeVersuch(v => v + 1); },
   };
 }

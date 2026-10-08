@@ -3,6 +3,7 @@
 import type { SimProjekt } from "../types";
 
 export const CLOUD_IDS_KEY = "4d-sims-cloudids-v3"; // + "::projectId" — welche Sims zuletzt in der Cloud waren
+export const CLOUD_VERSION_KEY = "4d-sims-cloudversion"; // + "::projectId" — Cloud-Version, zu der die lokale Kopie gehört
 
 export interface LadeErgebnis {
   sims: SimProjekt[];

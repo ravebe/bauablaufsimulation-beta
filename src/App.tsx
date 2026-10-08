@@ -50,7 +50,7 @@ export default function App() {
   const { userId, userName, userEmail, userFehler, erneutVersuchen: benutzerErneutVersuchen } = useAuth(api);
   // Alle Benutzer-Änderungen laufen über useUndo (updateSim / setSimsMitUndo) → rückgängig machbar
   const { updateSim, setSimsMitUndo, undo, redo, undoLen, redoLen, verlaufLeeren } = useUndo(sims, setSims, userName);
-  const { syncStatus, syncFehler, geladen: cloudLoadDone, konflikt, konfliktAufloesen, ladeFehler, erneutLaden } =
+  const { syncStatus, syncFehler, geladen: cloudLoadDone, konflikt, konfliktAufloesen, ladeFehler, ladeHinweis, ladeHinweisSchliessen, erneutLaden } =
     useCloudSync({ api, ready, projectId, sims, setSims, aktivId, setAktivId, onStandErsetzt: verlaufLeeren });
   const [verlaufOffen, setVerlaufOffen] = useState(false);
   // Fehlermeldungen (hooks/fehlerMelden.ts) brauchen Projekt + Benutzer für Zuordnung und Anmeldung
@@ -284,6 +284,13 @@ export default function App() {
         </div>
       )}
 
+      {ladeHinweis && (
+        <div className="alert err" style={{ justifyContent: "space-between", gap: 8 }}>
+          <span>⚠ {ladeHinweis}</span>
+          <button className="tc-btn-secondary" style={{ flexShrink: 0, height: 22, fontSize: 11 }} onClick={ladeHinweisSchliessen}>OK</button>
+        </div>
+      )}
+
       {/* Benutzer nicht ermittelt → alles schreibgeschützt; sonst rätselt man, warum nichts mehr geht */}
       {userFehler && !userId && (
         <div className="alert err" style={{ justifyContent: "space-between", gap: 8 }}>
@@ -388,6 +395,7 @@ export default function App() {
             <TabProjekte
               api={api}
               ready={ready}
+              laedt={!cloudLoadDone && !ladeFehler}
               sims={sichtbareSims}
               setSims={setSimsMitUndo}
               aktivId={aktivId}
