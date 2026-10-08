@@ -139,7 +139,6 @@ export default function ModellVersionen({ api, modell, darfBearbeiten, beschaeft
                   {datum(v.modifiedOn ?? v.createdOn)}{wer ? ` · ${wer}` : ""}
                   {modell.vierD?.versionId === v.versionId && <span style={{ color: "#2e7d32" }}> · mit 4D-Daten</span>}
                 </span>
-                {istAktiv && <span style={{ fontSize: 9, fontWeight: 600, color: "#2d7dbd" }}>AKTIV</span>}
                 {i === 0 && !istAktiv && <span style={{ fontSize: 9, color: "var(--tc-text-3)" }}>neueste</span>}
               </button>
             );

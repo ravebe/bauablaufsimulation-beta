@@ -66,6 +66,8 @@ export default function Schwebend({ anker, menuRef, ausrichtung = "links", absta
       {createPortal(
         <div ref={menu} className={className} onClick={onClick} onMouseDown={e => e.stopPropagation()}
           style={{
+            // body hat die App-Schrift nicht (die setzen erst die Tab-Container) → hier explizit
+            fontFamily: "var(--tc-font)", color: "var(--tc-text)",
             ...style, position: "fixed", zIndex: 1000, top: pos?.top ?? 0, left: pos?.left ?? 0,
             ...(pos?.breite !== undefined ? { width: pos.breite } : {}),
             maxHeight: style?.maxHeight !== undefined

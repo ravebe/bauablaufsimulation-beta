@@ -323,11 +323,11 @@
   padding: 7px 8px; display: flex; align-items: center; gap: 6px; cursor: pointer;
 }
 .sim-card-left {
-  display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0;
 }
 .sim-card-name-wrap { min-width: 0; flex: 1; overflow: hidden; }
 .sim-card-name {
-  font-weight: 600; color: var(--tc-text); font-size: 13px;
+  font-weight: 600; color: var(--tc-text); font-size: 15px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .sim-card-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
