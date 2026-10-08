@@ -13,6 +13,7 @@ import { ladeObjektAttribute, guidsZuBatch, zeigeBauteileImModell } from "./mode
 import { berechneMenge, mengeStatus } from "./formelHelpers";
 import { kalkulationAlsCsv, parseKalkulationCsv, kalkulationAlsJson, parseKalkulationJson } from "./kalkulationExportHelpers";
 import Schwebend from "./Schwebend";
+import PunkteMenu from "./PunkteMenu";
 
 interface Props {
   sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; api?: ApiInstance | null; projectId?: string | null;
@@ -20,8 +21,8 @@ interface Props {
 }
 
 // Grid-Spalten der Tabelle — feste Breiten statt Flex, damit kein Inhalt nachfolgende Spalten
-// verschiebt. Verstellbar per Drag, siehe startResize. Alle Zellen top-ausgerichtet (alignItems:
-// "start"), damit sie in einer Flucht stehen, auch wenn die Mengen-Zelle mehrzeilig ist.
+// verschiebt. Verstellbar per Drag, siehe startResize. Alle Zellen vertikal in der Zeilenmitte
+// (alignItems: "center").
 const ALLE_SPALTEN = ["nr", "auge", "task", "kuerzel", "mengen", "geplant", "berechnet", "differenz", "kraene", "personalSoll"] as const;
 type Spalte = typeof ALLE_SPALTEN[number];
 const SPALTEN_LABEL: Record<Spalte, string> = {
@@ -119,24 +120,11 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
 
   // Export/Import der Kalkulations-Zuordnungen (Kürzel/Kranbereich/Mengen je Task), siehe
   // kalkulationExportHelpers.ts — gleiches UI-Muster wie Export/Import in Tab Ressourcen.
-  const [exportMenuOffen, setExportMenuOffen] = useState(false);
-  const [importMenuOffen, setImportMenuOffen] = useState(false);
   const [importErgebnis, setImportErgebnis] = useState<string | null>(null);
   const [importFehler, setImportFehler] = useState<string | null>(null);
-  const exportMenuRef = useRef<HTMLDivElement>(null);
-  const importMenuRef = useRef<HTMLDivElement>(null);
   const importCsvInputRef = useRef<HTMLInputElement>(null);
   const importJsonInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (!exportMenuOffen && !importMenuOffen) return;
-    const onDocMouseDown = (e: MouseEvent) => {
-      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) setExportMenuOffen(false);
-      if (importMenuRef.current && !importMenuRef.current.contains(e.target as Node)) setImportMenuOffen(false);
-    };
-    document.addEventListener("mousedown", onDocMouseDown);
-    return () => document.removeEventListener("mousedown", onDocMouseDown);
-  }, [exportMenuOffen, importMenuOffen]);
 
   function gewerkExpandToggle(key: string) {
     setExpandedGewerk(prev => {
@@ -808,97 +796,22 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
           </CockpitAbschnitt>
         )}
 
-        {!readOnly && (
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              {api && (
-                <>
-                  <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }} disabled={bulkLaeuft} onClick={alleUnzugeordnetenZuordnen}>
-                    {bulkLaeuft ? "Wird zugeordnet…" : "Alle unzugeordneten automatisch zuordnen"}
-                  </button>
-                  <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }} disabled={mengenLaeuft} onClick={mengenBerechnen}
-                    title="Berechnet Mengen aus den Formeln in Tab Ressourcen für alle Bauteile je Task — manuell überschriebene Werte bleiben unangetastet">
-                    {mengenLaeuft ? "Wird berechnet…" : "Mengen aus Bauteilen berechnen"}
-                  </button>
-                  {mengenVeraltet && (
-                    <span title="Formeln/Ausschlussfilter in Tab Ressourcen wurden seit der letzten Berechnung geändert — Mengen sind veraltet"
-                      style={{ fontSize: 10, color: "#d9622b" }}>
-                      ⚠
-                    </span>
-                  )}
-                </>
-              )}
-              <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }} onClick={manuelleMengenLoeschen}
-                title="Löscht nur manuell eingegebene Mengen (schwarze Werte) — automatisch berechnete Mengen (blau) und die 'Berechnet'-Übersteuerung bleiben erhalten">
-                Manuelle Mengen löschen
-              </button>
-            </div>
-            {(bulkErgebnis || mengenErgebnis || manuelleLoeschErgebnis) && (
-              <div style={{ display: "flex", gap: 16, marginTop: 4, flexWrap: "wrap" }}>
-                {bulkErgebnis && <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>{bulkErgebnis}</span>}
-                {mengenErgebnis && <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>{mengenErgebnis}</span>}
-                {manuelleLoeschErgebnis && <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>{manuelleLoeschErgebnis}</span>}
-              </div>
-            )}
+        {/* Aktionen/Export/Import im ⋮ rechts in der Legendenzeile — hier nur Ergebnisse und versteckte Datei-Inputs */}
+        <input ref={importCsvInputRef} type="file" accept=".csv" style={{ display: "none" }}
+          onChange={e => e.target.files?.[0] && kalkulationImportierenCsv(e.target.files[0])} />
+        <input ref={importJsonInputRef} type="file" accept=".json" style={{ display: "none" }}
+          onChange={e => e.target.files?.[0] && kalkulationImportierenJson(e.target.files[0])} />
+        {(bulkErgebnis || mengenErgebnis || manuelleLoeschErgebnis || importFehler || importErgebnis) && (
+          <div style={{ display: "flex", gap: 16, marginBottom: 6, flexWrap: "wrap", fontSize: 10, color: "var(--tc-text-3)" }}>
+            {bulkErgebnis && <span>{bulkErgebnis}</span>}
+            {mengenErgebnis && <span>{mengenErgebnis}</span>}
+            {manuelleLoeschErgebnis && <span>{manuelleLoeschErgebnis}</span>}
+            {importFehler && <span style={{ color: "var(--tc-red)" }}>! {importFehler}</span>}
+            {importErgebnis && <span>{importErgebnis}</span>}
           </div>
         )}
 
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-          <div ref={exportMenuRef} style={{ position: "relative" }}>
-            <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }}
-              onClick={() => setExportMenuOffen(o => !o)} title="Kalkulation exportieren (Kürzel/Kranbereich/Mengen je Task)">
-              Export ▾
-            </button>
-            {exportMenuOffen && (
-              <Schwebend style={{ background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", minWidth: 110 }}>
-                <div onClick={() => { kalkulationExportierenCsv(); setExportMenuOffen(false); }}
-                  style={{ padding: "6px 10px", cursor: "pointer", fontSize: 11 }}
-                  onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")} onMouseLeave={e => (e.currentTarget.style.background = "")}
-                  title="Kürzel/Kranbereich/Mengen je Task als CSV — in Excel bearbeitbar, Reimport ordnet über den Tasknamen zu">
-                  CSV
-                </div>
-                <div onClick={() => { kalkulationExportierenJson(); setExportMenuOffen(false); }}
-                  style={{ padding: "6px 10px", cursor: "pointer", fontSize: 11 }}
-                  onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")} onMouseLeave={e => (e.currentTarget.style.background = "")}
-                  title="Kürzel/Kranbereich/Mengen je Task als JSON — für einen exakten Restore über die Task-ID (z.B. vor einem Bulk-Vorgang)">
-                  JSON
-                </div>
-              </Schwebend>
-            )}
-          </div>
-          {!readOnly && (
-            <div ref={importMenuRef} style={{ position: "relative" }}>
-              <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }}
-                onClick={() => setImportMenuOffen(o => !o)} title="Kalkulation importieren">
-                Import ▾
-              </button>
-              {importMenuOffen && (
-                <Schwebend style={{ background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", minWidth: 110 }}>
-                  <div onClick={() => { importCsvInputRef.current?.click(); setImportMenuOffen(false); }}
-                    style={{ padding: "6px 10px", cursor: "pointer", fontSize: 11 }}
-                    onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")} onMouseLeave={e => (e.currentTarget.style.background = "")}
-                    title="Aus einer zuvor exportierten (in Excel bearbeiteten) CSV-Datei importieren — Zuordnung über den Tasknamen">
-                    CSV
-                  </div>
-                  <div onClick={() => { importJsonInputRef.current?.click(); setImportMenuOffen(false); }}
-                    style={{ padding: "6px 10px", cursor: "pointer", fontSize: 11 }}
-                    onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")} onMouseLeave={e => (e.currentTarget.style.background = "")}
-                    title="Aus einer zuvor exportierten JSON-Datei importieren — Zuordnung über die Task-ID">
-                    JSON
-                  </div>
-                </Schwebend>
-              )}
-              <input ref={importCsvInputRef} type="file" accept=".csv" style={{ display: "none" }}
-                onChange={e => e.target.files?.[0] && kalkulationImportierenCsv(e.target.files[0])} />
-              <input ref={importJsonInputRef} type="file" accept=".json" style={{ display: "none" }}
-                onChange={e => e.target.files?.[0] && kalkulationImportierenJson(e.target.files[0])} />
-            </div>
-          )}
-          {importFehler && <span style={{ fontSize: 10, color: "var(--tc-red)" }}>! {importFehler}</span>}
-          {importErgebnis && <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>{importErgebnis}</span>}
-        </div>
-
-        <div style={{ display: "flex", gap: 12, fontSize: 9, color: "var(--tc-text-3)", marginBottom: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 9, color: "var(--tc-text-3)", marginBottom: 6 }}>
           <span onClick={() => setMengenSortModus(m => m === "auto" ? null : "auto")} title="Automatisch berechnete Felder zuoberst"
             style={{ cursor: "pointer", fontWeight: mengenSortModus === "auto" ? 700 : 400, color: mengenSortModus === "auto" ? "var(--tc-blue)" : "var(--tc-text-3)" }}>
             <span style={{ color: "var(--tc-blue)", fontWeight: 700 }}>■</span> automatisch aus Formel
@@ -915,6 +828,31 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
             style={{ cursor: "pointer", fontWeight: mengenSortModus === "leer" ? 700 : 400, color: mengenSortModus === "leer" ? "var(--tc-blue)" : "var(--tc-text-3)" }}>
             <span style={{ display: "inline-block", width: 7, height: 7, background: "#fff", border: "1px solid #999", verticalAlign: "middle" }} /> Leere Felder
           </span>
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
+            {!readOnly && api && mengenVeraltet && (
+              <span title="Formeln/Ausschlussfilter in Tab Ressourcen wurden seit der letzten Berechnung geändert — Mengen sind veraltet (⋮ → Mengen aus Bauteilen berechnen)"
+                style={{ fontSize: 11, color: "#d9622b" }}>⚠</span>
+            )}
+            <PunkteMenu title="Zuordnen, Mengen berechnen, Export, Import" abschnitte={[
+              ...(!readOnly ? [{ titel: "AKTIONEN", eintraege: [
+                ...(api ? [
+                  { label: bulkLaeuft ? "Wird zugeordnet…" : "Alle unzugeordneten automatisch zuordnen", onClick: alleUnzugeordnetenZuordnen, disabled: bulkLaeuft },
+                  { label: mengenLaeuft ? "Wird berechnet…" : "Mengen aus Bauteilen berechnen" + (mengenVeraltet ? " ⚠" : ""), onClick: mengenBerechnen, disabled: mengenLaeuft,
+                    title: "Berechnet Mengen aus den Formeln in Tab Ressourcen für alle Bauteile je Task — manuell überschriebene Werte bleiben unangetastet" },
+                ] : []),
+                { label: "Manuelle Mengen löschen", onClick: manuelleMengenLoeschen,
+                  title: "Löscht nur manuell eingegebene Mengen (schwarze Werte) — automatisch berechnete Mengen (blau) und die 'Berechnet'-Übersteuerung bleiben erhalten" },
+              ] }] : []),
+              { titel: "EXPORT", eintraege: [
+                { label: "CSV", onClick: kalkulationExportierenCsv, title: "Kürzel/Kranbereich/Mengen je Task als CSV — in Excel bearbeitbar, Reimport ordnet über den Tasknamen zu" },
+                { label: "JSON", onClick: kalkulationExportierenJson, title: "Kürzel/Kranbereich/Mengen je Task als JSON — für einen exakten Restore über die Task-ID (z.B. vor einem Bulk-Vorgang)" },
+              ] },
+              ...(!readOnly ? [{ titel: "IMPORT", eintraege: [
+                { label: "CSV", onClick: () => importCsvInputRef.current?.click(), title: "Aus einer zuvor exportierten (in Excel bearbeiteten) CSV-Datei importieren — Zuordnung über den Tasknamen" },
+                { label: "JSON", onClick: () => importJsonInputRef.current?.click(), title: "Aus einer zuvor exportierten JSON-Datei importieren — Zuordnung über die Task-ID" },
+              ] }] : []),
+            ]} />
+          </div>
         </div>
       </div>
       {/* flex:1 + minHeight:0 macht diesen Bereich zum echten, höhenbegrenzten Scrollcontainer
@@ -934,7 +872,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
           const ausgewaehlt = selectedIds.includes(z.t.id);
           return (
             <Fragment key={z.t.id}>
-              <div style={{ display: "grid", gridTemplateColumns: gridTemplate, alignItems: "start", padding: "6px 0", background: ausgewaehlt ? "var(--tc-blue-bg)" : "", borderBottom: offeneGewerke.length > 0 ? "none" : "1px solid var(--tc-border-light)" }}
+              <div style={{ display: "grid", gridTemplateColumns: gridTemplate, alignItems: "center", padding: "6px 0", background: ausgewaehlt ? "var(--tc-blue-bg)" : "", borderBottom: offeneGewerke.length > 0 ? "none" : "1px solid var(--tc-border-light)" }}
                 onClick={e => zeileAnklicken(z.t.id, idx, e)}
                 onMouseDown={e => { if (e.shiftKey || e.ctrlKey || e.metaKey) e.preventDefault(); }}
                 onMouseEnter={e => { if (!ausgewaehlt) e.currentTarget.style.background = "#f5f9fc"; }}

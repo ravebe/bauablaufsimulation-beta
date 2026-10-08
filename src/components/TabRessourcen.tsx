@@ -10,7 +10,7 @@ import type { ApiInstance } from "../hooks/useApi";
 import { ladeAttributListe, ladeObjektAttribute, attrItemsAusWerten, keyZuAttrItem, type AttrItem } from "./modelHelpers";
 import { parseFormel, FormelFehler } from "./formelHelpers";
 import Schwebend from "./Schwebend";
-import RessourcenMenu from "./RessourcenMenu";
+import PunkteMenu from "./PunkteMenu";
 
 interface Props {
   sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; api?: ApiInstance | null;
@@ -371,10 +371,21 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
 
   // ⋮-Menü (Export, Import, Kategorie hinzufügen) — rechts in jeder Kategorie-Kopfzeile, in der Flucht der ×-Spalte
   const ressourcenMenu = (
-    <RessourcenMenu readOnly={readOnly} exportMoeglich={stammdaten.gewerke.length > 0}
-      onExportJson={stammdatenExportieren} onExportCsv={stammdatenExportierenCsv}
-      onImportJson={() => importInputRef.current?.click()} onImportCsv={() => importCsvInputRef.current?.click()}
-      kataloge={GEWERKE_KATALOGE.filter(k => !katalogVollstaendigGeladen(k))} onKategorie={katalogHinzufuegen} />
+    <PunkteMenu title="Export, Import, Kategorie hinzufügen" abschnitte={[
+      ...(stammdaten.gewerke.length > 0 ? [{ titel: "EXPORT", eintraege: [
+        { label: "JSON", onClick: stammdatenExportieren, title: "Alle Kategorien/Kürzel/Leistungswerte als JSON-Datei — z.B. für ein anderes Trimble-Connect-Projekt" },
+        { label: "CSV", onClick: stammdatenExportierenCsv, title: "Raten (Kürzel/LW/Personen/CHF/Formel) als CSV — in Excel bearbeitbar, danach wieder importierbar" },
+      ] }] : []),
+      ...(!readOnly ? [
+        { titel: "IMPORT", eintraege: [
+          { label: "JSON", onClick: () => importInputRef.current?.click(), title: "Aus einer zuvor exportierten JSON-Datei importieren" },
+          { label: "CSV", onClick: () => importCsvInputRef.current?.click(), title: "Aus einer zuvor exportierten (in Excel bearbeiteten) CSV-Datei importieren" },
+        ] },
+        { titel: "KATEGORIE HINZUFÜGEN", leerText: "Alle Kategorien sind geladen",
+          eintraege: GEWERKE_KATALOGE.filter(k => !katalogVollstaendigGeladen(k)).map(k => ({ label: k.label, onClick: () => katalogHinzufuegen(k.key),
+            title: "Legt nur Gewerke/Kürzel/Einheiten an — Werte selbst befüllen; Kategorien lassen sich danach frei umbenennen" })) },
+      ] : []),
+    ]} />
   );
 
   return (
