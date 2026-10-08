@@ -363,3 +363,7 @@
 /* Spin Animation */
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .spin-icon { display: inline-block; animation: spin 1s linear infinite; }
+
+/* Zahlenfeld mit immer sichtbaren Auf/Ab-Pfeilen (Chrome/Edge zeigen sie sonst nur beim Darüberfahren) */
+.pfeile-immer::-webkit-inner-spin-button,
+.pfeile-immer::-webkit-outer-spin-button { opacity: 1; }

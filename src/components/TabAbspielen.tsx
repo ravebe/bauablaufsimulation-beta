@@ -477,7 +477,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
         ) : (
           <button className="tc-btn-danger" style={{ flex: 1 }} onClick={stoppen}>■ Stoppen</button>
         )}
-        <input type="number" min={0.1} max={10} step={0.1} value={sekProTag}
+        <input type="number" className="pfeile-immer" min={0.1} max={10} step={0.1} value={sekProTag}
           onChange={e => setSekProTag(Number(e.target.value))} disabled={laeuft}
           title="Sekunden pro Tag"
           style={{ width: 38, height: 28, boxSizing: "border-box", borderRadius: 3, textAlign: "center", border: "1px solid #d4dce4", fontSize: 12, fontFamily: "inherit", padding: 0 }} />
