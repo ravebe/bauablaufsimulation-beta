@@ -1,7 +1,6 @@
 // TabRessourcen.tsx — Stammdaten-Editor (Leistungswerte/Personal/CHF je Bauteil-Kürzel), Basis
 // für die Menge→Tage-Kalkulation (Tab Kalkulation) und die Kosten-Auswertung (Tab Kosten).
 import { useState, useEffect, useRef } from "react";
-import type { CSSProperties } from "react";
 import type { SimProjekt } from "../types";
 import { istGruppe, nsKey } from "../types";
 import type { Gewerk, GewerkeKatalog, Rate, Stammdaten, AusschlussFilter } from "./stammdatenHelpers";
@@ -11,6 +10,7 @@ import type { ApiInstance } from "../hooks/useApi";
 import { ladeAttributListe, ladeObjektAttribute, attrItemsAusWerten, keyZuAttrItem, type AttrItem } from "./modelHelpers";
 import { parseFormel, FormelFehler } from "./formelHelpers";
 import Schwebend from "./Schwebend";
+import RessourcenMenu from "./RessourcenMenu";
 
 interface Props {
   sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; api?: ApiInstance | null;
@@ -39,10 +39,6 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   const [importFehler, setImportFehler] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const importCsvInputRef = useRef<HTMLInputElement>(null);
-  const [exportMenuOffen, setExportMenuOffen] = useState(false);
-  const [importMenuOffen, setImportMenuOffen] = useState(false);
-  const exportMenuRef = useRef<HTMLDivElement>(null);
-  const importMenuRef = useRef<HTMLDivElement>(null);
   const [neueKategorieName, setNeueKategorieName] = useState("");
   const [attrListe, setAttrListe] = useState<AttrItem[] | null>(null);
   const [attrLaedt, setAttrLaedt] = useState(false);
@@ -74,7 +70,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp);
   }
 
-  const ratenGridTemplate = `${RATEN_SPALTEN.map(s => `${ratenColW[s]}px`).join(" ")} ${AKTION_BREITE}px ${KRAN_BREITE}px ${TOTAL_BREITE}px ${ENTFERNEN_BREITE}px`;
+  const ratenGridTemplate = `${RATEN_SPALTEN.map(s => `${ratenColW[s]}px`).join(" ")} ${AKTION_BREITE}px ${KRAN_BREITE}px minmax(${TOTAL_BREITE}px, 1fr) ${ENTFERNEN_BREITE}px`;
 
   function formelUmschalten(key: string) {
     setFormelOffenFuer(prev => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
@@ -98,15 +94,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     return () => document.removeEventListener("mousedown", onDocMouseDown);
   }, [oeffnungPickerOffenFuer]);
 
-  useEffect(() => {
-    if (!exportMenuOffen && !importMenuOffen) return;
-    const onDocMouseDown = (e: MouseEvent) => {
-      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) setExportMenuOffen(false);
-      if (importMenuRef.current && !importMenuRef.current.contains(e.target as Node)) setImportMenuOffen(false);
-    };
-    document.addEventListener("mousedown", onDocMouseDown);
-    return () => document.removeEventListener("mousedown", onDocMouseDown);
-  }, [exportMenuOffen, importMenuOffen]);
+  // (Export/Import-Menüs jetzt im ⋮ je Kategorie, siehe RessourcenMenu.tsx)
 
   if (!sim) return <div style={{ padding: 14, fontSize: 12, color: "var(--tc-text-3)" }}>Kein aktives Projekt ausgewählt</div>;
 
@@ -381,68 +369,25 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     ? attrListe.filter(a => !oeffnungPickerQuery || a.name.toLowerCase().includes(oeffnungPickerQuery.toLowerCase()) || a.pset.toLowerCase().includes(oeffnungPickerQuery.toLowerCase())).slice(0, 20)
     : [];
 
-  const exportImportButtonStyle: CSSProperties = {
-    fontSize: 12, fontWeight: 400, fontFamily: "inherit", color: "var(--tc-text-3)", padding: "3px 5px", border: "1px solid #d4dce4", background: "#fff", cursor: "pointer",
-  };
-  const exportBlock = (
-    <div ref={exportMenuRef} style={{ position: "relative" }}>
-      <button disabled={stammdaten.gewerke.length === 0} onClick={() => setExportMenuOffen(o => !o)} title="Ressourcen exportieren"
-        style={{ ...exportImportButtonStyle, opacity: stammdaten.gewerke.length === 0 ? 0.5 : 1, cursor: stammdaten.gewerke.length === 0 ? "default" : "pointer" }}>
-        Export
-      </button>
-      {exportMenuOffen && (
-        <Schwebend ausrichtung="rechts" style={{ background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", minWidth: 110 }}>
-          <div onClick={() => { stammdatenExportieren(); setExportMenuOffen(false); }}
-            style={{ padding: "6px 10px", cursor: "pointer", fontSize: 11 }}
-            onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")} onMouseLeave={e => (e.currentTarget.style.background = "")}
-            title="Alle Kategorien/Kürzel/Leistungswerte als JSON-Datei — z.B. für ein anderes Trimble-Connect-Projekt">
-            JSON
-          </div>
-          <div onClick={() => { stammdatenExportierenCsv(); setExportMenuOffen(false); }}
-            style={{ padding: "6px 10px", cursor: "pointer", fontSize: 11 }}
-            onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")} onMouseLeave={e => (e.currentTarget.style.background = "")}
-            title="Raten (Kürzel/LW/Personen/CHF/Formel) als CSV — in Excel bearbeitbar, danach wieder importierbar">
-            CSV
-          </div>
-        </Schwebend>
-      )}
-    </div>
-  );
-  const importBlock = !readOnly && (
-    <div ref={importMenuRef} style={{ position: "relative" }}>
-      <button onClick={() => setImportMenuOffen(o => !o)} title="Ressourcen importieren" style={exportImportButtonStyle}>
-        Import
-      </button>
-      {importMenuOffen && (
-        <Schwebend ausrichtung="rechts" style={{ background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", minWidth: 110 }}>
-          <div onClick={() => { importInputRef.current?.click(); setImportMenuOffen(false); }}
-            style={{ padding: "6px 10px", cursor: "pointer", fontSize: 11 }}
-            onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")} onMouseLeave={e => (e.currentTarget.style.background = "")}
-            title="Aus einer zuvor exportierten JSON-Datei importieren">
-            JSON
-          </div>
-          <div onClick={() => { importCsvInputRef.current?.click(); setImportMenuOffen(false); }}
-            style={{ padding: "6px 10px", cursor: "pointer", fontSize: 11 }}
-            onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")} onMouseLeave={e => (e.currentTarget.style.background = "")}
-            title="Aus einer zuvor exportierten (in Excel bearbeiteten) CSV-Datei importieren">
-            CSV
-          </div>
-        </Schwebend>
-      )}
-      <input ref={importInputRef} type="file" accept=".json" style={{ display: "none" }}
-        onChange={e => e.target.files?.[0] && stammdatenImportieren(e.target.files[0])} />
-      <input ref={importCsvInputRef} type="file" accept=".csv" style={{ display: "none" }}
-        onChange={e => e.target.files?.[0] && stammdatenImportierenCsv(e.target.files[0])} />
-    </div>
+  // ⋮-Menü (Export, Import, Kategorie hinzufügen) — rechts in jeder Kategorie-Kopfzeile, in der Flucht der ×-Spalte
+  const ressourcenMenu = (
+    <RessourcenMenu readOnly={readOnly} exportMoeglich={stammdaten.gewerke.length > 0}
+      onExportJson={stammdatenExportieren} onExportCsv={stammdatenExportierenCsv}
+      onImportJson={() => importInputRef.current?.click()} onImportCsv={() => importCsvInputRef.current?.click()}
+      kataloge={GEWERKE_KATALOGE.filter(k => !katalogVollstaendigGeladen(k))} onKategorie={katalogHinzufuegen} />
   );
 
   return (
     <div style={{ padding: 14, fontSize: 12 }}>
+      <input ref={importInputRef} type="file" accept=".json" style={{ display: "none" }}
+        onChange={e => e.target.files?.[0] && stammdatenImportieren(e.target.files[0])} />
+      <input ref={importCsvInputRef} type="file" accept=".csv" style={{ display: "none" }}
+        onChange={e => e.target.files?.[0] && stammdatenImportierenCsv(e.target.files[0])} />
       {importFehler && <div className="alert err" style={{ marginBottom: 10 }}>! {importFehler}</div>}
 
       {stammdaten.gewerke.length === 0 && (
         <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
-          Noch keine Stammdaten hinterlegt — über einen der Lade-Buttons starten oder Gewerke manuell anlegen.
+          Noch keine Stammdaten hinterlegt — über ⋮ oben rechts eine Kategorie hinzufügen oder Stammdaten importieren.
         </div>
       )}
 
@@ -464,10 +409,6 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
             <span style={{ fontWeight: 600 }}>Umsatz CHF/Mannstunde:</span>
             {numInput(stammdaten.umsatzChfProMannstunde ?? 80, v => speichern({ ...stammdaten, umsatzChfProMannstunde: v ?? 80 }), 60)}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
-            {exportBlock}
-            {importBlock}
-          </div>
         </div>
         {(kuerzelOhneLw.length > 0 || kuerzelOhneRate.length > 0) && (
           <div style={{ marginBottom: 16, fontSize: 11 }}>
@@ -480,27 +421,11 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
           </div>
         )}
       </>) : (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-          {exportBlock}
-          {importBlock}
-        </div>
+        // ohne Kategorie gibt es keine Kopfzeile mit ⋮ → hier oben rechts
+        !readOnly && <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>{ressourcenMenu}</div>
       )}
 
-      {!readOnly && (
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <select value="" onChange={e => { if (e.target.value) katalogHinzufuegen(e.target.value); }}
-              title="Kategorien legen nur Gewerke/Kürzel/Einheiten an und müssen selbst befüllt werden. Kategorien lassen sich nach dem Hinzufügen frei umbenennen, bereits vollständig geladene verschwinden aus der Liste."
-              style={{ fontSize: 11, padding: "5px 8px", border: "1px solid #d4dce4", fontFamily: "inherit", color: "var(--tc-text-3)" }}>
-              <option value="">+ Kategorie hinzufügen…</option>
-              {GEWERKE_KATALOGE.filter(k => !katalogVollstaendigGeladen(k)).map(k => (
-                <option key={k.key} value={k.key}>{k.label}</option>
-              ))}
-            </select>
-          </div>
-          {ladeErgebnis && <div style={{ fontSize: 10, color: "var(--tc-text-3)", marginTop: 4 }}>{ladeErgebnis}</div>}
-        </div>
-      )}
+      {ladeErgebnis && <div style={{ fontSize: 10, color: "var(--tc-text-3)", marginBottom: 10 }}>{ladeErgebnis}</div>}
 
       <div style={{ overflowX: "auto" }}>
       {stammdaten.gewerke.map((gewerk, gi) => {
@@ -549,6 +474,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                   style={{ width: 44, fontSize: 10, fontWeight: 600, padding: "1px 3px", border: "1px solid #d4dce4", fontFamily: "inherit", color: "var(--tc-text-3)" }} />
                 <span>)</span>
               </div>
+              <div style={{ marginLeft: "auto" }}>{ressourcenMenu}</div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: ratenGridTemplate, columnGap: 6, fontSize: 9, color: "var(--tc-text-3)", padding: "0 0 3px", fontWeight: 600 }}>
               {RATEN_SPALTEN.map((s, i) => (
