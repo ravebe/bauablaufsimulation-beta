@@ -34,10 +34,9 @@ export default function ModellOrdnerBaum({ rootId, eintraege, ausgewaehlt, onTog
     return { kinder, modelleUnter };
   }, [rootId, eintraege]);
 
-  // Anfangs: kleine Projekte ganz aufgeklappt, sonst nur die Ordner mit bereits gewählten Modellen
+  // Anfangs zugeklappt — nur die Ordner mit bereits gewählten Modellen (samt übergeordneten) sind offen
   const [offen, setOffen] = useState<Set<string>>(() => {
     const ordnerIds = eintraege.filter(e => e.typ === "ordner").map(e => e.id);
-    if (ordnerIds.length <= 20) return new Set(ordnerIds);
     return new Set(ordnerIds.filter(id => modelleUnter.get(id)?.some(m => ausgewaehlt.has(m))));
   });
   const umschalten = (id: string) => setOffen(prev => {
@@ -66,7 +65,7 @@ export default function ModellOrdnerBaum({ rootId, eintraege, ausgewaehlt, onTog
         <div style={{ ...zeile, paddingLeft: einzug, fontWeight: 600, color: "var(--tc-text-2)" }} onClick={() => umschalten(e.id)}>
           <span style={{ width: 8, flexShrink: 0, color: "var(--tc-text-3)" }}>{istOffen ? "▾" : "▸"}</span>
           <svg viewBox="0 0 24 24" width="12" height="12" style={{ flexShrink: 0 }}>
-            <path d="M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6z" fill="none" stroke="#b8860b" strokeWidth="1.6" />
+            <path d="M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6z" fill={gewaehlt > 0 ? "#2d7dbd" : "none"} stroke="#2d7dbd" strokeWidth="1.6" />
           </svg>
           <span style={{ ...text, flex: 1 }} title={e.name}>{e.name}</span>
           {!istOffen && gewaehlt > 0 && <span style={{ flexShrink: 0, color: "var(--tc-text-3)", fontWeight: 400 }}>{gewaehlt} ✓</span>}
