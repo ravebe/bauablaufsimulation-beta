@@ -277,6 +277,8 @@
   flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 10px; border: 1.5px dashed #ccc; background: #f9fafb; text-align: center; gap: 4px;
 }
+.gantt-info-box.klickbar { cursor: pointer; }
+.gantt-info-box.klickbar:hover, .gantt-info-box.offen { border-color: var(--tc-blue); }
 .gantt-info-name {
   font-size: 12px; font-weight: 600; color: var(--tc-text); max-width: 100%;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

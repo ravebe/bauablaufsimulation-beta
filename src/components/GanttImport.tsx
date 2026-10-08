@@ -10,6 +10,9 @@ interface Props {
   onImport: (tasks: Task[], dateiname: string) => void;
   taskCount: number;
   ganttInfo?: { dateiname: string; version: number } | null;
+  /** "x Tasks geladen" nur zeigen, wenn per Klick auf den geladenen Gantt aufgeklappt (ohne Gantt immer) */
+  detailsOffen?: boolean;
+  onInfoKlick?: () => void;
 }
 
 interface ImportFehler {
@@ -19,7 +22,7 @@ interface ImportFehler {
   wert: string;
 }
 
-export default function GanttImport({ onImport, taskCount, ganttInfo }: Props) {
+export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOffen, onInfoKlick }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [fehler, setFehler] = useState<ImportFehler[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
@@ -339,14 +342,14 @@ export default function GanttImport({ onImport, taskCount, ganttInfo }: Props) {
         </label>
 
         {ganttInfo && (
-          <div className="gantt-info-box" title={ganttInfo.dateiname}>
+          <div className={`gantt-info-box klickbar${detailsOffen ? " offen" : ""}`} title={ganttInfo.dateiname} onClick={onInfoKlick}>
             <span className="gantt-info-name">{ganttName}<span className="gantt-info-ext">{ganttExt}</span></span>
             <span className="gantt-info-version">Version {ganttInfo.version}</span>
           </div>
         )}
       </div>
 
-      {taskCount > 0 && !msg && (
+      {taskCount > 0 && !msg && (!ganttInfo || detailsOffen) && (
         <div className="alert ok" style={{ marginTop: 5 }}>✓ {taskCount} Tasks geladen</div>
       )}
 

@@ -36,6 +36,8 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
   // eingeblendet ist — Klick ausserhalb oder Tab-Wechsel blendet sie wieder aus (Komponente bleibt gemountet,
   // damit Eingaben und ein laufender Vorgang erhalten bleiben).
   const [verknuepfOffen, setVerknuepfOffen] = useState<string | null>(null);
+  // Sim-ID, deren "x Tasks geladen" + Auto-Verknüpfung/Attribut-Tasks per Klick auf den geladenen Gantt aufgeklappt sind
+  const [ganttDetails, setGanttDetails] = useState<string | null>(null);
   const verknuepfRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!verknuepfOffen) return;
@@ -169,7 +171,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
             return;
           }
         }
-        setModellMsg({ simId: id, typ: "ok", text: `${loaded} Modelle geladen` });
+        setModellMsg(prev => prev?.text.startsWith("⟳") ? null : prev);
       }
     }
   }
@@ -372,7 +374,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
     <div className="tc-setup-content">
 
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", margin: "0 10px 10px" }}>
+      <div style={{ display: "flex", justifyContent: "flex-start", alignItems: "center", margin: "0 10px 10px" }}>
         <button className="tc-btn-primary" style={{ padding: "4px 12px", fontSize: 10 }}
           onClick={() => setZeigeNeu(v => !v)}>
           + Neu
@@ -420,8 +422,12 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
             <div className="sim-card-header" onClick={() => toggleAufgeklappt(sim.id)}>
               <div className="sim-card-left">
                 <span style={{ flexShrink: 0 }}>
-                  <svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="#8a9baa" strokeWidth="1.5">
-                    <rect x="3" y="10" width="3" height="7" rx="0.5" fill="#c4cdd6"/><rect x="8.5" y="6" width="3" height="11" rx="0.5" fill="#a0adb8"/><rect x="14" y="3" width="3" height="14" rx="0.5" fill="#8a9baa"/>
+                  {/* Gantt-Symbol */}
+                  <svg viewBox="0 0 20 20" width="20" height="20" fill="#2d7dbd">
+                    <rect x="1" y="3" width="2.5" height="2.5" rx="0.4"/><rect x="5" y="3" width="8" height="2.5" rx="0.4"/>
+                    <rect x="1" y="7.5" width="2.5" height="2.5" rx="0.4"/><rect x="8" y="7.5" width="9" height="2.5" rx="0.4"/>
+                    <rect x="1" y="12" width="2.5" height="2.5" rx="0.4"/><rect x="6" y="12" width="6" height="2.5" rx="0.4"/>
+                    <rect x="1" y="16.5" width="2.5" height="2.5" rx="0.4"/><rect x="11" y="16.5" width="8" height="2.5" rx="0.4"/>
                   </svg>
                 </span>
                 <div className="sim-card-name-wrap">
@@ -484,7 +490,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                           } catch { /* ignore */ }
                         }
                         pruefeNeueVersionen(sim);
-                        setModellMsg({ simId: sim.id, typ: "ok", text: `${loaded} Modelle geladen` });
+                        setModellMsg(prev => prev?.text.startsWith("⟳") ? null : prev);
                       }
                     }}>
                     ✓ Als aktive Simulation setzen
@@ -512,12 +518,16 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                   }}
                   taskCount={sim.tasks.length}
                   ganttInfo={sim.ganttImport}
+                  detailsOffen={ganttDetails === sim.id}
+                  onInfoKlick={() => setGanttDetails(g => g === sim.id ? null : sim.id)}
                 />
 
                 {sim.modelle.length > 0 && (() => {
                   const offen = verknuepfOffen === sim.id;
                   return (
-                <div ref={offen ? verknuepfRef : undefined}>
+                // ohne importierten Gantt immer sichtbar (Attribut-Tasks), sonst nur nach Klick auf den Gantt — nur
+                // ausgeblendet, damit Eingaben und laufende Vorgänge erhalten bleiben
+                <div ref={offen ? verknuepfRef : undefined} style={{ display: !sim.ganttImport || ganttDetails === sim.id ? undefined : "none" }}>
                   <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
                     {([
                       { modus: "auto" as const, label: "🔗 Auto-Verknüpfung", disabled: !sim.ganttImport,
