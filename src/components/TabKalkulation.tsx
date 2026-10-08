@@ -2,7 +2,7 @@
 // zur geplanten Dauer aus dem Bauablauf.
 import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import type { SimProjekt, Task, Kran } from "../types";
-import { istGruppe, berechneNummern, nsKey, parseDateUniversal } from "../types";
+import { istGruppe, berechneNummern, parseDateUniversal } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { arbeitstageZwischen, LEERER_KALENDER } from "./kalenderHelpers";
 import { LEERE_STAMMDATEN, alleKuerzel, gewerkeFuerKuerzel, dauerBerechnetTask, bezeichnungFuerKuerzel, ausschlussFilterListe, aktiveFilterIds, objektAusgeschlossen, mengenRelevanteSignatur } from "./stammdatenHelpers";
@@ -30,8 +30,21 @@ const SPALTEN_LABEL: Record<Spalte, string> = {
   differenz: "Differenz", kraene: "Kräne", personalSoll: "Personal (Soll)", auge: "",
 };
 const DEFAULT_COL_W: Record<Spalte, number> = { nr: 30, task: 220, kuerzel: 64, mengen: 190, geplant: 76, berechnet: 88, differenz: 60, kraene: 80, personalSoll: 90, auge: 30 };
-// v2: schmalere Standardbreiten für Mengen/Kräne — gespeichert wird beim ersten Öffnen, alte Werte würden sie sonst überdecken
-const LS_COLW = "4d-kalk-colw-v2";
+// Standardbreiten werden auf die verfügbare Breite gestreckt (proportional, ausser Nr./Auge), siehe
+// gestreckteBreiten. Von Hand gezogene Breiten gelten nur bis zum Neuladen der Seite (je Projekt) —
+// bewusst nicht im localStorage, damit wieder die gestreckten Standardbreiten gelten.
+const FIXE_SPALTEN: Spalte[] = ["nr", "auge"];
+const sitzungsColW = new Map<string, Record<Spalte, number>>();
+
+function gestreckteBreiten(verfuegbar: number): Record<Spalte, number> {
+  const summe = ALLE_SPALTEN.reduce((a, sp) => a + DEFAULT_COL_W[sp], 0);
+  if (verfuegbar <= summe) return { ...DEFAULT_COL_W };
+  const fix = FIXE_SPALTEN.reduce((a, sp) => a + DEFAULT_COL_W[sp], 0);
+  const faktor = (verfuegbar - fix) / (summe - fix);
+  const w = { ...DEFAULT_COL_W };
+  for (const sp of ALLE_SPALTEN) if (!FIXE_SPALTEN.includes(sp)) w[sp] = Math.floor(DEFAULT_COL_W[sp] * faktor);
+  return w;
+}
 
 // Spalten mit Sortier-/Filterfunktion im Header (Klick auf Titel = sortieren, ▾ = Filter-Popover).
 const SORTIERBARE_SPALTEN = ["nr", "task", "kuerzel", "geplant", "berechnet"] as const;
@@ -135,16 +148,20 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     });
   }
 
-  const lsColwKey = nsKey(LS_COLW, projectId);
-  const [colW, setColW] = useState<Record<Spalte, number>>(() => {
-    try {
-      const raw = localStorage.getItem(lsColwKey);
-      return raw ? { ...DEFAULT_COL_W, ...JSON.parse(raw) } : { ...DEFAULT_COL_W };
-    } catch { return { ...DEFAULT_COL_W }; }
-  });
+  const sitzungsKey = projectId ?? "";
+  const [manuellW, setManuellW] = useState<Record<Spalte, number> | null>(() => sitzungsColW.get(sitzungsKey) ?? null);
+  // verfügbare Breite des Tabellenbereichs (ohne Innenabstand 2×14 px) — für die gestreckten Standardbreiten
+  const [tabellenEl, setTabellenEl] = useState<HTMLDivElement | null>(null);
+  const [verfuegbar, setVerfuegbar] = useState(0);
   useEffect(() => {
-    try { localStorage.setItem(lsColwKey, JSON.stringify(colW)); } catch { /* ignore */ }
-  }, [colW, lsColwKey]);
+    if (!tabellenEl) return;
+    const messen = () => setVerfuegbar(Math.max(0, tabellenEl.clientWidth - 28 - 1));
+    messen();
+    const ro = new ResizeObserver(messen);
+    ro.observe(tabellenEl);
+    return () => ro.disconnect();
+  }, [tabellenEl]);
+  const colW = manuellW ?? gestreckteBreiten(verfuegbar);
 
   // Baseline für den "Mengen veraltet"-Hinweis (siehe unten) einmalig setzen, falls noch keine
   // existiert (neues oder älteres Projekt ohne dieses Feld) — ohne Baseline gäbe es sonst sofort
@@ -159,8 +176,12 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
 
   function startResize(spalte: Spalte, e: React.MouseEvent) {
     e.preventDefault(); e.stopPropagation();
-    const sx = e.clientX, sw = colW[spalte];
-    const onMove = (ev: MouseEvent) => setColW(prev => ({ ...prev, [spalte]: Math.max(24, sw + ev.clientX - sx) }));
+    const sx = e.clientX, basis = colW, sw = colW[spalte];
+    const onMove = (ev: MouseEvent) => {
+      const neu = { ...basis, [spalte]: Math.max(24, sw + ev.clientX - sx) };
+      sitzungsColW.set(sitzungsKey, neu);
+      setManuellW(neu);
+    };
     const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
     document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp);
   }
@@ -861,7 +882,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
           der Kopfzeile und fixiert sie beim Scrollen. overflow:"auto" deckt zugleich das breite
           Grid horizontal ab; minHeight bei offenem Such-/Filterpopup verhindert, dass der Bereich
           bei 0 Treffern auf die Kopfzeile schrumpft und das Popup abschneidet. */}
-      <div style={{ flex: 1, minHeight: (suchOffen || filterMenuOffen) ? 260 : 0, overflow: "auto", padding: "0 14px 14px" }}
+      <div ref={setTabellenEl} style={{ flex: 1, minHeight: (suchOffen || filterMenuOffen) ? 260 : 0, overflow: "auto", padding: "0 14px 14px" }}
         onClick={e => { if (e.target === e.currentTarget) setSelectedIds([]); }}>
         <div style={{ display: "grid", gridTemplateColumns: gridTemplate, fontSize: 9, color: "var(--tc-text-3)", fontWeight: 600, padding: "4px 0", position: "sticky", top: 0, background: "#fff", zIndex: 3 }}>
           {ALLE_SPALTEN.map((s, i) => renderHeaderZelle(s, i))}
