@@ -372,8 +372,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
     <div className="tc-setup-content">
 
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-        <span className="tc-section-label">Simulationen</span>
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", margin: "0 10px 10px" }}>
         <button className="tc-btn-primary" style={{ padding: "4px 12px", fontSize: 10 }}
           onClick={() => setZeigeNeu(v => !v)}>
           + Neu
@@ -615,24 +614,12 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                           <path d="M12 22V12M2 7l10 5 10-5" fill="none" stroke="#2d7dbd" strokeWidth="1.2"/>
                         </svg>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div className="modell-name">{m.name}</div>
-                          {m.pfad && m.pfad.length > 0 && (
-                            <div className="modell-id" title={m.pfad.join(" › ")} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              📁 {m.pfad.join(" › ")}
-                            </div>
-                          )}
-                          <div className="modell-id">
-                            {m.id}{m.versionId && ` · Version ${m.versionId.slice(0, 8)}`}
-                          </div>
+                          <div className="modell-name" title={m.pfad?.length ? `${m.pfad.join(" › ")} › ${m.name}` : m.name}>{m.name}</div>
                         </div>
-                        {neueVersion && darfBearbeiten && (
-                          <button className="tc-btn-secondary" style={{ flexShrink: 0, fontSize: 9, padding: "3px 8px", color: "#b8860b", borderColor: "#e8c66b" }}
-                            disabled={versionWechselLaeuft}
-                            onClick={() => setUpdateDialog({ simId: sim.id, modellId: m.id, modellName: m.name, neueVersionId: neueVersion })}
-                            title="In Trimble Connect wurde eine neue Revision abgelegt"
-                          >⟳ Aktualisieren</button>
-                        )}
+                        {/* neueVersion (aus dem 60-s-Abgleich mit dem Viewer) lädt die Versionsliste neu */}
                         <ModellVersionen api={api} modell={m} darfBearbeiten={darfBearbeiten} beschaeftigt={versionWechselLaeuft}
+                          neuLadenBei={neueVersion}
+                          onAktualisieren={ziel => setUpdateDialog({ simId: sim.id, modellId: m.id, modellName: m.name, neueVersionId: ziel })}
                           onWechseln={ziel => versionWechseln(sim.id, m.id, ziel)}
                           onReparieren={quelle => m.versionId && versionWechseln(sim.id, m.id, m.versionId, quelle)} />
                       </div>
@@ -654,22 +641,22 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
 
                 {modellPicker?.simId === sim.id && (
                   <div style={{ marginTop: 8, border: "1px solid var(--tc-border)", borderRadius: 6, overflow: "hidden" }} onClick={e => e.stopPropagation()}>
-                    <div style={{ padding: "6px 8px", background: "var(--tc-bg-2)", borderBottom: "1px solid var(--tc-border)", fontSize: 10, fontWeight: 600, display: "flex", justifyContent: "space-between" }}>
+                    <div style={{ padding: "6px 8px", background: "var(--tc-bg-2)", borderBottom: "1px solid var(--tc-border)", fontSize: 12, fontWeight: 600, display: "flex", justifyContent: "space-between" }}>
                       <span>{modellPicker.ausgewaehlt.size > 0 ? `Modelle (${modellPicker.ausgewaehlt.size})` : "Modelle auswählen"}</span>
-                      <button style={{ background: "none", border: "none", cursor: "pointer", fontSize: 10, color: "var(--tc-text-3)" }} onClick={() => setModellPicker(null)}>✕</button>
+                      <button style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: "var(--tc-text-3)" }} onClick={() => setModellPicker(null)}>✕</button>
                     </div>
                     {modellPicker.hinweis && (
-                      <div style={{ padding: "4px 8px", fontSize: 9, color: "var(--tc-text-3)", borderBottom: "0.5px solid var(--tc-border)" }}>{modellPicker.hinweis}</div>
+                      <div style={{ padding: "4px 8px", fontSize: 11, color: "var(--tc-text-3)", borderBottom: "0.5px solid var(--tc-border)" }}>{modellPicker.hinweis}</div>
                     )}
                     <div style={{ maxHeight: 280, overflowY: "auto" }}>
                       {modellPicker.baum ? (
                         modellPicker.alle.length === 0
-                          ? <div style={{ padding: 8, fontSize: 10, color: "var(--tc-text-3)" }}>Keine Modelle im Projekt gefunden.</div>
+                          ? <div style={{ padding: 8, fontSize: 12, color: "var(--tc-text-3)" }}>Keine Modelle im Projekt gefunden.</div>
                           : <ModellOrdnerBaum rootId={modellPicker.baum.rootId} eintraege={modellPicker.baum.eintraege}
                               ausgewaehlt={modellPicker.ausgewaehlt} onToggle={modellToggle} />
                       ) : modellPicker.alle.map(m => (
-                        <label key={m.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 8px", cursor: "pointer", fontSize: 10, borderBottom: "0.5px solid var(--tc-border)" }}>
-                          <input type="checkbox"
+                        <label key={m.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12, borderBottom: "0.5px solid var(--tc-border)" }}>
+                          <input type="checkbox" className="modell-check"
                             checked={modellPicker.ausgewaehlt.has(m.id)}
                             onChange={() => modellToggle(m.id)}
                           />
@@ -678,10 +665,11 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                       ))}
                     </div>
                     <div style={{ padding: 6, display: "flex", gap: 4 }}>
-                      <button className="tc-btn-primary" style={{ flex: 1, fontSize: 10 }} onClick={modellPickerSpeichern}>
+                      {/* blau nur, wenn die Auswahl von den zugewiesenen Modellen abweicht */}
+                      <button className={modellPicker.ausgewaehlt.size !== sim.modelle.length || sim.modelle.some(m => !modellPicker.ausgewaehlt.has(m.id)) ? "tc-btn-primary" : "tc-btn-secondary"} style={{ flex: 1 }} onClick={modellPickerSpeichern}>
                         Speichern ({modellPicker.ausgewaehlt.size})
                       </button>
-                      <button className="tc-btn-secondary" style={{ fontSize: 10 }} onClick={() => setModellPicker(null)}>Abbrechen</button>
+                      <button className="tc-btn-secondary" onClick={() => setModellPicker(null)}>Abbrechen</button>
                     </div>
                   </div>
                 )}

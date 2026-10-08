@@ -45,7 +45,7 @@ export default function ModellOrdnerBaum({ rootId, eintraege, ausgewaehlt, onTog
     return neu;
   });
 
-  const zeile = { display: "flex", alignItems: "center", gap: 6, padding: "4px 8px", cursor: "pointer", fontSize: 10, borderBottom: "0.5px solid var(--tc-border)" } as const;
+  const zeile = { display: "flex", alignItems: "center", gap: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12, borderBottom: "0.5px solid var(--tc-border)" } as const;
   const text = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } as const;
 
   const ebene = (parentId: string, tiefe: number): ReactNode => (kinder.get(parentId) ?? []).map(e => {
@@ -53,7 +53,7 @@ export default function ModellOrdnerBaum({ rootId, eintraege, ausgewaehlt, onTog
     if (e.typ === "modell") {
       return (
         <label key={e.id} style={{ ...zeile, paddingLeft: einzug + 14 }}>
-          <input type="checkbox" checked={ausgewaehlt.has(e.id)} onChange={() => onToggle(e.id)} />
+          <input type="checkbox" className="modell-check" checked={ausgewaehlt.has(e.id)} onChange={() => onToggle(e.id)} />
           <span style={{ ...text, color: "var(--tc-text)" }} title={e.name}>{e.name}</span>
         </label>
       );
@@ -64,7 +64,7 @@ export default function ModellOrdnerBaum({ rootId, eintraege, ausgewaehlt, onTog
       <div key={e.id}>
         <div style={{ ...zeile, paddingLeft: einzug, fontWeight: 600, color: "var(--tc-text-2)" }} onClick={() => umschalten(e.id)}>
           <span style={{ width: 8, flexShrink: 0, color: "var(--tc-text-3)" }}>{istOffen ? "▾" : "▸"}</span>
-          <svg viewBox="0 0 24 24" width="12" height="12" style={{ flexShrink: 0 }}>
+          <svg viewBox="0 0 24 24" width="14" height="14" style={{ flexShrink: 0 }}>
             <path d="M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6z" fill={gewaehlt > 0 ? "#2d7dbd" : "none"} stroke="#2d7dbd" strokeWidth="1.6" />
           </svg>
           <span style={{ ...text, flex: 1 }} title={e.name}>{e.name}</span>

@@ -17,6 +17,10 @@ interface Props {
   beschaeftigt: boolean;
   onWechseln: (zielVersionId: string) => void;
   onReparieren: (quelleVersionId: string) => void;
+  /** Klick auf das Aktualisieren-Kästchen (nur wenn die aktive nicht die neueste Version ist) */
+  onAktualisieren: (neuesteVersionId: string) => void;
+  /** Ändert sich der Wert (neue Revision im Viewer erkannt), wird die Versionsliste neu geladen */
+  neuLadenBei?: string;
 }
 
 // Versionslisten kurz cachen — die Karte rendert oft neu, die Liste ändert sich selten
@@ -29,7 +33,7 @@ const datum = (iso?: string) => {
   return isNaN(d.getTime()) ? "" : d.toLocaleString("de-CH", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
 };
 
-export default function ModellVersionen({ api, modell, darfBearbeiten, beschaeftigt, onWechseln, onReparieren }: Props) {
+export default function ModellVersionen({ api, modell, darfBearbeiten, beschaeftigt, onWechseln, onReparieren, onAktualisieren, neuLadenBei }: Props) {
   const [versionen, setVersionen] = useState<TcVersion[] | null>(cache.get(modell.id)?.versionen ?? null);
   const [fehler, setFehler] = useState<string | null>(null);
   const [offen, setOffen] = useState(false);
@@ -57,24 +61,35 @@ export default function ModellVersionen({ api, modell, darfBearbeiten, beschaeft
       .then(v => { cache.set(modell.id, { zeit: Date.now(), versionen: v }); if (!abgebrochen) { setVersionen(v); setFehler(null); } })
       .catch(e => { if (!abgebrochen) setFehler(e instanceof Error ? e.message : String(e)); });
     return () => { abgebrochen = true; };
-  }, [api, modell.id, modell.versionId]);
+  }, [api, modell.id, modell.versionId, neuLadenBei]);
 
   const anzahl = versionen?.length ?? 0;
   const nummer = (v: TcVersion, i: number) => v.revision ?? anzahl - i;
   const aktivIdx = versionen?.findIndex(v => v.versionId === modell.versionId) ?? -1;
   const aktiv = versionen && aktivIdx >= 0 ? versionen[aktivIdx] : null;
-  const badge = aktiv ? `v${nummer(aktiv, aktivIdx)}` : modell.versionId ? "Version" : "neueste";
+  // ohne gepinnte Version wird die neueste geladen — auch dann die Nummer zeigen
+  const badge = aktiv ? `V${nummer(aktiv, aktivIdx)}` : !modell.versionId && anzahl > 0 ? `V${nummer(versionen![0], 0)}` : "Version";
   const istNeueste = aktivIdx === 0 || !modell.versionId;
+  const farbe = istNeueste ? { color: "#2d7dbd", borderColor: "#b9d3ea" } : { color: "#b8860b", borderColor: "#e8c66b" };
+  const kaestchen = { height: 22, fontSize: 11, fontWeight: 600, display: "inline-flex", alignItems: "center", justifyContent: "center", ...farbe } as const;
 
   return (
-    <div ref={ref} style={{ position: "relative", flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+    <div ref={ref} style={{ position: "relative", flexShrink: 0, display: "flex", gap: 4 }} onClick={e => e.stopPropagation()}>
       <button className="tc-btn-secondary"
-        style={{ fontSize: 10, padding: "2px 8px", fontWeight: 600, color: istNeueste ? "#2d7dbd" : "#b8860b", borderColor: istNeueste ? "#b9d3ea" : "#e8c66b" }}
+        style={{ ...kaestchen, padding: "0 8px", minWidth: 44 }}
         title={fehler ? `Versionen nicht geladen: ${fehler}` : istNeueste ? "Aktive Version (neueste) — klicken für alle Versionen" : "Aktive Version ist nicht die neueste — klicken für alle Versionen"}
         disabled={beschaeftigt}
         onClick={() => { setOffen(o => !o); setReparatur(false); if (!offen) laden(); }}>
-        {badge}{anzahl > 0 && !istNeueste ? ` / v${nummer(versionen![0], 0)}` : ""} ▾
+        {badge} ▾
       </button>
+      {!istNeueste && darfBearbeiten && versionen && anzahl > 0 && (
+        <button className="tc-btn-secondary" style={{ ...kaestchen, padding: 0, width: 44 }}
+          disabled={beschaeftigt}
+          title={`Auf die neueste Version V${nummer(versionen[0], 0)} aktualisieren`}
+          onClick={() => { setOffen(false); onAktualisieren(versionen[0].versionId); }}>
+          ⟳
+        </button>
+      )}
 
       {offen && (
         <div style={{
