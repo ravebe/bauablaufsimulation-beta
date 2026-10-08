@@ -633,8 +633,9 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                   })()}
                 </span>
 
-                {/* Datum — blau, untereinander */}
-                <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.3, flexShrink: 0 }}
+                {/* Datum — blau, untereinander; feine Trennstriche links/rechts über die ganze Zeilenhöhe (.task-row hat 6px Innenabstand oben/unten), wie Tab Abspielen */}
+                <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", justifyContent: "center", lineHeight: 1.3, flexShrink: 0,
+                  padding: "6px 10px", margin: "-6px 0", alignSelf: "stretch", borderLeft: "1px solid #e4e8ec", borderRight: "1px solid #e4e8ec" }}
                   onClick={e => e.stopPropagation()}>
                   {isGroup && gDaten ? (
                     <>
