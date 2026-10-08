@@ -482,13 +482,14 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
       </div>
 
       {totalTage > 0 && minDate && maxDate && (
-        <div style={{ marginTop: 10 }}>
-          <div style={{ textAlign: "center", fontSize: 13, fontWeight: 700, color: "var(--tc-text)", marginBottom: 4 }}>{aktuellesDatum}</div>
+        <div style={{ marginTop: 4 }}>
           <input type="range" min={0} max={totalTage} step={0.5} value={currentTag}
-            onChange={e => sliderChange(Number(e.target.value))} disabled={laeuft} style={{ width: "100%" }} />
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "var(--tc-text-3)" }}>
-            <span>{formatDatum(minDate.toISOString().slice(0, 10))}</span>
-            <span>{formatDatum(maxDate.toISOString().slice(0, 10))}</span>
+            onChange={e => sliderChange(Number(e.target.value))} disabled={laeuft} style={{ width: "100%", margin: "4px 0 0" }} />
+          {/* Start | aktuelles Datum | Ende — unter dem Slider */}
+          <div style={{ display: "flex", alignItems: "baseline", fontSize: 11, color: "var(--tc-text-3)" }}>
+            <span style={{ flex: 1 }}>{formatDatum(minDate.toISOString().slice(0, 10))}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--tc-text)" }}>{aktuellesDatum}</span>
+            <span style={{ flex: 1, textAlign: "right" }}>{formatDatum(maxDate.toISOString().slice(0, 10))}</span>
           </div>
         </div>
       )}
@@ -613,13 +614,15 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
                   <span style={{ color: "#999", fontStyle: "italic" }}> | {nummern.get(task.predecessorId) ?? "?"}</span>
                 )}
               </span>
-              <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, lineHeight: 1.3 }}>
+              <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, lineHeight: 1.3,
+                // feine Trennstriche über die ganze Zeilenhöhe (Zeile hat 5px Innenabstand oben/unten)
+                padding: "5px 10px", margin: "-5px 0", borderLeft: "1px solid #e4e8ec", borderRight: "1px solid #e4e8ec", alignSelf: "stretch", justifyContent: "center" }}>
                 <span style={{ fontSize: 11, color: isGrp ? "#888" : "#333" }}
                   onClick={e => { e.stopPropagation(); melden(`start-${task.id}`, e.clientX, e.clientY); }}>{sd ? formatDatum(isGrp && gDaten ? gDaten.start : task.start) : ""}</span>
                 <span style={{ fontSize: 11, color: isGrp ? "#888" : "#333" }}
                   onClick={e => { e.stopPropagation(); melden(`end-${task.id}`, e.clientX, e.clientY); }}>{ed ? formatDatum(isGrp && gDaten ? gDaten.end : task.end) : ""}</span>
               </span>
-              <span style={{ fontSize: 12, color: "#8a9baa", flexShrink: 0, minWidth: 28, textAlign: "right" }}>{dauer}d</span>
+              <span style={{ fontSize: 12, color: "#8a9baa", flexShrink: 0, minWidth: 30, textAlign: "right", paddingLeft: 4 }}>{dauer}d</span>
             </div>
           );
         });
