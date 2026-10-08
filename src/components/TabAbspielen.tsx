@@ -617,7 +617,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
                   <span style={{ color: "#999", fontStyle: "italic" }}> | {nummern.get(task.predecessorId) ?? "?"}</span>
                 )}
               </span>
-              <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, lineHeight: 1.3,
+              <span style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0, lineHeight: 1.3,
                 // feine Trennstriche über die ganze Zeilenhöhe (Zeile hat 5px Innenabstand oben/unten)
                 width: 90, boxSizing: "border-box", padding: "5px 12px", margin: "-5px 0", borderLeft: "1px solid #e4e8ec", borderRight: "1px solid #e4e8ec", alignSelf: "stretch", justifyContent: "center" }}>
                 <span style={{ fontSize: 11, color: isGrp ? "#888" : "#333" }}
