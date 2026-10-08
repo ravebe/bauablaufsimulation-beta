@@ -5,6 +5,7 @@ import { ausgeschlosseneGuids } from "./ausschlussHelpers";
 import type { ApiInstance } from "../hooks/useApi";
 import { batchGetProperties, batchConvertToObjectIds } from "../hooks/useApi";
 import { getModellObjekte } from "./modelHelpers";
+import Schwebend from "./Schwebend";
 
 interface AttrItem { pset: string; name: string; key: string; }
 interface FilterRow { query: string; selectedAttr: AttrItem | null; wert: string; acOffen: boolean; wertOffen: boolean; }
@@ -287,14 +288,14 @@ export default function AttributeFilter({ api, aktiveSim, aktivTask, aktivesMode
                   {f.query && <button style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#999", fontSize: 14, padding: 2 }}
                     onClick={() => updateFilter(idx, { query: "", selectedAttr: null })}>✕</button>}
                   {f.acOffen && acItems.length > 0 && (
-                    <div className="ac-dropdown">
+                    <Schwebend className="ac-dropdown" breiteWieAnker style={{ maxHeight: 180 }}>
                       {acItems.map((item, i) => (
                         <div key={i} className="ac-item" onMouseDown={() => updateFilter(idx, { query: `${item.name} › ${item.pset}`, selectedAttr: item, acOffen: false })}>
                           <div style={{ fontWeight: 500, color: "var(--tc-text)" }}>{item.name}</div>
                           <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>{item.pset}</div>
                         </div>
                       ))}
-                    </div>
+                    </Schwebend>
                   )}
                 </div>
                 {/* Wert */}
@@ -305,9 +306,9 @@ export default function AttributeFilter({ api, aktiveSim, aktivTask, aktivesMode
                   {f.wert && <button style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#999", fontSize: 14, padding: 2 }}
                     onClick={() => updateFilter(idx, { wert: "" })}>✕</button>}
                   {f.wertOffen && vorschlaege.length > 0 && (
-                    <div className="ac-dropdown">
+                    <Schwebend className="ac-dropdown" breiteWieAnker style={{ maxHeight: 180 }}>
                       {vorschlaege.map((v, i) => <div key={i} className="ac-item" onMouseDown={() => updateFilter(idx, { wert: v, wertOffen: false })}>{v}</div>)}
-                    </div>
+                    </Schwebend>
                   )}
                 </div>
               </div>

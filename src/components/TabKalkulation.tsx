@@ -12,6 +12,7 @@ import { StatTile, CategoryBarChart, CockpitAbschnitt, useEingeklappt, FARBEN } 
 import { ladeObjektAttribute, guidsZuBatch, zeigeBauteileImModell } from "./modelHelpers";
 import { berechneMenge, mengeStatus } from "./formelHelpers";
 import { kalkulationAlsCsv, parseKalkulationCsv, kalkulationAlsJson, parseKalkulationJson } from "./kalkulationExportHelpers";
+import Schwebend from "./Schwebend";
 
 interface Props {
   sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; api?: ApiInstance | null; projectId?: string | null;
@@ -615,7 +616,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
         {istFilterbar && sortSpalteTyp && filterMenuOffen === sortSpalteTyp && (
           <>
             <div style={{ position: "fixed", inset: 0, zIndex: 90 }} onClick={() => setFilterMenuOffen(null)} />
-            <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 2, background: "#fff", border: "1px solid #d4dce4", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, minWidth: 140, maxHeight: 220, overflowY: "auto", fontSize: 11, padding: 4, fontWeight: 400 }}>
+            <Schwebend style={{ background: "#fff", border: "1px solid #d4dce4", boxShadow: "0 2px 8px rgba(0,0,0,.12)", minWidth: 140, maxHeight: 220, overflowY: "auto", fontSize: 11, padding: 4, fontWeight: 400 }}>
               <div style={{ padding: "3px 6px", cursor: "pointer", color: "var(--tc-blue)", fontWeight: 600 }}
                 onClick={() => setSpaltenFilter(prev => { const n = { ...prev }; delete n[sortSpalteTyp]; return n; })}>
                 Alle anzeigen
@@ -630,20 +631,20 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
                   </label>
                 );
               })}
-            </div>
+            </Schwebend>
           </>
         )}
         {spalte === "task" && suchOffen && (
           <>
             <div style={{ position: "fixed", inset: 0, zIndex: 90 }} onClick={() => setSuchOffen(false)} />
-            <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 2, background: "#fff", border: "1px solid #d4dce4", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, padding: 4, display: "flex", alignItems: "center", gap: 4 }}>
+            <Schwebend style={{ background: "#fff", border: "1px solid #d4dce4", boxShadow: "0 2px 8px rgba(0,0,0,.12)", padding: 4, display: "flex", alignItems: "center", gap: 4 }}>
               <input autoFocus placeholder="Task suchen…" value={suchQuery} onChange={e => setSuchQuery(e.target.value)}
                 style={{ width: 160, padding: "3px 6px", fontSize: 11, border: "1px solid #d4dce4", fontFamily: "inherit", outline: "none" }}
                 onKeyDown={e => { if (e.key === "Escape") setSuchOffen(false); }} />
               {suchQuery && (
                 <span style={{ cursor: "pointer", fontSize: 12, color: "#8a9baa", flexShrink: 0 }} onClick={() => setSuchQuery("")}>✕</span>
               )}
-            </div>
+            </Schwebend>
           </>
         )}
         {idx < ALLE_SPALTEN.length - 1 && (
@@ -749,14 +750,14 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
             {offen && (
               <>
                 <div style={{ position: "fixed", inset: 0, zIndex: 90 }} onClick={() => setKraeneMenuOffenTaskId(null)} />
-                <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 2, background: "#fff", border: "1px solid #d4dce4", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, minWidth: 120, maxHeight: 180, overflowY: "auto", fontSize: 11, padding: 4 }}>
+                <Schwebend style={{ background: "#fff", border: "1px solid #d4dce4", boxShadow: "0 2px 8px rgba(0,0,0,.12)", minWidth: 120, maxHeight: 180, overflowY: "auto", fontSize: 11, padding: 4 }}>
                   {kraeneListe.map(k => (
                     <label key={k.id} style={{ display: "flex", alignItems: "center", gap: 5, padding: "2px 6px", cursor: "pointer" }}>
                       <input type="checkbox" checked={(z.t.kraene ?? []).includes(k.id)} onChange={() => kranToggle(z.t, k.id)} />
                       <span>{k.name}</span>
                     </label>
                   ))}
-                </div>
+                </Schwebend>
               </>
             )}
           </div>
@@ -849,7 +850,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
               Export ▾
             </button>
             {exportMenuOffen && (
-              <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 2, background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 50, minWidth: 110 }}>
+              <Schwebend style={{ background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", minWidth: 110 }}>
                 <div onClick={() => { kalkulationExportierenCsv(); setExportMenuOffen(false); }}
                   style={{ padding: "6px 10px", cursor: "pointer", fontSize: 11 }}
                   onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")} onMouseLeave={e => (e.currentTarget.style.background = "")}
@@ -862,7 +863,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
                   title="Kürzel/Kranbereich/Mengen je Task als JSON — für einen exakten Restore über die Task-ID (z.B. vor einem Bulk-Vorgang)">
                   JSON
                 </div>
-              </div>
+              </Schwebend>
             )}
           </div>
           {!readOnly && (
@@ -872,7 +873,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
                 Import ▾
               </button>
               {importMenuOffen && (
-                <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 2, background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 50, minWidth: 110 }}>
+                <Schwebend style={{ background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", minWidth: 110 }}>
                   <div onClick={() => { importCsvInputRef.current?.click(); setImportMenuOffen(false); }}
                     style={{ padding: "6px 10px", cursor: "pointer", fontSize: 11 }}
                     onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")} onMouseLeave={e => (e.currentTarget.style.background = "")}
@@ -885,7 +886,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
                     title="Aus einer zuvor exportierten JSON-Datei importieren — Zuordnung über die Task-ID">
                     JSON
                   </div>
-                </div>
+                </Schwebend>
               )}
               <input ref={importCsvInputRef} type="file" accept=".csv" style={{ display: "none" }}
                 onChange={e => e.target.files?.[0] && kalkulationImportierenCsv(e.target.files[0])} />

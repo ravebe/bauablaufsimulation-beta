@@ -5,6 +5,7 @@ import { datumPlusTage } from "../types";
 import { ausgeschlosseneGuids } from "./ausschlussHelpers";
 import type { ApiInstance } from "../hooks/useApi";
 import { getModellObjekte, ladeObjektAttribute, ladeAttributListe, type AttrItem } from "./modelHelpers";
+import Schwebend from "./Schwebend";
 
 interface Props {
   api: ApiInstance | null;
@@ -190,14 +191,14 @@ export default function AttributTaskErzeugung({ api, sim, onUpdate, done }: Prop
         {row.query && <button style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#999", fontSize: 14, padding: 2 }}
           onClick={() => onChange({ query: "", attr: null })}>✕</button>}
         {row.acOffen && acItems.length > 0 && (
-          <div className="ac-dropdown">
+          <Schwebend className="ac-dropdown" breiteWieAnker style={{ maxHeight: 180 }}>
             {acItems.map((item, i) => (
               <div key={i} className="ac-item" onMouseDown={() => onChange({ query: `${item.name} › ${item.pset}`, attr: item, acOffen: false })}>
                 <div style={{ fontWeight: 500, color: "var(--tc-text)" }}>{item.name}</div>
                 <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>{item.pset}</div>
               </div>
             ))}
-          </div>
+          </Schwebend>
         )}
       </div>
     );

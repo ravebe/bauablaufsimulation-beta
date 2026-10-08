@@ -10,6 +10,7 @@ import { StatTile } from "./cockpitCharts";
 import type { ApiInstance } from "../hooks/useApi";
 import { ladeAttributListe, ladeObjektAttribute, attrItemsAusWerten, keyZuAttrItem, type AttrItem } from "./modelHelpers";
 import { parseFormel, FormelFehler } from "./formelHelpers";
+import Schwebend from "./Schwebend";
 
 interface Props {
   sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; api?: ApiInstance | null;
@@ -390,7 +391,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
         Export
       </button>
       {exportMenuOffen && (
-        <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 2, background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 50, minWidth: 110 }}>
+        <Schwebend ausrichtung="rechts" style={{ background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", minWidth: 110 }}>
           <div onClick={() => { stammdatenExportieren(); setExportMenuOffen(false); }}
             style={{ padding: "6px 10px", cursor: "pointer", fontSize: 11 }}
             onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")} onMouseLeave={e => (e.currentTarget.style.background = "")}
@@ -403,7 +404,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
             title="Raten (Kürzel/LW/Personen/CHF/Formel) als CSV — in Excel bearbeitbar, danach wieder importierbar">
             CSV
           </div>
-        </div>
+        </Schwebend>
       )}
     </div>
   );
@@ -413,7 +414,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
         Import
       </button>
       {importMenuOffen && (
-        <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 2, background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 50, minWidth: 110 }}>
+        <Schwebend ausrichtung="rechts" style={{ background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", minWidth: 110 }}>
           <div onClick={() => { importInputRef.current?.click(); setImportMenuOffen(false); }}
             style={{ padding: "6px 10px", cursor: "pointer", fontSize: 11 }}
             onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")} onMouseLeave={e => (e.currentTarget.style.background = "")}
@@ -426,7 +427,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
             title="Aus einer zuvor exportierten (in Excel bearbeiteten) CSV-Datei importieren">
             CSV
           </div>
-        </div>
+        </Schwebend>
       )}
       <input ref={importInputRef} type="file" accept=".json" style={{ display: "none" }}
         onChange={e => e.target.files?.[0] && stammdatenImportieren(e.target.files[0])} />
@@ -650,7 +651,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                     </button>
                   )}
                   {pickerOffenFuer === pickerKey && (
-                    <div style={{ position: "absolute", top: "100%", left: 66, right: 0, marginTop: 2, background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 50, maxHeight: 220, overflowY: "auto" }}>
+                    <Schwebend versatzX={66} breiteWieAnker style={{ background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", maxHeight: 220, overflowY: "auto" }}>
                       <div style={{ display: "flex", alignItems: "center", borderBottom: "1px solid var(--tc-border-light)" }}>
                         <input autoFocus value={pickerQuery} onChange={e => setPickerQuery(e.target.value)} placeholder="Attribut suchen…"
                           style={{ flex: 1, minWidth: 0, boxSizing: "border-box", fontSize: 10, padding: "5px 6px", border: "none" }} />
@@ -670,7 +671,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                           <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>{a.pset}</div>
                         </div>
                       ))}
-                    </div>
+                    </Schwebend>
                   )}
                 </div>
                 <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 5, paddingLeft: ratenColW.kuerzel + 6 }}
@@ -709,7 +710,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                         </span>
                       )}
                       {oeffnungPickerOffenFuer === filterKey && (
-                        <div style={{ position: "absolute", top: "100%", left: 24, marginTop: 2, background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 50, minWidth: 220, maxHeight: 220, overflowY: "auto" }}>
+                        <Schwebend versatzX={24} style={{ background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", minWidth: 220, maxHeight: 220, overflowY: "auto" }}>
                           <div style={{ display: "flex", alignItems: "center", borderBottom: "1px solid var(--tc-border-light)" }}>
                             <input autoFocus value={oeffnungPickerQuery} onChange={e => setOeffnungPickerQuery(e.target.value)} placeholder="Attribut suchen…"
                               style={{ flex: 1, minWidth: 0, boxSizing: "border-box", fontSize: 10, padding: "5px 6px", border: "none" }} />
@@ -729,7 +730,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                               <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>{a.pset}</div>
                             </div>
                           ))}
-                        </div>
+                        </Schwebend>
                       )}
                     </div>
                   );

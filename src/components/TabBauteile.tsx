@@ -16,6 +16,7 @@ import { unbenutzteListen } from "./ausschlussHelpers";
 import type { UnbenutztArt } from "./UnbenutzteBauteile";
 import AttributeFilter from "./AttributeFilter";
 import GanttChart from "./GanttChart";
+import Schwebend from "./Schwebend";
 
 interface Props {
   api: ApiInstance | null;
@@ -304,7 +305,7 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
               <button className="tc-btn-secondary" style={{ fontSize: 19, fontWeight: 700, color: "var(--tc-blue)" }}
                 onClick={() => setPlusMenuOffen(m => !m)}>+</button>
               {plusMenuOffen && (
-                <div style={{ position: "absolute", left: 0, top: "100%", marginTop: 2, background: "#fff", border: "1px solid #d4dce4", boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, minWidth: 140, fontSize: 11 }}>
+                <Schwebend style={{ background: "#fff", border: "1px solid #d4dce4", boxShadow: "0 2px 8px rgba(0,0,0,.12)", minWidth: 140, fontSize: 11 }}>
                   <div style={{ padding: "6px 10px", cursor: "pointer", borderBottom: "1px solid #eef1f4" }}
                     onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")}
                     onMouseLeave={e => (e.currentTarget.style.background = "")}
@@ -317,7 +318,7 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
                     onClick={() => { setNeuTyp("gruppe"); setPlusMenuOffen(false); setNeuInputOffen(true); }}>
                     📁 Neue Gruppe
                   </div>
-                </div>
+                </Schwebend>
               )}
             </div>
           )}
@@ -330,7 +331,7 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
                 </svg>
               </button>
               {werkzeugOffen && (
-                <div style={{ position: "absolute", left: 0, top: "100%", marginTop: 2, background: "#fff", border: "0.5px solid var(--tc-border)", borderRadius: 5, boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, minWidth: 230 }}>
+                <Schwebend style={{ background: "#fff", border: "0.5px solid var(--tc-border)", borderRadius: 5, boxShadow: "0 2px 8px rgba(0,0,0,.12)", minWidth: 230 }}>
                   {aktiveSim.tasks.length > 1 && (
                     <button
                       style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
@@ -372,7 +373,7 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
                       )}
                     </div>
                   )}
-                </div>
+                </Schwebend>
               )}
             </div>
           )}
