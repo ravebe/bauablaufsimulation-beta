@@ -94,7 +94,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     return () => document.removeEventListener("mousedown", onDocMouseDown);
   }, [oeffnungPickerOffenFuer]);
 
-  // (Export/Import-Menüs jetzt im ⋮ je Kategorie, siehe RessourcenMenu.tsx)
+  // (Export/Import/Kategorie hinzufügen im ⋮ auf Höhe "Umsatz CHF", siehe ressourcenMenu)
 
   if (!sim) return <div style={{ padding: 14, fontSize: 12, color: "var(--tc-text-3)" }}>Kein aktives Projekt ausgewählt</div>;
 

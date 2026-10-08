@@ -18,7 +18,7 @@ const THEMEN: Thema[] = [
     punkte: [
       "Jede Simulation hat eigene Tasks, Stammdaten und einen eigenen Kalender.",
       "Über \"Modelle auswählen\" wird festgelegt, aus welchen Trimble-Connect-Modellen die Bauteile stammen.",
-      "Gantt-Import liest einen bestehenden Bauablauf ein, Gantt-Export schreibt ihn wieder heraus.",
+      "Gantt-Import liest einen bestehenden Bauablauf ein. Export (alle Formate + IFC 4D), Kalender/Feiertage/Ferien und Frühere Versionen finden sich im ⋮ der Simulationskarte.",
       "Auto-Verknüpfung kann Abhängigkeiten zwischen Tasks automatisch vorschlagen.",
       "Nur die als \"Aktiv\" markierte Simulation wird in den anderen Tabs bearbeitet.",
     ],
@@ -56,7 +56,7 @@ const THEMEN: Thema[] = [
       "\"Personal (Soll)\" ist die vorgesehene Gesamt-Personenzahl je Task, unabhängig von den Kolonnengrössen je Kürzel in Tab Ressourcen — ergibt die rote Referenzlinie über der Personalauslastung in Tab AVOR.",
       "Spalte \"Kräne\": einem Task lassen sich mehrere Kräne zuweisen (Schnittstellen-Task zwischen zwei Kränen) — der Anteil wird dabei immer automatisch gleichmässig verteilt (2 Kräne → je 50%), keine manuelle Eingabe. Kräne selbst werden in Tab AVOR über \"Kran-Verfügbarkeit\" angelegt.",
       "\"Kranbereich\" bleibt ein freies Textfeld zur Gruppierung/Bauphase (z.B. für den Kapazitäts-Check) — für die eigentliche Kranauswertung (Kranoptik) zählt ausschliesslich die Spalte \"Kräne\".",
-      "Export/Import (CSV oder JSON) übertragen Kürzel/Kranbereich/Kräne/Personal (Soll)/Mengen aller Tasks, z.B. zum Bearbeiten in Excel.",
+      "Export/Import (CSV oder JSON, im ⋮ rechts über der Tabelle) übertragen Kürzel/Kranbereich/Kräne/Personal (Soll)/Mengen aller Tasks, z.B. zum Bearbeiten in Excel.",
     ],
   },
   {

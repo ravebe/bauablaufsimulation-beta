@@ -1,4 +1,4 @@
-// IfcExportDialog.tsx — Fenster für den IFC-4D-Export (Optionen-Menü → Export → IFC 4D). Je Modell der
+// IfcExportDialog.tsx — Fenster für den IFC-4D-Export (⋮ der Simulationskarte bzw. ⋮ in Tab Bauteile/Abspielen → Export → IFC 4D). Je Modell der
 // Simulation wird die Original-IFC aus Trimble Connect geladen, um den Bauablauf ergänzt (siehe
 // ifcExport.ts) und entweder
 //  - als "<Modell>_4D.ifc" heruntergeladen ("Herunterladen"), oder
