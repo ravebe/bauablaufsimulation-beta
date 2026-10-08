@@ -29,8 +29,9 @@ const SPALTEN_LABEL: Record<Spalte, string> = {
   nr: "Nr.", task: "Task", kuerzel: "Kürzel", mengen: "Mengen", geplant: "Geplant", berechnet: "Berechnet",
   differenz: "Differenz", kraene: "Kräne", personalSoll: "Personal (Soll)", auge: "",
 };
-const DEFAULT_COL_W: Record<Spalte, number> = { nr: 30, task: 220, kuerzel: 64, mengen: 260, geplant: 76, berechnet: 88, differenz: 60, kraene: 110, personalSoll: 90, auge: 30 };
-const LS_COLW = "4d-kalk-colw";
+const DEFAULT_COL_W: Record<Spalte, number> = { nr: 30, task: 220, kuerzel: 64, mengen: 190, geplant: 76, berechnet: 88, differenz: 60, kraene: 80, personalSoll: 90, auge: 30 };
+// v2: schmalere Standardbreiten für Mengen/Kräne — gespeichert wird beim ersten Öffnen, alte Werte würden sie sonst überdecken
+const LS_COLW = "4d-kalk-colw-v2";
 
 // Spalten mit Sortier-/Filterfunktion im Header (Klick auf Titel = sortieren, ▾ = Filter-Popover).
 const SORTIERBARE_SPALTEN = ["nr", "task", "kuerzel", "geplant", "berechnet"] as const;
@@ -811,7 +812,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
           </div>
         )}
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 9, color: "var(--tc-text-3)", marginBottom: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 9, color: "var(--tc-text-3)", marginBottom: 12 }}>
           <span onClick={() => setMengenSortModus(m => m === "auto" ? null : "auto")} title="Automatisch berechnete Felder zuoberst"
             style={{ cursor: "pointer", fontWeight: mengenSortModus === "auto" ? 700 : 400, color: mengenSortModus === "auto" ? "var(--tc-blue)" : "var(--tc-text-3)" }}>
             <span style={{ color: "var(--tc-blue)", fontWeight: 700 }}>■</span> automatisch aus Formel
