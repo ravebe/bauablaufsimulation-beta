@@ -372,16 +372,16 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   // ⋮-Menü (Export, Import, Kategorie hinzufügen) — rechts in jeder Kategorie-Kopfzeile, in der Flucht der ×-Spalte
   const ressourcenMenu = (
     <PunkteMenu title="Export, Import, Kategorie hinzufügen" abschnitte={[
-      ...(stammdaten.gewerke.length > 0 ? [{ titel: "EXPORT", eintraege: [
+      ...(stammdaten.gewerke.length > 0 ? [{ titel: "Export", eintraege: [
         { label: "JSON", onClick: stammdatenExportieren, title: "Alle Kategorien/Kürzel/Leistungswerte als JSON-Datei — z.B. für ein anderes Trimble-Connect-Projekt" },
         { label: "CSV", onClick: stammdatenExportierenCsv, title: "Raten (Kürzel/LW/Personen/CHF/Formel) als CSV — in Excel bearbeitbar, danach wieder importierbar" },
       ] }] : []),
       ...(!readOnly ? [
-        { titel: "IMPORT", eintraege: [
+        { titel: "Import", eintraege: [
           { label: "JSON", onClick: () => importInputRef.current?.click(), title: "Aus einer zuvor exportierten JSON-Datei importieren" },
           { label: "CSV", onClick: () => importCsvInputRef.current?.click(), title: "Aus einer zuvor exportierten (in Excel bearbeiteten) CSV-Datei importieren" },
         ] },
-        { titel: "KATEGORIE HINZUFÜGEN", leerText: "Alle Kategorien sind geladen",
+        { titel: "Kategorie hinzufügen", leerText: "Alle Kategorien sind geladen",
           eintraege: GEWERKE_KATALOGE.filter(k => !katalogVollstaendigGeladen(k)).map(k => ({ label: k.label, onClick: () => katalogHinzufuegen(k.key),
             title: "Legt nur Gewerke/Kürzel/Einheiten an — Werte selbst befüllen; Kategorien lassen sich danach frei umbenennen" })) },
       ] : []),

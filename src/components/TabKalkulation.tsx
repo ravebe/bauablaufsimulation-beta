@@ -834,7 +834,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
                 style={{ fontSize: 11, color: "#d9622b" }}>⚠</span>
             )}
             <PunkteMenu title="Zuordnen, Mengen berechnen, Export, Import" abschnitte={[
-              ...(!readOnly ? [{ titel: "AKTIONEN", eintraege: [
+              ...(!readOnly ? [{ titel: "Aktionen", eintraege: [
                 ...(api ? [
                   { label: bulkLaeuft ? "Wird zugeordnet…" : "Alle unzugeordneten automatisch zuordnen", onClick: alleUnzugeordnetenZuordnen, disabled: bulkLaeuft },
                   { label: mengenLaeuft ? "Wird berechnet…" : "Mengen aus Bauteilen berechnen" + (mengenVeraltet ? " ⚠" : ""), onClick: mengenBerechnen, disabled: mengenLaeuft,
@@ -843,11 +843,11 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
                 { label: "Manuelle Mengen löschen", onClick: manuelleMengenLoeschen,
                   title: "Löscht nur manuell eingegebene Mengen (schwarze Werte) — automatisch berechnete Mengen (blau) und die 'Berechnet'-Übersteuerung bleiben erhalten" },
               ] }] : []),
-              { titel: "EXPORT", eintraege: [
+              { titel: "Export", eintraege: [
                 { label: "CSV", onClick: kalkulationExportierenCsv, title: "Kürzel/Kranbereich/Mengen je Task als CSV — in Excel bearbeitbar, Reimport ordnet über den Tasknamen zu" },
                 { label: "JSON", onClick: kalkulationExportierenJson, title: "Kürzel/Kranbereich/Mengen je Task als JSON — für einen exakten Restore über die Task-ID (z.B. vor einem Bulk-Vorgang)" },
               ] },
-              ...(!readOnly ? [{ titel: "IMPORT", eintraege: [
+              ...(!readOnly ? [{ titel: "Import", eintraege: [
                 { label: "CSV", onClick: () => importCsvInputRef.current?.click(), title: "Aus einer zuvor exportierten (in Excel bearbeiteten) CSV-Datei importieren — Zuordnung über den Tasknamen" },
                 { label: "JSON", onClick: () => importJsonInputRef.current?.click(), title: "Aus einer zuvor exportierten JSON-Datei importieren — Zuordnung über die Task-ID" },
               ] }] : []),
