@@ -23,7 +23,7 @@ export default function ModellOrdnerBaum({ rootId, eintraege, ausgewaehlt, onTog
       kinder.set(e.parentId, liste);
     }
     kinder.forEach(l => l.sort(sortiere));
-    // alle Modell-IDs unterhalb jedes Ordners (für die Anzeige "x ✓" bei zugeklappten Ordnern)
+    // alle Modell-IDs unterhalb jedes Ordners (für die Anzahl gewählter Modelle bei zugeklappten Ordnern)
     const modelleUnter = new Map<string, string[]>();
     const sammle = (id: string): string[] => {
       const ids = (kinder.get(id) ?? []).flatMap(e => e.typ === "modell" ? [e.id] : sammle(e.id));
@@ -68,7 +68,7 @@ export default function ModellOrdnerBaum({ rootId, eintraege, ausgewaehlt, onTog
             <path d="M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6z" fill={gewaehlt > 0 ? "#2d7dbd" : "none"} stroke="#2d7dbd" strokeWidth="1.6" />
           </svg>
           <span style={{ ...text, flex: 1 }} title={e.name}>{e.name}</span>
-          {!istOffen && gewaehlt > 0 && <span style={{ flexShrink: 0, color: "var(--tc-text-3)", fontWeight: 400 }}>{gewaehlt} ✓</span>}
+          {!istOffen && gewaehlt > 0 && <span style={{ flexShrink: 0, color: "var(--tc-text-3)", fontWeight: 400 }}>({gewaehlt})</span>}
         </div>
         {istOffen && ebene(e.id, tiefe + 1)}
       </div>

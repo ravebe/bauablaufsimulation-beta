@@ -133,7 +133,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
         modelle: s.modelle.map(m => m.id === modellId ? { ...m, versionId: zielVersionId } : m),
       } : s));
       setNeueVersionen(prev => { const next = { ...prev }; delete next[modellId]; return next; });
-      setModellMsg({ simId, typ: "ok", text: `✓ ${reparatur ? "Zuordnungen repariert" : "Version gewechselt"} — ${u.umgestellt} Bauteil-Zuordnung(en) übertragen`
+      setModellMsg({ simId, typ: "ok", text: `${reparatur ? "Zuordnungen repariert" : "Version gewechselt"} — ${u.umgestellt} Bauteil-Zuordnung(en) übertragen`
         + (u.nichtGefunden ? `, ${u.nichtGefunden} in dieser Version nicht vorhanden (unverändert gelassen)` : "") });
     } catch (e) {
       // Viewer wieder auf die (unveränderte) gepinnte Version zurück
@@ -169,7 +169,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
             return;
           }
         }
-        setModellMsg({ simId: id, typ: "ok", text: `✓ ${loaded} Modelle geladen` });
+        setModellMsg({ simId: id, typ: "ok", text: `${loaded} Modelle geladen` });
       }
     }
   }
@@ -253,7 +253,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
     setSims(prev => prev.map(s =>
       s.id === modellPicker.simId ? { ...s, modelle: ausgewaehlt } : s
     ));
-    setModellMsg({ simId: modellPicker.simId, typ: "ok", text: `✓ ${ausgewaehlt.length} Modelle gespeichert` });
+    setModellMsg({ simId: modellPicker.simId, typ: "ok", text: `${ausgewaehlt.length} Modelle gespeichert` });
     setModellPicker(null);
     pruefeAufBauablauf(modellPicker.simId, ausgewaehlt.filter(m => !bisher.has(m.id)));
   }
@@ -268,7 +268,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
         if (enthaeltBauablauf(await ladeTcDateiEnde(api, m.id, m.versionId))) { setImportAngebot({ simId, modell: m }); break; }
       } catch { /* Prüfung ist optional — ohne Zugriff einfach kein Angebot */ }
     }
-    setModellMsg(prev => prev?.text.startsWith("⟳ Prüfe") ? { simId, typ: "ok", text: `✓ ${neu.length} Modell(e) hinzugefügt` } : prev);
+    setModellMsg(prev => prev?.text.startsWith("⟳ Prüfe") ? { simId, typ: "ok", text: `${neu.length} Modell(e) hinzugefügt` } : prev);
   }
 
   function bauablaufUebernehmen(simId: string, modellName: string, u: IfcImportUebernahme) {
@@ -290,7 +290,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
         autoVerknuepft: true,
       };
     }));
-    setModellMsg({ simId, typ: "ok", text: `✓ Bauablauf übernommen — ${u.bericht.tasks} Tasks, ${u.bericht.bauteile} Bauteile zugeordnet`
+    setModellMsg({ simId, typ: "ok", text: `Bauablauf übernommen — ${u.bericht.tasks} Tasks, ${u.bericht.bauteile} Bauteile zugeordnet`
       + (u.bericht.nichtGefunden ? `, ${u.bericht.nichtGefunden} Bauteile im Modell nicht gefunden` : "") });
     setImportAngebot(null);
   }
@@ -485,7 +485,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                           } catch { /* ignore */ }
                         }
                         pruefeNeueVersionen(sim);
-                        setModellMsg({ simId: sim.id, typ: "ok", text: `✓ ${loaded} Modelle geladen` });
+                        setModellMsg({ simId: sim.id, typ: "ok", text: `${loaded} Modelle geladen` });
                       }
                     }}>
                     ✓ Als aktive Simulation setzen
@@ -507,7 +507,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                     } : s));
                     if (ab.bauteileUebernommen > 0 || ab.wegfallend.bauteile > 0) {
                       setModellMsg({ simId: sim.id, typ: ab.wegfallend.bauteile > 0 ? "err" : "ok",
-                        text: `✓ ${ab.bauteileUebernommen} Bauteil-Verknüpfungen übernommen (${ab.zugeordnet} Tasks wiedererkannt)`
+                        text: `${ab.bauteileUebernommen} Bauteil-Verknüpfungen übernommen (${ab.zugeordnet} Tasks wiedererkannt)`
                           + (ab.wegfallend.bauteile > 0 ? ` — ${ab.wegfallend.tasks} bisherige Task(s) nicht mehr in der Datei, deren ${ab.wegfallend.bauteile} Bauteile stehen jetzt unter „Noch nicht verknüpft“` : "") });
                     }
                   }}
@@ -655,7 +655,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                 {modellPicker?.simId === sim.id && (
                   <div style={{ marginTop: 8, border: "1px solid var(--tc-border)", borderRadius: 6, overflow: "hidden" }} onClick={e => e.stopPropagation()}>
                     <div style={{ padding: "6px 8px", background: "var(--tc-bg-2)", borderBottom: "1px solid var(--tc-border)", fontSize: 10, fontWeight: 600, display: "flex", justifyContent: "space-between" }}>
-                      <span>Modelle auswählen ({modellPicker.ausgewaehlt.size} ✓)</span>
+                      <span>{modellPicker.ausgewaehlt.size > 0 ? `Modelle (${modellPicker.ausgewaehlt.size})` : "Modelle auswählen"}</span>
                       <button style={{ background: "none", border: "none", cursor: "pointer", fontSize: 10, color: "var(--tc-text-3)" }} onClick={() => setModellPicker(null)}>✕</button>
                     </div>
                     {modellPicker.hinweis && (
@@ -679,7 +679,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                     </div>
                     <div style={{ padding: 6, display: "flex", gap: 4 }}>
                       <button className="tc-btn-primary" style={{ flex: 1, fontSize: 10 }} onClick={modellPickerSpeichern}>
-                        ✓ Speichern ({modellPicker.ausgewaehlt.size})
+                        Speichern ({modellPicker.ausgewaehlt.size})
                       </button>
                       <button className="tc-btn-secondary" style={{ fontSize: 10 }} onClick={() => setModellPicker(null)}>Abbrechen</button>
                     </div>
@@ -690,7 +690,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
 
                 {modellMsg?.simId === sim.id && (
                   <div className={`alert ${modellMsg.typ}`} style={{ marginTop: 6 }}>
-                    {modellMsg.typ === "ok" ? "✓" : "!"} {modellMsg.text}
+                    {modellMsg.typ === "err" && "! "}{modellMsg.text}
                   </div>
                 )}
               </div>
