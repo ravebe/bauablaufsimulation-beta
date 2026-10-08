@@ -3,11 +3,12 @@
 // festgelegt, siehe ZugriffskontrollManager.tsx — nur dort einstellbar, für Admins/Ersteller.
 // Wer die dortige Einstellung "Zugriff bearbeiten" hat (oder Ersteller ist), darf hier alle
 // Aktionen ausführen — siehe darfBearbeiten-Berechnung in TabProjekte.tsx.
-import { useState } from "react";
+import { useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import type { SimProjekt } from "../types";
 import { EXPORT_FORMATE } from "./ganttExportFormate";
 import { useClickOutside } from "../hooks/useClickOutside";
+import Schwebend from "./Schwebend";
 
 interface Props {
   sim: SimProjekt;
@@ -60,7 +61,9 @@ export default function SimKebabMenu({ sim, darfBearbeiten, onKopieren, onUmbene
   const [exportSubOffen, setExportSubOffen] = useState(false);
   const [umbenennOffen, setUmbenennOffen] = useState(false);
   const [neuerName, setNeuerName] = useState("");
-  const ref = useClickOutside<HTMLDivElement>(offen, () => { setOffen(false); setExportSubOffen(false); setUmbenennOffen(false); });
+  const knopfRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const ref = useClickOutside<HTMLDivElement>(offen, () => { setOffen(false); setExportSubOffen(false); setUmbenennOffen(false); }, menuRef);
 
   function speichernUmbenennen() {
     if (neuerName.trim()) onUmbenennen(neuerName.trim());
@@ -70,15 +73,15 @@ export default function SimKebabMenu({ sim, darfBearbeiten, onKopieren, onUmbene
 
   return (
     <div ref={ref} style={{ position: "relative" }} onClick={e => e.stopPropagation()}>
-      <button
+      <button ref={knopfRef}
         style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "var(--tc-text-3)", padding: "0 4px" }}
         onClick={() => { setOffen(o => !o); setExportSubOffen(false); setUmbenennOffen(false); }}
       >⋮</button>
       {offen && (
-        <div style={{
-          position: "absolute", right: 0, top: "100%", background: "white",
+        <Schwebend anker={knopfRef} menuRef={menuRef} ausrichtung="rechts" onClick={e => e.stopPropagation()} style={{
+          background: "white",
           border: "0.5px solid var(--tc-border)", borderRadius: 5,
-          boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100, minWidth: 200,
+          boxShadow: "0 2px 8px rgba(0,0,0,.12)", minWidth: 200,
         }}>
           {darfBearbeiten && (
             umbenennOffen ? (
@@ -135,7 +138,7 @@ export default function SimKebabMenu({ sim, darfBearbeiten, onKopieren, onUmbene
             onClick={() => { onLoeschen(); setOffen(false); }}
           >Simulation löschen</button>
           )}
-        </div>
+        </Schwebend>
       )}
     </div>
   );

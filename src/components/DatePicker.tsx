@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import Schwebend from "./Schwebend";
 
 interface Props {
   value: string;
@@ -20,33 +21,28 @@ function fmtDMY(d: Date): string {
 }
 
 const CAL_W = 224;
-const CAL_H = 280;
 
 export default function DatePicker({ value, onChange, readOnly, defaultOpen }: Props) {
   const [offen, setOffen] = useState(!!defaultOpen);
   const parsed = parseDMY(value);
   const [monat, setMonat] = useState(parsed?.getMonth() ?? new Date().getMonth());
   const [jahr, setJahr] = useState(parsed?.getFullYear() ?? new Date().getFullYear());
-  const [pos, setPos] = useState<{ top?: number; bottom?: number; left?: number; right?: number }>({});
   const ref = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLSpanElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null); // Kalender hängt per Portal an body (Schwebend.tsx)
 
   useEffect(() => {
     if (!offen) return;
-    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOffen(false); };
+    const handler = (e: MouseEvent) => {
+      const ziel = e.target as Node;
+      if (ref.current && !ref.current.contains(ziel) && !menuRef.current?.contains(ziel)) setOffen(false);
+    };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [offen]);
 
   useEffect(() => {
     if (offen && parsed) { setMonat(parsed.getMonth()); setJahr(parsed.getFullYear()); }
-    if (offen && triggerRef.current) {
-      const r = triggerRef.current.getBoundingClientRect();
-      const p: typeof pos = {};
-      if (window.innerHeight - r.bottom < CAL_H && r.top > CAL_H) p.bottom = r.height + 2; else p.top = r.height + 2;
-      if (window.innerWidth - r.left < CAL_W) p.right = 0; else p.left = 0;
-      setPos(p);
-    }
   }, [offen]);
 
   const ersterTag = new Date(jahr, monat, 1).getDay();
@@ -73,8 +69,7 @@ export default function DatePicker({ value, onChange, readOnly, defaultOpen }: P
       </span>
 
       {offen && (
-        <div style={{
-          position: "absolute", zIndex: 200, ...pos,
+        <Schwebend anker={triggerRef} menuRef={menuRef} style={{
           background: "#1a3a5c", color: "#fff", borderRadius: 6,
           boxShadow: "0 4px 16px rgba(0,0,0,.35)", width: CAL_W, fontFamily: "Segoe UI, sans-serif", userSelect: "none",
         }} onClick={e => e.stopPropagation()}>
@@ -107,7 +102,7 @@ export default function DatePicker({ value, onChange, readOnly, defaultOpen }: P
             style={{ display: "block", width: "100%", padding: "8px 0", background: "rgba(255,255,255,.08)",
               border: "none", borderTop: "1px solid rgba(255,255,255,.15)", color: "#90caf9",
               cursor: "pointer", fontSize: 12, fontWeight: 600, borderRadius: "0 0 6px 6px" }}>Heute</button>
-        </div>
+        </Schwebend>
       )}
     </div>
   );

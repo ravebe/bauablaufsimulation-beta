@@ -3,12 +3,13 @@
 // (inkl. Übertragung der Bauteil-Zuordnungen, siehe modellVersionHelpers.ts). "Zuordnungen reparieren"
 // ist für den Fall, dass früher ohne Übertragung gewechselt wurde: dort wählt man die Version, in der
 // die Bauteile ursprünglich zugeordnet wurden.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SimModell } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { tcDateiVersionen } from "../hooks/tcDateien";
 import type { TcVersion } from "../hooks/tcDateien";
 import { useClickOutside } from "../hooks/useClickOutside";
+import Schwebend from "./Schwebend";
 
 interface Props {
   api: ApiInstance | null;
@@ -38,7 +39,9 @@ export default function ModellVersionen({ api, modell, darfBearbeiten, beschaeft
   const [fehler, setFehler] = useState<string | null>(null);
   const [offen, setOffen] = useState(false);
   const [reparatur, setReparatur] = useState(false);
-  const ref = useClickOutside<HTMLDivElement>(offen, () => { setOffen(false); setReparatur(false); });
+  const knopfRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const ref = useClickOutside<HTMLDivElement>(offen, () => { setOffen(false); setReparatur(false); }, menuRef);
 
   async function laden() {
     if (!api) return;
@@ -75,7 +78,7 @@ export default function ModellVersionen({ api, modell, darfBearbeiten, beschaeft
 
   return (
     <div ref={ref} style={{ position: "relative", flexShrink: 0, display: "flex", gap: 4 }} onClick={e => e.stopPropagation()}>
-      <button className="tc-btn-secondary"
+      <button ref={knopfRef} className="tc-btn-secondary"
         style={{ ...kaestchen, padding: "0 8px", minWidth: 44 }}
         title={fehler ? `Versionen nicht geladen: ${fehler}` : istNeueste ? "Aktive Version (neueste) — klicken für alle Versionen" : "Aktive Version ist nicht die neueste — klicken für alle Versionen"}
         disabled={beschaeftigt}
@@ -92,9 +95,9 @@ export default function ModellVersionen({ api, modell, darfBearbeiten, beschaeft
       )}
 
       {offen && (
-        <div style={{
-          position: "absolute", right: 0, top: "100%", marginTop: 4, background: "#fff", minWidth: 260, maxHeight: 300, overflowY: "auto",
-          border: "0.5px solid var(--tc-border)", borderRadius: 5, boxShadow: "0 2px 8px rgba(0,0,0,.12)", zIndex: 100,
+        <Schwebend anker={knopfRef} menuRef={menuRef} ausrichtung="rechts" abstand={4} onClick={e => e.stopPropagation()} style={{
+          background: "#fff", minWidth: 260,
+          border: "0.5px solid var(--tc-border)", borderRadius: 5, boxShadow: "0 2px 8px rgba(0,0,0,.12)",
         }}>
           <div style={{ padding: "6px 10px", fontSize: 9, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px", borderBottom: "0.5px solid #eef1f4" }}>
             {reparatur ? "IN WELCHER VERSION WURDEN DIE BAUTEILE ZUGEORDNET?" : "VERSIONEN IN TRIMBLE CONNECT"}
@@ -147,7 +150,7 @@ export default function ModellVersionen({ api, modell, darfBearbeiten, beschaeft
               {reparatur ? "← Zurück zur Versionsliste" : "🔧 Bauteil-Zuordnungen reparieren…"}
             </button>
           )}
-        </div>
+        </Schwebend>
       )}
     </div>
   );
