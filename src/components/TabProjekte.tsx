@@ -13,7 +13,9 @@ import { gleicheGanttAb } from "./ganttAbgleich";
 import IfcImportDialog from "./IfcImportDialog";
 import type { IfcImportUebernahme } from "./IfcImportDialog";
 import { enthaeltBauablauf } from "./ifcImport";
-import { ladeTcDateiEnde } from "../hooks/tcDateien";
+import { ladeTcDateiEnde, tcExplorer, modellPfade } from "../hooks/tcDateien";
+import type { TcExplorerEintrag } from "../hooks/tcDateien";
+import ModellOrdnerBaum from "./ModellOrdnerBaum";
 
 interface Props {
   api: ApiInstance | null;
@@ -50,8 +52,11 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
   const [modellMsg, setModellMsg] = useState<{ simId: string; typ: "ok" | "err"; text: string } | null>(null);
   const [modellPicker, setModellPicker] = useState<{
     simId: string;
-    alle: { id: string; name: string; versionId?: string }[];
+    alle: SimModell[];
     ausgewaehlt: Set<string>;
+    // Ordnerbaum aus dem TC-Explorer; null = nicht erhalten → flache Liste aus viewer.getModels()
+    baum: { rootId: string; eintraege: TcExplorerEintrag[]; unvollstaendig: boolean } | null;
+    hinweis?: string;
   } | null>(null);
   const [kopierDialog, setKopierDialog] = useState<{
     simId: string; name: string; tasks: boolean; kalkulation: boolean; mengenWerte: boolean; kraene: boolean; modelle: boolean; stammdaten: boolean; kalender: boolean;
@@ -195,6 +200,26 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
       setModellLaden(false);
       return;
     }
+    const simModelle = sims.find(s => s.id === simId)?.modelle ?? [];
+    const vorauswahl = new Set<string>(simModelle.map(m => m.id));
+    // Ordnerstruktur bei jedem Öffnen frisch aus dem Explorer laden
+    try {
+      const baum = await tcExplorer(api);
+      const pfade = modellPfade(baum.rootId, baum.eintraege);
+      const alle: SimModell[] = baum.eintraege.filter(e => e.typ === "modell")
+        .map(e => ({ id: e.id, name: e.name, versionId: e.versionId, pfad: pfade.get(e.id) }));
+      // zugewiesene Modelle, die im Explorer nicht (mehr) vorkommen, bleiben abwählbar
+      const fehlend = simModelle.filter(m => !pfade.has(m.id));
+      setModellPicker({
+        simId, alle: [...alle, ...fehlend], ausgewaehlt: vorauswahl,
+        baum: { ...baum, eintraege: [...baum.eintraege, ...fehlend.map(m => ({ typ: "modell" as const, id: m.id, name: `${m.name} (nicht im Explorer gefunden)`, parentId: baum.rootId }))] },
+        hinweis: baum.unvollstaendig ? "Einzelne Ordner konnten nicht gelesen werden — Struktur evtl. unvollständig." : undefined,
+      });
+      setModellLaden(false);
+      return;
+    } catch (e) {
+      console.warn("[Modelle] Explorer nicht geladen, Liste aus dem Viewer:", e instanceof Error ? e.message : e);
+    }
     try {
       const alle = await api.viewer.getModels();
       const alleFormatiert = alle.map((m, i) => ({
@@ -202,9 +227,8 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
         name: m.name || (m as any).fileName || m.id || `Modell ${i + 1}`,
         versionId: m.versionId,
       }));
-      const simModelle = sims.find(s => s.id === simId)?.modelle ?? [];
-      const vorauswahl = new Set<string>(simModelle.map(m => m.id));
-      setModellPicker({ simId, alle: alleFormatiert, ausgewaehlt: vorauswahl });
+      setModellPicker({ simId, alle: alleFormatiert, ausgewaehlt: vorauswahl, baum: null,
+        hinweis: "Ordnerstruktur nicht verfügbar — Liste der Modelle aus dem Viewer." });
     } catch (e) {
       setModellMsg({ simId, typ: "err", text: `Fehler: ${e instanceof Error ? e.message : String(e)}` });
     } finally {
@@ -215,12 +239,17 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
   // Ausgewählte Modelle aus Picker speichern
   function modellPickerSpeichern() {
     if (!modellPicker) return;
-    const ausgewaehlt = modellPicker.alle.filter(m => modellPicker.ausgewaehlt.has(m.id));
+    const bisherModelle = new Map((sims.find(s => s.id === modellPicker.simId)?.modelle ?? []).map(m => [m.id, m]));
+    // bereits zugewiesene Modelle behalten gepinnte Version, GUID-Map und 4D-Stand — nur Name/Pfad aktualisieren
+    const ausgewaehlt = modellPicker.alle.filter(m => modellPicker.ausgewaehlt.has(m.id)).map(m => {
+      const alt = bisherModelle.get(m.id);
+      return alt ? { ...alt, name: m.name, pfad: m.pfad ?? alt.pfad } : m;
+    });
     if (ausgewaehlt.length === 0) {
       setModellMsg({ simId: modellPicker.simId, typ: "err", text: "Mindestens 1 Modell auswählen" });
       return;
     }
-    const bisher = new Set(sims.find(s => s.id === modellPicker.simId)?.modelle.map(m => m.id) ?? []);
+    const bisher = new Set(bisherModelle.keys());
     setSims(prev => prev.map(s =>
       s.id === modellPicker.simId ? { ...s, modelle: ausgewaehlt } : s
     ));
@@ -587,6 +616,11 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                         </svg>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div className="modell-name">{m.name}</div>
+                          {m.pfad && m.pfad.length > 0 && (
+                            <div className="modell-id" title={m.pfad.join(" › ")} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              📁 {m.pfad.join(" › ")}
+                            </div>
+                          )}
                           <div className="modell-id">
                             {m.id}{m.versionId && ` · Version ${m.versionId.slice(0, 8)}`}
                           </div>
@@ -615,7 +649,7 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                   disabled={modellLaden}
                   onClick={e => { e.stopPropagation(); modelleUebernehmen(sim.id); }}
                 >
-                  {modellLaden ? "⟳ Lade…" : "⟳ Modelle auswählen…"}
+                  {modellLaden ? "⟳ Lade Ordnerstruktur…" : "⟳ Modelle auswählen…"}
                 </button>
 
                 {modellPicker?.simId === sim.id && (
@@ -624,8 +658,16 @@ export default function TabProjekte({ api, sims, setSims, aktivId, setAktivId, u
                       <span>Modelle auswählen ({modellPicker.ausgewaehlt.size} ✓)</span>
                       <button style={{ background: "none", border: "none", cursor: "pointer", fontSize: 10, color: "var(--tc-text-3)" }} onClick={() => setModellPicker(null)}>✕</button>
                     </div>
-                    <div style={{ maxHeight: 160, overflowY: "auto" }}>
-                      {modellPicker.alle.map(m => (
+                    {modellPicker.hinweis && (
+                      <div style={{ padding: "4px 8px", fontSize: 9, color: "var(--tc-text-3)", borderBottom: "0.5px solid var(--tc-border)" }}>{modellPicker.hinweis}</div>
+                    )}
+                    <div style={{ maxHeight: 280, overflowY: "auto" }}>
+                      {modellPicker.baum ? (
+                        modellPicker.alle.length === 0
+                          ? <div style={{ padding: 8, fontSize: 10, color: "var(--tc-text-3)" }}>Keine Modelle im Projekt gefunden.</div>
+                          : <ModellOrdnerBaum rootId={modellPicker.baum.rootId} eintraege={modellPicker.baum.eintraege}
+                              ausgewaehlt={modellPicker.ausgewaehlt} onToggle={modellToggle} />
+                      ) : modellPicker.alle.map(m => (
                         <label key={m.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 8px", cursor: "pointer", fontSize: 10, borderBottom: "0.5px solid var(--tc-border)" }}>
                           <input type="checkbox"
                             checked={modellPicker.ausgewaehlt.has(m.id)}

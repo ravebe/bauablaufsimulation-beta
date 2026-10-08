@@ -52,6 +52,7 @@ export interface SimModell {
   id: string;   // modelId aus TC (über alle Versionen hinweg stabil)
   name: string; // Dateiname z.B. "23.ifc"
   versionId?: string; // zum Zeitpunkt der Zuweisung gepinnte TC-Versions-ID — wird beim Laden verwendet, damit neue Revisionen NICHT automatisch übernommen werden
+  pfad?: string[]; // Ordner im TC-Explorer (ohne Stammordner), beim Auswählen im Tab Projekt gemerkt
   ifcGuidLayerMap?: Record<string, string>; // GUID → Layer-Name (aus IFC-Parsing)
   // von "In Connect übernehmen" (IfcExportDialog.tsx) hochgeladene Version mit 4D-Daten + die Version
   // ohne 4D-Daten, auf der sie beruht — erneute Exporte/Übernahmen gehen immer von der Basis aus

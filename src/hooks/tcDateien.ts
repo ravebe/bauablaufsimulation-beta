@@ -168,6 +168,30 @@ export async function tcDateiVersionen(api: ApiInstance, fileId: string): Promis
   });
 }
 
+export interface TcExplorerEintrag {
+  typ: "ordner" | "modell";
+  id: string;
+  name: string;
+  parentId: string;
+  versionId?: string;
+}
+
+/** Ordnerbaum des Projekts für die Modellauswahl — nur Ordner, in denen (auch weiter unten) Modelle
+ *  liegen. `unvollstaendig`: einzelne Ordner nicht lesbar oder Projekt zu gross (Limit im Proxy). */
+export async function tcExplorer(api: ApiInstance): Promise<{ rootId: string; eintraege: TcExplorerEintrag[]; unvollstaendig: boolean }> {
+  const proj = await mitTimeout(api.project.getProject(), 10000, "Projekt");
+  return mitWiederholung(async () => {
+    const token = await holeAccessToken(api);
+    const params = new URLSearchParams({ projectId: proj.id, location: await projektRegion(api), mode: "explorer" });
+    const res = await fetchMitTimeout(`/api/tc-datei?${params}`, { headers: { Authorization: `Bearer ${token}` } }, 65000, "Trimble Connect");
+    if (!res.ok) throw new Error(`Ordnerstruktur nicht erhalten: ${await fehlerText(res)}`);
+    return await res.json() as { rootId: string; eintraege: TcExplorerEintrag[]; unvollstaendig: boolean };
+  }, {
+    versuche: 2, pauseMs: 2000,
+    onFehler: (e, v) => console.warn(`[Explorer] Ordnerstruktur nicht geladen (Versuch ${v}/2):`, e instanceof Error ? e.message : e),
+  });
+}
+
 /** Lädt `inhalt` als neue Version hoch (gleicher Name im gleichen Ordner wie `ziel`) — Ablauf wie
  *  trimble-connect-sdk: initiate → PUT an die vorsignierte URL → commit. Der PUT geht direkt an den
  *  Speicher (über Vercel ginge nur bis 4.5 MB). */
@@ -212,4 +236,21 @@ export async function warteAufVerarbeitung(api: ApiInstance, fileId: string, ver
     await new Promise(r => setTimeout(r, 10000));
   }
   throw new Error(`Verarbeitung dauert länger als ${maxMinuten} Minuten.`);
+}
+
+/** Ordnerpfad (Namen, ohne Stammordner) je Modell-ID */
+export function modellPfade(rootId: string, eintraege: TcExplorerEintrag[]): Map<string, string[]> {
+  const ordner = new Map(eintraege.filter(e => e.typ === "ordner").map(e => [e.id, e]));
+  const pfade = new Map<string, string[]>();
+  for (const m of eintraege) {
+    if (m.typ !== "modell") continue;
+    const pfad: string[] = [];
+    for (let id = m.parentId; id && id !== rootId; id = ordner.get(id)?.parentId ?? "") {
+      const o = ordner.get(id);
+      if (!o) break;
+      pfad.unshift(o.name);
+    }
+    pfade.set(m.id, pfad);
+  }
+  return pfade;
 }

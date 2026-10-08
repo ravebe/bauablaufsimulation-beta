@@ -7,6 +7,8 @@
 //   GET  ?fileId&versionId&location              → { region, url }   (Download-URL)
 //   GET  ?fileId&versionId&location&mode=datei   → Datei-Bytes (gestreamt)
 //   GET  ?fileId&versionId&location&mode=ende&bytes=N → nur die letzten N Bytes (Bauablauf-Erkennung)
+//   GET  ?projectId&location&mode=explorer       → { region, rootId, eintraege, unvollstaendig }  (Ordnerbaum
+//        des Projekts, nur Ordner mit Modellen darin — für die Modellauswahl im Tab Projekt)
 //   POST ?aktion=initiate  { region, parentId, name } → { uploadURL, uploadId }  (Upload = neue Version
 //        bei gleichem Namen im gleichen Ordner, Ablauf wie im offiziellen trimble-connect-sdk)
 //   POST ?aktion=commit    { region, uploadId }        → FileEntry der neuen Version
@@ -45,6 +47,56 @@ async function tcAufruf(regionen, pfad, auth, init = {}) {
   throw new Error(fehler.join("; "));
 }
 
+// Dateien, die der TC-Viewer als Modell laden kann
+const MODELL_ENDUNG = /\.(ifc|ifczip|ifcxml|trb|dwg|dxf|dgn|skp|rvt|nwd|nwc|step|stp|igs|iges|obj|fbx|3ds|dae|stl|ply|glb|gltf|las|laz|e57|tekla)$/i;
+const MAX_ORDNER = 3000, PARALLEL = 8;
+
+/** Durchsucht den ganzen Explorer ab dem Stammordner (Ebene für Ebene, je PARALLEL Abfragen gleichzeitig,
+ *  max. MAX_ORDNER Ordner) und gibt nur die Ordner zurück, in denen (auch weiter unten) Modelle liegen,
+ *  plus diese Modelle. */
+async function explorerBaum(regionen, projectId, auth) {
+  const { region, json: projekt } = await tcAufruf(regionen, `projects/${projectId}`, auth);
+  const rootId = projekt?.rootId;
+  if (!rootId) throw new Error("Stammordner des Projekts unbekannt");
+  const ordner = new Map(); // id → { id, name, parentId }
+  const modelle = [];
+  let ebene = [rootId], gelesen = 0, unvollstaendig = false;
+  while (ebene.length > 0) {
+    const naechste = [];
+    for (let i = 0; i < ebene.length; i += PARALLEL) {
+      const teil = ebene.slice(i, i + PARALLEL);
+      const antworten = await Promise.allSettled(teil.map(id => tcAufruf([region], `folders/${id}/items`, auth)));
+      antworten.forEach((a, j) => {
+        if (a.status !== "fulfilled") { unvollstaendig = true; return; }
+        const json = a.value.json;
+        const items = Array.isArray(json) ? json : (json?.items ?? json?.data ?? []);
+        for (const it of items) {
+          if (!it?.id || !it?.name) continue;
+          if (String(it.type).toUpperCase() === "FOLDER") {
+            ordner.set(it.id, { id: it.id, name: it.name, parentId: teil[j] });
+            naechste.push(it.id);
+          } else if (MODELL_ENDUNG.test(it.name)) {
+            modelle.push({ id: it.id, name: it.name, parentId: teil[j], versionId: it.versionId });
+          }
+        }
+      });
+      gelesen += teil.length;
+      if (gelesen >= MAX_ORDNER) { unvollstaendig = true; naechste.length = 0; break; }
+    }
+    ebene = naechste;
+  }
+  // nur Ordner behalten, die (direkt oder weiter unten) Modelle enthalten
+  const behalten = new Set();
+  for (const m of modelle) {
+    for (let id = m.parentId; id && id !== rootId && !behalten.has(id); id = ordner.get(id)?.parentId) behalten.add(id);
+  }
+  const eintraege = [
+    ...[...ordner.values()].filter(o => behalten.has(o.id)).map(o => ({ ...o, typ: "ordner" })),
+    ...modelle.map(m => ({ ...m, typ: "modell" })),
+  ];
+  return { region, rootId, eintraege, unvollstaendig };
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -78,6 +130,11 @@ export default async function handler(req, res) {
     if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
 
     const { fileId, versionId, location, mode } = req.query || {};
+    if (mode === "explorer") {
+      const projectId = String(req.query.projectId || "");
+      if (!ID.test(projectId)) return res.status(400).json({ error: "Ungültige projectId" });
+      return res.status(200).json(await explorerBaum(hostsFuer(location), projectId, auth));
+    }
     if (!ID.test(String(fileId || "")) || (versionId && !ID.test(String(versionId)))) {
       return res.status(400).json({ error: "Ungültige fileId/versionId" });
     }
