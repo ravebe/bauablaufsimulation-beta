@@ -29,22 +29,10 @@ const SPALTEN_LABEL: Record<Spalte, string> = {
   nr: "Nr.", task: "Task", kuerzel: "Kürzel", mengen: "Mengen", geplant: "Geplant", berechnet: "Berechnet",
   differenz: "Differenz", kraene: "Kräne", personalSoll: "Personal (Soll)", auge: "",
 };
-const DEFAULT_COL_W: Record<Spalte, number> = { nr: 30, task: 220, kuerzel: 64, mengen: 190, geplant: 76, berechnet: 88, differenz: 60, kraene: 80, personalSoll: 90, auge: 30 };
-// Standardbreiten werden auf die verfügbare Breite gestreckt (proportional, ausser Nr./Auge), siehe
-// gestreckteBreiten. Von Hand gezogene Breiten gelten nur bis zum Neuladen der Seite (je Projekt) —
-// bewusst nicht im localStorage, damit wieder die gestreckten Standardbreiten gelten.
-const FIXE_SPALTEN: Spalte[] = ["nr", "auge"];
+// Standardbreiten aus der gewünschten Ansicht (Screenshot 2026-10-08) übernommen. Von Hand gezogene Breiten
+// gelten nur bis zum Neuladen der Seite (je Projekt) — bewusst nicht im localStorage.
+const DEFAULT_COL_W: Record<Spalte, number> = { nr: 30, task: 174, kuerzel: 64, mengen: 120, geplant: 76, berechnet: 88, differenz: 60, kraene: 40, personalSoll: 90, auge: 30 };
 const sitzungsColW = new Map<string, Record<Spalte, number>>();
-
-function gestreckteBreiten(verfuegbar: number): Record<Spalte, number> {
-  const summe = ALLE_SPALTEN.reduce((a, sp) => a + DEFAULT_COL_W[sp], 0);
-  if (verfuegbar <= summe) return { ...DEFAULT_COL_W };
-  const fix = FIXE_SPALTEN.reduce((a, sp) => a + DEFAULT_COL_W[sp], 0);
-  const faktor = (verfuegbar - fix) / (summe - fix);
-  const w = { ...DEFAULT_COL_W };
-  for (const sp of ALLE_SPALTEN) if (!FIXE_SPALTEN.includes(sp)) w[sp] = Math.floor(DEFAULT_COL_W[sp] * faktor);
-  return w;
-}
 
 // Spalten mit Sortier-/Filterfunktion im Header (Klick auf Titel = sortieren, ▾ = Filter-Popover).
 const SORTIERBARE_SPALTEN = ["nr", "task", "kuerzel", "geplant", "berechnet"] as const;
@@ -150,18 +138,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
 
   const sitzungsKey = projectId ?? "";
   const [manuellW, setManuellW] = useState<Record<Spalte, number> | null>(() => sitzungsColW.get(sitzungsKey) ?? null);
-  // verfügbare Breite des Tabellenbereichs (ohne Innenabstand 2×14 px) — für die gestreckten Standardbreiten
-  const [tabellenEl, setTabellenEl] = useState<HTMLDivElement | null>(null);
-  const [verfuegbar, setVerfuegbar] = useState(0);
-  useEffect(() => {
-    if (!tabellenEl) return;
-    const messen = () => setVerfuegbar(Math.max(0, tabellenEl.clientWidth - 28 - 1));
-    messen();
-    const ro = new ResizeObserver(messen);
-    ro.observe(tabellenEl);
-    return () => ro.disconnect();
-  }, [tabellenEl]);
-  const colW = manuellW ?? gestreckteBreiten(verfuegbar);
+  const colW = manuellW ?? DEFAULT_COL_W;
 
   // Baseline für den "Mengen veraltet"-Hinweis (siehe unten) einmalig setzen, falls noch keine
   // existiert (neues oder älteres Projekt ohne dieses Feld) — ohne Baseline gäbe es sonst sofort
@@ -882,7 +859,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
           der Kopfzeile und fixiert sie beim Scrollen. overflow:"auto" deckt zugleich das breite
           Grid horizontal ab; minHeight bei offenem Such-/Filterpopup verhindert, dass der Bereich
           bei 0 Treffern auf die Kopfzeile schrumpft und das Popup abschneidet. */}
-      <div ref={setTabellenEl} style={{ flex: 1, minHeight: (suchOffen || filterMenuOffen) ? 260 : 0, overflow: "auto", padding: "0 14px 14px" }}
+      <div style={{ flex: 1, minHeight: (suchOffen || filterMenuOffen) ? 260 : 0, overflow: "auto", padding: "0 14px 14px" }}
         onClick={e => { if (e.target === e.currentTarget) setSelectedIds([]); }}>
         <div style={{ display: "grid", gridTemplateColumns: gridTemplate, fontSize: 9, color: "var(--tc-text-3)", fontWeight: 600, padding: "4px 0", position: "sticky", top: 0, background: "#fff", zIndex: 3 }}>
           {ALLE_SPALTEN.map((s, i) => renderHeaderZelle(s, i))}
