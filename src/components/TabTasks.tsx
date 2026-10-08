@@ -633,9 +633,9 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                   })()}
                 </span>
 
-                {/* Datum — blau, untereinander; feine Trennstriche links/rechts über die ganze Zeilenhöhe (.task-row hat 6px Innenabstand oben/unten), wie Tab Abspielen */}
+                {/* Datum — blau, untereinander; feine Trennstriche links/rechts über die ganze Zeilenhöhe (.task-row hat 6px Innenabstand oben/unten), wie Tab Abspielen. Feste Breiten (auch Spalte rechts), sonst knicken die Striche bei fetten Gruppendaten */}
                 <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", justifyContent: "center", lineHeight: 1.3, flexShrink: 0,
-                  padding: "6px 10px", margin: "-6px 0", alignSelf: "stretch", borderLeft: "1px solid #e4e8ec", borderRight: "1px solid #e4e8ec" }}
+                  width: 90, boxSizing: "border-box", padding: "6px 12px", margin: "-6px 0", alignSelf: "stretch", borderLeft: "1px solid #e4e8ec", borderRight: "1px solid #e4e8ec" }}
                   onClick={e => e.stopPropagation()}>
                   {isGroup && gDaten ? (
                     <>
@@ -662,7 +662,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                 </span>
 
                 {/* Rechts: Count/Tage */}
-                <span className="task-row-count" style={{ fontSize: 12, marginLeft: 4, flexShrink: 0, minWidth: 33, textAlign: "right" }}>
+                <span className="task-row-count" style={{ fontSize: 12, marginLeft: 4, flexShrink: 0, width: 48, textAlign: "right" }}>
                   {isGroup && gDaten
                     ? (() => { const childIds = []; for (let ci = idx + 1; ci < aktiveSim.tasks.length; ci++) { if (getOutlineLevel(aktiveSim.tasks[ci]) <= getOutlineLevel(task)) break; childIds.push(...aktiveSim.tasks[ci].objektGuids); } const cnt = new Set(childIds).size; return cnt > 0 ? <span style={{ color: "#888" }}>O {cnt}</span> : <span style={{ color: "#d4dce4" }}>∅</span>; })()
                     : hatSelektierte

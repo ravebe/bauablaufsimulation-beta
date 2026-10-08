@@ -616,13 +616,13 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
               </span>
               <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, lineHeight: 1.3,
                 // feine Trennstriche über die ganze Zeilenhöhe (Zeile hat 5px Innenabstand oben/unten)
-                padding: "5px 10px", margin: "-5px 0", borderLeft: "1px solid #e4e8ec", borderRight: "1px solid #e4e8ec", alignSelf: "stretch", justifyContent: "center" }}>
+                width: 90, boxSizing: "border-box", padding: "5px 12px", margin: "-5px 0", borderLeft: "1px solid #e4e8ec", borderRight: "1px solid #e4e8ec", alignSelf: "stretch", justifyContent: "center" }}>
                 <span style={{ fontSize: 11, color: isGrp ? "#888" : "#333" }}
                   onClick={e => { e.stopPropagation(); melden(`start-${task.id}`, e.clientX, e.clientY); }}>{sd ? formatDatum(isGrp && gDaten ? gDaten.start : task.start) : ""}</span>
                 <span style={{ fontSize: 11, color: isGrp ? "#888" : "#333" }}
                   onClick={e => { e.stopPropagation(); melden(`end-${task.id}`, e.clientX, e.clientY); }}>{ed ? formatDatum(isGrp && gDaten ? gDaten.end : task.end) : ""}</span>
               </span>
-              <span style={{ fontSize: 12, color: "#8a9baa", flexShrink: 0, minWidth: 30, textAlign: "right", paddingLeft: 4 }}>{dauer}d</span>
+              <span style={{ fontSize: 12, color: "#8a9baa", flexShrink: 0, width: 44, textAlign: "right", paddingLeft: 4, boxSizing: "border-box" }}>{dauer}d</span>
             </div>
           );
         });
