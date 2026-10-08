@@ -15,7 +15,9 @@ interface Props {
 
 export default function PunkteMenu({ abschnitte, title }: Props) {
   const [offen, setOffen] = useState(false);
-  const [offenerAbschnitt, setOffenerAbschnitt] = useState<string | null>(null);
+  // nur ein Abschnitt (z.B. nur "Export") → gleich aufgeklappt, sonst alle zu
+  const start = abschnitte.length === 1 ? abschnitte[0].titel : null;
+  const [offenerAbschnitt, setOffenerAbschnitt] = useState<string | null>(start);
   const knopfRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const ref = useClickOutside<HTMLDivElement>(offen, () => setOffen(false), menuRef);
@@ -23,7 +25,7 @@ export default function PunkteMenu({ abschnitte, title }: Props) {
 
   return (
     <div ref={ref} style={{ flexShrink: 0 }}>
-      <button ref={knopfRef} title={title} onClick={() => { setOffen(o => !o); setOffenerAbschnitt(null); }}
+      <button ref={knopfRef} title={title} onClick={() => { setOffen(o => !o); setOffenerAbschnitt(start); }}
         style={{ width: 26, background: "none", border: "none", cursor: "pointer", fontSize: 16, lineHeight: 1, color: "var(--tc-text-3)", padding: "0 0 2px", fontFamily: "inherit" }}>⋮</button>
       {offen && (
         <Schwebend anker={knopfRef} menuRef={menuRef} ausrichtung="rechts" style={{

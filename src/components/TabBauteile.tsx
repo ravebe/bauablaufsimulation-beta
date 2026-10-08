@@ -17,6 +17,8 @@ import type { UnbenutztArt } from "./UnbenutzteBauteile";
 import AttributeFilter from "./AttributeFilter";
 import GanttChart from "./GanttChart";
 import Schwebend from "./Schwebend";
+import PunkteMenu from "./PunkteMenu";
+import { exportEintraege } from "./exportEintraege";
 
 interface Props {
   api: ApiInstance | null;
@@ -29,9 +31,11 @@ interface Props {
   readOnly?: boolean;
   sharedNadelTag?: React.MutableRefObject<number>;
   sichtbar?: boolean;
+  /** IFC-4D-Export der aktiven Simulation (Dialog in App.tsx) */
+  onIfcExport?: () => void;
 }
 
-export default function TabBauteile({ api, projectId = null, aktiveSim, updateSim, aktivesModellId, taskSort, readOnly, sharedNadelTag, sichtbar }: Props) {
+export default function TabBauteile({ api, projectId = null, aktiveSim, updateSim, aktivesModellId, taskSort, readOnly, sharedNadelTag, sichtbar, onIfcExport }: Props) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [totalObjekte, setTotalObjekte] = useState<number | null>(null);
   // alle Bauteile der Modelle ("modelId:::runtimeId") — für "Noch nicht verknüpft" (UnbenutzteBauteile.tsx)
@@ -393,6 +397,7 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
             }}>
             {ganttOffen ? "☰ Liste" : "▤ Gantt"}
           </button>
+        <PunkteMenu title="Export" abschnitte={exportEintraege(aktiveSim, onIfcExport).length > 0 ? [{ titel: "Export", eintraege: exportEintraege(aktiveSim, onIfcExport) }] : []} />
         </div>
       </div>
 

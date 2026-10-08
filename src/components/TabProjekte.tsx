@@ -22,6 +22,10 @@ interface Props {
   ready: boolean;
   /** Cloud-Daten noch nicht da — leere Liste heisst dann "wird geladen", nicht "keine Simulationen" */
   laedt?: boolean;
+  // Dialoge in App.tsx, geöffnet aus dem ⋮ der Simulationskarte
+  onKalender?: (simId: string) => void;
+  onIfcExport?: (simId: string) => void;
+  onVerlauf?: (simId: string) => void;
   sims: SimProjekt[];
   setSims: React.Dispatch<React.SetStateAction<SimProjekt[]>>;
   aktivId: string | null;
@@ -32,7 +36,7 @@ interface Props {
   sichtbar?: boolean;
 }
 
-export default function TabProjekte({ api, laedt, sims, setSims, aktivId, setAktivId, userId, sichtbar = true }: Props) {
+export default function TabProjekte({ api, laedt, sims, setSims, aktivId, setAktivId, userId, sichtbar = true, onKalender, onIfcExport, onVerlauf }: Props) {
   const [aufgeklappt, setAufgeklappt] = useState<string | null>(aktivId);
   // Sim-ID, deren Verknüpfungs-Aktion (Auto-Verknüpfung / Attribut-Tasks) nach Klick auf den Umschalter
   // eingeblendet ist — Klick ausserhalb oder Tab-Wechsel blendet sie wieder aus (Komponente bleibt gemountet,
@@ -454,6 +458,9 @@ export default function TabProjekte({ api, laedt, sims, setSims, aktivId, setAkt
                     onKopieren={() => setKopierDialog({ simId: sim.id, name: `${sim.name} (Kopie)`, tasks: true, kalkulation: true, mengenWerte: true, kraene: true, modelle: true, stammdaten: true, kalender: true })}
                     onUmbenennen={(neuerName: string) => setSims(prev => prev.map(s => s.id === sim.id ? { ...s, name: neuerName } : s))}
                     onLoeschen={() => loeschen(sim.id)}
+                    onKalender={onKalender && (() => onKalender(sim.id))}
+                    onIfcExport={onIfcExport && (() => onIfcExport(sim.id))}
+                    onVerlauf={onVerlauf && (() => onVerlauf(sim.id))}
                   />
                 )}
                 <span className="sim-chevron">{offen ? "▲" : "▼"}</span>

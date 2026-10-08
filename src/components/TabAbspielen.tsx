@@ -7,8 +7,10 @@ import { formatDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDat
 import { arbeitstageZwischen, LEERER_KALENDER } from "./kalenderHelpers";
 import GanttChart from "./GanttChart";
 import { useDoppelklickHinweis } from "../hooks/useDoppelklickHinweis";
+import PunkteMenu from "./PunkteMenu";
+import { exportEintraege } from "./exportEintraege";
 
-interface Props { api: ApiInstance | null; projectId?: string | null; aktiveSim: SimProjekt | null; aktivesModellId: string | null; taskSort?: "gantt" | "datum" | "aktiv" | "name" | "nummer"; sharedNadelTag?: React.MutableRefObject<number>; }
+interface Props { api: ApiInstance | null; projectId?: string | null; aktiveSim: SimProjekt | null; aktivesModellId: string | null; taskSort?: "gantt" | "datum" | "aktiv" | "name" | "nummer"; sharedNadelTag?: React.MutableRefObject<number>; onIfcExport?: () => void; }
 
 const FARBEN = TASK_TYP_FARBE;
 // Typen mit demselben Zeit-Verhalten wie "temporaer" (sichtbar von Start bis Ende, dann ausgeblendet) —
@@ -28,7 +30,7 @@ function datumBeiTag(min: Date, tag: number): string {
   return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
-export default function TabAbspielen({ api, projectId = null, aktiveSim, aktivesModellId, taskSort = "gantt", sharedNadelTag }: Props) {
+export default function TabAbspielen({ api, projectId = null, aktiveSim, aktivesModellId, taskSort = "gantt", sharedNadelTag, onIfcExport }: Props) {
   const kalender = aktiveSim?.kalender ?? LEERER_KALENDER;
   const [sekProTag, setSekProTag] = useState(0.5);
   const [farbModusAktiv, setFarbModusAktiv] = useState(false);
@@ -519,6 +521,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
           onClick={() => setGanttOffen(g => !g)}>
           {ganttOffen ? "☰ Liste" : "▤ Gantt"}
         </button>
+        <PunkteMenu title="Export" abschnitte={exportEintraege(aktiveSim, onIfcExport).length > 0 ? [{ titel: "Export", eintraege: exportEintraege(aktiveSim, onIfcExport) }] : []} />
       </div>
 
       {ganttOffen ? (

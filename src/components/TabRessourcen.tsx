@@ -369,7 +369,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     ? attrListe.filter(a => !oeffnungPickerQuery || a.name.toLowerCase().includes(oeffnungPickerQuery.toLowerCase()) || a.pset.toLowerCase().includes(oeffnungPickerQuery.toLowerCase())).slice(0, 20)
     : [];
 
-  // ⋮-Menü (Export, Import, Kategorie hinzufügen) — rechts in jeder Kategorie-Kopfzeile, in der Flucht der ×-Spalte
+  // ⋮-Menü (Export, Import, Kategorie hinzufügen) — einmal je Tab, rechts auf Höhe "Umsatz CHF/Mannstunde"
   const ressourcenMenu = (
     <PunkteMenu title="Export, Import, Kategorie hinzufügen" abschnitte={[
       ...(stammdaten.gewerke.length > 0 ? [{ titel: "Export", eintraege: [
@@ -420,6 +420,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
             <span style={{ fontWeight: 600 }}>Umsatz CHF/Mannstunde:</span>
             {numInput(stammdaten.umsatzChfProMannstunde ?? 80, v => speichern({ ...stammdaten, umsatzChfProMannstunde: v ?? 80 }), 60)}
           </div>
+          <div style={{ marginLeft: "auto" }}>{ressourcenMenu}</div>
         </div>
         {(kuerzelOhneLw.length > 0 || kuerzelOhneRate.length > 0) && (
           <div style={{ marginBottom: 16, fontSize: 11 }}>
@@ -485,7 +486,6 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                   style={{ width: 44, fontSize: 10, fontWeight: 600, padding: "1px 3px", border: "1px solid #d4dce4", fontFamily: "inherit", color: "var(--tc-text-3)" }} />
                 <span>)</span>
               </div>
-              <div style={{ marginLeft: "auto" }}>{ressourcenMenu}</div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: ratenGridTemplate, columnGap: 6, fontSize: 9, color: "var(--tc-text-3)", padding: "0 0 3px", fontWeight: 600 }}>
               {RATEN_SPALTEN.map((s, i) => (

@@ -1,4 +1,5 @@
-// SimKebabMenu.tsx — ⋮-Menü der Simulationskarte: Gantt-Vorlage/-Export, Kopieren, Löschen
+// SimKebabMenu.tsx — ⋮-Menü der Simulationskarte: Umbenennen, Gantt-Vorlage, Export (alle Formate + IFC 4D),
+// Kalender, Frühere Versionen, Kopieren, Löschen — wirkt auf diese Simulation (nicht die aktive)
 // Wer die Zugriffsrechte einstellen darf, wird zentral im Zugriffskontrollmanager (App-Header, ⋮)
 // festgelegt, siehe ZugriffskontrollManager.tsx — nur dort einstellbar, für Admins/Ersteller.
 // Wer die dortige Einstellung "Zugriff bearbeiten" hat (oder Ersteller ist), darf hier alle
@@ -16,6 +17,9 @@ interface Props {
   onKopieren: () => void;
   onUmbenennen: (neuerName: string) => void;
   onLoeschen: () => void;
+  onKalender?: () => void;
+  onIfcExport?: () => void;
+  onVerlauf?: () => void;
 }
 
 // Spalten wie beim Excel-Export (ganttExportFormate.ts) — Gruppen über "Gruppe"/"Ebene", siehe ganttTabelle.ts
@@ -56,7 +60,7 @@ function downloadGanttVorlage() {
   XLSX.writeFile(wb, "4D_Gantt_Vorlage.xlsx");
 }
 
-export default function SimKebabMenu({ sim, darfBearbeiten, onKopieren, onUmbenennen, onLoeschen }: Props) {
+export default function SimKebabMenu({ sim, darfBearbeiten, onKopieren, onUmbenennen, onLoeschen, onKalender, onIfcExport, onVerlauf }: Props) {
   const [offen, setOffen] = useState(false);
   const [exportSubOffen, setExportSubOffen] = useState(false);
   const [umbenennOffen, setUmbenennOffen] = useState(false);
@@ -111,13 +115,13 @@ export default function SimKebabMenu({ sim, darfBearbeiten, onKopieren, onUmbene
               onClick={() => { downloadGanttVorlage(); setOffen(false); }}
             >Gantt-Vorlage</button>
           )}
-          {darfBearbeiten && sim.tasks.length > 0 && (
+          {sim.tasks.length > 0 && (
             <>
               <button
                 style={{ display: "flex", width: "100%", justifyContent: "space-between", alignItems: "center", padding: "8px 14px", background: "none", border: "none", fontSize: 11, cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
                 onClick={() => setExportSubOffen(o => !o)}
               >
-                <span>Gantt-Export</span>
+                <span>Export</span>
                 <span>{exportSubOffen ? "▲" : "▼"}</span>
               </button>
               {exportSubOffen && EXPORT_FORMATE.map(f => (
@@ -126,7 +130,25 @@ export default function SimKebabMenu({ sim, darfBearbeiten, onKopieren, onUmbene
                   onClick={() => { f.run(sim.tasks, sim.name, sim.kalender); setExportSubOffen(false); setOffen(false); }}
                 >{f.label}</button>
               ))}
+              {exportSubOffen && onIfcExport && (
+                <button
+                  style={{ display: "block", width: "100%", padding: "8px 14px 8px 24px", background: "none", border: "none", textAlign: "left", fontSize: 10, cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
+                  onClick={() => { onIfcExport(); setExportSubOffen(false); setOffen(false); }}
+                >IFC 4D (.ifc) …</button>
+              )}
             </>
+          )}
+          {onKalender && (
+            <button
+              style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", fontSize: 11, cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
+              onClick={() => { onKalender(); setOffen(false); }}
+            >Kalender / Feiertage / Ferien</button>
+          )}
+          {onVerlauf && (
+            <button
+              style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", fontSize: 11, cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
+              onClick={() => { onVerlauf(); setOffen(false); }}
+            >Frühere Versionen …</button>
           )}
           <button
             style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", fontSize: 11, cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}

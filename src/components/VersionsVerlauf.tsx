@@ -10,6 +10,8 @@ interface Props {
   api: ApiInstance | null;
   sims: SimProjekt[];
   darfBearbeiten: (sim: SimProjekt) => boolean;
+  /** nur diese Simulation zeigen (aus dem ⋮ der Simulationskarte) — null = alle */
+  nurSimId?: string | null;
   onWiederherstellen: (frueher: SimProjekt, modus: "kopie" | "ersetzen", standZeit: number) => void;
   onClose: () => void;
 }
@@ -17,13 +19,16 @@ interface Props {
 const zeit = (ts: number) => new Date(ts).toLocaleString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 const groesse = (b: number) => (b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 
-export default function VersionsVerlauf({ api, sims, darfBearbeiten, onWiederherstellen, onClose }: Props) {
+export default function VersionsVerlauf({ api, sims, darfBearbeiten, nurSimId = null, onWiederherstellen, onClose }: Props) {
   const [eintraege, setEintraege] = useState<VerlaufEintrag[] | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
   const [gewaehlt, setGewaehlt] = useState<VerlaufEintrag | null>(null);
   const [stand, setStand] = useState<SimProjekt[] | null>(null);
   const [laedt, setLaedt] = useState(false);
   const [erledigt, setErledigt] = useState<string | null>(null);
+  const [alleZeigen, setAlleZeigen] = useState(!nurSimId);
+  const filterSimId = alleZeigen ? null : nurSimId;
+  const filterName = filterSimId ? sims.find(s => s.id === filterSimId)?.name : null;
 
   useEffect(() => {
     if (!api) return;
@@ -53,7 +58,7 @@ export default function VersionsVerlauf({ api, sims, darfBearbeiten, onWiederher
       <div style={{ background: "#fff", width: 480, maxWidth: "94vw", maxHeight: "86vh", display: "flex", flexDirection: "column", boxShadow: "0 8px 30px rgba(0,0,0,.25)", fontFamily: "var(--tc-font)" }}
         onClick={e => e.stopPropagation()}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid var(--tc-border-light)" }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "var(--tc-text)" }}>Frühere Versionen</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: "var(--tc-text)" }}>Frühere Versionen{filterName ? ` — ${filterName}` : ""}</div>
           <button className="tc-btn-ghost" style={{ fontSize: 14, padding: "2px 8px" }} onClick={onClose}>✕</button>
         </div>
         <div style={{ padding: "12px 18px", overflowY: "auto", fontSize: 12 }}>
@@ -61,6 +66,13 @@ export default function VersionsVerlauf({ api, sims, darfBearbeiten, onWiederher
             Beim Speichern wird höchstens alle 10 Minuten ein Stand aufbewahrt (die letzten 30, je 60 Tage).
             Einzelne Simulationen lassen sich daraus als Kopie zurückholen oder zurücksetzen.
           </div>
+          {filterSimId && (
+            <div style={{ fontSize: 11, marginBottom: 10 }}>
+              <span style={{ color: "var(--tc-blue)", cursor: "pointer", textDecoration: "underline" }} onClick={() => setAlleZeigen(true)}>
+                Alle Simulationen anzeigen</span>
+              <span style={{ color: "var(--tc-text-3)" }}> (z.B. um eine gelöschte zurückzuholen)</span>
+            </div>
+          )}
           {fehler && <div className="alert err" style={{ marginBottom: 8 }}>{fehler}</div>}
           {erledigt && <div className="alert ok" style={{ marginBottom: 8 }}>✓ {erledigt}</div>}
           {!eintraege && !fehler && <div style={{ color: "var(--tc-text-3)" }}>⟳ Lade Versionen …</div>}
@@ -77,7 +89,10 @@ export default function VersionsVerlauf({ api, sims, darfBearbeiten, onWiederher
                 <div style={{ padding: "6px 8px 10px 16px", background: "#f7fafc" }}>
                   {laedt && <div style={{ color: "var(--tc-text-3)" }}>⟳ Lade Stand …</div>}
                   {stand?.length === 0 && <div style={{ color: "var(--tc-text-3)" }}>Keine Simulationen in diesem Stand.</div>}
-                  {stand?.map(s => {
+                  {stand && stand.length > 0 && filterSimId && !stand.some(s => s.id === filterSimId) && (
+                    <div style={{ color: "var(--tc-text-3)" }}>Diese Simulation gab es in diesem Stand noch nicht.</div>
+                  )}
+                  {stand?.filter(s => !filterSimId || s.id === filterSimId).map(s => {
                     const heute = sims.find(x => x.id === s.id);
                     const ersetzenErlaubt = heute ? darfBearbeiten(heute) : true;
                     return (

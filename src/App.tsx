@@ -21,7 +21,6 @@ import IfcExportDialog from "./components/IfcExportDialog";
 import HilfeManager from "./components/HilfeManager";
 import VersionsVerlauf from "./components/VersionsVerlauf";
 import FehlerGrenze from "./components/FehlerGrenze";
-import { EXPORT_FORMATE } from "./components/ganttExportFormate";
 import { useClickOutside } from "./hooks/useClickOutside";
 import { stelleSimWiederHer } from "./hooks/syncHelpers";
 import "./App.css";
@@ -52,7 +51,8 @@ export default function App() {
   const { updateSim, setSimsMitUndo, undo, redo, undoLen, redoLen, verlaufLeeren } = useUndo(sims, setSims, userName);
   const { syncStatus, syncFehler, geladen: cloudLoadDone, konflikt, konfliktAufloesen, ladeFehler, ladeHinweis, ladeHinweisSchliessen, erneutLaden } =
     useCloudSync({ api, ready, projectId, sims, setSims, aktivId, setAktivId, onStandErsetzt: verlaufLeeren });
-  const [verlaufOffen, setVerlaufOffen] = useState(false);
+  // Frühere Versionen: undefined = zu, null = alle Simulationen, sonst nur diese Simulation
+  const [verlaufSimId, setVerlaufSimId] = useState<string | null | undefined>(undefined);
   // Fehlermeldungen (hooks/fehlerMelden.ts) brauchen Projekt + Benutzer für Zuordnung und Anmeldung
   useEffect(() => { fehlerKontextSetzen({ api, projectId, benutzer: userEmail ?? userName }); }, [api, projectId, userEmail, userName]);
 
@@ -82,16 +82,19 @@ export default function App() {
   const [taskSort, setTaskSort] = useState<"gantt" | "datum" | "aktiv" | "name" | "nummer">("gantt");
   const [sortDropdown, setSortDropdown] = useState(false);
   const [optionsDropdown, setOptionsDropdown] = useState(false);
-  const [exportSubOffen, setExportSubOffen] = useState(false);
   const headerDropdownRef = useClickOutside<HTMLDivElement>(headerDropdown, () => setHeaderDropdown(false));
   // Simulation wechseln geht nur in Tab Projekte — Pfeil/Popup dort ausblenden und beim Verlassen
   // schliessen, falls er gerade offen war.
   useEffect(() => { if (aktTab !== "projekte") setHeaderDropdown(false); }, [aktTab]);
   const sortDropdownRef = useClickOutside<HTMLDivElement>(sortDropdown, () => setSortDropdown(false));
-  const optionsDropdownRef = useClickOutside<HTMLDivElement>(optionsDropdown, () => { setOptionsDropdown(false); setExportSubOffen(false); });
+  const optionsDropdownRef = useClickOutside<HTMLDivElement>(optionsDropdown, () => setOptionsDropdown(false));
   const [zugriffsManagerOffen, setZugriffsManagerOffen] = useState(false);
-  const [kalenderManagerOffen, setKalenderManagerOffen] = useState(false);
-  const [ifcExportOffen, setIfcExportOffen] = useState(false);
+  // Dialoge je Simulation (aus dem ⋮ der Simulationskarte bzw. Tab Bauteile/Abspielen für die aktive)
+  const [kalenderSimId, setKalenderSimId] = useState<string | null>(null);
+  const [ifcExportSimId, setIfcExportSimId] = useState<string | null>(null);
+  const kalenderSim = kalenderSimId ? sims.find(s => s.id === kalenderSimId) ?? null : null;
+  const ifcExportSim = ifcExportSimId ? sims.find(s => s.id === ifcExportSimId) ?? null : null;
+  const aktiveIfcExport = aktiveSim ? () => setIfcExportSimId(aktiveSim.id) : undefined;
   const [hilfeOffen, setHilfeOffen] = useState(false);
 
   const appRef = useRef<HTMLDivElement>(null);
@@ -123,7 +126,7 @@ export default function App() {
   );
 
   return (
-    <div ref={appRef} className="tc-app" onClick={() => { setHeaderDropdown(false); setSortDropdown(false); setOptionsDropdown(false); setExportSubOffen(false); }}>
+    <div ref={appRef} className="tc-app" onClick={() => { setHeaderDropdown(false); setSortDropdown(false); setOptionsDropdown(false); }}>
       {/* Header — Organizer Style */}
       <div className="tc-header-org">
         <div className="tc-header-org-top">
@@ -198,47 +201,14 @@ export default function App() {
             </div>
             <div ref={optionsDropdownRef} style={{ position: "relative" }}>
               <button className="tc-header-icon-btn" title="Optionen"
-                onClick={e => { e.stopPropagation(); setOptionsDropdown(d => !d); setExportSubOffen(false); setHeaderDropdown(false); setSortDropdown(false); }}>
+                onClick={e => { e.stopPropagation(); setOptionsDropdown(d => !d); setHeaderDropdown(false); setSortDropdown(false); }}>
                 <svg viewBox="0 0 20 20" width="18" height="18" fill="currentColor">
                   <circle cx="10" cy="4" r="1.5"/><circle cx="10" cy="10" r="1.5"/><circle cx="10" cy="16" r="1.5"/>
                 </svg>
               </button>
               {optionsDropdown && (
                 <div className="tc-header-dropdown" style={{ right: 0, left: "auto", minWidth: 210 }} onClick={e => e.stopPropagation()}>
-                  <div className="tc-header-dropdown-item" style={{ opacity: aktiveSim ? 1 : 0.4, cursor: aktiveSim ? "pointer" : "default" }}
-                    onClick={() => aktiveSim && setExportSubOffen(o => !o)}>
-                    <div>
-                      <div style={{ fontWeight: 500 }}>Export</div>
-                      <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>Tasks der aktiven Simulation</div>
-                    </div>
-                    <span>{exportSubOffen ? "▲" : "▼"}</span>
-                  </div>
-                  {exportSubOffen && aktiveSim && EXPORT_FORMATE.map(f => (
-                    <div key={f.key} className="tc-header-dropdown-item" style={{ paddingLeft: 24, fontSize: 10 }}
-                      onClick={() => { f.run(aktiveSim.tasks, aktiveSim.name, aktiveSim.kalender); setExportSubOffen(false); setOptionsDropdown(false); }}>
-                      {f.label}
-                    </div>
-                  ))}
-                  {exportSubOffen && aktiveSim && (
-                    <div className="tc-header-dropdown-item" style={{ paddingLeft: 24, fontSize: 10 }}
-                      onClick={() => { setIfcExportOffen(true); setExportSubOffen(false); setOptionsDropdown(false); }}>
-                      IFC 4D (.ifc) …
-                    </div>
-                  )}
-                  <div className="tc-header-dropdown-item" style={{ opacity: aktiveSim ? 1 : 0.4, cursor: aktiveSim ? "pointer" : "default" }}
-                    onClick={() => { if (aktiveSim) { setKalenderManagerOffen(true); setOptionsDropdown(false); } }}>
-                    <div>
-                      <div style={{ fontWeight: 500 }}>Kalender / Feiertage / Ferien</div>
-                      <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>Arbeitstage der aktiven Simulation</div>
-                    </div>
-                  </div>
-                  <div className="tc-header-dropdown-item"
-                    onClick={() => { setVerlaufOffen(true); setOptionsDropdown(false); }}>
-                    <div>
-                      <div style={{ fontWeight: 500 }}>Frühere Versionen …</div>
-                      <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>Simulation aus älterem Stand zurückholen</div>
-                    </div>
-                  </div>
+                  {/* Export, Kalender, Frühere Versionen: im ⋮ der Simulationskarte (Tab Projekt); Export auch im ⋮ von Tab Bauteile/Abspielen */}
                   <div className="tc-header-dropdown-item"
                     onClick={() => { setZugriffsManagerOffen(true); setOptionsDropdown(false); }}>
                     <div>
@@ -403,6 +373,9 @@ export default function App() {
               geladeneModelle={geladeneModelle}
               userId={userId}
               sichtbar={aktTab === "projekte"}
+              onKalender={setKalenderSimId}
+              onIfcExport={setIfcExportSimId}
+              onVerlauf={setVerlaufSimId}
             />
           </FehlerGrenze>
         </div>
@@ -419,6 +392,7 @@ export default function App() {
               readOnly={readOnly}
               sharedNadelTag={sharedNadelTag}
               sichtbar={aktTab === "bauteile"}
+              onIfcExport={aktiveIfcExport}
             />
           </FehlerGrenze>
         </div>
@@ -431,6 +405,7 @@ export default function App() {
               aktivesModellId={aktivesModellId}
               taskSort={taskSort}
               sharedNadelTag={sharedNadelTag}
+              onIfcExport={aktiveIfcExport}
             />
           </FehlerGrenze>
         </div>
@@ -459,9 +434,9 @@ export default function App() {
       <FehlerGrenze bereich="Dialog">
       {zugriffsManagerOffen && <ZugriffskontrollManager api={api} onClose={() => setZugriffsManagerOffen(false)}
         sims={sims} setSims={setSimsMitUndo} aktivId={aktivId} onWechsel={setAktivId} userId={userId} userEmail={userEmail} />}
-      {kalenderManagerOffen && aktiveSim && <KalenderManager sim={aktiveSim} updateSim={updateSim} onClose={() => setKalenderManagerOffen(false)} />}
-      {ifcExportOffen && aktiveSim && <IfcExportDialog sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} api={api} geladeneModelle={geladeneModelle} benutzer={userName} onClose={() => setIfcExportOffen(false)} />}
-      {verlaufOffen && <VersionsVerlauf api={api} sims={sims} darfBearbeiten={s => darfBearbeiten(s, userId)} onClose={() => setVerlaufOffen(false)}
+      {kalenderSim && <KalenderManager sim={kalenderSim} updateSim={updateSim} onClose={() => setKalenderSimId(null)} />}
+      {ifcExportSim && <IfcExportDialog sim={ifcExportSim} updateSim={updateSim} readOnly={!darfBearbeiten(ifcExportSim, userId)} api={api} geladeneModelle={geladeneModelle} benutzer={userName} onClose={() => setIfcExportSimId(null)} />}
+      {verlaufSimId !== undefined && <VersionsVerlauf api={api} sims={sims} nurSimId={verlaufSimId} darfBearbeiten={s => darfBearbeiten(s, userId)} onClose={() => setVerlaufSimId(undefined)}
         onWiederherstellen={(frueher, modus, standZeit) => setSimsMitUndo(prev => stelleSimWiederHer(prev, frueher, modus, standZeit, userId).sims)} />}
       {hilfeOffen && <HilfeManager initialTab={aktTab} onClose={() => setHilfeOffen(false)} />}
       </FehlerGrenze>
