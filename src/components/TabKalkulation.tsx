@@ -82,6 +82,9 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   const [spaltenFilter, setSpaltenFilter] = useState<Partial<Record<SortSpalte, Set<string>>>>({});
   const [filterMenuOffen, setFilterMenuOffen] = useState<SortSpalte | null>(null);
   const [angezeigtTaskId, setAngezeigtTaskId] = useState<string | null>(null);
+  // Eingabetext des "Berechnet"-Felds während des Tippens: Leeren setzt die Übersteuerung zurück, würde das Feld aber sofort wieder
+  // mit dem automatischen Wert füllen — so lässt sich löschen und neu schreiben (auch bei Mehrfachauswahl)
+  const [berechnetEntwurf, setBerechnetEntwurf] = useState<{ taskId: string; text: string } | null>(null);
   const [kraeneMenuOffenTaskId, setKraeneMenuOffenTaskId] = useState<string | null>(null);
   // Menüs mit Klick-Fänger (Spaltenfilter, Suche, Kräne) schliessen auch bei Klick ins 3D-Modell (Fenster verliert den Fokus)
   useEffect(() => {
@@ -684,13 +687,13 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
         const farbe = z.abweichung ? "#d9622b" : istManuell ? "#333" : "var(--tc-blue)";
         return (
           <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-            <input type="number" className="no-spinner" disabled={readOnly} value={z.berechnet}
+            <input type="number" className="no-spinner" disabled={readOnly} value={berechnetEntwurf?.taskId === z.t.id ? berechnetEntwurf.text : z.berechnet}
               title={
                 (z.abweichung ? "Deutliche Abweichung von der geplanten Dauer. " : "") +
                 (istManuell ? "Manuell übersteuert — leeren, um wieder automatisch aus den Mengen zu berechnen." : "Automatisch aus Mengen × Leistungswert berechnet — Wert eintragen, um sie manuell zu übersteuern.")
               }
-              onChange={e => berechnetDauerAendern(z.t, e.target.value === "" ? null : Number(e.target.value))}
-              onFocus={mengenBearbeitungStart} onBlur={mengenBearbeitungEnde} onKeyDown={mengenEnterCommit}
+              onChange={e => { setBerechnetEntwurf({ taskId: z.t.id, text: e.target.value }); berechnetDauerAendern(z.t, e.target.value === "" ? null : Number(e.target.value)); }}
+              onFocus={mengenBearbeitungStart} onBlur={() => { setBerechnetEntwurf(null); mengenBearbeitungEnde(); }} onKeyDown={mengenEnterCommit}
               style={{ width: 36, minWidth: 0, fontSize: 12, padding: "2px 4px", border: `1px solid ${z.abweichung ? "#d9622b" : "#d4dce4"}`, fontFamily: "inherit", color: farbe, fontWeight: 600 }} />
             <span style={{ fontSize: 12, color: farbe }}>d</span>
           </div>
