@@ -50,7 +50,8 @@ export function KapazitaetsCheckInhalt({ sim, updateSim, readOnly }: Props) {
   const bereichOptionen = [...new Set(sim.tasks.map(t => t.kranbereich?.trim()).filter((b): b is string => !!b))].sort();
   // Phasen, deren Kranbereich in Tab Kalkulation umbenannt/entfernt wurde (kein Task nutzt ihn mehr) —
   // bleiben sonst als "toter" Eintrag stehen, siehe Aufräum-Hinweis unten.
-  const verwaisteIdx = new Set(kc.phasen.map((p, i) => (p.kranbereich !== "" && !bereichOptionen.includes(p.kranbereich)) ? i : -1).filter(i => i >= 0));
+  // (die Phase, deren Name gerade getippt wird, zählt nicht — sonst blitzt der Hinweis bei jedem Buchstaben auf)
+  const verwaisteIdx = new Set(kc.phasen.map((p, i) => (i !== neuerBereichIdx && p.kranbereich !== "" && !bereichOptionen.includes(p.kranbereich)) ? i : -1).filter(i => i >= 0));
   const bedarfMap = personenstundenBedarfProKranbereich(sim.tasks, stammdaten);
   const zeitraeume = zeitraumProKranbereich(sim.tasks);
   const kranSpitzenMap = kranSpitzenbedarfProKranbereich(sim.tasks, stammdaten, kalender);
@@ -76,10 +77,10 @@ export function KapazitaetsCheckInhalt({ sim, updateSim, readOnly }: Props) {
 
           {verwaisteIdx.size > 0 && !readOnly && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, padding: "6px 10px", background: "#fff6e5", border: "1px solid #f0c975", fontSize: 11, color: "#8a5a00" }}>
-              <span>⚠ {verwaisteIdx.size} Phase{verwaisteIdx.size === 1 ? "" : "n"} verweist auf einen Kranbereich, der in Tab Kalkulation keinem Task mehr zugeordnet ist (umbenannt oder gelöscht).</span>
+              <span>⚠ {verwaisteIdx.size} Phase{verwaisteIdx.size === 1 ? "" : "n"} {verwaisteIdx.size === 1 ? "hat" : "haben"} keine Tasks: Kein Task trägt den eingetragenen Kranbereich (Name falsch geschrieben, Kranbereich bei den Tasks geändert/gelöscht oder noch keinem Task zugewiesen). Solche Phasen rechnen mit 0 Bedarf. {bereichOptionen.length === 0 ? "Aktuell hat überhaupt kein Task einen Kranbereich." : `Vorhanden: ${bereichOptionen.join(", ")}.`}</span>
               <button className="tc-btn-ghost" style={{ fontSize: 11, padding: "2px 8px", marginLeft: "auto", whiteSpace: "nowrap" }}
                 onClick={() => speichern({ ...kc, phasen: kc.phasen.filter((_, i) => !verwaisteIdx.has(i)) })}>
-                Verwaiste Phase{verwaisteIdx.size === 1 ? "" : "n"} entfernen
+                Phase{verwaisteIdx.size === 1 ? "" : "n"} ohne Tasks entfernen
               </button>
             </div>
           )}
@@ -148,8 +149,8 @@ export function KapazitaetsCheckInhalt({ sim, updateSim, readOnly }: Props) {
                   )}
 
                   {verwaisteIdx.has(idx) && neuerBereichIdx !== idx && (
-                    <span style={{ fontSize: 10, color: "#8a5a00", fontWeight: 600 }} title="Kein Task in Tab Kalkulation nutzt diesen Kranbereich mehr">
-                      ⚠ verwaist
+                    <span style={{ fontSize: 10, color: "#8a5a00", fontWeight: 600 }} title="Kein Task trägt diesen Kranbereich — die Phase hat deshalb keinen Bedarf und keine Termine">
+                      ⚠ keine Tasks
                     </span>
                   )}
 
