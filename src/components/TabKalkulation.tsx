@@ -83,6 +83,13 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   const [filterMenuOffen, setFilterMenuOffen] = useState<SortSpalte | null>(null);
   const [angezeigtTaskId, setAngezeigtTaskId] = useState<string | null>(null);
   const [kraeneMenuOffenTaskId, setKraeneMenuOffenTaskId] = useState<string | null>(null);
+  // Menüs mit Klick-Fänger (Spaltenfilter, Suche, Kräne) schliessen auch bei Klick ins 3D-Modell (Fenster verliert den Fokus)
+  useEffect(() => {
+    if (!filterMenuOffen && !suchOffen && !kraeneMenuOffenTaskId) return;
+    const zu = () => { setFilterMenuOffen(null); setSuchOffen(false); setKraeneMenuOffenTaskId(null); };
+    window.addEventListener("blur", zu);
+    return () => window.removeEventListener("blur", zu);
+  }, [filterMenuOffen, suchOffen, kraeneMenuOffenTaskId]);
   // Mehrfachauswahl von Zeilen per Klick (Strg/Cmd = einzelne dazu/weg, Shift = Bereich ab der
   // letzten Klick-Position) — dient dem gebündelten Bearbeiten (z.B. Kräne) mehrerer Tasks zugleich.
   const [selectedIds, setSelectedIds] = useState<string[]>([]);

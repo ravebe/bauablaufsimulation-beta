@@ -68,6 +68,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   });
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastClickIdx = useRef<number>(-1);
+  const plusMenuRef = useClickOutside<HTMLDivElement>(plusMenuOffen, () => setPlusMenuOffen(false));
   const werkzeugRef = useClickOutside<HTMLDivElement>(werkzeugOffen, () => { setWerkzeugOffen(false); setZeitplanHinweisOffen(false); });
 
   const aktivTaskId = selectedIds.length > 0 ? selectedIds[selectedIds.length - 1] : null;
@@ -310,7 +311,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#333" strokeWidth="1.8"><circle cx="6.5" cy="6.5" r="5"/><line x1="10.2" y1="10.2" x2="14.5" y2="14.5"/></svg>
           </button>
           {!readOnly && (
-            <div style={{ position: "relative", display: "inline-flex" }}>
+            <div ref={plusMenuRef} style={{ position: "relative", display: "inline-flex" }}>
               <button className="tc-btn-secondary" style={{ fontSize: 19, fontWeight: 700, color: "var(--tc-blue)" }}
                 onClick={() => setPlusMenuOffen(m => !m)}>+</button>
               {plusMenuOffen && (
