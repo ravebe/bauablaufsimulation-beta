@@ -543,21 +543,21 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                 {/* Einzug als schrumpfbarer Abstandhalter: bei schmalem Fenster fällt er weg → Icons und Datumsspalten stehen in einer Flucht */}
                 <span style={{ width: indent, flexShrink: 1, minWidth: 0, marginRight: -7 }} />
                 {/* Typ-Punkt/Auf-Zuklapp-Dreieck — beim Hover bzw. während des Ziehens vom Drag-Handle überblendet */}
-                <span style={{ width: 14, height: 14, flexShrink: 0, marginRight: 4, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <span style={{ width: 12, height: 12, flexShrink: 0, marginRight: 5, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   {canDrag && (dragIdx === idx || (istHover && dragIdx === null)) ? (
                     <span
                       draggable
                       onDragStart={e => { setDragIdx(idx); e.dataTransfer.effectAllowed = "move"; }}
                       onDragEnd={() => { setDragIdx(null); setDropIdx(null); }}
                       onClick={e => { e.stopPropagation(); if (isGroup) setCollapsedGroups(s => { const n = new Set(s); if (n.has(task.id)) n.delete(task.id); else n.add(task.id); return n; }); }}
-                      style={{ cursor: "grab", color: "#8a9baa", fontSize: 14, userSelect: "none" }}
+                      style={{ cursor: "grab", color: "#8a9baa", fontSize: 13, userSelect: "none" }}
                       title="Ziehen zum Verschieben"
                     >☰</span>
                   ) : isGroup ? (
                     <span onClick={e => { e.stopPropagation(); setCollapsedGroups(s => { const n = new Set(s); if (n.has(task.id)) n.delete(task.id); else n.add(task.id); return n; }); }}
                       style={{ display: "inline-block", transform: `scaleX(1.6) rotate(${collapsed ? -90 : 0}deg)`, transition: "transform .15s", fontSize: 9, cursor: "pointer", color: "#555" }}>▼</span>
                   ) : (
-                    <span style={{ width: 9, height: 9, borderRadius: "50%", background: task.typ === "neubau" ? "#6cc07a" : task.typ === "abbruch" ? "#edb94c" : task.typ === "bestand" ? "#888" : TASK_TYP_FARBE[task.typ] }} />
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: task.typ === "neubau" ? "#6cc07a" : task.typ === "abbruch" ? "#edb94c" : task.typ === "bestand" ? "#888" : TASK_TYP_FARBE[task.typ] }} />
                   )}
                 </span>
                 {!readOnly && editingNameId === task.id ? (
@@ -566,15 +566,15 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                     onKeyDown={e => { if (e.key === "Enter") taskUmbenennen(task.id, editingNameVal); if (e.key === "Escape") setEditingNameId(null); }}
                     onBlur={() => taskUmbenennen(task.id, editingNameVal)}
                     onClick={e => e.stopPropagation()}
-                    style={{ flex: 1, fontSize: 13, padding: "1px 4px", border: "1px solid #2d7dbd", outline: "none", fontFamily: "inherit", fontWeight: isGroup ? 700 : 400 }} />
+                    style={{ flex: 1, fontSize: 12, padding: "1px 4px", border: "1px solid #2d7dbd", outline: "none", fontFamily: "inherit", fontWeight: isGroup ? 700 : 400 }} />
                 ) : (
                   <span className="task-row-name"
                     onDoubleClick={!readOnly ? (e) => { e.stopPropagation(); setEditingNameId(task.id); setEditingNameVal(task.name); } : undefined}
-                    style={{ fontSize: 13, flex: 1, cursor: !readOnly ? "text" : "default", color: selectedIds.includes(task.id) ? "#2d7dbd" : "#333", fontWeight: selectedIds.includes(task.id) || hatSelektierte || isGroup ? 600 : 400 }}>{task.name}</span>
+                    style={{ fontSize: 12, flex: 1, cursor: !readOnly ? "text" : "default", color: selectedIds.includes(task.id) ? "#2d7dbd" : "#333", fontWeight: selectedIds.includes(task.id) || hatSelektierte || isGroup ? 600 : 400 }}>{task.name}</span>
                 )}
 
                 {/* Nummer | Vorgänger — Klick auf den ganzen Bereich öffnet Vorgänger-Auswahl */}
-                <span style={{ flexShrink: 0, fontSize: 11, marginRight: 6, minWidth: 34, textAlign: "right", cursor: !readOnly ? "pointer" : "default" }}
+                <span style={{ flexShrink: 0, fontSize: 10, marginRight: 6, minWidth: 34, textAlign: "right", cursor: !readOnly ? "pointer" : "default" }}
                   onClick={!readOnly ? (e) => { e.stopPropagation(); oeffnePredPicker(task, e); } : (e) => e.stopPropagation()}
                   title={!readOnly ? "Vorgänger festlegen" : undefined}>
                   <span style={{ fontWeight: 500, color: "#666" }}>

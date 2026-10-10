@@ -466,7 +466,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
   if (!aktiveSim) return <div className="tc-empty"><div className="tc-empty-icon">▶</div><div className="tc-empty-title">Keine aktive Simulation</div></div>;
 
   const aktuellesDatum = minDate ? datumBeiTag(minDate, currentTag) : "";
-  const dot = (typ: string) => ({ width: 8, height: 8, borderRadius: "50%" as const, display: "inline-block" as const, marginRight: 6, flexShrink: 0 as const,
+  const dot = (typ: string) => ({ width: 6, height: 6, borderRadius: "50%" as const, display: "inline-block" as const, margin: "0 8px 0 3px", flexShrink: 0 as const,
     background: (FARBEN as Record<string, string>)[typ] ?? FARBEN.bestand });
 
   return (
@@ -612,7 +612,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
                 <span style={dot(task.typ)} />
               </>)}
               <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12 }}>{task.name}</span>
-              <span style={{ flexShrink: 0, fontSize: 11, marginRight: 6, minWidth: 34, textAlign: "right" }}
+              <span style={{ flexShrink: 0, fontSize: 10, marginRight: 6, minWidth: 34, textAlign: "right" }}
                 onClick={e => { e.stopPropagation(); melden(`pred-${task.id}`, e.clientX, e.clientY); }}>
                 <span style={{ fontWeight: 500, color: "#666" }}>{nummern.get(task.id) ?? ""}</span>
                 {task.predecessorId && (
