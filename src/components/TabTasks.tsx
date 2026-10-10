@@ -531,7 +531,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
               <div
                 data-taskid={task.id}
                 className={`task-row ${selectedIds.includes(task.id) ? "active" : ""}`}
-                style={{ borderBottom: "1px solid #eef1f4", padding: "6px 10px", paddingLeft: 10 + indent, gap: 7,
+                style={{ borderBottom: "1px solid #eef1f4", padding: "6px 10px", gap: 7,
                   background: isGroup && istDropTarget && dragIdx !== null ? "#dbeafe" : selectedIds.includes(task.id) ? "#e8f2fa" : hatSelektierte ? "#f0f0f0" : undefined,
                   opacity: dragIdx !== null && selectedIds.includes(task.id) ? 0.4 : 1, fontWeight: isGroup ? 700 : undefined }}
                 onClick={(e) => { if (e.detail > 1) return; onTaskClick(task.id, { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey }); }} // 2. Klick eines Doppelklicks (Umbenennen) ändert die Auswahl nicht
@@ -540,6 +540,8 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                 onDragOver={e => { e.preventDefault(); setDropIdx(idx); }}
                 onDrop={e => { e.preventDefault(); if (dragIdx !== null) taskVerschieben(dragIdx, idx); setDragIdx(null); setDropIdx(null); }}
               >
+                {/* Einzug als schrumpfbarer Abstandhalter: bei schmalem Fenster fällt er weg → Icons und Datumsspalten stehen in einer Flucht */}
+                <span style={{ width: indent, flexShrink: 1, minWidth: 0, marginRight: -7 }} />
                 {/* Typ-Punkt/Auf-Zuklapp-Dreieck — beim Hover bzw. während des Ziehens vom Drag-Handle überblendet */}
                 <span style={{ width: 14, height: 14, flexShrink: 0, marginRight: 4, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   {canDrag && (dragIdx === idx || (istHover && dragIdx === null)) ? (

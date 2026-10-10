@@ -595,13 +595,15 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
           const collapsed = collapsedGroups.has(task.id);
           return (
             <div key={task.id} style={{
-              display: "flex", alignItems: "center", padding: "5px 8px", paddingLeft: 8 + indent, gap: 6,
+              display: "flex", alignItems: "center", padding: "5px 8px", gap: 6,
               borderBottom: "1px solid #eef1f4", cursor: laeuft ? "default" : "pointer",
               background: istSelTask ? "#e8f0fe" : hatSel ? "#f0f0f0" : aktiv ? "#edf7ed" : hoverTaskId === task.id ? "var(--tc-bg-hover)" : "transparent",
               opacity: vorbei ? 0.5 : 1, fontWeight: aktiv || hatSel || istSelTask || isGrp ? 600 : 400,
             }} onClick={() => zuTask(origIdx)}
               onMouseEnter={() => setHoverTaskId(task.id)}
               onMouseLeave={() => setHoverTaskId(null)}>
+              {/* Einzug als schrumpfbarer Abstandhalter: bei schmalem Fenster fällt er weg → Icons und Datumsspalten stehen in einer Flucht */}
+              <span style={{ width: indent, flexShrink: 1, minWidth: 0, marginRight: -6 }} />
               {isGrp ? (
                 <span onClick={e => { e.stopPropagation(); setCollapsedGroups(s => { const n = new Set(s); if (n.has(task.id)) n.delete(task.id); else n.add(task.id); return n; }); }}
                   style={{ display: "inline-block", transform: `scaleX(1.6) rotate(${collapsed ? -90 : 0}deg)`, transition: "transform .15s", fontSize: 9, cursor: "pointer", flexShrink: 0, marginRight: 4, color: "#555" }}>▼</span>
