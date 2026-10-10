@@ -6,6 +6,7 @@ import type { ApiInstance } from "../hooks/useApi";
 import { formatDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, nsKey, sucheSortiereTasks, TASK_TYP_FARBE, TASK_TYP_LABEL } from "../types";
 import { arbeitstageZwischen, LEERER_KALENDER } from "./kalenderHelpers";
 import GanttChart from "./GanttChart";
+import { bindeListenScroll } from "./listenScroll";
 import { useDoppelklickHinweis } from "../hooks/useDoppelklickHinweis";
 import PunkteMenu from "./PunkteMenu";
 import { exportEintraege } from "./exportEintraege";
@@ -45,6 +46,8 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
   const lastTimeRef = useRef(0);
   const currentTagRef = useRef(0);
   const [ganttOffen, setGanttOffen] = useState(false);
+  const listeRef = useRef<HTMLDivElement>(null);
+  useEffect(() => bindeListenScroll(listeRef.current), [ganttOffen]); // gleiche erste Zeile wie im Gantt / im anderen Tab
   const [selTaskId, setSelTaskId] = useState<string | null>(null);
   const [suchOffen, setSuchOffen] = useState(false);
   const [suchQuery, setSuchQuery] = useState("");
@@ -543,7 +546,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
             kalender={aktiveSim?.kalender}
           />
       ) : (
-      <div className="player-card" style={{ padding: 0, overflow: "hidden", maxHeight: taskListHeight, overflowY: "auto" }}>
+      <div ref={listeRef} className="player-card" style={{ padding: 0, overflow: "hidden", maxHeight: taskListHeight, overflowY: "auto" }}>
         {tasks.length === 0 ? (
           <div style={{ padding: 10, fontSize: 11, color: "var(--tc-text-3)", textAlign: "center" }}>Keine Tasks mit Bauteilen</div>
         ) : (() => {
@@ -594,7 +597,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
           const indent = (level - 1) * 12;
           const collapsed = collapsedGroups.has(task.id);
           return (
-            <div key={task.id} style={{
+            <div key={task.id} data-taskid={task.id} style={{
               display: "flex", alignItems: "center", padding: "5px 8px", gap: 6,
               borderBottom: "1px solid #eef1f4", cursor: laeuft ? "default" : "pointer",
               background: istSelTask ? "#e8f0fe" : hatSel ? "#f0f0f0" : aktiv ? "#edf7ed" : hoverTaskId === task.id ? "var(--tc-bg-hover)" : "transparent",

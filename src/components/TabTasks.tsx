@@ -9,6 +9,7 @@ import { formatDatum, normalizeDatum, parseDateUniversal, getOutlineLevel, istGr
 import type { ApiInstance } from "../hooks/useApi";
 import { batchGetProperties, batchConvertToObjectIds } from "../hooks/useApi";
 import DatePicker from "./DatePicker";
+import { bindeListenScroll } from "./listenScroll";
 import { bauteileAusschliessen } from "./ausschlussHelpers";
 import SelectionTools from "./SelectionTools";
 
@@ -178,6 +179,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
   });
   const resizingRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => bindeListenScroll(scrollRef.current), [detailOnly]); // gleiche erste Zeile wie im Gantt / im anderen Tab
 
   // Zum gewählten Task scrollen, falls er nicht sichtbar ist (z.B. nach Suche). Ziel ist der ZUERST gewählte
   // Eintrag — bei Klick auf eine Gruppe die Gruppe selbst (aktivTaskId wäre ihr letzter Task → sprang ans

@@ -8,6 +8,7 @@ import { istArbeitstag, LEERER_KALENDER, getKW } from "./kalenderHelpers";
 import DatePicker from "./DatePicker";
 import { useDoppelklickHinweis } from "../hooks/useDoppelklickHinweis";
 import { ZoomControls } from "./cockpitCharts";
+import { bindeListenScroll } from "./listenScroll";
 
 interface Props {
   projectId?: string | null;
@@ -58,6 +59,7 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
   const bodyRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => bindeListenScroll(labelRef.current), []); // gleiche erste Zeile wie in der Liste / im anderen Tab
   const lsZoomKey = nsKey(LS_ZOOM, projectId);
   const lsLabelWKey = nsKey(LS_LABEL_W, projectId);
   const [pxProTag, setPxProTag] = useState(() => { try { return Number(localStorage.getItem(lsZoomKey)) || 6; } catch { return 6; } });
@@ -467,6 +469,7 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
                     <div style={{ height: 2, background: "#2d7dbd", margin: "0 4px" }} />
                   )}
                   <div
+                    data-taskid={t.id}
                     onMouseDown={(e) => { if (e.shiftKey || e.ctrlKey || e.metaKey) e.preventDefault(); }}
                     onClick={(e) => { if (e.detail > 1) return; onTaskClick?.(origIdx, { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey }); }} // 2. Klick eines Doppelklicks (Umbenennen) ändert die Auswahl nicht
                     onMouseEnter={() => setHoverIdx(i)}
