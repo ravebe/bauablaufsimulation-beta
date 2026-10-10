@@ -167,11 +167,6 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
         )}
         <StatTile label="Zeiträume über Kran-Kapazität" wert={String(zeitraeumeUeberKapazitaet)} status={zeitraeumeUeberKapazitaet > 0 ? "warning" : "good"} />
         <StatTile label="Marge (kumuliert)" wert={`${fmtChf(marge)} CHF`} status={marge >= 0 ? "good" : "critical"} />
-        <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px", marginLeft: "auto" }}
-          onClick={() => setKranPlanungOffen(true)}
-          title="Kräne anlegen, ihre Verfügbarkeit festlegen und Personal-/Kran-Budget je Bauphase gegen den Bedarf prüfen">
-          Kranplanung
-        </button>
       </div>
       {ausgewaehltesDatumIso && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, marginTop: -8, fontSize: 11, color: "var(--tc-text-3)" }}>
@@ -229,7 +224,12 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
       <CockpitAbschnitt titel="Kranoptik" eingeklappt={!!eingeklappt["kran"]} onToggle={() => toggleEingeklappt("kran")}
         aktionen={
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span title="Richtwerte zur Plausibilisierung, keine exakte Kalkulation" style={{ fontSize: 11, color: "var(--tc-text-3)", cursor: "help" }}>ⓘ</span>
+            <button className="tc-btn-secondary" style={{ fontSize: 11, fontWeight: 600, height: "auto", padding: "3px 8px", borderRadius: 0 }}
+              onClick={() => setKranPlanungOffen(true)}
+              title="Kräne anlegen, ihre Verfügbarkeit festlegen und Personal-/Kran-Budget je Bauphase gegen den Bedarf prüfen">
+              Kranplanung
+            </button>
+            <span style={{ width: 1, alignSelf: "stretch", background: "var(--tc-border)" }} />
             {(["stunden", "personal"] as const).map(m => (
               <button key={m} onClick={() => setKranMetrik(m)}
                 title={m === "stunden" ? "Kranstunden-Bedarf vs. Verfügbarkeit" : "Ungefährer Personalbedarf je Kran vs. dessen Max. Personen"}
@@ -248,11 +248,12 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
                 {r === "monat" ? "Monat" : "Woche"}
               </button>
             ))}
+            <span title="Richtwerte zur Plausibilisierung, keine exakte Kalkulation" style={{ fontSize: 11, color: "var(--tc-text-3)", cursor: "help" }}>ⓘ</span>
           </div>
         }>
         {kraene.length === 0 ? (
           <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
-            Noch keine Kräne angelegt — siehe Button "Kran-Verfügbarkeit" oben.
+            Noch keine Kräne angelegt — siehe Button "Kranplanung" oben rechts.
           </div>
         ) : !hatKranpflichtigeRaten(stammdaten) ? (
           <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>

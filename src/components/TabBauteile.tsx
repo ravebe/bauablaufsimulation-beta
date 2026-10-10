@@ -312,8 +312,10 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
           </button>
           {!readOnly && (
             <div ref={plusMenuRef} style={{ position: "relative", display: "inline-flex" }}>
-              <button className="tc-btn-secondary" style={{ fontSize: 19, fontWeight: 700, color: "var(--tc-blue)" }}
-                onClick={() => setPlusMenuOffen(m => !m)}>+</button>
+              <button className="tc-btn-secondary" style={{ color: "var(--tc-blue)" }}
+                onClick={() => setPlusMenuOffen(m => !m)} title="Neuer Task / Neue Gruppe">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="square"><path d="M7 1.5v11M1.5 7h11" /></svg>
+              </button>
               {plusMenuOffen && (
                 <Schwebend style={{ background: "#fff", border: "1px solid #d4dce4", boxShadow: "0 2px 8px rgba(0,0,0,.12)", minWidth: 140, fontSize: 11 }}>
                   <div style={{ padding: "6px 10px", cursor: "pointer", borderBottom: "1px solid #eef1f4" }}
