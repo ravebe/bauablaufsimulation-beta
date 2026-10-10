@@ -599,15 +599,24 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                       </div>
                       {attrLaedt && <div style={{ padding: 6, fontSize: 10, color: "var(--tc-text-3)" }}>⟳ Attribute laden…</div>}
                       {!attrLaedt && acItems.length === 0 && <div style={{ padding: 6, fontSize: 10, color: "var(--tc-text-3)" }}>Keine Treffer</div>}
-                      {!attrLaedt && acItems.map(a => (
+                      {!attrLaedt && acItems.map(a => {
+                        // schon in dieser Formel verwendet → markiert (blau hinterlegt + Haken)
+                        const verwendet = (r.formel ?? "").includes(`{${a.key}}`);
+                        const grund = verwendet ? "#e1eefa" : "";
+                        return (
                         <div key={a.key} onMouseDown={() => attributEinfuegen(gi, ri, a.key)}
-                          style={{ padding: "5px 8px", cursor: "pointer", fontSize: 10 }}
-                          onMouseEnter={e => (e.currentTarget.style.background = "#f5f9fc")}
-                          onMouseLeave={e => (e.currentTarget.style.background = "")}>
-                          <div style={{ fontWeight: 500 }}>{a.name}</div>
-                          <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>{a.pset}</div>
+                          title={verwendet ? "Bereits in dieser Formel verwendet" : undefined}
+                          style={{ padding: "5px 8px", cursor: "pointer", fontSize: 10, display: "flex", alignItems: "center", gap: 6, background: grund }}
+                          onMouseEnter={e => (e.currentTarget.style.background = verwendet ? "#d3e6f7" : "#f5f9fc")}
+                          onMouseLeave={e => (e.currentTarget.style.background = grund)}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: verwendet ? 700 : 500, color: verwendet ? "var(--tc-blue)" : undefined }}>{a.name}</div>
+                            <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>{a.pset}</div>
+                          </div>
+                          {verwendet && <span style={{ color: "var(--tc-blue)", fontWeight: 700, fontSize: 12, flexShrink: 0 }}>✓</span>}
                         </div>
-                      ))}
+                        );
+                      })}
                     </Schwebend>
                   )}
                 </div>
