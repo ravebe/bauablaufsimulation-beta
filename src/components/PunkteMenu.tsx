@@ -39,7 +39,7 @@ export default function PunkteMenu({ abschnitte, title }: Props) {
               <button onClick={() => setOffenerAbschnitt(aufgeklappt ? null : a.titel)}
                 style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "7px 12px", background: "none", border: "none", textAlign: "left",
                   fontSize: 11, fontWeight: 700, color: "var(--tc-text)", cursor: "pointer", fontFamily: "inherit" }}
-                onMouseEnter={ev => (ev.currentTarget.style.background = "#f5f9fc")} onMouseLeave={ev => (ev.currentTarget.style.background = "")}>
+                onMouseEnter={ev => (ev.currentTarget.style.background = "#f5f9fc")} onMouseLeave={ev => (ev.currentTarget.style.background = "none")}>
                 <span style={{ flex: 1 }}>{a.titel}</span>
                 <span style={{ fontSize: 9, color: "var(--tc-text-3)" }}>{aufgeklappt ? "▾" : "▸"}</span>
               </button>
@@ -52,7 +52,7 @@ export default function PunkteMenu({ abschnitte, title }: Props) {
                   style={{ display: "block", width: "100%", padding: "6px 12px 6px 18px", background: "none", border: "none", textAlign: "left", fontSize: 11,
                     cursor: e.disabled ? "default" : "pointer", fontFamily: "inherit", color: e.disabled ? "#aab8c4" : "var(--tc-text)" }}
                   onMouseEnter={ev => { if (!e.disabled) ev.currentTarget.style.background = "#f5f9fc"; }}
-                  onMouseLeave={ev => (ev.currentTarget.style.background = "")}>
+                  onMouseLeave={ev => (ev.currentTarget.style.background = "none")}>
                   {e.label}
                 </button>
               ))}
