@@ -123,9 +123,9 @@ export default function SelectionTools({ aktivTask, aktiveSim, api, updateSim, s
             {laedt ? "⟳ …" : selCount > 0 ? `${selCount} Objekte hinzufügen` : "Bauteil(e) anklicken…"}
           </button>
           {selCount > 0 && (
-            <button className="tc-btn-ghost" style={{ padding: "4px 8px", fontSize: 13 }}
+            <button className="tc-btn-ghost" style={{ color: "#333" }}
               title="Markierte aus allen Tasks entfernen"
-              onClick={() => setEntfernenBestaetigen(true)}>🗑</button>
+              onClick={() => setEntfernenBestaetigen(true)}><svg width="12" height="12" viewBox="0 0 16 16" fill="#333" stroke="none"><path d="M5 1h6v1H5zM2 3h12v1H2zm1.5 1l.8 11h7.4l.8-11h-9zm2.5 2h1v7H6zm3 0h1v7H9z"/></svg></button>
           )}
         </div>
       )}
