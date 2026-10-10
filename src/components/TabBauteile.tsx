@@ -1,14 +1,14 @@
 // TabBauteile.tsx — Orchestrator mit Selektions-Tracking + Gantt-Toggle
 import { useState, useEffect, useRef } from "react";
 import { lsSet } from "../hooks/lokalSpeicher";
-import type { SimProjekt, Task } from "../types";
-import { parseDateUniversal, istGruppe, getKinder, getOutlineLevel, kaskadiereNachfolger, richteKettenNeuAus, verschiebeAufStart, gruppenDaten,
+import type { SimProjekt, Task , VorgaengerLink } from "../types";
+import { parseDateUniversal, istGruppe, getKinder, getOutlineLevel, kaskadiereNachfolger, richteKettenNeuAus, verschiebeAufStart, mitVorgaengern, vorgaengerStart,
   taskVerschieben as verschiebeTaskBlock, nsKey } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { getEchteBauteile, clearEchteBauteileCache } from "./modelHelpers";
 import { useClickOutside } from "../hooks/useClickOutside";
 import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
-import { LEERER_KALENDER, folgeStart, ersterArbeitstagAb } from "./kalenderHelpers";
+import { LEERER_KALENDER, ersterArbeitstagAb } from "./kalenderHelpers";
 import { pruefeZeitplanBereitschaft, berechneZeitplanUebernahme, zeitplanHatAenderungen } from "./zeitplanUebernahmeHelpers";
 import TabTasks from "./TabTasks";
 import { UnbenutzteZeilen, UnbenutzteDetail } from "./UnbenutzteBauteile";
@@ -217,16 +217,14 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
     updateSim({ ...aktiveSim, tasks });
   }
 
-  function ganttSetPredecessor(taskId: string, predId: string | null, lagDays: number) {
+  function ganttSetPredecessor(taskId: string, liste: VorgaengerLink[]) {
     if (!aktiveSim) return;
     const kal = aktiveSim.kalender ?? LEERER_KALENDER;
-    let tasks = aktiveSim.tasks.map(t => t.id === taskId ? { ...t, predecessorId: predId ?? undefined, lagDays } : t);
-    if (predId) {
-      const predIdx = tasks.findIndex(t => t.id === predId);
-      const pred = tasks[predIdx];
-      const predEnd = pred?.isGroup ? gruppenDaten(tasks, predIdx).end : pred?.end;
-      if (predEnd) tasks = verschiebeAufStart(tasks, taskId, folgeStart(predEnd, lagDays, kal), kal);
-    }
+    let tasks = aktiveSim.tasks.map(t => t.id === taskId ? mitVorgaengern(t, liste) : t);
+    // Start nach dem spätesten Vorgänger (Tag nach dessen Ende + Wartetage, auf Arbeitstag gerückt)
+    const neu = tasks.find(t => t.id === taskId);
+    const start = neu ? vorgaengerStart(tasks, neu, kal) : null;
+    if (start) tasks = verschiebeAufStart(tasks, taskId, start, kal);
     tasks = kaskadiereNachfolger(tasks, taskId, kal);
     updateSim({ ...aktiveSim, tasks });
   }
@@ -296,7 +294,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
     for (const ids of [gruppenIds, echteIds]) {
       ids.forEach((id, i) => vorgaengerMap.set(id, i === 0 ? undefined : ids[i - 1]));
     }
-    const neueTasks = tasks.map(t => vorgaengerMap.has(t.id) ? { ...t, predecessorId: vorgaengerMap.get(t.id) } : t);
+    const neueTasks = tasks.map(t => vorgaengerMap.has(t.id) ? { ...t, predecessorId: vorgaengerMap.get(t.id), weitereVorgaenger: undefined } : t);
     updateSim({ ...aktiveSim, tasks: neueTasks });
   }
 

@@ -30,8 +30,9 @@ export interface Task {
   extraSpalten?: Record<string, string>; // Zusätzliche Gantt-Spalten für Auto-Verknüpfung
   outlineLevel?: number; // 1 = Hauptebene, 2+ = Kind (MSP-kompatibel)
   isGroup?: boolean; // true = Gruppentitel (keine Bauteile, kein Typ)
-  predecessorId?: string; // ID des Vorgänger-Tasks
+  predecessorId?: string; // ID des (ersten) Vorgänger-Tasks
   lagDays?: number; // Wartetage nach Vorgänger-Ende (default 0)
+  weitereVorgaenger?: { id: string; lagDays: number }[]; // 2. bis 30. Vorgänger mit eigenen Wartetagen (wie MS Project) — siehe vorgaengerListe()
   bauteilKuerzel?: string; // Bauteil-Kürzel für die Kalkulation (z.B. "WB"), siehe stammdatenHelpers.ts
   mengen?: Record<string, number>; // Gewerk-key → Menge, für die Menge→Tage-Kalkulation
   mengenQuelle?: Record<string, "auto" | "manuell" | "fehler">; // Herkunft je Gewerk-key — steuert Farbe (blau/schwarz/rot) in Tab Kalkulation
@@ -483,16 +484,102 @@ export function berechneNummern(tasks: Task[]): Map<string, string> {
 
 /** Prüfe ob Vorgänger-Kette zirkulär wäre */
 export function istZirkular(tasks: Task[], taskId: string, predId: string): boolean {
+  const byId = new Map(tasks.map(t => [t.id, t]));
   const visited = new Set<string>();
-  let current = predId;
-  while (current) {
+  const stapel = [predId];
+  while (stapel.length) {
+    const current = stapel.pop()!;
     if (current === taskId) return true;
-    if (visited.has(current)) return false;
+    if (visited.has(current)) continue;
     visited.add(current);
-    const t = tasks.find(x => x.id === current);
-    current = t?.predecessorId ?? "";
+    const t = byId.get(current);
+    if (t) for (const v of vorgaengerListe(t)) stapel.push(v.id);
   }
   return false;
+}
+
+// === Mehrere Vorgänger (bis 30, je mit eigenen Wartetagen — wie MS Project) ===
+export interface VorgaengerLink { id: string; lagDays: number }
+export const MAX_VORGAENGER = 30;
+
+/** Alle Vorgänger eines Tasks: der erste steht (kompatibel zu älteren Daten) in predecessorId/lagDays, die übrigen in weitereVorgaenger. */
+export function vorgaengerListe(t: Task): VorgaengerLink[] {
+  const liste: VorgaengerLink[] = t.predecessorId ? [{ id: t.predecessorId, lagDays: t.lagDays ?? 0 }] : [];
+  for (const v of t.weitereVorgaenger ?? []) if (v.id && v.id !== t.predecessorId) liste.push({ id: v.id, lagDays: v.lagDays ?? 0 });
+  return liste;
+}
+
+/** Setzt die Vorgänger eines Tasks (doppelte und eigene ID entfernt, max. 30). */
+export function mitVorgaengern(t: Task, liste: VorgaengerLink[]): Task {
+  const gesehen = new Set<string>();
+  const sauber = liste.filter(v => v.id && v.id !== t.id && !gesehen.has(v.id) && gesehen.add(v.id)).slice(0, MAX_VORGAENGER);
+  const [erster, ...rest] = sauber;
+  return { ...t, predecessorId: erster?.id, lagDays: erster ? erster.lagDays : undefined, weitereVorgaenger: rest.length ? rest : undefined };
+}
+
+/** Text wie in MS Project: "26, 27+2" (Nummer, bei Wartetagen +n bzw. -n). */
+export function vorgaengerText(t: Task, nummern: Map<string, string>): string {
+  return vorgaengerListe(t).map(v => `${nummern.get(v.id) ?? "?"}${v.lagDays ? (v.lagDays > 0 ? `+${v.lagDays}` : `${v.lagDays}`) : ""}`).join(", ");
+}
+
+/** Liest "26, 27+2; 30-1" — Nummern wie in der App (Gruppen A, B…, Tasks 1, 2…). Einträge ohne +n/-n erhalten standardLag.
+ *  Unbekannte Nummern landen in "unbekannt". */
+export function parseVorgaengerText(text: string, kandidaten: Task[], nummern: Map<string, string>, standardLag = 0): { liste: VorgaengerLink[]; unbekannt: string[] } {
+  const idByNr = new Map<string, string>();
+  for (const k of kandidaten) { const nr = nummern.get(k.id); if (nr) idByNr.set(nr.toUpperCase(), k.id); }
+  const liste: VorgaengerLink[] = [], unbekannt: string[] = [];
+  for (const roh of text.split(/[,;]/).map(s => s.trim()).filter(Boolean)) {
+    const m = roh.match(/^(.+?)\s*([+-]\s*\d+(?:[.,]\d+)?)?$/);
+    const nr = (m?.[1] ?? roh).trim().toUpperCase();
+    const id = idByNr.get(nr);
+    if (!id) { unbekannt.push(roh); continue; }
+    const lag = m?.[2] ? Math.round(Number(m[2].replace(/\s/g, "").replace(",", "."))) : standardLag;
+    liste.push({ id, lagDays: lag });
+  }
+  return { liste, unbekannt };
+}
+
+/** Der gerade getippte (letzte) Eintrag in "26, 27+2, 3" — ohne +n — für die Vorschlagsliste. */
+export function letzterVorgaengerEintrag(text: string): string {
+  return (text.split(/[,;]/).pop() ?? "").trim().replace(/\s*[+-].*$/, "");
+}
+
+/** Ersetzt den letzten Eintrag durch die gewählte Nummer (bisherige Einträge bleiben). */
+export function ersetzeLetztenVorgaengerEintrag(text: string, nr: string): string {
+  const teile = text.split(/[,;]/);
+  teile[teile.length - 1] = nr;
+  return teile.map(s => s.trim()).filter(Boolean).join(", ");
+}
+
+/** Ende eines Vorgängers (Gruppen: aus ihren Tasks). */
+function vorgaengerEnde(tasks: Task[], id: string): string | null {
+  const idx = tasks.findIndex(t => t.id === id);
+  if (idx < 0) return null;
+  const p = tasks[idx];
+  return (p.isGroup || istGruppe(tasks, idx)) ? gruppenDaten(tasks, idx).end || null : p.end || null;
+}
+
+/** Start eines Tasks aus ALLEN Vorgängern: der späteste Folge-Start (Tag nach Vorgänger-Ende + Wartetage, auf Arbeitstag gerückt). */
+export function vorgaengerStart(tasks: Task[], t: Task, kalender: Kalender = LEERER_KALENDER): string | null {
+  let spaetester: string | null = null;
+  for (const v of vorgaengerListe(t)) {
+    const ende = vorgaengerEnde(tasks, v.id);
+    if (!ende) continue;
+    const s = folgeStart(ende, v.lagDays, kalender);
+    if (!spaetester || s > spaetester) spaetester = s;
+  }
+  return spaetester;
+}
+
+/** Der massgebende Vorgänger (der den spätesten Start erzwingt) — für die Anzeige "26+" bei mehreren. */
+export function massgebenderVorgaenger(tasks: Task[], t: Task, kalender: Kalender = LEERER_KALENDER): string | undefined {
+  let best: { id: string; s: string } | undefined;
+  for (const v of vorgaengerListe(t)) {
+    const ende = vorgaengerEnde(tasks, v.id);
+    const s = ende ? folgeStart(ende, v.lagDays, kalender) : "";
+    if (!best || s > best.s) best = { id: v.id, s };
+  }
+  return best?.id;
 }
 
 /** Datum addieren (Tage) */
@@ -536,22 +623,18 @@ export function gueltigeVorgaenger(tasks: Task[], taskId: string): Task[] {
 export function kaskadiereNachfolger(tasks: Task[], geaenderteId: string, kalender: Kalender = LEERER_KALENDER): Task[] {
   let result = tasks.map(t => ({ ...t }));
   const queue = [geaenderteId];
-  const processed = new Set<string>();
-  while (queue.length > 0) {
+  // Bei mehreren Vorgängern kann ein Task mehrfach neu berechnet werden (sobald ein weiterer Vorgänger sich verschiebt) — Obergrenze gegen Zyklen
+  let schritte = 0;
+  const maxSchritte = (tasks.length + 1) * (MAX_VORGAENGER + 1);
+  while (queue.length > 0 && schritte++ < maxSchritte) {
     const predId = queue.shift()!;
-    if (processed.has(predId)) continue;
-    processed.add(predId);
-    const predIdx = result.findIndex(t => t.id === predId);
-    if (predIdx < 0) continue;
-    const pred = result[predIdx];
-    const predEnd = pred.isGroup ? gruppenDaten(result, predIdx).end : pred.end;
     for (const t of result) {
-      if (t.predecessorId === predId) {
-        // Nachfolger beginnt am Arbeitstag NACH dem Ende des Vorgängers (+ Wartetage in Arbeitstagen)
-        const neuerStart = folgeStart(predEnd, t.lagDays ?? 0, kalender);
-        result = verschiebeAufStart(result, t.id, neuerStart, kalender);
-        queue.push(t.id);
-      }
+      if (!vorgaengerListe(t).some(v => v.id === predId)) continue;
+      // Nachfolger beginnt nach dem SPÄTESTEN seiner Vorgänger (Tag nach Ende + Wartetage, auf Arbeitstag gerückt)
+      const neuerStart = vorgaengerStart(result, t, kalender);
+      if (!neuerStart || neuerStart === t.start) continue;
+      result = verschiebeAufStart(result, t.id, neuerStart, kalender);
+      queue.push(t.id);
     }
   }
   return result;
@@ -580,6 +663,6 @@ export function richteKettenNeuAus(tasks: Task[], kalender: Kalender = LEERER_KA
   // 1. Jeder Task (auch ohne Vorgänger) beginnt und endet an Arbeitstagen; die Dauer in Arbeitstagen bleibt (mindestens 1)
   let result = normalisiereAufArbeitstage(tasks, kalender).tasks;
   // 2. Folge-Tasks an ihren Vorgängern ausrichten
-  for (const t of tasks) if (!t.predecessorId) result = kaskadiereNachfolger(result, t.id, kalender);
+  for (const t of tasks) if (vorgaengerListe(t).length === 0) result = kaskadiereNachfolger(result, t.id, kalender);
   return result;
 }

@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import type { Task, TaskTyp } from "../types";
 import { isValidDatum, normalizeDatum } from "../types";
-import { istMsProjectXml, parseMsProjectXml } from "./msProjectXml";
+import { istMsProjectXml, parseMsProjectXmlMitHinweisen } from "./msProjectXml";
 import { baueImportTasks, leseGruppenFlag } from "./ganttTabelle";
 import type { ImportZeile } from "./ganttTabelle";
 
@@ -26,6 +26,9 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
   const inputRef = useRef<HTMLInputElement>(null);
   const [fehler, setFehler] = useState<ImportFehler[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
+  // Hinweise des letzten Imports (z.B. MS Project: andere Verknüpfungsarten, Notizen-GUIDs, Uhrzeiten, Wochenendarbeit)
+  const [hinweise, setHinweise] = useState<string[]>([]);
+  const hinweiseRef = useRef<string[]>([]);
 
   // Datum aus beliebigem Format → YYYY-MM-DD normalisieren
   function parseDatum(v: unknown): string {
@@ -196,7 +199,7 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
   const XML_STANDARD_TAGS = new Set(["name","start","earlystart","finish","end","ende","typ","type","kuerzel","kürzel","objects","bauteile","vorgaenger","vorgänger","predecessor","wartetage","lag","nr","gruppe","ebene","reihenfolge","gantt_reihenfolge"]);
 
   function parseXml(text: string): Task[] {
-    if (istMsProjectXml(text)) return parseMsProjectXml(text);
+    if (istMsProjectXml(text)) { const r = parseMsProjectXmlMitHinweisen(text); hinweiseRef.current = r.hinweise; return r.tasks; }
     const parser = new DOMParser();
     const doc = parser.parseFromString(text, "text/xml");
     const rows: ImportZeile[] = [];
@@ -280,6 +283,8 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
   async function handleFile(file: File) {
     setFehler([]);
     setMsg(null);
+    setHinweise([]);
+    hinweiseRef.current = [];
     try {
       const ext = file.name.split(".").pop()?.toLowerCase();
       let tasks: Task[] = [];
@@ -313,6 +318,7 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
 
       onImport(tasks, file.name);
       const gruppen = tasks.filter(t => t.isGroup).length;
+      setHinweise(hinweiseRef.current);
       setMsg(`${tasks.length - gruppen} Tasks${gruppen > 0 ? ` in ${gruppen} Gruppen` : ""} importiert${errs.length > 0 ? ` · ${errs.length} Datumsfehler` : ""}`);
     } catch (e) {
       setMsg(`Fehler: ${e instanceof Error ? e.message : String(e)}`);
@@ -363,6 +369,11 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
       {msg && (
         <div className={`alert ${fehler.length > 0 ? "err" : "ok"}`} style={{ marginTop: 5 }}>
           {fehler.length > 0 ? "⚠" : "✓"} {msg}
+        </div>
+      )}
+      {msg && hinweise.length > 0 && (
+        <div style={{ marginTop: 5, padding: "6px 8px", background: "#fff6e5", border: "1px solid #f0c975", fontSize: 10, color: "#8a5a00", lineHeight: 1.45 }}>
+          {hinweise.map((h, k) => <div key={k}>⚠ {h}</div>)}
         </div>
       )}
 

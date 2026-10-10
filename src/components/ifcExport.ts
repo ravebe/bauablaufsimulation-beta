@@ -18,7 +18,7 @@
 // Zusätzlich bekommt jedes zugeordnete Bauteil ein Property Set "Bauablauf" (Vorgang, Termine, Typ …),
 // damit die Infos auch in Viewern ohne 4D-Unterstützung (z.B. Trimble Connect) sichtbar sind.
 import type { Task, TaskTyp, Kran } from "../types";
-import { TASK_TYP_LABEL, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, parseDateUniversal } from "../types";
+import { TASK_TYP_LABEL, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, parseDateUniversal, vorgaengerListe } from "../types";
 import type { Kalender } from "./kalenderHelpers";
 import { arbeitstageZwischen, getKW, LEERER_KALENDER } from "./kalenderHelpers";
 
@@ -337,18 +337,20 @@ export function erzeuge4dIfc(e: IfcExportEingabe): IfcExportErgebnis {
   const idxById = new Map(tasks.map((t, i) => [t.id, i]));
   let sequenzen = 0;
   tasks.forEach((t, i) => {
-    if (!t.predecessorId) return;
-    const p = idxById.get(t.predecessorId);
-    if (p === undefined || p === i) return;
-    const lag = t.lagDays ?? 0;
-    const sg = g(`rel-seq|${t.predecessorId}|${t.id}`);
-    if (ist4) {
-      const lagRef = lag !== 0 ? ref(w.add(`IFCLAGTIME($,$,$,IFCDURATION('${isoDauerTage(lag)}'),.ELAPSEDTIME.)`)) : "$";
-      w.add(`IFCRELSEQUENCE('${sg}',${oh},$,$,${ref(taskIds[p])},${ref(taskIds[i])},${lagRef},.FINISH_START.,$)`);
-    } else {
-      w.add(`IFCRELSEQUENCE('${sg}',${oh},$,$,${ref(taskIds[p])},${ref(taskIds[i])},${stepReal(lag * 86400)},.FINISH_START.)`);
+    // eine IfcRelSequence je Vorgänger (bis 30), Wartetage als verstrichene Zeit (Kalendertage)
+    for (const v of vorgaengerListe(t)) {
+      const p = idxById.get(v.id);
+      if (p === undefined || p === i) continue;
+      const lag = v.lagDays ?? 0;
+      const sg = g(`rel-seq|${v.id}|${t.id}`);
+      if (ist4) {
+        const lagRef = lag !== 0 ? ref(w.add(`IFCLAGTIME($,$,$,IFCDURATION('${isoDauerTage(lag)}'),.ELAPSEDTIME.)`)) : "$";
+        w.add(`IFCRELSEQUENCE('${sg}',${oh},$,$,${ref(taskIds[p])},${ref(taskIds[i])},${lagRef},.FINISH_START.,$)`);
+      } else {
+        w.add(`IFCRELSEQUENCE('${sg}',${oh},$,$,${ref(taskIds[p])},${ref(taskIds[i])},${stepReal(lag * 86400)},.FINISH_START.)`);
+      }
+      sequenzen++;
     }
-    sequenzen++;
   });
 
   // --- Bauteile ↔ Tasks ---
@@ -426,12 +428,12 @@ export function erzeuge4dIfc(e: IfcExportEingabe): IfcExportErgebnis {
       prop("Ende_KW", `IFCLABEL(${label(vereint(idx.map(i => kw(termine[i].ende))))})`));
     const gruppe = vereint(idx.map(i => elternIdx[i] !== null ? taskName(tasks[elternIdx[i]!], elternIdx[i]!) : ""));
     if (gruppe) props.push(prop("Gruppe", `IFCLABEL(${label(gruppe)})`));
-    const vorg = vereint(ts.map(t => {
-      const p = t.predecessorId ? idxById.get(t.predecessorId) : undefined;
+    const vorg = vereint(ts.map(t => vorgaengerListe(t).map(v => {
+      const p = idxById.get(v.id);
       return p !== undefined ? `${nummern.get(tasks[p].id) ?? ""} ${taskName(tasks[p], p)}`.trim() : "";
-    }));
+    }).filter(Boolean).join(", ")));
     if (vorg) props.push(prop("Vorgaenger", `IFCLABEL(${label(vorg)})`));
-    const warte = vereint(ts.filter(t => t.predecessorId && t.lagDays).map(t => String(t.lagDays)));
+    const warte = vereint(ts.filter(t => vorgaengerListe(t).some(v => v.lagDays)).map(t => vorgaengerListe(t).map(v => String(v.lagDays ?? 0)).join(", ")));
     if (warte) props.push(prop("Wartetage", `IFCLABEL(${label(warte)})`));
     const kuerzel = vereint(ts.map(t => t.bauteilKuerzel ?? ""));
     if (kuerzel) props.push(prop("Kuerzel", `IFCIDENTIFIER(${label(kuerzel)})`));

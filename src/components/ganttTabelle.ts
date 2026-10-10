@@ -4,7 +4,8 @@
 // (Gruppen A, B, C… / Tasks 1, 2, 3…), auf die sich die Spalte "Vorgänger" bezieht.
 // MS-Project-XML hat dafür eigene Felder (OutlineLevel/Summary), siehe msProjectXml.ts.
 import type { Task } from "../types";
-import { berechneNummern, formatDatum, getOutlineLevel, gruppenDaten, istGruppe, isValidDatum } from "../types";
+import { berechneNummern, formatDatum, getOutlineLevel, gruppenDaten, istGruppe, isValidDatum, vorgaengerListe, mitVorgaengern, MAX_VORGAENGER } from "../types";
+import type { VorgaengerLink } from "../types";
 import type { Kalender } from "./kalenderHelpers";
 
 /** Spalten mit fester Bedeutung — gleichnamige Zusatzspalten werden nicht exportiert (Doppelbelegung). */
@@ -39,7 +40,8 @@ export function exportZeilen(tasks: Task[], kalender?: Kalender): ExportZeile[] 
       start: zeitraum.start ? formatDatum(zeitraum.start) : "",
       ende: zeitraum.end ? formatDatum(zeitraum.end) : "",
       typ: gruppe ? "" : t.typ,
-      vorgaenger: t.predecessorId ? nummern.get(t.predecessorId) ?? "" : "",
+      // mehrere Vorgänger wie MS Project: "26, 27+2" — die Wartetage des ERSTEN stehen in der Spalte Wartetage, die weiteren als +n
+      vorgaenger: vorgaengerListe(t).map((v, k) => `${nummern.get(v.id) ?? ""}${k > 0 && v.lagDays ? (v.lagDays > 0 ? `+${v.lagDays}` : `${v.lagDays}`) : ""}`).join(", "),
       wartetage: t.predecessorId ? (t.lagDays ?? 0) : "",
       kuerzel: gruppe ? "" : t.bauteilKuerzel ?? "",
       bauteile: gruppe ? "" : t.objektGuids.length,
@@ -123,12 +125,23 @@ export function baueImportTasks(zeilenRoh: ImportZeile[]): Task[] {
   zeilen.forEach((z, i) => { const nr = schluessel(z.nrRoh ?? ""); if (nr && !idByNr.has(nr)) idByNr.set(nr, tasks[i].id); });
   const idByAppNr = new Map([...berechneNummern(tasks)].map(([id, nr]) => [nr, id]));
   const idByName = new Map(tasks.map(t => [t.name.toLowerCase(), t.id]));
+  const finde = (s: string) => idByNr.get(schluessel(s)) ?? idByAppNr.get(schluessel(s)) ?? idByName.get(s.trim().toLowerCase());
   return tasks.map((t, i) => {
     const roh = zeilen[i].vorgRoh.trim();
     if (!roh) return t;
-    const predId = idByNr.get(schluessel(roh)) ?? idByAppNr.get(schluessel(roh)) ?? idByName.get(roh.toLowerCase());
-    if (!predId || predId === t.id) return t;
-    const lag = Number(String(zeilen[i].lagRoh ?? "0").replace(",", ".")) || 0;
-    return { ...t, predecessorId: predId, lagDays: lag };
+    const ersterLag = Number(String(zeilen[i].lagRoh ?? "0").replace(",", ".")) || 0;
+    // ganzer Text = ein Vorgänger (Nummer oder Taskname, auch mit Komma im Namen)
+    const ganz = finde(roh);
+    if (ganz) return ganz === t.id ? t : mitVorgaengern(t, [{ id: ganz, lagDays: ersterLag }]);
+    // sonst Liste "26, 27+2; 30" — bis 30 Vorgänger, je mit eigenen Wartetagen
+    const liste: VorgaengerLink[] = [];
+    roh.split(/[,;]/).map(s => s.trim()).filter(Boolean).forEach((teil, k) => {
+      const m = teil.match(/^(.+?)\s*([+-]\s*\d+(?:[.,]\d+)?)?$/);
+      const id = finde(m?.[1] ?? teil);
+      if (!id || id === t.id) return;
+      const lag = m?.[2] ? Math.round(Number(m[2].replace(/\s/g, "").replace(",", "."))) : (k === 0 ? ersterLag : 0);
+      liste.push({ id, lagDays: lag });
+    });
+    return liste.length ? mitVorgaengern(t, liste.slice(0, MAX_VORGAENGER)) : t;
   });
 }

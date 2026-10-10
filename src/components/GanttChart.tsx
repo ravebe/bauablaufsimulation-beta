@@ -1,8 +1,8 @@
 import { useRef, useState, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
 import { lsGet, lsSet } from "../hooks/lokalSpeicher";
 import { createPortal } from "react-dom";
-import type { Task } from "../types";
-import { datumsPaarVerschieben, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks, nsKey, TASK_TYP_FARBE } from "../types";
+import type { Task, VorgaengerLink } from "../types";
+import { vorgaengerListe, vorgaengerText, parseVorgaengerText, massgebenderVorgaenger, letzterVorgaengerEintrag, ersetzeLetztenVorgaengerEintrag, datumsPaarVerschieben, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks, nsKey, TASK_TYP_FARBE } from "../types";
 import type { Kalender } from "./kalenderHelpers";
 import { istArbeitstag, LEERER_KALENDER, getKW, arbeitstageZwischen, endDatumAusArbeitstagen, ersterArbeitstagAb, letzterArbeitstagBis, arbeitsBloecke } from "./kalenderHelpers";
 import DatePicker from "./DatePicker";
@@ -33,7 +33,8 @@ interface Props {
   onDateChange?: (taskId: string, newStart: string, newEnd: string) => void;
   onTaskReorder?: (fromIdx: number, toIdx: number) => void;
   onTaskRename?: (taskId: string, newName: string) => void;
-  onSetPredecessor?: (taskId: string, predId: string | null, lagDays: number) => void;
+  /** Vorgänger setzen — Liste (bis 30) mit eigenen Wartetagen, leer = keine */
+  onSetPredecessor?: (taskId: string, liste: VorgaengerLink[]) => void;
   showObjektCount?: boolean;
   suchQuery?: string;
   nadelStil?: "normal" | "ghost";
@@ -167,8 +168,8 @@ export default function GanttChart({ tagRef, laeuft, selektionFokus, projectId =
     const POPOVER_W = 190;
     setPredPos({ top: r.bottom + 2, left: Math.min(r.right - POPOVER_W, window.innerWidth - POPOVER_W - 4) });
     setPredPickerTaskId(t.id);
-    setPredInput(t.predecessorId ? nummern.get(t.predecessorId) ?? "" : "");
-    setLagInput(String(t.lagDays ?? 0));
+    setPredInput(vorgaengerText(t, nummern));
+    setLagInput("0");
     // Bei bereits gesetztem Vorgänger gleich Wartetage zeigen statt der Liste (nur bei neuer Auswahl automatisch aufklappen)
     setPredListOffen(!t.predecessorId);
   }
@@ -567,14 +568,16 @@ export default function GanttChart({ tagRef, laeuft, selektionFokus, projectId =
                       <span style={{ fontWeight: 500, color: "#666" }}>
                         {nummern.get(t.id) ?? ""}
                       </span>
-                      {t.predecessorId && (
-                        <span style={{ color: "#999", fontStyle: "italic" }}> | {nummern.get(t.predecessorId) ?? "?"}</span>
-                      )}
+                      {t.predecessorId && (() => {
+                        const mehrere = vorgaengerListe(t).length > 1;
+                        const m = mehrere ? massgebenderVorgaenger(tasks, t, kalender) : t.predecessorId;
+                        return <span style={{ color: "#999", fontStyle: "italic" }} title={`Vorgänger: ${vorgaengerText(t, nummern)}`}> | {nummern.get(m ?? "") ?? "?"}{mehrere ? "+" : ""}</span>;
+                      })()}
                       {predPickerTaskId === t.id && (() => {
                         const predUebernehmen = () => {
-                          const treffer = gueltigeVorgaenger(tasks, t.id)
-                            .find(c => (nummern.get(c.id) ?? "").toLowerCase() === predInput.trim().toLowerCase());
-                          if (treffer) onSetPredecessor?.(t.id, treffer.id, Number(lagInput) || 0);
+                          // "26, 27+2" — mehrere Vorgänger mit Komma, je eigene Wartetage als +n (sonst gilt das Feld Wartetage)
+                          const { liste } = parseVorgaengerText(predInput, gueltigeVorgaenger(tasks, t.id), nummern, Number(lagInput) || 0);
+                          if (liste.length || !predInput.trim()) onSetPredecessor?.(t.id, liste);
                           setPredPickerTaskId(null);
                         };
                         return createPortal(
@@ -584,7 +587,7 @@ export default function GanttChart({ tagRef, laeuft, selektionFokus, projectId =
                           onClick={e => e.stopPropagation()}
                           onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); predUebernehmen(); } }}>
                           <div style={{ position: "relative" }}>
-                            <div style={{ fontSize: 9, color: "#8a9baa", marginBottom: 2 }}>Vorgänger (Nummer)</div>
+                            <div style={{ fontSize: 9, color: "#8a9baa", marginBottom: 2 }}>Vorgänger — mehrere mit Komma, z.B. 26, 27+2</div>
                             <input className="ac-input" style={{ fontSize: 11, padding: "3px 6px", width: "100%" }}
                               placeholder="— kein Vorgänger —"
                               value={predInput}
@@ -595,24 +598,25 @@ export default function GanttChart({ tagRef, laeuft, selektionFokus, projectId =
                                 {gueltigeVorgaenger(tasks, t.id)
                                   .filter(c => {
                                     const lbl = nummern.get(c.id) ?? "";
-                                    return !predInput || lbl.toLowerCase().startsWith(predInput.trim().toLowerCase()) || c.name.toLowerCase().includes(predInput.trim().toLowerCase());
+                                    const tok = letzterVorgaengerEintrag(predInput).toLowerCase();
+                                    return !tok || lbl.toLowerCase().startsWith(tok) || c.name.toLowerCase().includes(tok);
                                   })
                                   .map(c => (
                                     <div key={c.id} data-cid={c.id} className="ac-item" style={{ fontSize: 11, padding: "3px 6px" }}
-                                      onMouseDown={() => { setPredInput(nummern.get(c.id) ?? ""); setPredListOffen(false); }}>
+                                      onMouseDown={() => { setPredInput(ersetzeLetztenVorgaengerEintrag(predInput, nummern.get(c.id) ?? "")); setPredListOffen(false); }}>
                                       <span style={{ fontWeight: 600 }}>{nummern.get(c.id)}</span> — {c.name}
                                     </div>
                                   ))}
                               </div>
                             )}
                           </div>
-                          <div style={{ fontSize: 9, color: "#8a9baa", marginTop: 6 }}>Wartetage nach Vorgänger-Ende</div>
+                          <div style={{ fontSize: 9, color: "#8a9baa", marginTop: 6 }}>Wartetage (für Nummern ohne +n)</div>
                           <input type="number" className="ac-input" style={{ fontSize: 11, padding: "3px 6px", width: "100%", marginTop: 2 }}
                             value={lagInput}
                             onChange={e => setLagInput(e.target.value)} />
                           <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
                             <button className="tc-btn-ghost" style={{ flex: 1, fontSize: 10 }}
-                              onClick={() => { onSetPredecessor?.(t.id, null, 0); setPredPickerTaskId(null); }}>Entfernen</button>
+                              onClick={() => { onSetPredecessor?.(t.id, []); setPredPickerTaskId(null); }}>Entfernen</button>
                             <button className="tc-btn-primary" style={{ flex: 1, fontSize: 10 }}
                               onClick={predUebernehmen}>Übernehmen</button>
                           </div>

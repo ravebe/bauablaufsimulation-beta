@@ -524,7 +524,7 @@ export default function TabProjekte({ api, laedt, sims, setSims, aktivId, setAkt
                     const norm = normalisiereAufArbeitstage(neueTasks, simsRef.current.find(s => s.id === sim.id)?.kalender);
                     const ab = gleicheGanttAb(simsRef.current.find(s => s.id === sim.id)?.tasks ?? [], norm.tasks);
                     if (norm.geaendert > 0) {
-                      setModellMsg({ simId: sim.id, typ: "ok", text: `${norm.geaendert} Task(s) beim Import auf Arbeitstage angepasst (Start auf einen Arbeitstag, Wochenenden/Feiertage/Ferien nicht mitgezählt)` });
+                      setModellMsg({ simId: sim.id, typ: "ok", text: `${norm.geaendert} Task(s) lagen ganz oder teilweise auf Wochenenden, Feiertagen oder Ferien und wurden auf Arbeitstage verschoben (Start auf den nächsten Arbeitstag, freie Tage zählen nicht zur Dauer). Für Wochenendarbeit im Kalender-Dialog den Schalter ausschalten.` });
                     }
                     setSims(prev => prev.map(s => s.id === sim.id ? {
                       ...s, tasks: ab.tasks,

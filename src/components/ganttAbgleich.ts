@@ -4,6 +4,7 @@
 // Zuordnung: 1. gleicher Pfad (Gruppen + Name, z.B. "Rohbau › UG › Wand 01"), 2. gleicher Name, falls auf
 // beiden Seiten eindeutig. Gruppen werden mit abgeglichen (nur für stabile IDs).
 import type { Task } from "../types";
+import { vorgaengerListe, mitVorgaengern as mitVorgaengernSetzen } from "../types";
 import { getOutlineLevel } from "../types";
 
 const norm = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
@@ -74,7 +75,11 @@ export function gleicheGanttAb(alt: Task[], neu: Task[]): AbgleichErgebnis {
     return r;
   });
   // Vorgänger verweisen auf die IDs aus der Datei → auf die übernommenen IDs umstellen
-  const mitVorgaengern = tasks.map(t => (t.predecessorId && idNeuZuAlt.has(t.predecessorId) ? { ...t, predecessorId: idNeuZuAlt.get(t.predecessorId) } : t));
+  const mitVorgaengern = tasks.map(t => {
+    const liste = vorgaengerListe(t);
+    if (!liste.some(v => idNeuZuAlt.has(v.id))) return t;
+    return mitVorgaengernSetzen(t, liste.map(v => ({ ...v, id: idNeuZuAlt.get(v.id) ?? v.id })));
+  });
 
   const weg = [...frei].map(i => alt[i]).filter(t => t.objektGuids.length > 0);
   return {

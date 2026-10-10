@@ -146,7 +146,7 @@ export function leseBauablaufAusIfc(text: string, neueId: () => string = () => c
   // 3. Hierarchie, Vorgänger, Bauteile
   const kinder = new Map<number, number[]>();
   const hatEltern = new Set<number>();
-  const vorg = new Map<number, { pred: number; lag: number }>();
+  const vorg = new Map<number, { pred: number; lag: number }[]>(); // je Task alle Vorgänger (mehrere IfcRelSequence)
   const bauteilRefs = new Map<number, number[]>();
   const add = (tid: number, el: number) => { if (!bauteilRefs.has(tid)) bauteilRefs.set(tid, []); bauteilRefs.get(tid)!.push(el); };
   let terminplanName: string | undefined;
@@ -166,7 +166,7 @@ export function leseBauablaufAusIfc(text: string, neueId: () => string = () => c
       } else {
         lag = Math.round(Number(wert(a[6]) ?? 0) / 86400);
       }
-      vorg.set(ref1(a[5]), { pred: ref1(a[4]), lag });
+      vorg.set(ref1(a[5]), [...(vorg.get(ref1(a[5])) ?? []), { pred: ref1(a[4]), lag }]);
     } else if (r.typ === "IFCRELASSIGNSTOPROCESS" && taskIds.has(ref1(a[6]))) {
       refsIn(a[4]).forEach(el => add(ref1(a[6]), el));
     } else if (r.typ === "IFCRELASSIGNSTOPRODUCT") {
@@ -253,7 +253,12 @@ export function leseBauablaufAusIfc(text: string, neueId: () => string = () => c
       objektGuids: [],
       outlineLevel: level,
       ...(gruppe ? { isGroup: true } : {}),
-      ...(v && idVon.has(v.pred) ? { predecessorId: idVon.get(v.pred), lagDays: v.lag } : {}),
+      ...(() => {
+        const links = (v ?? []).filter(x => idVon.has(x.pred)).slice(0, 30).map(x => ({ id: idVon.get(x.pred)!, lagDays: x.lag }));
+        if (!links.length) return {};
+        const [erster, ...rest] = links;
+        return { predecessorId: erster.id, lagDays: erster.lagDays, ...(rest.length ? { weitereVorgaenger: rest } : {}) };
+      })(),
       ...(pw.Kuerzel ? { bauteilKuerzel: pw.Kuerzel } : {}),
       ...(pw.Bauphase ? { kranbereich: pw.Bauphase } : {}),
       ...(pw.Kran ? { kraene: pw.Kran.split(" | ").filter(Boolean).map(kranId) } : {}),

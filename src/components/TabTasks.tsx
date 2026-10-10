@@ -3,9 +3,11 @@ import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import { lsSet } from "../hooks/lokalSpeicher";
 import { createPortal } from "react-dom";
 import type { SimProjekt, Task, TaskTyp } from "../types";
-import { LEERER_KALENDER, folgeStart } from "./kalenderHelpers";
+import { LEERER_KALENDER } from "./kalenderHelpers";
+import type { VorgaengerLink } from "../types";
 import { formatDatum, normalizeDatum, datumsPaarVerschieben, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, getKinder,
-  berechneNummern, gueltigeVorgaenger, verschiebeAufStart, kaskadiereNachfolger,
+  berechneNummern, gueltigeVorgaenger, verschiebeAufStart, kaskadiereNachfolger, vorgaengerListe, mitVorgaengern, vorgaengerText, parseVorgaengerText,
+  massgebenderVorgaenger, vorgaengerStart, letzterVorgaengerEintrag, ersetzeLetztenVorgaengerEintrag,
   taskVerschieben as verschiebeTaskBlock, sucheSortiereTasks, nsKey, TASK_TYP_LISTE, TASK_TYP_LABEL, TASK_TYP_FARBE } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { batchGetProperties, batchConvertToObjectIds } from "../hooks/useApi";
@@ -358,21 +360,19 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
     const POPOVER_W = 190;
     setPredPos({ top: r.bottom + 2, left: Math.min(r.right - POPOVER_W, window.innerWidth - POPOVER_W - 4) });
     setPredPickerTaskId(task.id);
-    setPredInput(task.predecessorId ? nummern.get(task.predecessorId) ?? "" : "");
-    setLagInput(String(task.lagDays ?? 0));
+    setPredInput(vorgaengerText(task, nummern));
+    setLagInput("0");
     // Bei bereits gesetztem Vorgänger gleich Wartetage zeigen statt der Liste (nur bei neuer Auswahl automatisch aufklappen)
     setPredListOffen(!task.predecessorId);
   }
 
-  function vorgängerSetzen(taskId: string, predId: string | null, lagDays: number) {
+  function vorgängerSetzen(taskId: string, liste: VorgaengerLink[]) {
     const kal = aktiveSim.kalender ?? LEERER_KALENDER;
-    let tasks = aktiveSim.tasks.map(t => t.id === taskId ? { ...t, predecessorId: predId ?? undefined, lagDays } : t);
-    if (predId) {
-      const predIdx = tasks.findIndex(t => t.id === predId);
-      const pred = tasks[predIdx];
-      const predEnd = pred?.isGroup ? gruppenDaten(tasks, predIdx).end : pred?.end;
-      if (predEnd) tasks = verschiebeAufStart(tasks, taskId, folgeStart(predEnd, lagDays, kal), kal);
-    }
+    let tasks = aktiveSim.tasks.map(t => t.id === taskId ? mitVorgaengern(t, liste) : t);
+    // Start nach dem spätesten Vorgänger (Tag nach dessen Ende + Wartetage, auf Arbeitstag gerückt)
+    const neu = tasks.find(t => t.id === taskId);
+    const start = neu ? vorgaengerStart(tasks, neu, kal) : null;
+    if (start) tasks = verschiebeAufStart(tasks, taskId, start, kal);
     tasks = kaskadiereNachfolger(tasks, taskId, kal);
     updateSim({ ...aktiveSim, tasks });
     setPredPickerTaskId(null);
@@ -592,14 +592,16 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                   <span style={{ fontWeight: 500, color: "#666" }}>
                     {nummern.get(task.id) ?? ""}
                   </span>
-                  {task.predecessorId && (
-                    <span style={{ color: "#999", fontStyle: "italic" }}> | {nummern.get(task.predecessorId) ?? "?"}</span>
-                  )}
+                  {task.predecessorId && (() => {
+                    const mehrere = vorgaengerListe(task).length > 1;
+                    const m = mehrere ? massgebenderVorgaenger(aktiveSim.tasks, task, aktiveSim.kalender) : task.predecessorId;
+                    return <span style={{ color: "#999", fontStyle: "italic" }} title={`Vorgänger: ${vorgaengerText(task, nummern)}`}> | {nummern.get(m ?? "") ?? "?"}{mehrere ? "+" : ""}</span>;
+                  })()}
                   {predPickerTaskId === task.id && (() => {
                     const predUebernehmen = () => {
-                      const treffer = gueltigeVorgaenger(aktiveSim.tasks, task.id)
-                        .find(c => (nummern.get(c.id) ?? "").toLowerCase() === predInput.trim().toLowerCase());
-                      if (treffer) vorgängerSetzen(task.id, treffer.id, Number(lagInput) || 0);
+                      // "26, 27+2" — mehrere Vorgänger mit Komma, je eigene Wartetage als +n (sonst gilt das Feld Wartetage)
+                      const { liste } = parseVorgaengerText(predInput, gueltigeVorgaenger(aktiveSim.tasks, task.id), nummern, Number(lagInput) || 0);
+                      if (liste.length || !predInput.trim()) vorgängerSetzen(task.id, liste);
                       else setPredPickerTaskId(null);
                     };
                     return createPortal(
@@ -609,7 +611,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                       onClick={e => e.stopPropagation()}
                       onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); predUebernehmen(); } }}>
                       <div style={{ position: "relative" }}>
-                        <div style={{ fontSize: 9, color: "#8a9baa", marginBottom: 2 }}>Vorgänger (Nummer)</div>
+                        <div style={{ fontSize: 9, color: "#8a9baa", marginBottom: 2 }}>Vorgänger — mehrere mit Komma, z.B. 26, 27+2</div>
                         <input className="ac-input" style={{ fontSize: 11, padding: "3px 6px", width: "100%" }}
                           placeholder="— kein Vorgänger —"
                           value={predInput}
@@ -620,24 +622,25 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                             {gueltigeVorgaenger(aktiveSim.tasks, task.id)
                               .filter(c => {
                                 const lbl = nummern.get(c.id) ?? "";
-                                return !predInput || lbl.toLowerCase().startsWith(predInput.trim().toLowerCase()) || c.name.toLowerCase().includes(predInput.trim().toLowerCase());
+                                const tok = letzterVorgaengerEintrag(predInput).toLowerCase();
+                                return !tok || lbl.toLowerCase().startsWith(tok) || c.name.toLowerCase().includes(tok);
                               })
                               .map(c => (
                                 <div key={c.id} data-cid={c.id} className="ac-item" style={{ fontSize: 11, padding: "3px 6px" }}
-                                  onMouseDown={() => { setPredInput(nummern.get(c.id) ?? ""); setPredListOffen(false); }}>
+                                  onMouseDown={() => { setPredInput(ersetzeLetztenVorgaengerEintrag(predInput, nummern.get(c.id) ?? "")); setPredListOffen(false); }}>
                                   <span style={{ fontWeight: 600 }}>{nummern.get(c.id)}</span> — {c.name}
                                 </div>
                               ))}
                           </div>
                         )}
                       </div>
-                      <div style={{ fontSize: 9, color: "#8a9baa", marginTop: 6 }}>Wartetage nach Vorgänger-Ende</div>
+                      <div style={{ fontSize: 9, color: "#8a9baa", marginTop: 6 }}>Wartetage (für Nummern ohne +n)</div>
                       <input type="number" className="ac-input" style={{ fontSize: 11, padding: "3px 6px", width: "100%", marginTop: 2 }}
                         value={lagInput}
                         onChange={e => setLagInput(e.target.value)} />
                       <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
                         <button className="tc-btn-ghost" style={{ flex: 1, fontSize: 10 }}
-                          onClick={() => vorgängerSetzen(task.id, null, 0)}>Entfernen</button>
+                          onClick={() => vorgängerSetzen(task.id, [])}>Entfernen</button>
                         <button className="tc-btn-primary" style={{ flex: 1, fontSize: 10 }}
                           onClick={predUebernehmen}>Übernehmen</button>
                       </div>
