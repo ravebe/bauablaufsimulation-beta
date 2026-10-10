@@ -36,6 +36,9 @@ export async function zeigeBauteileImModell(api: ApiInstance, batch: { modelId: 
   };
   let fehler: unknown = null;
   try { await viewerSetSelection.setSelection({ modelObjectIds: batch }, "set"); } catch (e) { fehler = e; console.warn("[zeigeBauteileImModell] Markieren fehlgeschlagen:", e); }
+  // Auswahl vergrössern: Kamera auf die markierten Bauteile fahren (scheitert das, bleibt die Markierung bestehen)
+  try { await (api.viewer as unknown as { setCamera: (z: unknown, o?: unknown) => Promise<void> }).setCamera({ modelObjectIds: batch }, { animationTime: 300 }); }
+  catch (e) { console.warn("[zeigeBauteileImModell] Auswahl vergrössern fehlgeschlagen:", e); }
   // 2. Freistellen: alles andere ausblenden, nur der Batch bleibt sichtbar
   try {
     const modelle = await api.viewer.getModels();
