@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import type { Task } from "../types";
 import { datumsPaarVerschieben, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks, nsKey, TASK_TYP_FARBE } from "../types";
 import type { Kalender } from "./kalenderHelpers";
-import { istArbeitstag, LEERER_KALENDER, getKW } from "./kalenderHelpers";
+import { istArbeitstag, LEERER_KALENDER, getKW, arbeitstageZwischen } from "./kalenderHelpers";
 import DatePicker from "./DatePicker";
 import { useDoppelklickHinweis } from "../hooks/useDoppelklickHinweis";
 import { ZoomControls } from "./cockpitCharts";
@@ -82,7 +82,7 @@ export default function GanttChart({ tagRef, laeuft, selektionFokus, projectId =
     const sd = parseDateUniversal(t.start), ed = parseDateUniversal(t.end);
     if (sd && minDate) {
       const sT = (sd.getTime() - minDate.getTime()) / 86400000;
-      const eT = ed ? (ed.getTime() - minDate.getTime()) / 86400000 : sT + 1;
+      const eT = ed ? (ed.getTime() - minDate.getTime()) / 86400000 + 1 : sT + 1;
       body.scrollLeft = Math.max(0, ((sT + eT) / 2) * pxRef.current - body.clientWidth / 2);
       if (headerRef.current) headerRef.current.scrollLeft = body.scrollLeft;
     }
@@ -308,14 +308,14 @@ export default function GanttChart({ tagRef, laeuft, selektionFokus, projectId =
     if (!editable || !minDate || !onDateChange) return;
     e.preventDefault(); e.stopPropagation(); scrollLock.current = true;
     setEditingTaskId(taskId);
-    const sx = e.clientX, oS = (origStart.getTime() - minDate.getTime()) / 86400000, oE = (origEnd.getTime() - minDate.getTime()) / 86400000, dur = oE - oS;
+    const sx = e.clientX, oS = (origStart.getTime() - minDate.getTime()) / 86400000, oE = (origEnd.getTime() - minDate.getTime()) / 86400000 + 1, dur = oE - oS; // oE: Ende des letzten Tages
     const onMove = (ev: MouseEvent) => {
       const dd = Math.round((ev.clientX - sx) / pxProTag);
       let nS = oS, nE = oE;
       if (mode === "start") { nS = Math.max(0, oS + dd); if (nS >= nE) nS = nE - 1; }
       else if (mode === "end") { nE = Math.max(nS + 1, oE + dd); }
       else { nS = Math.max(0, oS + dd); nE = nS + dur; }
-      onDateChange(taskId, fmtISO(new Date(minDate.getTime() + nS * 86400000)), fmtISO(new Date(minDate.getTime() + nE * 86400000)));
+      onDateChange(taskId, fmtISO(new Date(minDate.getTime() + nS * 86400000)), fmtISO(new Date(minDate.getTime() + (nE - 1) * 86400000)));
     };
     const onUp = () => { setEditingTaskId(null); setTimeout(() => { scrollLock.current = false; }, 200); document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
     document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp);
@@ -384,7 +384,7 @@ export default function GanttChart({ tagRef, laeuft, selektionFokus, projectId =
   });
   sortedRef.current = sorted;
 
-  const chartW = Math.max(totalTage * pxProTag, 200);
+  const chartW = Math.max((totalTage + 1) * pxProTag, 200); // +1: der letzte Tag wird als ganzer Tag gezeichnet
   const bodyH = sorted.length * ROW_H;
   const longDates = pxProTag >= 8;
 
@@ -495,12 +495,12 @@ export default function GanttChart({ tagRef, laeuft, selektionFokus, projectId =
           <div style={{ height: bodyH }}>
             {sorted.map(({ task: t, origIdx }, i) => {
               const sd = parseDateUniversal(t.start), ed = parseDateUniversal(t.end);
-              const dauer = sd && ed ? Math.max(1, Math.round((ed.getTime() - sd.getTime()) / 86400000)) : 1;
+              const dauer = sd && ed ? arbeitstageZwischen(t.start, t.end, kalender) : 1;
               const isSel = selectedIds.includes(t.id);
               const hasSel = selGuids?.size ? t.objektGuids.some(g => selGuids!.has(g)) : false;
               const isEditing = editingTaskId === t.id || calEdit?.taskId === t.id;
               const isGrp = t.isGroup || istGruppe(tasks, origIdx);
-              const gDaten = isGrp ? gruppenDaten(tasks, origIdx) : null;
+              const gDaten = isGrp ? gruppenDaten(tasks, origIdx, kalender) : null;
               const level = getOutlineLevel(t);
               const indent = (level - 1) * 12;
               const maxC = Math.max(4, Math.floor((labelW - 55 - indent) / 7));
@@ -662,13 +662,14 @@ export default function GanttChart({ tagRef, laeuft, selektionFokus, projectId =
 
             {sorted.map(({ task: t, origIdx }, i) => {
               const isGrp = t.isGroup || istGruppe(tasks, origIdx);
-              const gDaten = isGrp ? gruppenDaten(tasks, origIdx) : null;
+              const gDaten = isGrp ? gruppenDaten(tasks, origIdx, kalender) : null;
               const effStart = isGrp && gDaten ? gDaten.start : t.start;
               const effEnd = isGrp && gDaten ? gDaten.end : t.end;
               const y = i * ROW_H, sd = parseDateUniversal(effStart), ed = parseDateUniversal(effEnd);
               const sT = sd ? Math.max(0, (sd.getTime() - minDate.getTime()) / 86400000) : 0;
-              const eT = ed ? (ed.getTime() - minDate.getTime()) / 86400000 : sT + 1;
-              const dauer = Math.max(1, Math.round(eT - sT));
+              // Ende ist der LETZTE Tag der Dauer → Balken reicht bis zum Ende dieses Tages (+1); Beschriftung in Arbeitstagen wie Tab Kalkulation/IFC
+              const eT = ed ? (ed.getTime() - minDate.getTime()) / 86400000 + 1 : sT + 1;
+              const dauer = sd && ed ? arbeitstageZwischen(effStart, effEnd, kalender) : 1;
               const bX = sT * pxProTag, bW = Math.max((eT - sT) * pxProTag, 3);
               const isSel = selectedIds.includes(t.id), hasSel = selGuids?.size ? t.objektGuids.some(g => selGuids!.has(g)) : false;
               const isEditing = editingTaskId === t.id || calEdit?.taskId === t.id;
