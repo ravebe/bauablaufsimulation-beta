@@ -64,7 +64,7 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
   }
 
   // Standard-Spaltennamen die NICHT als Extra gelten
-  const STANDARD = new Set(["name","start","startdatum","ende","enddatum","end","finish","fertig","anfang","begin","von","bis","typ","type","kategorie","vorgangsname","vorgang","task","bezeichnung","vorgänger","vorganger","predecessor","wartetage","lag","lagdays","lag days","kürzel","kuerzel","bauteil-kürzel","bauteil-kuerzel","bauteile","nr","nr.","nummer","gruppe","ebene","gliederungsebene","outlinelevel"]);
+  const STANDARD = new Set(["name","start","startdatum","ende","enddatum","end","finish","fertig","anfang","begin","von","bis","typ","type","kategorie","vorgangsname","vorgang","task","bezeichnung","vorgänger","vorganger","predecessor","wartetage","lag","lagdays","lag days","kürzel","kuerzel","bauteil-kürzel","bauteil-kuerzel","bauteile","nr","nr.","nummer","gruppe","ebene","gliederungsebene","outlinelevel","reihenfolge"]);
   const VORGAENGER_SPALTEN = ["Vorgänger", "vorgänger", "Vorganger", "Predecessor", "predecessor"];
   const WARTETAGE_SPALTEN = ["Wartetage", "wartetage", "Lag", "lag", "Lag Days", "LagDays"];
   const KUERZEL_SPALTEN = ["Kürzel", "kürzel", "Kuerzel", "kuerzel", "Bauteil-Kürzel", "bauteil-kürzel"];
@@ -188,7 +188,7 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
     return baueImportTasks(rows);
   }
 
-  const XML_STANDARD_TAGS = new Set(["name","start","earlystart","finish","end","ende","typ","type","kuerzel","kürzel","objects","bauteile","vorgaenger","vorgänger","predecessor","wartetage","lag","nr","gruppe","ebene"]);
+  const XML_STANDARD_TAGS = new Set(["name","start","earlystart","finish","end","ende","typ","type","kuerzel","kürzel","objects","bauteile","vorgaenger","vorgänger","predecessor","wartetage","lag","nr","gruppe","ebene","reihenfolge"]);
 
   function parseXml(text: string): Task[] {
     if (istMsProjectXml(text)) return parseMsProjectXml(text);
@@ -225,7 +225,7 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
   }
 
   // JSON aus dem eigenen Export (Array von Tasks, oder { tasks: [...] })
-  const JSON_STANDARD = new Set(["nr", "gruppe", "ebene", "name", "start", "end", "ende", "typ", "kuerzel", "bauteile", "guids", "vorgaenger", "wartetage"]);
+  const JSON_STANDARD = new Set(["reihenfolge", "nr", "gruppe", "ebene", "name", "start", "end", "ende", "typ", "kuerzel", "bauteile", "guids", "vorgaenger", "wartetage"]);
 
   function parseJson(text: string): Task[] {
     const roh: unknown = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text); // BOM entfernen
