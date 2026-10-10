@@ -8,7 +8,7 @@ import { istArbeitstag, LEERER_KALENDER, getKW } from "./kalenderHelpers";
 import DatePicker from "./DatePicker";
 import { useDoppelklickHinweis } from "../hooks/useDoppelklickHinweis";
 import { ZoomControls } from "./cockpitCharts";
-import { bindeListenScroll } from "./listenScroll";
+import { bindeListenScroll, useSelektionFokus } from "./listenScroll";
 
 interface Props {
   projectId?: string | null;
@@ -23,6 +23,8 @@ interface Props {
   selTaskId?: string | null;
   selectedIds?: string[];
   selGuids?: Set<string>;
+  /** Neue Bauteil-Selektion im Modell → Task vertikal + Gantt horizontal zentrieren ("einzeln"), bzw. bei mehreren Bauteilen zusätzlich Liste nach oben ("alle") */
+  selektionFokus?: "einzeln" | "alle";
   taskSort?: "gantt" | "datum" | "aktiv" | "name" | "nummer";
   height?: number;
   editable?: boolean;
@@ -55,11 +57,32 @@ function fmtDatum(d: Date, lang: boolean): string {
 }
 function fmtDMY(d: Date): string { return `${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`; }
 
-export default function GanttChart({ projectId = null, tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selectedIds = [], selGuids, taskSort, height, editable, onDateChange, onTaskReorder, onTaskRename, onSetPredecessor, showObjektCount, suchQuery = "", nadelStil = "normal", dateColor = "#2d7dbd", kalender = LEERER_KALENDER }: Props) {
+export default function GanttChart({ selektionFokus, projectId = null, tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selectedIds = [], selGuids, taskSort, height, editable, onDateChange, onTaskReorder, onTaskRename, onSetPredecessor, showObjektCount, suchQuery = "", nadelStil = "normal", dateColor = "#2d7dbd", kalender = LEERER_KALENDER }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
+  const sortedRef = useRef<{ task: Task; origIdx: number }[]>([]);
   useEffect(() => bindeListenScroll(labelRef.current), []); // gleiche erste Zeile wie in der Liste / im anderen Tab
+  // Neue Selektion im Modell: ein Bauteil → verknüpften Task vertikal und horizontal zentrieren; mehrere → nach oben (Sortierung "Aktive")
+  useSelektionFokus(selGuids, !!selektionFokus, guids => {
+    const body = bodyRef.current, label = labelRef.current; if (!body || !label) return;
+    if (guids.length > 1) {
+      if (selektionFokus === "alle") { label.scrollTop = 0; body.scrollTop = 0; }
+      return;
+    }
+    const idx = sortedRef.current.findIndex(e => e.task.objektGuids.includes(guids[0]));
+    if (idx < 0) return;
+    const t = sortedRef.current[idx].task;
+    const top = Math.max(0, idx * ROW_H + ROW_H / 2 - body.clientHeight / 2);
+    label.scrollTop = top; body.scrollTop = top;
+    const sd = parseDateUniversal(t.start), ed = parseDateUniversal(t.end);
+    if (sd && minDate) {
+      const sT = (sd.getTime() - minDate.getTime()) / 86400000;
+      const eT = ed ? (ed.getTime() - minDate.getTime()) / 86400000 : sT + 1;
+      body.scrollLeft = Math.max(0, ((sT + eT) / 2) * pxRef.current - body.clientWidth / 2);
+      if (headerRef.current) headerRef.current.scrollLeft = body.scrollLeft;
+    }
+  });
   const lsZoomKey = nsKey(LS_ZOOM, projectId);
   const lsLabelWKey = nsKey(LS_LABEL_W, projectId);
   const [pxProTag, setPxProTag] = useState(() => { try { return Number(localStorage.getItem(lsZoomKey)) || 6; } catch { return 6; } });
@@ -337,6 +360,7 @@ export default function GanttChart({ projectId = null, tasks, currentTag, totalT
     }
     return true;
   });
+  sortedRef.current = sorted;
 
   const chartW = Math.max(totalTage * pxProTag, 200);
   const bodyH = sorted.length * ROW_H;

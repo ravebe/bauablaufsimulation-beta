@@ -389,6 +389,7 @@ export default function App() {
               selektion={selektion}
               aktivesModellId={aktivesModellId}
               taskSort={taskSort}
+              onTaskSort={setTaskSort}
               readOnly={readOnly}
               sharedNadelTag={sharedNadelTag}
               sichtbar={aktTab === "bauteile"}

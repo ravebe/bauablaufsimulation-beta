@@ -16,6 +16,7 @@ import { unbenutzteListen } from "./ausschlussHelpers";
 import type { UnbenutztArt } from "./UnbenutzteBauteile";
 import AttributeFilter from "./AttributeFilter";
 import GanttChart from "./GanttChart";
+import { useSelektionFokus } from "./listenScroll";
 import Schwebend from "./Schwebend";
 import PunkteMenu from "./PunkteMenu";
 import { exportEintraege } from "./exportEintraege";
@@ -28,6 +29,8 @@ interface Props {
   selektion: number[];
   aktivesModellId: string | null;
   taskSort?: "gantt" | "datum" | "aktiv" | "name" | "nummer";
+  /** Sortierung von aussen setzen (App) — bei Selektion mehrerer Bauteile automatisch "aktiv" */
+  onTaskSort?: (s: "aktiv") => void;
   readOnly?: boolean;
   sharedNadelTag?: React.MutableRefObject<number>;
   sichtbar?: boolean;
@@ -35,7 +38,7 @@ interface Props {
   onIfcExport?: () => void;
 }
 
-export default function TabBauteile({ api, projectId = null, aktiveSim, updateSim, aktivesModellId, taskSort, readOnly, sharedNadelTag, sichtbar, onIfcExport }: Props) {
+export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveSim, updateSim, aktivesModellId, taskSort, readOnly, sharedNadelTag, sichtbar, onIfcExport }: Props) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [totalObjekte, setTotalObjekte] = useState<number | null>(null);
   // alle Bauteile der Modelle ("modelId:::runtimeId") — für "Noch nicht verknüpft" (UnbenutzteBauteile.tsx)
@@ -45,6 +48,8 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
   const [resetSignal, setResetSignal] = useState(0);
   const [selGuids, setSelGuids] = useState<Set<string>>(new Set());
   const [ganttOffen, setGanttOffen] = useState(false);
+  // mehrere Bauteile im Modell markiert → Sortierung automatisch auf "Aktive" (markierte Tasks oben)
+  useSelektionFokus(selGuids, sichtbar !== false, guids => { if (guids.length > 1) onTaskSort?.("aktiv"); });
   const [nadelTag, setNadelTag] = useState(-1);
   const [ghostTag, setGhostTag] = useState(-1);
   const [filterOffen, setFilterOffen] = useState(true);
@@ -452,6 +457,7 @@ export default function TabBauteile({ api, projectId = null, aktiveSim, updateSi
             selTaskId={aktivTaskId}
             selectedIds={selectedIds}
             selGuids={selGuids}
+            selektionFokus="alle"
             taskSort={taskSort}
             height={ganttH}
             editable={!readOnly}

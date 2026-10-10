@@ -9,7 +9,7 @@ import { formatDatum, normalizeDatum, parseDateUniversal, getOutlineLevel, istGr
 import type { ApiInstance } from "../hooks/useApi";
 import { batchGetProperties, batchConvertToObjectIds } from "../hooks/useApi";
 import DatePicker from "./DatePicker";
-import { bindeListenScroll } from "./listenScroll";
+import { bindeListenScroll, useSelektionFokus, zentriereZeile } from "./listenScroll";
 import { bauteileAusschliessen } from "./ausschlussHelpers";
 import SelectionTools from "./SelectionTools";
 
@@ -180,6 +180,14 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
   const resizingRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => bindeListenScroll(scrollRef.current), [detailOnly]); // gleiche erste Zeile wie im Gantt / im anderen Tab
+  // Neue Selektion im Modell: ein Bauteil → verknüpften Task vertikal zentrieren; mehrere → Liste nach oben (Sortierung wechselt auf "Aktive")
+  useSelektionFokus(selGuids, !detailOnly, guids => {
+    const c = scrollRef.current; if (!c || !aktiveSim) return;
+    if (guids.length > 1) { c.scrollTop = 0; return; }
+    const t = aktiveSim.tasks.find(x => x.objektGuids.includes(guids[0]));
+    const row = t ? c.querySelector<HTMLElement>(`[data-taskid="${t.id}"]`) : null;
+    if (row) zentriereZeile(c, row);
+  });
 
   // Zum gewählten Task scrollen, falls er nicht sichtbar ist (z.B. nach Suche). Ziel ist der ZUERST gewählte
   // Eintrag — bei Klick auf eine Gruppe die Gruppe selbst (aktivTaskId wäre ihr letzter Task → sprang ans

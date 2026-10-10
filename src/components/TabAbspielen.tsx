@@ -6,7 +6,7 @@ import type { ApiInstance } from "../hooks/useApi";
 import { formatDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, nsKey, sucheSortiereTasks, TASK_TYP_FARBE, TASK_TYP_LABEL } from "../types";
 import { arbeitstageZwischen, LEERER_KALENDER } from "./kalenderHelpers";
 import GanttChart from "./GanttChart";
-import { bindeListenScroll } from "./listenScroll";
+import { bindeListenScroll, useSelektionFokus, zentriereZeile } from "./listenScroll";
 import { useDoppelklickHinweis } from "../hooks/useDoppelklickHinweis";
 import PunkteMenu from "./PunkteMenu";
 import { exportEintraege } from "./exportEintraege";
@@ -73,6 +73,13 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
   // Alle Tasks mit gültigem Startdatum (aus ALLEN Modellen)
   const allTasks = aktiveSim?.tasks ?? [];
   const tasks = allTasks.filter(t => t.start && parseDateUniversal(t.start));
+  // Ein einzelnes Bauteil im Modell markiert → verknüpften Task in der Liste vertikal zentrieren (nicht während des Abspielens)
+  useSelektionFokus(selGuids, !laeuft, guids => {
+    const c = listeRef.current; if (!c || guids.length !== 1) return;
+    const t = tasks.find(x => x.objektGuids.includes(guids[0]));
+    const row = t ? c.querySelector<HTMLElement>(`[data-taskid="${t.id}"]`) : null;
+    if (row) zentriereZeile(c, row);
+  });
   const nummern = useMemo(() => berechneNummern(tasks), [tasks]);
 
   const { minDate, maxDate, totalTage } = (() => {
@@ -539,6 +546,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
             onSliderChange={tag => sliderChange(tag)}
             selectedIds={selTaskId ? [selTaskId] : []}
             selGuids={selGuids}
+            selektionFokus="einzeln"
             taskSort={taskSort}
             height={taskListHeight}
             dateColor="#333"
