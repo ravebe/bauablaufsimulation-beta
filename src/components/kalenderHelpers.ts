@@ -64,6 +64,78 @@ export function endDatumAusArbeitstagen(start: string, dauerArbeitstage: number,
   return end;
 }
 
+/** Erster Arbeitstag NACH dem Datum. */
+export function naechsterArbeitstag(datum: string, kalender: Kalender): string {
+  const d = parseDateUniversal(datum);
+  if (!d) return datum;
+  const cur = new Date(d.getTime());
+  for (let i = 0; i < 4000; i++) {
+    cur.setDate(cur.getDate() + 1);
+    const iso = toIso(cur);
+    if (istArbeitstag(iso, kalender)) return iso;
+  }
+  return datum;
+}
+
+/** n Arbeitstage weiter (n < 0: zurück). Fällt das Datum selbst auf einen Nicht-Arbeitstag, gilt bei n >= 0 der nächste, bei n < 0 der vorherige Arbeitstag als Ausgangspunkt. */
+export function arbeitstagPlus(datum: string, n: number, kalender: Kalender): string {
+  const d = parseDateUniversal(datum);
+  if (!d) return datum;
+  const cur = new Date(d.getTime());
+  const schritt = n < 0 ? -1 : 1;
+  // Ausgangspunkt auf einen Arbeitstag rücken
+  for (let i = 0; i < 4000 && !istArbeitstag(toIso(cur), kalender); i++) cur.setDate(cur.getDate() + schritt);
+  let rest = Math.abs(Math.round(n));
+  for (let i = 0; rest > 0 && i < 40000; i++) {
+    cur.setDate(cur.getDate() + schritt);
+    if (istArbeitstag(toIso(cur), kalender)) rest--;
+  }
+  return toIso(cur);
+}
+
+/** Startdatum, das bei Ende `ende` genau `dauerArbeitstage` Arbeitstage ergibt (Umkehrung von endDatumAusArbeitstagen). */
+export function startDatumAusArbeitstagen(ende: string, dauerArbeitstage: number, kalender: Kalender): string {
+  return arbeitstagPlus(ende, -(Math.max(1, dauerArbeitstage) - 1), kalender);
+}
+
+/** Vorzeichenbehaftete Anzahl Arbeitstage von a nach b (b später → positiv). */
+export function arbeitstageVersatz(a: string, b: string, kalender: Kalender): number {
+  const da = parseDateUniversal(a), db = parseDateUniversal(b);
+  if (!da || !db) return 0;
+  const vor = da.getTime() <= db.getTime();
+  const von = new Date((vor ? da : db).getTime()), bis = (vor ? db : da).getTime();
+  let n = 0;
+  for (let i = 0; i < 40000; i++) {
+    von.setDate(von.getDate() + 1);
+    if (von.getTime() > bis) break;
+    if (istArbeitstag(toIso(von), kalender)) n++;
+  }
+  return vor ? n : -n;
+}
+
+/** Erster Arbeitstag am oder NACH dem Datum (ist es selbst ein Arbeitstag, bleibt es unverändert). */
+export function ersterArbeitstagAb(datum: string, kalender: Kalender): string {
+  const d = parseDateUniversal(datum);
+  if (!d) return datum;
+  const cur = new Date(d.getTime());
+  for (let i = 0; i < 4000; i++) {
+    const iso = toIso(cur);
+    if (istArbeitstag(iso, kalender)) return iso;
+    cur.setDate(cur.getDate() + 1);
+  }
+  return datum;
+}
+
+/** Startdatum eines Nachfolgers: Tag nach dem Ende des Vorgängers plus Wartetage — die Wartetage zählen als normale Kalendertage
+ *  (Wochenenden, Feiertage und Ferien sind Wartezeit mit). Fällt der Start auf einen freien Tag, rückt er auf den nächsten Arbeitstag.
+ *  Beispiel Vorgänger endet Freitag: 0 oder 1 oder 2 Wartetage → Montag, 3 → Dienstag, 4 → Mittwoch. Zwei aufeinanderfolgende Tasks belegen nie denselben Tag. */
+export function folgeStart(vorgaengerEnde: string, wartetage: number, kalender: Kalender): string {
+  const d = parseDateUniversal(vorgaengerEnde);
+  if (!d) return vorgaengerEnde;
+  const roh = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1 + Math.round(wartetage));
+  return ersterArbeitstagAb(toIso(roh), kalender);
+}
+
 /** Ostersonntag nach der Gauß'schen Osterformel. */
 function ostersonntag(jahr: number): Date {
   const a = jahr % 19;

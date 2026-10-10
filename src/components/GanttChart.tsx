@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import type { Task } from "../types";
 import { datumsPaarVerschieben, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks, nsKey, TASK_TYP_FARBE } from "../types";
 import type { Kalender } from "./kalenderHelpers";
-import { istArbeitstag, LEERER_KALENDER, getKW, arbeitstageZwischen } from "./kalenderHelpers";
+import { istArbeitstag, LEERER_KALENDER, getKW, arbeitstageZwischen, endDatumAusArbeitstagen } from "./kalenderHelpers";
 import DatePicker from "./DatePicker";
 import { useDoppelklickHinweis } from "../hooks/useDoppelklickHinweis";
 import { ZoomControls } from "./cockpitCharts";
@@ -309,17 +309,21 @@ export default function GanttChart({ tagRef, laeuft, selektionFokus, projectId =
     e.preventDefault(); e.stopPropagation(); scrollLock.current = true;
     setEditingTaskId(taskId);
     const sx = e.clientX, oS = (origStart.getTime() - minDate.getTime()) / 86400000, oE = (origEnd.getTime() - minDate.getTime()) / 86400000 + 1, dur = oE - oS; // oE: Ende des letzten Tages
+    const dauerWd = arbeitstageZwischen(fmtISO(origStart), fmtISO(origEnd), kalender);
     const onMove = (ev: MouseEvent) => {
       const dd = Math.round((ev.clientX - sx) / pxProTag);
       let nS = oS, nE = oE;
       if (mode === "start") { nS = Math.max(0, oS + dd); if (nS >= nE) nS = nE - 1; }
       else if (mode === "end") { nE = Math.max(nS + 1, oE + dd); }
       else { nS = Math.max(0, oS + dd); nE = nS + dur; }
-      onDateChange(taskId, fmtISO(new Date(minDate.getTime() + nS * 86400000)), fmtISO(new Date(minDate.getTime() + (nE - 1) * 86400000)));
+      const startIso = fmtISO(new Date(minDate.getTime() + nS * 86400000));
+      // Verschieben: Dauer in ARBEITSTAGEN bleibt erhalten (Wochenenden/Feiertage werden übersprungen)
+      const endIso = mode === "move" ? endDatumAusArbeitstagen(startIso, dauerWd, kalender) : fmtISO(new Date(minDate.getTime() + (nE - 1) * 86400000));
+      onDateChange(taskId, startIso, endIso);
     };
     const onUp = () => { setEditingTaskId(null); setTimeout(() => { scrollLock.current = false; }, 200); document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
     document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp);
-  }, [editable, minDate, pxProTag, onDateChange]);
+  }, [editable, minDate, pxProTag, onDateChange, kalender]);
 
   // Klick ins Leere → Nadel setzen + zentrieren
   const handleChartClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
@@ -670,6 +674,7 @@ export default function GanttChart({ tagRef, laeuft, selektionFokus, projectId =
               // Ende ist der LETZTE Tag der Dauer → Balken reicht bis zum Ende dieses Tages (+1); Beschriftung in Arbeitstagen wie Tab Kalkulation/IFC
               const eT = ed ? (ed.getTime() - minDate.getTime()) / 86400000 + 1 : sT + 1;
               const dauer = sd && ed ? arbeitstageZwischen(effStart, effEnd, kalender) : 1;
+              const tip = sd && ed ? `${t.name}\n${fmtDMY(sd)} – ${fmtDMY(ed)} · ${dauer} Arbeitstag${dauer === 1 ? "" : "e"} (Start und Ende zählen mit, Wochenenden/Feiertage nicht)` : t.name;
               const bX = sT * pxProTag, bW = Math.max((eT - sT) * pxProTag, 3);
               const isSel = selectedIds.includes(t.id), hasSel = selGuids?.size ? t.objektGuids.some(g => selGuids!.has(g)) : false;
               const isEditing = editingTaskId === t.id || calEdit?.taskId === t.id;
@@ -690,6 +695,7 @@ export default function GanttChart({ tagRef, laeuft, selektionFokus, projectId =
                 const textGapHalb = zeigeDauerText ? Math.max(0, Math.min(bW / 2 - tickH - 2, durText.length * 3.3 + 4)) : 0;
                 return (
                   <g key={t.id}>
+                    <title>{tip}</title>
                     <rect x={0} y={y} width={chartW} height={ROW_H} fill={isSel ? "#e8f0fe" : "transparent"} />
                     <line x1={0} y1={y + ROW_H} x2={chartW} y2={y + ROW_H} stroke="#eef1f4" strokeWidth={0.5} />
                     {sd && <>

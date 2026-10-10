@@ -2,13 +2,13 @@
 import { useState, useEffect, useRef } from "react";
 import { lsSet } from "../hooks/lokalSpeicher";
 import type { SimProjekt, Task } from "../types";
-import { parseDateUniversal, istGruppe, getKinder, getOutlineLevel, kaskadiereNachfolger, verschiebeAufStart, gruppenDaten, datumPlusTage,
+import { parseDateUniversal, istGruppe, getKinder, getOutlineLevel, kaskadiereNachfolger, richteKettenNeuAus, verschiebeAufStart, gruppenDaten,
   taskVerschieben as verschiebeTaskBlock, nsKey } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { getEchteBauteile, clearEchteBauteileCache } from "./modelHelpers";
 import { useClickOutside } from "../hooks/useClickOutside";
 import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
-import { LEERER_KALENDER } from "./kalenderHelpers";
+import { LEERER_KALENDER, folgeStart } from "./kalenderHelpers";
 import { pruefeZeitplanBereitschaft, berechneZeitplanUebernahme, zeitplanHatAenderungen } from "./zeitplanUebernahmeHelpers";
 import TabTasks from "./TabTasks";
 import { UnbenutzteZeilen, UnbenutzteDetail } from "./UnbenutzteBauteile";
@@ -212,21 +212,22 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
     if (!aktiveSim) return;
     const tasks = kaskadiereNachfolger(
       aktiveSim.tasks.map(t => t.id === taskId ? { ...t, start: newStart, end: newEnd } : t),
-      taskId
+      taskId, aktiveSim.kalender ?? LEERER_KALENDER
     );
     updateSim({ ...aktiveSim, tasks });
   }
 
   function ganttSetPredecessor(taskId: string, predId: string | null, lagDays: number) {
     if (!aktiveSim) return;
+    const kal = aktiveSim.kalender ?? LEERER_KALENDER;
     let tasks = aktiveSim.tasks.map(t => t.id === taskId ? { ...t, predecessorId: predId ?? undefined, lagDays } : t);
     if (predId) {
       const predIdx = tasks.findIndex(t => t.id === predId);
       const pred = tasks[predIdx];
       const predEnd = pred?.isGroup ? gruppenDaten(tasks, predIdx).end : pred?.end;
-      if (predEnd) tasks = verschiebeAufStart(tasks, taskId, datumPlusTage(predEnd, lagDays));
+      if (predEnd) tasks = verschiebeAufStart(tasks, taskId, folgeStart(predEnd, lagDays, kal), kal);
     }
-    tasks = kaskadiereNachfolger(tasks, taskId);
+    tasks = kaskadiereNachfolger(tasks, taskId, kal);
     updateSim({ ...aktiveSim, tasks });
   }
 
@@ -273,6 +274,13 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
     const kalender = aktiveSim.kalender ?? LEERER_KALENDER;
     updateSim({ ...aktiveSim, tasks: berechneZeitplanUebernahme(aktiveSim.tasks, stammdaten, kalender) });
     setZeitplanBestaetigenOffen(false);
+  }
+
+  // "Folge-Tasks neu ausrichten" — jeder Nachfolger beginnt am Arbeitstag NACH dem Ende seines Vorgängers (+ Wartetage),
+  // Dauer in Arbeitstagen bleibt; beseitigt Überlappungen aus älteren Plänen, in denen ein Nachfolger noch am Endtag begann.
+  function folgeTasksNeuAusrichten() {
+    if (!aktiveSim) return;
+    updateSim({ ...aktiveSim, tasks: richteKettenNeuAus(aktiveSim.tasks, aktiveSim.kalender ?? LEERER_KALENDER) });
   }
 
   // "Auto-Vorgänger" — verkettet Tasks und Gruppen jeweils streng der Anzeige-Reihenfolge nach
@@ -351,6 +359,16 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                       <div style={{ fontSize: 11, fontWeight: 500, color: "var(--tc-text)" }}>Auto-Vorgänger</div>
                       <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 2 }}>
                         Verkettet Tasks und Gruppen automatisch der Reihenfolge nach: Task 2 erhält Task 1 als Vorgänger, Task 3 erhält Task 2 usw. — Gruppen bekommen dieselbe Verkettung untereinander.
+                      </div>
+                    </button>
+                  )}
+                  {aktiveSim.tasks.some(t => t.predecessorId) && (
+                    <button
+                      style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
+                      onClick={() => { folgeTasksNeuAusrichten(); setWerkzeugOffen(false); }}>
+                      <div style={{ fontSize: 11, fontWeight: 500, color: "var(--tc-text)" }}>Folge-Tasks neu ausrichten</div>
+                      <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 2 }}>
+                        Jeder Nachfolger beginnt am Tag nach dem Ende seines Vorgängers plus Wartetage (Kalendertage, auch Wochenende/Feiertage/Ferien zählen als Wartezeit); fällt der Start auf einen freien Tag, rückt er auf den nächsten Arbeitstag. Die Dauer in Arbeitstagen bleibt.
                       </div>
                     </button>
                   )}

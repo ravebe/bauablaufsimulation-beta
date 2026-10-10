@@ -195,6 +195,9 @@ export default function IfcExportDialog({ sim, updateSim, api, geladeneModelle, 
                     {vierD && (
                       <div style={{ fontSize: 9, color: "var(--tc-text-3)" }}>
                         4D-Daten zuletzt übernommen am {new Date(vierD.am).toLocaleString("de-CH")}
+                        {sim.geaendertAm && sim.geaendertAm > vierD.am && (
+                          <span style={{ color: "#b26a00", fontWeight: 600 }}> — Simulation seither geändert: die IFC enthält noch den alten Stand (Termine/Dauer), bitte erneut übernehmen.</span>
+                        )}
                       </div>
                     )}
                   </div>

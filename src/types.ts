@@ -1,5 +1,5 @@
 import type { Kalender } from "./components/kalenderHelpers";
-import { arbeitstageZwischen, LEERER_KALENDER } from "./components/kalenderHelpers";
+import { arbeitstageZwischen, LEERER_KALENDER, endDatumAusArbeitstagen, startDatumAusArbeitstagen, arbeitstagPlus, arbeitstageVersatz, folgeStart } from "./components/kalenderHelpers";
 import type { Stammdaten } from "./components/stammdatenHelpers";
 
 export type TaskTyp = "neubau" | "bestand" | "abbruch" | "temporaer" | "baustelleneinrichtung" | "drittprojekt";
@@ -322,18 +322,18 @@ export function isValidDatum(s: string): boolean {
 }
 
 // Datum zu YYYY-MM-DD normalisieren (für interne Speicherung)
-/** Dauer bleibt erhalten: wird Start oder Ende per Datumswahl geändert, wandert das andere Datum um dieselbe Anzahl Tage mit
- *  (Dauer 3 Tage bleibt 3 Tage). Alte und neue Werte ISO (YYYY-MM-DD). Ist ein Datum nicht lesbar, wird nur das geänderte gesetzt;
- *  fehlerhafte Paare (Ende vor Start) werden auf Dauer 1 Tag (Start = Ende) gebracht. */
-export function datumsPaarVerschieben(altStart: string, altEnde: string, neuesDatum: string, geaendert: "start" | "end"): { start: string; end: string } {
+/** Dauer (in Arbeitstagen) bleibt erhalten: wird Start oder Ende per Datumswahl geändert, wandert das andere Datum so mit, dass die
+ *  Anzahl Arbeitstage gleich bleibt (3 Arbeitstage bleiben 3 Arbeitstage — Wochenenden/Feiertage werden übersprungen). Ist ein Datum
+ *  nicht lesbar, wird nur das geänderte gesetzt; ein fehlerhaftes Paar (Ende vor Start) wird auf 1 Arbeitstag gebracht. */
+export function datumsPaarVerschieben(altStart: string, altEnde: string, neuesDatum: string, geaendert: "start" | "end", kalender: Kalender = LEERER_KALENDER): { start: string; end: string } {
   const s = parseDateUniversal(altStart), e = parseDateUniversal(altEnde), n = parseDateUniversal(neuesDatum);
-  if (!n) return geaendert === "start" ? { start: altStart, end: altEnde } : { start: altStart, end: altEnde };
-  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  const neu = iso(n);
+  if (!n) return { start: altStart, end: altEnde };
+  const neu = normalizeDatum(neuesDatum);
   if (!s || !e) return geaendert === "start" ? { start: neu, end: altEnde } : { start: altStart, end: neu };
-  const tage = Math.max(0, Math.round((e.getTime() - s.getTime()) / 86400000)); // bisherige Dauer in Kalendertagen (Ende - Start)
-  const verschoben = new Date(n.getFullYear(), n.getMonth(), n.getDate() + (geaendert === "start" ? tage : -tage));
-  return geaendert === "start" ? { start: neu, end: iso(verschoben) } : { start: iso(verschoben), end: neu };
+  const dauer = arbeitstageZwischen(altStart, altEnde, kalender);
+  return geaendert === "start"
+    ? { start: neu, end: endDatumAusArbeitstagen(neu, dauer, kalender) }
+    : { start: startDatumAusArbeitstagen(neu, dauer, kalender), end: neu };
 }
 
 export function normalizeDatum(s: string): string {
@@ -499,26 +499,21 @@ export function datumPlusTage(datum: string, tage: number): string {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
 
-/** Verschiebt einen Task auf ein neues Startdatum (Dauer bleibt erhalten). Bei Gruppen werden alle Kinder um dasselbe Delta mitverschoben. */
-export function verschiebeAufStart(tasks: Task[], taskId: string, neuerStart: string): Task[] {
+/** Verschiebt einen Task auf ein neues Startdatum (Dauer in Arbeitstagen bleibt erhalten). Bei Gruppen werden alle Kinder um dieselbe Anzahl Arbeitstage mitverschoben. */
+export function verschiebeAufStart(tasks: Task[], taskId: string, neuerStart: string, kalender: Kalender = LEERER_KALENDER): Task[] {
   const idx = tasks.findIndex(t => t.id === taskId);
   if (idx < 0) return tasks;
   const t = tasks[idx];
+  const verschiebe = (x: Task, start: string): Task => ({ ...x, start, end: endDatumAusArbeitstagen(start, arbeitstageZwischen(x.start, x.end, kalender), kalender) });
   if (t.isGroup) {
-    const { start: altStart } = gruppenDaten(tasks, idx);
-    const altD = parseDateUniversal(altStart), neuD = parseDateUniversal(neuerStart);
-    if (!altD || !neuD) return tasks;
-    const deltaTage = Math.round((neuD.getTime() - altD.getTime()) / 86400000);
-    if (deltaTage === 0) return tasks;
+    const { start: altStart } = gruppenDaten(tasks, idx, kalender);
+    if (!parseDateUniversal(altStart) || !parseDateUniversal(neuerStart)) return tasks;
+    const delta = arbeitstageVersatz(altStart, neuerStart, kalender);
+    if (delta === 0) return tasks;
     const kinder = new Set(getKinder(tasks, idx));
-    return tasks.map((x, i) => (i === idx || kinder.has(i))
-      ? { ...x, start: datumPlusTage(x.start, deltaTage), end: datumPlusTage(x.end, deltaTage) }
-      : x);
+    return tasks.map((x, i) => (i === idx || kinder.has(i)) ? verschiebe(x, arbeitstagPlus(x.start, delta, kalender)) : x);
   }
-  const altStart = parseDateUniversal(t.start);
-  const altEnd = parseDateUniversal(t.end);
-  const dauer = altStart && altEnd ? Math.max(1, Math.round((altEnd.getTime() - altStart.getTime()) / 86400000)) : 1;
-  return tasks.map((x, i) => i === idx ? { ...x, start: neuerStart, end: datumPlusTage(neuerStart, dauer) } : x);
+  return tasks.map((x, i) => i === idx ? verschiebe(x, neuerStart) : x);
 }
 
 /** Gültige Vorgänger-Kandidaten für einen Task: kein Zyklus, Gruppen nur als Vorgänger von Gruppen */
@@ -534,7 +529,7 @@ export function gueltigeVorgaenger(tasks: Task[], taskId: string): Task[] {
 }
 
 /** Kaskade: Nachfolger zeitlich verschieben wenn Vorgänger sich ändert */
-export function kaskadiereNachfolger(tasks: Task[], geaenderteId: string): Task[] {
+export function kaskadiereNachfolger(tasks: Task[], geaenderteId: string, kalender: Kalender = LEERER_KALENDER): Task[] {
   let result = tasks.map(t => ({ ...t }));
   const queue = [geaenderteId];
   const processed = new Set<string>();
@@ -548,11 +543,20 @@ export function kaskadiereNachfolger(tasks: Task[], geaenderteId: string): Task[
     const predEnd = pred.isGroup ? gruppenDaten(result, predIdx).end : pred.end;
     for (const t of result) {
       if (t.predecessorId === predId) {
-        const neuerStart = datumPlusTage(predEnd, t.lagDays ?? 0);
-        result = verschiebeAufStart(result, t.id, neuerStart);
+        // Nachfolger beginnt am Arbeitstag NACH dem Ende des Vorgängers (+ Wartetage in Arbeitstagen)
+        const neuerStart = folgeStart(predEnd, t.lagDays ?? 0, kalender);
+        result = verschiebeAufStart(result, t.id, neuerStart, kalender);
         queue.push(t.id);
       }
     }
   }
+  return result;
+}
+
+/** Richtet alle Folge-Tasks neu an ihren Vorgängern aus (Nachfolger = Arbeitstag nach Vorgänger-Ende + Wartetage): beseitigt Überlappungen
+ *  von Tasks, die noch am selben Tag wie ihr Vorgänger beginnen. Tasks ohne Vorgänger bleiben unverändert. */
+export function richteKettenNeuAus(tasks: Task[], kalender: Kalender = LEERER_KALENDER): Task[] {
+  let result = tasks;
+  for (const t of tasks) if (!t.predecessorId) result = kaskadiereNachfolger(result, t.id, kalender);
   return result;
 }

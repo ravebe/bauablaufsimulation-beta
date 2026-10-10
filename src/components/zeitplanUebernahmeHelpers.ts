@@ -5,11 +5,11 @@
 // berechneZeitplanUebernahme() verankert einen Task ohne predecessorId einfach an seinem bisherigen
 // Startdatum (siehe loese() unten), das funktioniert unabhängig von der Vorgänger-Kette.
 import type { Task } from "../types";
-import { istGruppe, datumPlusTage } from "../types";
+import { istGruppe } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { dauerBerechnetTask, gewerkeFuerKuerzel, hatKalkulationsWerte } from "./stammdatenHelpers";
 import type { Kalender } from "./kalenderHelpers";
-import { endDatumAusArbeitstagen } from "./kalenderHelpers";
+import { endDatumAusArbeitstagen, folgeStart, ersterArbeitstagAb } from "./kalenderHelpers";
 
 export interface ZeitplanBereitschaft {
   bereit: boolean;
@@ -72,9 +72,10 @@ export function berechneZeitplanUebernahme(tasks: Task[], stammdaten: Stammdaten
     if (!hatKalkulationsWerte(t, stammdaten)) {
       result = { start: t.start, end: t.end };
     } else {
+      // Tasks laufen nur an Arbeitstagen: ein Anker-Start auf Wochenende/Feiertag/Ferien rückt auf den nächsten Arbeitstag
       const start = (id === ersterId || !t.predecessorId)
-        ? t.start
-        : (() => { const v = loese(t.predecessorId!); return v.end ? datumPlusTage(v.end, t.lagDays ?? 0) : t.start; })();
+        ? ersterArbeitstagAb(t.start, kalender)
+        : (() => { const v = loese(t.predecessorId!); return v.end ? folgeStart(v.end, t.lagDays ?? 0, kalender) : t.start; })();
       const dauer = dauerBerechnetTask(t, stammdaten);
       const end = endDatumAusArbeitstagen(start, dauer, kalender);
       result = { start, end };

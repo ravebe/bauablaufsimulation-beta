@@ -3,8 +3,9 @@ import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import { lsSet } from "../hooks/lokalSpeicher";
 import { createPortal } from "react-dom";
 import type { SimProjekt, Task, TaskTyp } from "../types";
+import { LEERER_KALENDER, folgeStart } from "./kalenderHelpers";
 import { formatDatum, normalizeDatum, datumsPaarVerschieben, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, getKinder,
-  berechneNummern, gueltigeVorgaenger, verschiebeAufStart, kaskadiereNachfolger, datumPlusTage,
+  berechneNummern, gueltigeVorgaenger, verschiebeAufStart, kaskadiereNachfolger,
   taskVerschieben as verschiebeTaskBlock, sucheSortiereTasks, nsKey, TASK_TYP_LISTE, TASK_TYP_LABEL, TASK_TYP_FARBE } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { batchGetProperties, batchConvertToObjectIds } from "../hooks/useApi";
@@ -364,14 +365,15 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
   }
 
   function vorgängerSetzen(taskId: string, predId: string | null, lagDays: number) {
+    const kal = aktiveSim.kalender ?? LEERER_KALENDER;
     let tasks = aktiveSim.tasks.map(t => t.id === taskId ? { ...t, predecessorId: predId ?? undefined, lagDays } : t);
     if (predId) {
       const predIdx = tasks.findIndex(t => t.id === predId);
       const pred = tasks[predIdx];
       const predEnd = pred?.isGroup ? gruppenDaten(tasks, predIdx).end : pred?.end;
-      if (predEnd) tasks = verschiebeAufStart(tasks, taskId, datumPlusTage(predEnd, lagDays));
+      if (predEnd) tasks = verschiebeAufStart(tasks, taskId, folgeStart(predEnd, lagDays, kal), kal);
     }
-    tasks = kaskadiereNachfolger(tasks, taskId);
+    tasks = kaskadiereNachfolger(tasks, taskId, kal);
     updateSim({ ...aktiveSim, tasks });
     setPredPickerTaskId(null);
   }
@@ -658,11 +660,11 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                     <>
                       <DatePicker value={formatDatum(task.start)} onChange={(val: string) => {
                         const norm = normalizeDatum(val);
-                        if (norm) updateSim({ ...aktiveSim, tasks: kaskadiereNachfolger(aktiveSim.tasks.map(t => t.id === task.id ? { ...t, ...datumsPaarVerschieben(t.start, t.end, norm, "start") } : t), task.id) });
+                        if (norm) updateSim({ ...aktiveSim, tasks: kaskadiereNachfolger(aktiveSim.tasks.map(t => t.id === task.id ? { ...t, ...datumsPaarVerschieben(t.start, t.end, norm, "start", aktiveSim.kalender) } : t), task.id, aktiveSim.kalender) });
                       }} />
                       <DatePicker value={formatDatum(task.end)} onChange={(val: string) => {
                         const norm = normalizeDatum(val);
-                        if (norm) updateSim({ ...aktiveSim, tasks: kaskadiereNachfolger(aktiveSim.tasks.map(t => t.id === task.id ? { ...t, ...datumsPaarVerschieben(t.start, t.end, norm, "end") } : t), task.id) });
+                        if (norm) updateSim({ ...aktiveSim, tasks: kaskadiereNachfolger(aktiveSim.tasks.map(t => t.id === task.id ? { ...t, ...datumsPaarVerschieben(t.start, t.end, norm, "end", aktiveSim.kalender) } : t), task.id, aktiveSim.kalender) });
                       }} />
                     </>
                   ) : (
