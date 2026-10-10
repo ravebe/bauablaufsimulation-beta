@@ -392,7 +392,10 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
         setCurrentTag(totalTage); currentTagRef.current = totalTage;
         setLaeuft(false); setStatus("✓ Simulation abgeschlossen"); setAktiveTasksAnzeige(null); return;
       }
-      setCurrentTag(neuerTag); currentTagRef.current = neuerTag;
+      // Fliessende Position nur im Ref (Gantt-Nadel liest sie per rAF direkt); React-State/Rendern nur bei Tageswechsel
+      currentTagRef.current = neuerTag;
+      const tagAnzeige = Math.floor(neuerTag);
+      setCurrentTag(prev => prev === tagAnzeige ? prev : tagAnzeige);
       pruefeTaskEvents(neuerTag);
       animRef.current = requestAnimationFrame(frame);
     }
@@ -403,6 +406,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
   function stoppen() {
     stopRef.current = true;
     if (animRef.current) { cancelAnimationFrame(animRef.current); animRef.current = null; }
+    setCurrentTag(currentTagRef.current);
     setLaeuft(false); setStatus("■ Gestoppt"); setAktiveTasksAnzeige(null);
     // Polling wieder starten
     if (api && !selRef.current) {
@@ -542,6 +546,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
             totalTage={totalTage}
             minDate={minDate}
             laeuft={laeuft}
+            tagRef={currentTagRef}
             onTaskClick={idx => zuTask(idx)}
             onSliderChange={tag => sliderChange(tag)}
             selectedIds={selTaskId ? [selTaskId] : []}

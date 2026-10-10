@@ -17,6 +17,8 @@ interface Props {
   totalTage: number;
   minDate: Date | null;
   laeuft: boolean;
+  /** Fliessende Abspiel-Position (Tage, mit Nachkommastellen): Die Nadel wird während des Abspielens direkt im DOM bewegt, ohne React-Render pro Frame — sonst ruckelt/zittert sie, weil der ganze Gantt 60× pro Sekunde neu gezeichnet würde */
+  tagRef?: React.MutableRefObject<number>;
   onTaskClick?: (idx: number, event?: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }) => void;
   onSliderChange?: (tag: number) => void;
   onNadelClick?: (tag: number) => void;
@@ -57,10 +59,12 @@ function fmtDatum(d: Date, lang: boolean): string {
 }
 function fmtDMY(d: Date): string { return `${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`; }
 
-export default function GanttChart({ selektionFokus, projectId = null, tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selectedIds = [], selGuids, taskSort, height, editable, onDateChange, onTaskReorder, onTaskRename, onSetPredecessor, showObjektCount, suchQuery = "", nadelStil = "normal", dateColor = "#2d7dbd", kalender = LEERER_KALENDER }: Props) {
+export default function GanttChart({ tagRef, laeuft, selektionFokus, projectId = null, tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selectedIds = [], selGuids, taskSort, height, editable, onDateChange, onTaskReorder, onTaskRename, onSetPredecessor, showObjektCount, suchQuery = "", nadelStil = "normal", dateColor = "#2d7dbd", kalender = LEERER_KALENDER }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
+  const nadelKopfRef = useRef<SVGGElement>(null);
+  const nadelKoerperRef = useRef<SVGGElement>(null);
   const sortedRef = useRef<{ task: Task; origIdx: number }[]>([]);
   useEffect(() => bindeListenScroll(labelRef.current), []); // gleiche erste Zeile wie in der Liste / im anderen Tab
   // Neue Selektion im Modell: ein Bauteil → verknüpften Task vertikal und horizontal zentrieren; mehrere → nach oben (Sortierung "Aktive")
@@ -239,6 +243,24 @@ export default function GanttChart({ selektionFokus, projectId = null, tasks, cu
       setTimeout(() => { scrollLock.current = false; }, 100);
     });
   }, []);
+
+  // Nadel beim Abspielen: Position pro Frame direkt setzen (ganze Pixel → kein Flimmern durch Teilpixel-Kanten).
+  // Das Layout-Effect ohne Abhängigkeiten stellt nach jedem React-Render (z.B. bei Tageswechsel) sofort wieder die
+  // aktuelle Position her, noch bevor gezeichnet wird — so springt die Nadel nie kurz zurück.
+  const setzeNadel = useCallback(() => {
+    if (!tagRef) return;
+    const t = `translate(${Math.round(tagRef.current * pxRef.current)},0)`;
+    nadelKopfRef.current?.setAttribute("transform", t);
+    nadelKoerperRef.current?.setAttribute("transform", t);
+  }, [tagRef]);
+  useLayoutEffect(() => { if (laeuft && tagRef) setzeNadel(); });
+  useEffect(() => {
+    if (!laeuft || !tagRef) return;
+    let id = 0;
+    const schleife = () => { setzeNadel(); id = requestAnimationFrame(schleife); };
+    id = requestAnimationFrame(schleife);
+    return () => cancelAnimationFrame(id);
+  }, [laeuft, tagRef, setzeNadel]);
 
   // Needle centering — nur wenn die Nadel den sichtbaren Bereich verlässt (nicht bei jedem
   // Frame während des Abspielens neu zentrieren, sonst zittert die Ansicht)
@@ -422,6 +444,8 @@ export default function GanttChart({ selektionFokus, projectId = null, tasks, cu
   if (showDayLines) { for (const day of allDays) { if (day.date.getDate() !== 1 && day.dow !== 1) dayLines.push(day.x); } }
 
   const nadelX = currentTag * pxProTag;
+  // Beim Abspielen setzt React die Nadel nur einmal (translate 0); die Position schreibt die rAF-Schleife unten direkt ins DOM
+  const imperativ = !!laeuft && !!tagRef;
   const containerH = height ?? 350;
 
   return (
@@ -444,7 +468,7 @@ export default function GanttChart({ selektionFokus, projectId = null, tasks, cu
             {/* Tages-Nummern */}
             {dayNums.map((m, i) => <text key={`dn${i}`} x={m.x + pxProTag/2} y={28} fontSize={10} fill="#888" textAnchor="middle">{m.label}</text>)}
             {/* Nadel-Dreieck */}
-            {currentTag >= 0 && <polygon points={`${nadelX-5},${HEAD_H} ${nadelX+5},${HEAD_H} ${nadelX},${HEAD_H-6}`} fill={nadelStil === "ghost" ? "#EAB308" : "#e63946"} />}
+            {currentTag >= 0 && <g ref={nadelKopfRef} transform={`translate(${imperativ ? 0 : nadelX},0)`}><polygon points={`-5,${HEAD_H} 5,${HEAD_H} 0,${HEAD_H-6}`} fill={nadelStil === "ghost" ? "#EAB308" : "#e63946"} /></g>}
           </svg>
         </div>
       </div>
@@ -711,9 +735,9 @@ export default function GanttChart({ selektionFokus, projectId = null, tasks, cu
               );
             })}
             {currentTag >= 0 && (
-              <g style={{ cursor: "ew-resize" }} onMouseDown={startNeedleDrag as any} onClick={e => e.stopPropagation()}>
-                <rect x={nadelX - 10} y={0} width={20} height={bodyH} fill="transparent" />
-                <line x1={nadelX} y1={0} x2={nadelX} y2={bodyH} stroke={nadelStil === "ghost" ? "#EAB308" : "#e63946"} strokeWidth={1.5} strokeDasharray={nadelStil === "ghost" ? "6 3" : "none"} />
+              <g ref={nadelKoerperRef} transform={`translate(${imperativ ? 0 : nadelX},0)`} style={{ cursor: "ew-resize" }} onMouseDown={startNeedleDrag as any} onClick={e => e.stopPropagation()}>
+                <rect x={-10} y={0} width={20} height={bodyH} fill="transparent" />
+                <line x1={0} y1={0} x2={0} y2={bodyH} stroke={nadelStil === "ghost" ? "#EAB308" : "#e63946"} strokeWidth={1.5} strokeDasharray={nadelStil === "ghost" ? "6 3" : "none"} />
               </g>
             )}
           </svg>
