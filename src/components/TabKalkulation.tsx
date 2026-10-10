@@ -57,6 +57,22 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   const [bulkErgebnis, setBulkErgebnis] = useState<string | null>(null);
   const [mengenLaeuft, setMengenLaeuft] = useState(false);
   const [mengenErgebnis, setMengenErgebnis] = useState<string | null>(null);
+  // Ergebnis-Meldungen: nach der Aktion fett grün (alles ok) / orange (teilweise) / rot (fehlgeschlagen),
+  // beim nächsten Klick irgendwo wieder grau. "frisch" = noch farbig, "stufe" = Farbe je Meldung.
+  type Stufe = "ok" | "teil" | "fehler";
+  const [bulkStufe, setBulkStufe] = useState<Stufe>("ok");
+  const [mengenStufe, setMengenStufe] = useState<Stufe>("ok");
+  const [frisch, setFrisch] = useState({ bulk: false, mengen: false, loesch: false, import: false });
+  useEffect(() => { if (bulkErgebnis) setFrisch(f => ({ ...f, bulk: true })); }, [bulkErgebnis]);
+  useEffect(() => { if (mengenErgebnis) setFrisch(f => ({ ...f, mengen: true })); }, [mengenErgebnis]);
+  useEffect(() => {
+    // pointerdown kommt vor dem click der auslösenden Aktion — die Meldung entsteht erst danach und bleibt farbig
+    const grau = () => setFrisch(f => (f.bulk || f.mengen || f.loesch || f.import ? { bulk: false, mengen: false, loesch: false, import: false } : f));
+    document.addEventListener("pointerdown", grau, true);
+    return () => document.removeEventListener("pointerdown", grau, true);
+  }, []);
+  const STUFE_FARBE: Record<Stufe, string> = { ok: "var(--tc-green-dark)", teil: "#e08a00", fehler: "var(--tc-red)" };
+  const meldungStil = (aktiv: boolean, stufe: Stufe) => aktiv ? { color: STUFE_FARBE[stufe], fontWeight: 700 } : undefined;
   const [manuelleLoeschErgebnis, setManuelleLoeschErgebnis] = useState<string | null>(null);
   const [suchOffen, setSuchOffen] = useState(false);
   const [suchQuery, setSuchQuery] = useState("");
@@ -124,6 +140,8 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   // kalkulationExportHelpers.ts — gleiches UI-Muster wie Export/Import in Tab Ressourcen.
   const [importErgebnis, setImportErgebnis] = useState<string | null>(null);
   const [importFehler, setImportFehler] = useState<string | null>(null);
+  useEffect(() => { if (manuelleLoeschErgebnis) setFrisch(f => ({ ...f, loesch: true })); }, [manuelleLoeschErgebnis]);
+  useEffect(() => { if (importErgebnis) setFrisch(f => ({ ...f, import: true })); }, [importErgebnis]);
   const importCsvInputRef = useRef<HTMLInputElement>(null);
   const importJsonInputRef = useRef<HTMLInputElement>(null);
 
@@ -340,6 +358,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     }
     updateSim({ ...sim, tasks: updatedTasks, mengenBerechnetSignatur: mengenRelevanteSignatur(stammdaten) });
     setMengenLaeuft(false);
+    setMengenStufe(taskCount === 0 ? "fehler" : fehlerCount === 0 ? "ok" : autoCount > 0 ? "teil" : "fehler");
     setMengenErgebnis(taskCount === 0 ? "Keine Leistungspositionen mit Formel gefunden"
       : `${taskCount} Tasks aktualisiert · ${autoCount} Mengen berechnet, ${fehlerCount} mit Fehlern${manuellCount > 0 ? `, ${manuellCount} teilweise manuell` : ""}`);
   }
@@ -371,7 +390,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   async function alleUnzugeordnetenZuordnen() {
     if (!api) return;
     const kandidaten = sim!.tasks.filter((t, i) => !t.isGroup && !istGruppe(sim!.tasks, i) && !t.bauteilKuerzel && t.objektGuids.length > 0);
-    if (kandidaten.length === 0) { setBulkErgebnis("Keine unzugeordneten Tasks mit Bauteilen gefunden."); return; }
+    if (kandidaten.length === 0) { setBulkStufe("ok"); setBulkErgebnis("Keine unzugeordneten Tasks mit Bauteilen gefunden."); return; }
     setBulkLaeuft(true);
     setBulkErgebnis(null);
     let zugeordnet = 0, uneindeutigN = 0, keinTreffer = 0;
@@ -386,6 +405,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
       updateSim({ ...sim!, tasks: sim!.tasks.map(t => zuordnungen.has(t.id) ? { ...t, bauteilKuerzel: zuordnungen.get(t.id) } : t) });
     }
     setBulkLaeuft(false);
+    setBulkStufe(uneindeutigN + keinTreffer === 0 ? "ok" : zugeordnet > 0 ? "teil" : "fehler");
     setBulkErgebnis(`${zugeordnet} zugeordnet, ${uneindeutigN} uneindeutig, ${keinTreffer} ohne Treffer`);
   }
 
@@ -802,11 +822,11 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
           onChange={e => e.target.files?.[0] && kalkulationImportierenJson(e.target.files[0])} />
         {(bulkErgebnis || mengenErgebnis || manuelleLoeschErgebnis || importFehler || importErgebnis) && (
           <div style={{ display: "flex", gap: 16, marginBottom: 6, flexWrap: "wrap", fontSize: 10, color: "var(--tc-text-3)" }}>
-            {bulkErgebnis && <span>{bulkErgebnis}</span>}
-            {mengenErgebnis && <span>{mengenErgebnis}</span>}
-            {manuelleLoeschErgebnis && <span>{manuelleLoeschErgebnis}</span>}
+            {bulkErgebnis && <span style={meldungStil(frisch.bulk, bulkStufe)}>{bulkErgebnis}</span>}
+            {mengenErgebnis && <span style={meldungStil(frisch.mengen, mengenStufe)}>{mengenErgebnis}</span>}
+            {manuelleLoeschErgebnis && <span style={meldungStil(frisch.loesch, "ok")}>{manuelleLoeschErgebnis}</span>}
             {importFehler && <span style={{ color: "var(--tc-red)" }}>! {importFehler}</span>}
-            {importErgebnis && <span>{importErgebnis}</span>}
+            {importErgebnis && <span style={meldungStil(frisch.import, "ok")}>{importErgebnis}</span>}
           </div>
         )}
 
