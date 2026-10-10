@@ -52,7 +52,8 @@ describe("ifcExport", () => {
   it("IFC4: Terminplan, Tasks, Sequenz, Kalender, Output/Input", () => {
     const erg = erzeuge4dIfc(eingabe("IFC4"));
     const t = erg.einfuegeText;
-    expect(t).toMatch(/^#22=/);
+    expect(t.split(/\r?\n/)[0]).toMatch(/^\/\* BAUABLAUFSIMULATION-4D .* \*\/$/);
+    expect(t.split(/\r?\n/)[1]).toMatch(/^#22=/);
     expect(t).toContain("IFCWORKSCHEDULE(");
     expect(t).toContain("IFCWORKPLAN(");
     expect(t).toContain("IFCRELDECLARES(");
@@ -96,9 +97,18 @@ describe("ifcExport", () => {
     expect(erg.hinweise.some(h => h.includes("Kalender"))).toBe(true);
   });
 
-  it("verweigert doppelten Export und fremde Schemas", () => {
+  it("erneuter Export ersetzt den alten Bauablauf (auch ohne Änderung und bei alten Dateien ohne Marker); fremde Schemas werden abgelehnt", () => {
     const erg = erzeuge4dIfc(eingabe("IFC4"));
-    expect(() => erzeuge4dIfc({ ...eingabe("IFC4"), ifcText: fuegeIfcEin(ifc("IFC4"), erg) })).toThrow(/bereits/);
+    const mit4d = fuegeIfcEin(ifc("IFC4"), erg);
+    // mit Marker
+    const neu = erzeuge4dIfc({ ...eingabe("IFC4"), ifcText: mit4d });
+    expect(neu.ersetzt).toBe(true);
+    expect(fuegeIfcEin(mit4d, neu)).toBe(mit4d); // identisches Ergebnis, nichts doppelt
+    // alter Export ohne Marker-Zeile
+    const ohneMarker = mit4d.replace(/\/\* BAUABLAUFSIMULATION-4D [^\n]*\*\/\r?\n/, "");
+    const neu2 = erzeuge4dIfc({ ...eingabe("IFC4"), ifcText: ohneMarker });
+    expect(neu2.ersetzt).toBe(true);
+    expect(fuegeIfcEin(ohneMarker, neu2)).toBe(mit4d);
     expect(() => erzeuge4dIfc({ ...eingabe("IFC4"), ifcText: ifc("IFC5") })).toThrow(/nicht unterst/);
   });
 });

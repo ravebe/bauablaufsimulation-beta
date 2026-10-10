@@ -139,23 +139,45 @@ export interface IfcExportEingabe {
 export interface IfcExportErgebnis {
   schema: string;
   familie: IfcSchemaFamilie;
-  einfuegePos: number;   // Zeichen-/Byte-Position vor dem letzten ENDSEC; (Ende DATA)
+  einfuegePos: number;   // Zeichen-/Byte-Position vor dem letzten ENDSEC; (Ende DATA) — bzw. Beginn des ersetzten alten 4D-Blocks
+  /** Ende des ersetzten Bereichs (Position des letzten ENDSEC;); ohne Ersetzung = einfuegePos */
+  ersetzeBis: number;
+  /** true: die Datei enthielt den Bauablauf dieser Simulation schon — der alte Block wurde durch den aktuellen ersetzt */
+  ersetzt: boolean;
   einfuegeText: string;  // reines ASCII
   anzahl: { tasks: number; verknuepfteBauteile: number; nichtGefunden: number; sequenzen: number; entitaeten: number };
   hinweise: string[];
 }
 
+/** Kommentar-Zeile (STEP-Kommentar) am Anfang des 4D-Blocks — markiert, was bei einer erneuten Übernahme ersetzt wird */
+function markerZeile(simId: string, modellId: string): string {
+  return `/* BAUABLAUFSIMULATION-4D ${simId}|${modellId} */`;
+}
+
 /** Erzeugt die 4D-Entitäten. Wirft Error mit deutscher Meldung, wenn die Datei nicht passt. */
 export function erzeuge4dIfc(e: IfcExportEingabe): IfcExportErgebnis {
-  const { ifcText: text, tasks } = e;
+  let text = e.ifcText;
+  const { tasks } = e;
   const { familie, roh } = erkenneIfcSchema(text);
   if (!familie) throw new Error(roh ? `IFC-Schema "${roh}" wird nicht unterstützt (nur IFC2X3 und IFC4).` : "Keine gültige IFC-Datei (FILE_SCHEMA fehlt) — ifcZIP/ifcXML werden nicht unterstützt.");
   if (tasks.length === 0) throw new Error("Die Simulation enthält keine Tasks.");
 
   const g = (teil: string) => ifcGuidAus(`${e.simId}|${e.modellId}|${teil}`);
   const scheduleGuid = g("workschedule");
+  // Enthält die Datei den Bauablauf dieser Simulation schon (frühere Übernahme), wird der alte Block entfernt und
+  // durch den aktuellen ersetzt — so lässt sich nach jeder Änderung erneut übernehmen, auch ohne Änderung.
+  // Der Block steht am Ende von DATA; neuere Exporte tragen eine Marker-Zeile, bei älteren beginnt er (IFC4) mit
+  // dem Terminplan-Entity (in IFC2X3 davor evtl. Hilfsentitäten — unreferenziert, aber gültig).
+  const endsecAlt = text.lastIndexOf("ENDSEC;");
+  let ersetzeVon = -1;
   if (text.includes(`'${scheduleGuid}'`)) {
-    throw new Error("Diese Datei enthält den Bauablauf dieser Simulation bereits — bitte die Original-IFC (ohne 4D-Daten) verwenden.");
+    ersetzeVon = text.indexOf(markerZeile(e.simId, e.modellId));
+    if (ersetzeVon < 0) {
+      const pos = text.indexOf(`'${scheduleGuid}'`);
+      ersetzeVon = text.lastIndexOf("\n", pos) + 1;
+    }
+    if (endsecAlt < 0 || ersetzeVon <= 0 || ersetzeVon > endsecAlt) throw new Error("Der bisherige Bauablauf in der Datei konnte nicht entfernt werden — bitte die Original-IFC (ohne 4D-Daten) verwenden.");
+    text = text.slice(0, ersetzeVon) + text.slice(endsecAlt);
   }
 
   const endsec = text.lastIndexOf("ENDSEC;");
@@ -439,8 +461,10 @@ export function erzeuge4dIfc(e: IfcExportEingabe): IfcExportErgebnis {
   const nl = text.includes("\r\n") ? "\r\n" : "\n";
   return {
     schema: roh, familie,
-    einfuegePos: endsec,
-    einfuegeText: w.zeilen.join(nl) + nl,
+    einfuegePos: ersetzeVon >= 0 ? ersetzeVon : endsec,
+    ersetzeBis: ersetzeVon >= 0 ? endsecAlt : endsec,
+    ersetzt: ersetzeVon >= 0,
+    einfuegeText: markerZeile(e.simId, e.modellId) + nl + w.zeilen.join(nl) + nl,
     anzahl: { tasks: tasks.length, verknuepfteBauteile: tasksJeBauteil.size, nichtGefunden, sequenzen, entitaeten: w.zeilen.length },
     hinweise,
   };
@@ -448,5 +472,5 @@ export function erzeuge4dIfc(e: IfcExportEingabe): IfcExportErgebnis {
 
 /** Fügt das Ergebnis in den Text ein (für Tests / kleine Dateien; im Browser besser byteweise). */
 export function fuegeIfcEin(text: string, erg: IfcExportErgebnis): string {
-  return text.slice(0, erg.einfuegePos) + erg.einfuegeText + text.slice(erg.einfuegePos);
+  return text.slice(0, erg.einfuegePos) + erg.einfuegeText + text.slice(erg.ersetzeBis);
 }

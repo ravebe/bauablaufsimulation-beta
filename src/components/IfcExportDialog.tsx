@@ -96,7 +96,7 @@ export default function IfcExportDialog({ sim, updateSim, api, geladeneModelle, 
       tasks: aktuell.tasks, kalender: aktuell.kalender, kraene: aktuell.kraene, bauteilGuidsJeTask,
       meta: { erstelltAm: aktuell.erstelltAm, geaendertAm: aktuell.geaendertAm, geaendertVon: aktuell.geaendertVon, exportiertVon: benutzer, modellVersion: basis },
     });
-    const blob = new Blob([bytes.slice(0, erg.einfuegePos), new TextEncoder().encode(erg.einfuegeText), bytes.slice(erg.einfuegePos)],
+    const blob = new Blob([bytes.slice(0, erg.einfuegePos), new TextEncoder().encode(erg.einfuegeText), bytes.slice(erg.ersetzeBis)],
       { type: "application/x-step" });
     return { erg, blob, guidById, basis };
   }
@@ -135,7 +135,7 @@ export default function IfcExportDialog({ sim, updateSim, api, geladeneModelle, 
       }
 
       // 2. Warten, bis Connect die Version verarbeitet hat, dann im Viewer laden
-      await warteAufVerarbeitung(api, mid, neu.versionId, s => schritt(mid, `Trimble Connect verarbeitet die neue Version (${s}) … das kann einige Minuten dauern.`));
+      await warteAufVerarbeitung(api, mid, neu.versionId, s => schritt(mid, `Warte auf Konvertierung durch Trimble Connect (${s}) … das kann einige Minuten dauern. Danach wird die Simulation automatisch auf die neue Version umgestellt.`));
       schritt(mid, "Neue Version im Viewer laden …");
       const { mapping, umgestellt, nichtGefunden } = await ordneInVersionZu(api, mid, neu.versionId, mitAusschlussTask(simRef.current), guidById,
         n => schritt(mid, `Neue Version im Viewer laden … (Versuch ${n + 1})`))
@@ -220,6 +220,7 @@ export default function IfcExportDialog({ sim, updateSim, api, geladeneModelle, 
                         ? `✓ ${s.dateiname} heruntergeladen (${s.erg.schema})`
                         : `✓ Als neue Version in Trimble Connect übernommen (${s.erg.schema}) — Simulation umgestellt`}
                     </div>
+                    {s.erg.ersetzt && <div>Der bisherige Bauablauf in der Datei wurde durch den aktuellen Stand der Simulation ersetzt.</div>}
                     {s.erg.anzahl.tasks} Vorgänge · {s.erg.anzahl.sequenzen} Vorgänger-Beziehungen · {s.erg.anzahl.verknuepfteBauteile} Bauteile verknüpft · {s.erg.anzahl.entitaeten} neue IFC-Entitäten
                     {s.art === "uebernommen" && s.nichtGefunden > 0 && (
                       <div style={{ color: "#b26a00" }}>⚠ {s.nichtGefunden} Bauteil-Zuordnung(en) in der neuen Version nicht gefunden — unverändert gelassen.</div>
