@@ -29,16 +29,23 @@ export function guidsZuBatch(guids: string[]): { modelId: string; objectRuntimeI
  *  ApiInstance-Typinterface vermuten ließ); setObjectState ist dagegen an mehreren Stellen im Code
  *  nachweislich funktionsfähig. */
 export async function zeigeBauteileImModell(api: ApiInstance, batch: { modelId: string; objectRuntimeIds: number[] }[]): Promise<void> {
-  const modelle = await api.viewer.getModels();
-  for (const m of modelle) {
-    const alleIds = await getModellObjekte(api, m.id);
-    if (alleIds.length > 0) await api.viewer.setObjectState({ modelObjectIds: [{ modelId: m.id, objectRuntimeIds: alleIds }] }, { visible: false });
-  }
-  await api.viewer.setObjectState({ modelObjectIds: batch }, { visible: true });
+  // 1. Markieren zuerst und unabhängig vom Freistellen — es soll auch dann klappen, wenn das Auslesen/Ausblenden
+  //    aller Modellobjekte fehlschlägt oder bei grossen Modellen lange dauert
   const viewerSetSelection = api.viewer as unknown as {
     setSelection: (sel: { modelObjectIds: { modelId: string; objectRuntimeIds: number[] }[] }, mode: string) => Promise<void>;
   };
-  await viewerSetSelection.setSelection({ modelObjectIds: batch }, "set");
+  let fehler: unknown = null;
+  try { await viewerSetSelection.setSelection({ modelObjectIds: batch }, "set"); } catch (e) { fehler = e; console.warn("[zeigeBauteileImModell] Markieren fehlgeschlagen:", e); }
+  // 2. Freistellen: alles andere ausblenden, nur der Batch bleibt sichtbar
+  try {
+    const modelle = await api.viewer.getModels();
+    for (const m of modelle) {
+      const alleIds = await getModellObjekte(api, m.id);
+      if (alleIds.length > 0) await api.viewer.setObjectState({ modelObjectIds: [{ modelId: m.id, objectRuntimeIds: alleIds }] }, { visible: false });
+    }
+    await api.viewer.setObjectState({ modelObjectIds: batch }, { visible: true });
+  } catch (e) { fehler ??= e; console.warn("[zeigeBauteileImModell] Freistellen fehlgeschlagen:", e); }
+  if (fehler) throw fehler;
 }
 
 export async function getModellObjekte(api: ApiInstance, mid: string): Promise<number[]> {
