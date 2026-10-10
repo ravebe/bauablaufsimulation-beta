@@ -322,12 +322,18 @@ export function isValidDatum(s: string): boolean {
 }
 
 // Datum zu YYYY-MM-DD normalisieren (für interne Speicherung)
-/** Ein Task dauert mindestens 1 Tag (Start <= Ende): wird ein Datum so geändert, dass es hinter dem Ende bzw. vor dem Start liegt,
- *  zieht das andere Datum nach (Start nach hinten → Ende = Start; Ende nach vorne → Start = Ende). Alle Werte ISO (YYYY-MM-DD). */
-export function datumsPaarAnpassen(start: string, ende: string, geaendert: "start" | "end"): { start: string; end: string } {
-  const s = parseDateUniversal(start), e = parseDateUniversal(ende);
-  if (!s || !e || s.getTime() <= e.getTime()) return { start, end: ende };
-  return geaendert === "start" ? { start, end: start } : { start: ende, end: ende };
+/** Dauer bleibt erhalten: wird Start oder Ende per Datumswahl geändert, wandert das andere Datum um dieselbe Anzahl Tage mit
+ *  (Dauer 3 Tage bleibt 3 Tage). Alte und neue Werte ISO (YYYY-MM-DD). Ist ein Datum nicht lesbar, wird nur das geänderte gesetzt;
+ *  fehlerhafte Paare (Ende vor Start) werden auf Dauer 1 Tag (Start = Ende) gebracht. */
+export function datumsPaarVerschieben(altStart: string, altEnde: string, neuesDatum: string, geaendert: "start" | "end"): { start: string; end: string } {
+  const s = parseDateUniversal(altStart), e = parseDateUniversal(altEnde), n = parseDateUniversal(neuesDatum);
+  if (!n) return geaendert === "start" ? { start: altStart, end: altEnde } : { start: altStart, end: altEnde };
+  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const neu = iso(n);
+  if (!s || !e) return geaendert === "start" ? { start: neu, end: altEnde } : { start: altStart, end: neu };
+  const tage = Math.max(0, Math.round((e.getTime() - s.getTime()) / 86400000)); // bisherige Dauer in Kalendertagen (Ende - Start)
+  const verschoben = new Date(n.getFullYear(), n.getMonth(), n.getDate() + (geaendert === "start" ? tage : -tage));
+  return geaendert === "start" ? { start: neu, end: iso(verschoben) } : { start: iso(verschoben), end: neu };
 }
 
 export function normalizeDatum(s: string): string {

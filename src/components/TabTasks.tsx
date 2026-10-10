@@ -3,7 +3,7 @@ import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import { lsSet } from "../hooks/lokalSpeicher";
 import { createPortal } from "react-dom";
 import type { SimProjekt, Task, TaskTyp } from "../types";
-import { formatDatum, normalizeDatum, datumsPaarAnpassen, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, getKinder,
+import { formatDatum, normalizeDatum, datumsPaarVerschieben, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, getKinder,
   berechneNummern, gueltigeVorgaenger, verschiebeAufStart, kaskadiereNachfolger, datumPlusTage,
   taskVerschieben as verschiebeTaskBlock, sucheSortiereTasks, nsKey, TASK_TYP_LISTE, TASK_TYP_LABEL, TASK_TYP_FARBE } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
@@ -658,11 +658,11 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                     <>
                       <DatePicker value={formatDatum(task.start)} onChange={(val: string) => {
                         const norm = normalizeDatum(val);
-                        if (norm) updateSim({ ...aktiveSim, tasks: kaskadiereNachfolger(aktiveSim.tasks.map(t => t.id === task.id ? { ...t, ...datumsPaarAnpassen(norm, t.end, "start") } : t), task.id) });
+                        if (norm) updateSim({ ...aktiveSim, tasks: kaskadiereNachfolger(aktiveSim.tasks.map(t => t.id === task.id ? { ...t, ...datumsPaarVerschieben(t.start, t.end, norm, "start") } : t), task.id) });
                       }} />
                       <DatePicker value={formatDatum(task.end)} onChange={(val: string) => {
                         const norm = normalizeDatum(val);
-                        if (norm) updateSim({ ...aktiveSim, tasks: kaskadiereNachfolger(aktiveSim.tasks.map(t => t.id === task.id ? { ...t, ...datumsPaarAnpassen(t.start, norm, "end") } : t), task.id) });
+                        if (norm) updateSim({ ...aktiveSim, tasks: kaskadiereNachfolger(aktiveSim.tasks.map(t => t.id === task.id ? { ...t, ...datumsPaarVerschieben(t.start, t.end, norm, "end") } : t), task.id) });
                       }} />
                     </>
                   ) : (
