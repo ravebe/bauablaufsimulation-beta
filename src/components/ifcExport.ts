@@ -21,6 +21,7 @@ import type { Task, TaskTyp, Kran } from "../types";
 import { TASK_TYP_LABEL, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, parseDateUniversal, vorgaengerListe } from "../types";
 import type { Kalender } from "./kalenderHelpers";
 import { arbeitstageZwischen, getKW, LEERER_KALENDER } from "./kalenderHelpers";
+import { dauerTage, startZeitpunkt, endZeitpunkt, minZuZeit } from "./zeitHelpers";
 
 export type IfcSchemaFamilie = "IFC4" | "IFC2X3";
 
@@ -109,6 +110,11 @@ function isoDatum(s: string): string | null {
 
 /** ISO-8601-Dauer in Tagen (IfcDuration), negative Wartezeiten als "-P2D" */
 const isoDauerTage = (tage: number) => `${tage < 0 ? "-" : ""}P${Math.abs(tage)}D`;
+/** Arbeitszeit-Dauer als ISO-8601 (8-h-Tage): 2.5 → "P2DT4H", 0.125 → "P0DT1H" */
+const isoDauerArbeitszeit = (tage: number) => {
+  const d = Math.floor(tage + 1e-9), min = Math.round((tage - d) * 8 * 60);
+  return `P${d}D${min ? `T${Math.floor(min / 60) ? `${Math.floor(min / 60)}H` : ""}${min % 60 ? `${min % 60}M` : ""}` : ""}`;
+};
 
 class StepSchreiber {
   zeilen: string[] = [];
@@ -218,9 +224,13 @@ export function erzeuge4dIfc(e: IfcExportEingabe): IfcExportErgebnis {
 
   // Termine je Task (Gruppen aus ihren Kindern)
   const termine = tasks.map((t, i) => {
-    const d = istGruppe(tasks, i) ? gruppenDaten(tasks, i, kal) : { start: t.start, end: t.end };
+    const gr = istGruppe(tasks, i);
+    const d = gr ? gruppenDaten(tasks, i, kal) : { start: t.start, end: t.end };
     const start = isoDatum(d.start), ende = isoDatum(d.end);
-    return { start, ende, tage: start && ende ? arbeitstageZwischen(start, ende, kal) : 0 };
+    // Uhrzeiten (Zeiteinheit Halbtage/Uhrzeit), Gruppen ganze Tage; Dauer in Arbeitstagen (Halbtag 0.5, Stunde 0.125)
+    const sz = gr ? ARBEITSBEGINN : `${minZuZeit(startZeitpunkt(t).min)}:00`, ez = gr ? ARBEITSENDE : `${minZuZeit(endZeitpunkt(t).min)}:00`;
+    const tage = start && ende ? (gr ? arbeitstageZwischen(start, ende, kal) : dauerTage(t, kal)) : 0;
+    return { start, ende, sz, ez, tage };
   });
   const gueltig = termine.filter(x => x.start && x.ende);
   const projStart = gueltig.reduce((m, x) => (!m || x.start! < m ? x.start! : m), "") || jetztIso.slice(0, 10);
@@ -284,10 +294,10 @@ export function erzeuge4dIfc(e: IfcExportEingabe): IfcExportErgebnis {
     const name = label(taskName(t, i));
     const ident = stepText(nummern.get(t.id) ?? String(i + 1));
     const gruppe = istGruppe(tasks, i);
-    const { start, ende, tage } = termine[i];
+    const { start, ende, sz, ez, tage } = termine[i];
     if (ist4) {
       const tt = start && ende
-        ? ref(w.add(`IFCTASKTIME($,$,$,.WORKTIME.,'${isoDauerTage(tage)}','${start}T${ARBEITSBEGINN}','${ende}T${ARBEITSENDE}',$,$,$,$,$,$,$,$,$,$,$,$,$)`))
+        ? ref(w.add(`IFCTASKTIME($,$,$,.WORKTIME.,'${isoDauerArbeitszeit(tage)}','${start}T${sz}','${ende}T${ez}',$,$,$,$,$,$,$,$,$,$,$,$,$)`))
         : "$";
       const pt = gruppe ? "NOTDEFINED" : TASK_TYP_IFC4[t.typ];
       taskIds.push(w.add(`IFCTASK('${tg}',${oh},${name},$,${label(typLabel(t, i))},${ident},$,$,$,.F.,$,${tt},.${pt}.)`));
@@ -295,7 +305,7 @@ export function erzeuge4dIfc(e: IfcExportEingabe): IfcExportErgebnis {
       const taskId = w.add(`IFCTASK('${tg}',${oh},${name},$,${label(typLabel(t, i))},${ident},$,$,.F.,$)`);
       taskIds.push(taskId);
       const zeit = start && ende
-        ? ref(w.add(`IFCSCHEDULETIMECONTROL('${g(`time|${t.id}`)}',${oh},$,$,$,$,$,$,${ref(datumZeit2x3(start, ARBEITSBEGINN))},$,$,$,${ref(datumZeit2x3(ende, ARBEITSENDE))},${stepReal(tage * ARBEITSSTUNDEN_PRO_TAG * 3600)},$,$,$,$,$,$,$,$,$)`))
+        ? ref(w.add(`IFCSCHEDULETIMECONTROL('${g(`time|${t.id}`)}',${oh},$,$,$,$,$,$,${ref(datumZeit2x3(start, sz))},$,$,$,${ref(datumZeit2x3(ende, ez))},${stepReal(tage * ARBEITSSTUNDEN_PRO_TAG * 3600)},$,$,$,$,$,$,$,$,$)`))
         : "$";
       // IFC2X3: jeder Task einzeln über IfcRelAssignsTasks am Terminplan (trägt zugleich die Termine)
       w.add(`IFCRELASSIGNSTASKS('${g(`rel-schedule|${t.id}`)}',${oh},$,$,(${ref(taskId)}),$,${ref(scheduleId)},${zeit})`);
@@ -420,7 +430,7 @@ export function erzeuge4dIfc(e: IfcExportEingabe): IfcExportErgebnis {
         prop("Ende", `IFCLABEL(${label(vereint(idx.map(i => termine[i].ende ?? "")))})`));
     }
     props.push(einzel !== null
-      ? prop("Dauer_Arbeitstage", `IFCINTEGER(${termine[einzel].tage})`)
+      ? prop("Dauer_Arbeitstage", Number.isInteger(termine[einzel].tage) ? `IFCINTEGER(${termine[einzel].tage})` : `IFCREAL(${stepReal(termine[einzel].tage)})`)
       : prop("Dauer_Arbeitstage", `IFCLABEL(${label(vereint(idx.map(i => String(termine[i].tage))))})`));
     const phase = vereint(ts.map(t => t.kranbereich ?? ""));
     const kw = (iso: string | null) => iso ? `${iso.slice(0, 4)}-KW${String(getKW(parseDateUniversal(iso)!)).padStart(2, "0")}` : "";

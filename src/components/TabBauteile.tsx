@@ -208,10 +208,10 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
       readOnly={readOnly} updateSim={updateSim} />
   ) : undefined;
 
-  function ganttDateChange(taskId: string, newStart: string, newEnd: string) {
+  function ganttDateChange(taskId: string, newStart: string, newEnd: string, startZeit?: string, endZeit?: string) {
     if (!aktiveSim) return;
     const tasks = kaskadiereNachfolger(
-      aktiveSim.tasks.map(t => t.id === taskId ? { ...t, start: newStart, end: newEnd } : t),
+      aktiveSim.tasks.map(t => t.id === taskId ? { ...t, start: newStart, end: newEnd, startZeit, endZeit } : t),
       taskId, aktiveSim.kalender ?? LEERER_KALENDER
     );
     updateSim({ ...aktiveSim, tasks });
@@ -260,7 +260,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   // Mengen-Felder).
   const zeitplanStatus = aktiveSim ? pruefeZeitplanBereitschaft(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN) : null;
   const zeitplanAenderungen = aktiveSim && zeitplanStatus?.bereit
-    ? zeitplanHatAenderungen(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN, aktiveSim.kalender ?? LEERER_KALENDER)
+    ? zeitplanHatAenderungen(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN, aktiveSim.kalender ?? LEERER_KALENDER, aktiveSim.zeiteinheit)
     : false;
   function zeitplanButtonKlick() {
     if (!zeitplanStatus?.bereit) { setZeitplanHinweisOffen(o => !o); return; }
@@ -270,7 +270,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
     if (!aktiveSim) return;
     const stammdaten = aktiveSim.stammdaten ?? LEERE_STAMMDATEN;
     const kalender = aktiveSim.kalender ?? LEERER_KALENDER;
-    updateSim({ ...aktiveSim, tasks: berechneZeitplanUebernahme(aktiveSim.tasks, stammdaten, kalender) });
+    updateSim({ ...aktiveSim, tasks: berechneZeitplanUebernahme(aktiveSim.tasks, stammdaten, kalender, aktiveSim.zeiteinheit) });
     setZeitplanBestaetigenOffen(false);
   }
 
@@ -466,6 +466,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
         <>
           <GanttChart
             projectId={projectId}
+            zeiteinheit={aktiveSim?.zeiteinheit}
             tasks={tasks}
             currentTag={ghostTag >= 0 ? ghostTag : nadelTag}
             totalTage={totalTage}

@@ -5,7 +5,9 @@ import { createPortal } from "react-dom";
 import type { SimProjekt, Task, TaskTyp } from "../types";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import type { VorgaengerLink } from "../types";
-import { formatDatum, normalizeDatum, datumsPaarVerschieben, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, getKinder,
+import ZeitWahl from "./ZeitWahl";
+import { startZeitpunkt, endZeitpunkt, fmtZeitZusatz } from "./zeitHelpers";
+import { formatDatum, normalizeDatum, zeitraumVerschieben, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, getKinder,
   berechneNummern, gueltigeVorgaenger, verschiebeAufStart, kaskadiereNachfolger, vorgaengerListe, mitVorgaengern, vorgaengerText, parseVorgaengerText,
   massgebenderVorgaenger, vorgaengerStart, letzterVorgaengerEintrag, ersetzeLetztenVorgaengerEintrag,
   taskVerschieben as verschiebeTaskBlock, sucheSortiereTasks, nsKey, TASK_TYP_LISTE, TASK_TYP_LABEL, TASK_TYP_FARBE } from "../types";
@@ -181,6 +183,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
     try { return Number(localStorage.getItem(lsBauteilListHKey)) || 350; } catch { return 350; }
   });
   const resizingRef = useRef(false);
+  const einheit = aktiveSim?.zeiteinheit ?? "tage"; // Tage / Halbtage / Uhrzeit (⋮ der Simulationskarte)
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => bindeListenScroll(scrollRef.current), [detailOnly]); // gleiche erste Zeile wie im Gantt / im anderen Tab
   // Neue Selektion im Modell: ein Bauteil → verknüpften Task vertikal zentrieren; mehrere → Liste nach oben (Sortierung wechselt auf "Aktive")
@@ -364,6 +367,13 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
     setLagInput("0");
     // Bei bereits gesetztem Vorgänger gleich Wartetage zeigen statt der Liste (nur bei neuer Auswahl automatisch aufklappen)
     setPredListOffen(!task.predecessorId);
+  }
+
+  // Start oder Ende (Datum und/oder Uhrzeit) eines Tasks ändern — Dauer in Arbeitszeit bleibt, Nachfolger werden nachgezogen
+  function zeitAendern(taskId: string, datum: string, feld: "start" | "end", min?: number) {
+    const kal = aktiveSim.kalender ?? LEERER_KALENDER;
+    const tasks = aktiveSim.tasks.map(t => t.id === taskId ? { ...t, ...zeitraumVerschieben(t, datum, feld, kal, min) } : t);
+    updateSim({ ...aktiveSim, tasks: kaskadiereNachfolger(tasks, taskId, kal) });
   }
 
   function vorgängerSetzen(taskId: string, liste: VorgaengerLink[]) {
@@ -652,7 +662,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
 
                 {/* Datum — blau, untereinander; feine Trennstriche links/rechts über die ganze Zeilenhöhe (.task-row hat 6px Innenabstand oben/unten), wie Tab Abspielen. Feste Breiten (auch Spalte rechts), sonst knicken die Striche bei fetten Gruppendaten */}
                 <span style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", lineHeight: 1.3, flexShrink: 0,
-                  width: 90, boxSizing: "border-box", padding: "6px 12px", margin: "-6px 0", alignSelf: "stretch", borderLeft: "1px solid #e4e8ec", borderRight: "1px solid #e4e8ec" }}
+                  width: einheit === "tage" ? 90 : einheit === "halbtage" ? 112 : 150, boxSizing: "border-box", padding: "6px 12px", margin: "-6px 0", alignSelf: "stretch", borderLeft: "1px solid #e4e8ec", borderRight: "1px solid #e4e8ec" }}
                   onClick={e => e.stopPropagation()}>
                   {isGroup && gDaten ? (
                     <>
@@ -661,19 +671,26 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                     </>
                   ) : !readOnly ? (
                     <>
-                      <DatePicker value={formatDatum(task.start)} kalender={aktiveSim.kalender} onChange={(val: string) => {
-                        const norm = normalizeDatum(val);
-                        if (norm) updateSim({ ...aktiveSim, tasks: kaskadiereNachfolger(aktiveSim.tasks.map(t => t.id === task.id ? { ...t, ...datumsPaarVerschieben(t.start, t.end, norm, "start", aktiveSim.kalender) } : t), task.id, aktiveSim.kalender) });
-                      }} />
-                      <DatePicker value={formatDatum(task.end)} kalender={aktiveSim.kalender} onChange={(val: string) => {
-                        const norm = normalizeDatum(val);
-                        if (norm) updateSim({ ...aktiveSim, tasks: kaskadiereNachfolger(aktiveSim.tasks.map(t => t.id === task.id ? { ...t, ...datumsPaarVerschieben(t.start, t.end, norm, "end", aktiveSim.kalender) } : t), task.id, aktiveSim.kalender) });
-                      }} />
+                      {/* Datum (und bei Halbtagen/Uhrzeit die Zeit) ändern: Dauer in Arbeitszeit bleibt, Nachfolger ziehen nach */}
+                      <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                        <DatePicker value={formatDatum(task.start)} kalender={aktiveSim.kalender} onChange={(val: string) => {
+                          const norm = normalizeDatum(val);
+                          if (norm) zeitAendern(task.id, norm, "start");
+                        }} />
+                        <ZeitWahl einheit={einheit} art="start" min={startZeitpunkt(task).min} onChange={m => zeitAendern(task.id, task.start, "start", m)} />
+                      </span>
+                      <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                        <DatePicker value={formatDatum(task.end)} kalender={aktiveSim.kalender} onChange={(val: string) => {
+                          const norm = normalizeDatum(val);
+                          if (norm) zeitAendern(task.id, norm, "end");
+                        }} />
+                        <ZeitWahl einheit={einheit} art="ende" min={endZeitpunkt(task).min} onChange={m => zeitAendern(task.id, task.end, "end", m)} />
+                      </span>
                     </>
                   ) : (
                     <>
-                      <span style={{ fontSize: 11, color: "#2d7dbd" }}>{formatDatum(task.start)}</span>
-                      <span style={{ fontSize: 11, color: "#2d7dbd" }}>{formatDatum(task.end)}</span>
+                      <span style={{ fontSize: 11, color: "#2d7dbd" }}>{formatDatum(task.start)}{fmtZeitZusatz(startZeitpunkt(task).min, "start", einheit)}</span>
+                      <span style={{ fontSize: 11, color: "#2d7dbd" }}>{formatDatum(task.end)}{fmtZeitZusatz(endZeitpunkt(task).min, "ende", einheit)}</span>
                     </>
                   )}
                 </span>

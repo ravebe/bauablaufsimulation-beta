@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import type { SimModell, SimProjekt, Task } from "../types";
 import { normalisiereAufArbeitstage } from "../types";
+import type { Zeiteinheit } from "./zeitHelpers";
+import { benoetigteZeiteinheit, feinerAls, rundeZeitenAufEinheit, ZEITEINHEIT_LABEL } from "./zeitHelpers";
 import { darfBearbeiten as darfSimBearbeiten } from "../zugriff";
 import type { ApiInstance } from "../hooks/useApi";
 import GanttImport from "./GanttImport";
@@ -55,6 +57,23 @@ export default function TabProjekte({ api, laedt, sims, setSims, aktivId, setAkt
     return () => document.removeEventListener("mousedown", handler);
   }, [verknuepfOffen]);
   if (!sichtbar && verknuepfOffen) setVerknuepfOffen(null);
+
+  // Zeiteinheit einer Simulation (⋮ der Simulationskarte): Tage / Halbtage / Uhrzeit. Beim Wechsel auf eine gröbere Einheit werden
+  // vorhandene Uhrzeiten nach Rückfrage gerundet (Uhrzeit → Halbtage: auf 08/12/13/17 Uhr; → Tage: ganze Tage).
+  function zeiteinheitSetzen(simId: string, neu: Zeiteinheit) {
+    const s = simsRef.current.find(x => x.id === simId);
+    if (!s) return;
+    const alt: Zeiteinheit = s.zeiteinheit ?? "tage";
+    if (neu === alt) return;
+    let tasks = s.tasks;
+    if (feinerAls(alt, neu)) {
+      const gerundet = tasks.map(t => rundeZeitenAufEinheit(t, neu));
+      const betroffen = gerundet.filter((t, i) => t.startZeit !== tasks[i].startZeit || t.endZeit !== tasks[i].endZeit).length;
+      if (betroffen > 0 && !confirm(`Zeiteinheit auf «${ZEITEINHEIT_LABEL[neu]}» stellen?\n\n${betroffen} Task(s) mit Uhrzeit werden auf ${neu === "tage" ? "ganze Tage" : "halbe Tage (08/12/13/17 Uhr)"} gerundet.`)) return;
+      tasks = gerundet;
+    }
+    setSims(prev => prev.map(x => x.id === simId ? { ...x, zeiteinheit: neu === "tage" ? undefined : neu, tasks } : x));
+  }
   const [neuName, setNeuName] = useState("");
   const [zeigeNeu, setZeigeNeu] = useState(false);
   const [modellLaden, setModellLaden] = useState(false);
@@ -461,6 +480,7 @@ export default function TabProjekte({ api, laedt, sims, setSims, aktivId, setAkt
                     onUmbenennen={(neuerName: string) => setSims(prev => prev.map(s => s.id === sim.id ? { ...s, name: neuerName } : s))}
                     onLoeschen={() => loeschen(sim.id)}
                     onKalender={onKalender && (() => onKalender(sim.id))}
+                    onZeiteinheit={darfBearbeiten ? (e => zeiteinheitSetzen(sim.id, e)) : undefined}
                     onIfcExport={onIfcExport && (() => onIfcExport(sim.id))}
                     onVerlauf={onVerlauf && (() => onVerlauf(sim.id))}
                   />
@@ -521,21 +541,27 @@ export default function TabProjekte({ api, laedt, sims, setSims, aktivId, setAkt
                   onImport={(neueTasks, dateiname) => {
                     // Bisherige Tasks zuordnen: Bauteil-Verknüpfungen, IDs und Kalkulationsdaten bleiben erhalten
                     // Importierte Termine auf Arbeitstage bringen (Start auf Arbeitstag, Wochenenden/Feiertage/Ferien aus der Dauer geschnitten)
-                    const norm = normalisiereAufArbeitstage(neueTasks, simsRef.current.find(s => s.id === sim.id)?.kalender);
-                    const ab = gleicheGanttAb(simsRef.current.find(s => s.id === sim.id)?.tasks ?? [], norm.tasks);
-                    if (norm.geaendert > 0) {
-                      setModellMsg({ simId: sim.id, typ: "ok", text: `${norm.geaendert} Task(s) lagen ganz oder teilweise auf Wochenenden, Feiertagen oder Ferien und wurden auf Arbeitstage verschoben (Start auf den nächsten Arbeitstag, freie Tage zählen nicht zur Dauer). Für Wochenendarbeit im Kalender-Dialog den Schalter ausschalten.` });
+                    const bisher = simsRef.current.find(s => s.id === sim.id);
+                    const norm = normalisiereAufArbeitstage(neueTasks, bisher?.kalender);
+                    const ab = gleicheGanttAb(bisher?.tasks ?? [], norm.tasks);
+                    // Halbtage/Uhrzeiten in der Datei → Zeiteinheit automatisch feiner stellen (wie MS Project)
+                    const alteEinheit: Zeiteinheit = bisher?.zeiteinheit ?? "tage";
+                    const noetig = benoetigteZeiteinheit(norm.tasks);
+                    const neueEinheit = feinerAls(noetig, alteEinheit) ? noetig : null;
+                    const meldungen: string[] = [];
+                    if (ab.bauteileUebernommen > 0 || ab.wegfallend.bauteile > 0) {
+                      meldungen.push(`${ab.bauteileUebernommen} Bauteil-Verknüpfungen übernommen (${ab.zugeordnet} Tasks wiedererkannt)`
+                        + (ab.wegfallend.bauteile > 0 ? ` — ${ab.wegfallend.tasks} bisherige Task(s) nicht mehr in der Datei, deren ${ab.wegfallend.bauteile} Bauteile stehen jetzt unter „Noch nicht verknüpft“` : ""));
                     }
+                    if (norm.geaendert > 0) meldungen.push(`${norm.geaendert} Task(s) lagen ganz oder teilweise auf Wochenenden, Feiertagen oder Ferien und wurden auf Arbeitstage verschoben (Start auf den nächsten Arbeitstag, freie Tage zählen nicht zur Dauer). Für Wochenendarbeit im Kalender-Dialog den Schalter ausschalten.`);
+                    if (neueEinheit) meldungen.push(`Die Datei enthält ${neueEinheit === "halbtage" ? "halbe Tage" : "Uhrzeiten"} — Zeiteinheit automatisch auf «${ZEITEINHEIT_LABEL[neueEinheit]}» gestellt (⋮ der Simulationskarte).`);
+                    if (meldungen.length) setModellMsg({ simId: sim.id, typ: ab.wegfallend.bauteile > 0 ? "err" : "ok", text: meldungen.join(" · ") });
                     setSims(prev => prev.map(s => s.id === sim.id ? {
                       ...s, tasks: ab.tasks,
+                      ...(neueEinheit ? { zeiteinheit: neueEinheit } : {}),
                       autoVerknuepft: ab.bauteileUebernommen > 0 ? s.autoVerknuepft : false,
                       ganttImport: { dateiname, version: (s.ganttImport?.version ?? 0) + 1 },
                     } : s));
-                    if (ab.bauteileUebernommen > 0 || ab.wegfallend.bauteile > 0) {
-                      setModellMsg({ simId: sim.id, typ: ab.wegfallend.bauteile > 0 ? "err" : "ok",
-                        text: `${ab.bauteileUebernommen} Bauteil-Verknüpfungen übernommen (${ab.zugeordnet} Tasks wiedererkannt)`
-                          + (ab.wegfallend.bauteile > 0 ? ` — ${ab.wegfallend.tasks} bisherige Task(s) nicht mehr in der Datei, deren ${ab.wegfallend.bauteile} Bauteile stehen jetzt unter „Noch nicht verknüpft“` : "") });
-                    }
                   }}
                   taskCount={sim.tasks.length}
                   ganttInfo={sim.ganttImport}

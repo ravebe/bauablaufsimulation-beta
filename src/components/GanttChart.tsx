@@ -2,12 +2,14 @@ import { useRef, useState, useEffect, useLayoutEffect, useCallback, useMemo } fr
 import { lsGet, lsSet } from "../hooks/lokalSpeicher";
 import { createPortal } from "react-dom";
 import type { Task, VorgaengerLink } from "../types";
-import { vorgaengerListe, vorgaengerText, parseVorgaengerText, massgebenderVorgaenger, letzterVorgaengerEintrag, ersetzeLetztenVorgaengerEintrag, datumsPaarVerschieben, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks, nsKey, TASK_TYP_FARBE } from "../types";
+import { vorgaengerListe, vorgaengerText, parseVorgaengerText, massgebenderVorgaenger, letzterVorgaengerEintrag, ersetzeLetztenVorgaengerEintrag, zeitraumVerschieben, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks, nsKey, TASK_TYP_FARBE } from "../types";
 import type { Kalender } from "./kalenderHelpers";
-import { istArbeitstag, LEERER_KALENDER, getKW, arbeitstageZwischen, endDatumAusArbeitstagen, ersterArbeitstagAb, letzterArbeitstagBis, arbeitsBloecke } from "./kalenderHelpers";
+import { istArbeitstag, LEERER_KALENDER, getKW, arbeitstageZwischen, arbeitsBloecke } from "./kalenderHelpers";
 import DatePicker from "./DatePicker";
 import { useDoppelklickHinweis } from "../hooks/useDoppelklickHinweis";
 import { ZoomControls } from "./cockpitCharts";
+import type { Zeiteinheit } from "./zeitHelpers";
+import { startZeitpunkt, endZeitpunkt, arbeitsMinutenZwischen, naechsteArbeitszeit, letzteArbeitszeit, endeAusArbeitsMinuten, uhrzeitAusArbeitsMin, vergleicheZeitpunkte, zeitFelder, schrittTage, tagesAnteil, dauerTage, fmtDauer, fmtZeitZusatz, zeitZuMin, ARBEITSBEGINN_MIN, ARBEITSENDE_MIN, MIN_PRO_ARBEITSTAG } from "./zeitHelpers";
 import { bindeListenScroll, useSelektionFokus } from "./listenScroll";
 
 interface Props {
@@ -30,7 +32,9 @@ interface Props {
   taskSort?: "gantt" | "datum" | "aktiv" | "name" | "nummer";
   height?: number;
   editable?: boolean;
-  onDateChange?: (taskId: string, newStart: string, newEnd: string) => void;
+  onDateChange?: (taskId: string, newStart: string, newEnd: string, startZeit?: string, endZeit?: string) => void;
+  /** Tage (Standard) / Halbtage / Uhrzeit — Raster beim Ziehen und Anzeige der Dauer */
+  zeiteinheit?: Zeiteinheit;
   onTaskReorder?: (fromIdx: number, toIdx: number) => void;
   onTaskRename?: (taskId: string, newName: string) => void;
   /** Vorgänger setzen — Liste (bis 30) mit eigenen Wartetagen, leer = keine */
@@ -60,7 +64,7 @@ function fmtDatum(d: Date, lang: boolean): string {
 }
 function fmtDMY(d: Date): string { return `${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`; }
 
-export default function GanttChart({ tagRef, laeuft, selektionFokus, projectId = null, tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selectedIds = [], selGuids, taskSort, height, editable, onDateChange, onTaskReorder, onTaskRename, onSetPredecessor, showObjektCount, suchQuery = "", nadelStil = "normal", dateColor = "#2d7dbd", kalender = LEERER_KALENDER }: Props) {
+export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selektionFokus, projectId = null, tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selectedIds = [], selGuids, taskSort, height, editable, onDateChange, onTaskReorder, onTaskRename, onSetPredecessor, showObjektCount, suchQuery = "", nadelStil = "normal", dateColor = "#2d7dbd", kalender = LEERER_KALENDER }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
@@ -305,26 +309,38 @@ export default function GanttChart({ tagRef, laeuft, selektionFokus, projectId =
     document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp);
   }, [labelW]);
 
-  const startBarDrag = useCallback((e: React.MouseEvent, taskId: string, mode: "start" | "end" | "move", origStart: Date, origEnd: Date) => {
+  const startBarDrag = useCallback((e: React.MouseEvent, taskId: string, mode: "start" | "end" | "move", task: Task) => {
     if (!editable || !minDate || !onDateChange) return;
     e.preventDefault(); e.stopPropagation(); scrollLock.current = true;
     setEditingTaskId(taskId);
-    const sx = e.clientX, oS = (origStart.getTime() - minDate.getTime()) / 86400000, oE = (origEnd.getTime() - minDate.getTime()) / 86400000 + 1, dur = oE - oS; // oE: Ende des letzten Tages
-    const dauerWd = arbeitstageZwischen(fmtISO(origStart), fmtISO(origEnd), kalender);
+    // Positionen in Tagen ab minDate (mit Tagesanteil der Arbeitszeit: 08:00 = 0, 12:00/13:00 = 0.5, 17:00 = 1)
+    const tagIdx = (iso: string) => { const d = parseDateUniversal(iso); return d ? Math.round((d.getTime() - minDate.getTime()) / 86400000) : 0; };
+    const S = startZeitpunkt(task), E = endZeitpunkt(task);
+    const sx = e.clientX, oS = tagIdx(S.datum) + tagesAnteil(S.min), oE = tagIdx(E.datum) + tagesAnteil(E.min);
+    const dauerMin = arbeitsMinutenZwischen(S, E, kalender);
+    const schritt = schrittTage(zeiteinheit); // Raster: ganze Tage, halbe Tage oder Stunden
+    const zuZeitpunkt = (n: number, art: "start" | "ende") => {
+      let tag = Math.floor(n + 1e-9), anteil = n - tag;
+      if (art === "ende" && anteil < 1e-9) { tag -= 1; anteil = 1; } // Ende genau an der Tagesgrenze = Abend des Vortags
+      const d = new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate() + tag);
+      return { datum: fmtISO(d), min: uhrzeitAusArbeitsMin(Math.round(anteil * MIN_PRO_ARBEITSTAG), art) };
+    };
     const onMove = (ev: MouseEvent) => {
-      const dd = Math.round((ev.clientX - sx) / pxProTag);
+      const dd = Math.round((ev.clientX - sx) / pxProTag / schritt) * schritt;
       let nS = oS, nE = oE;
-      if (mode === "start") { nS = Math.max(0, oS + dd); if (nS >= nE) nS = nE - 1; }
-      else if (mode === "end") { nE = Math.max(nS + 1, oE + dd); }
-      else { nS = Math.max(0, oS + dd); nE = nS + dur; }
-      // Start immer auf einen Arbeitstag (vorwärts), Ende immer auf einen Arbeitstag (rückwärts); beim Verschieben bleibt die Dauer in ARBEITSTAGEN erhalten
-      const startIso = ersterArbeitstagAb(fmtISO(new Date(minDate.getTime() + nS * 86400000)), kalender);
-      const endIso = mode === "move" ? endDatumAusArbeitstagen(startIso, dauerWd, kalender) : letzterArbeitstagBis(fmtISO(new Date(minDate.getTime() + (nE - 1) * 86400000)), kalender);
-      onDateChange(taskId, startIso, endIso < startIso ? startIso : endIso);
+      if (mode === "start") { nS = Math.max(0, oS + dd); if (nS > nE - schritt) nS = nE - schritt; }
+      else if (mode === "end") { nE = Math.max(nS + schritt, oE + dd); }
+      else { nS = Math.max(0, oS + dd); }
+      // Start und Ende nur in der Arbeitszeit an Arbeitstagen; beim Verschieben bleibt die Dauer in ARBEITSZEIT erhalten
+      const s = naechsteArbeitszeit(zuZeitpunkt(nS, "start"), kalender);
+      let en = mode === "move" ? endeAusArbeitsMinuten(s, dauerMin, kalender) : letzteArbeitszeit(zuZeitpunkt(nE, "ende"), kalender);
+      if (vergleicheZeitpunkte(en, s) <= 0) en = endeAusArbeitsMinuten(s, schritt * MIN_PRO_ARBEITSTAG, kalender);
+      const f = zeitFelder(s, en);
+      onDateChange(taskId, f.start, f.end, f.startZeit, f.endZeit);
     };
     const onUp = () => { setEditingTaskId(null); setTimeout(() => { scrollLock.current = false; }, 200); document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
     document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp);
-  }, [editable, minDate, pxProTag, onDateChange, kalender]);
+  }, [editable, minDate, pxProTag, onDateChange, kalender, zeiteinheit]);
 
   // Klick ins Leere → Nadel setzen + zentrieren
   const handleChartClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
@@ -500,7 +516,7 @@ export default function GanttChart({ tagRef, laeuft, selektionFokus, projectId =
           <div style={{ height: bodyH }}>
             {sorted.map(({ task: t, origIdx }, i) => {
               const sd = parseDateUniversal(t.start), ed = parseDateUniversal(t.end);
-              const dauer = sd && ed ? arbeitstageZwischen(t.start, t.end, kalender) : 1;
+              const dauer = sd && ed ? fmtDauer(dauerTage(t, kalender), zeiteinheit) : "1d";
               const isSel = selectedIds.includes(t.id);
               const hasSel = selGuids?.size ? t.objektGuids.some(g => selGuids!.has(g)) : false;
               const isEditing = editingTaskId === t.id || calEdit?.taskId === t.id;
@@ -628,9 +644,9 @@ export default function GanttChart({ tagRef, laeuft, selektionFokus, projectId =
                     <span style={{ flexShrink: 0, fontSize: 11, color: "#8a9baa", minWidth: 33, textAlign: "right" }}>{
                       isGrp && showObjektCount
                         ? (() => { const ids: string[] = []; for (let ci = origIdx + 1; ci < tasks.length; ci++) { if (getOutlineLevel(tasks[ci]) <= getOutlineLevel(t)) break; ids.push(...tasks[ci].objektGuids); } const cnt = new Set(ids).size; return cnt > 0 ? `O ${cnt}` : ""; })()
-                        : isGrp && gDaten ? `${gDaten.tage}d`
+                        : isGrp && gDaten ? fmtDauer(gDaten.tage, zeiteinheit)
                         : showObjektCount ? (t.objektGuids.length > 0 ? `O ${t.objektGuids.length}` : "")
-                        : `${dauer}d`
+                        : dauer
                     }</span>
                   </div>
                 </div>
@@ -674,11 +690,17 @@ export default function GanttChart({ tagRef, laeuft, selektionFokus, projectId =
               const effStart = isGrp && gDaten ? gDaten.start : t.start;
               const effEnd = isGrp && gDaten ? gDaten.end : t.end;
               const y = i * ROW_H, sd = parseDateUniversal(effStart), ed = parseDateUniversal(effEnd);
-              const sT = sd ? Math.max(0, (sd.getTime() - minDate.getTime()) / 86400000) : 0;
-              // Ende ist der LETZTE Tag der Dauer → Balken reicht bis zum Ende dieses Tages (+1); Beschriftung in Arbeitstagen wie Tab Kalkulation/IFC
-              const eT = ed ? (ed.getTime() - minDate.getTime()) / 86400000 + 1 : sT + 1;
-              const dauer = sd && ed ? arbeitstageZwischen(effStart, effEnd, kalender) : 1;
-              const tip = sd && ed ? `${t.name}\n${fmtDMY(sd)} – ${fmtDMY(ed)} · ${dauer} Arbeitstag${dauer === 1 ? "" : "e"} (Start und Ende zählen mit, Wochenenden/Feiertage nicht)` : t.name;
+              // Start-/Endzeit (Zeiteinheit Halbtage/Uhrzeit): Balken beginnt/endet innerhalb des Tages; Gruppen immer ganze Tage
+              const sMin = isGrp ? ARBEITSBEGINN_MIN : zeitZuMin(t.startZeit, ARBEITSBEGINN_MIN);
+              const eMin = isGrp ? ARBEITSENDE_MIN : zeitZuMin(t.endZeit, ARBEITSENDE_MIN);
+              const sTag = sd ? Math.max(0, Math.round((sd.getTime() - minDate.getTime()) / 86400000)) : 0;
+              const sT = sTag + tagesAnteil(sMin);
+              // Ende ist der LETZTE Tag der Dauer → Balken reicht bis zum Arbeitsende dieses Tages; Beschriftung in Arbeitstagen wie Tab Kalkulation/IFC
+              const eT = ed ? Math.round((ed.getTime() - minDate.getTime()) / 86400000) + tagesAnteil(eMin) : sT + 1;
+              const dauerZahl = sd && ed ? (isGrp ? arbeitstageZwischen(effStart, effEnd, kalender) : dauerTage(t, kalender)) : 1;
+              const dauer = fmtDauer(dauerZahl, zeiteinheit);
+              const zusatzS = isGrp ? "" : fmtZeitZusatz(sMin, "start", zeiteinheit), zusatzE = isGrp ? "" : fmtZeitZusatz(eMin, "ende", zeiteinheit);
+              const tip = sd && ed ? `${t.name}\n${fmtDMY(sd)}${zusatzS} – ${fmtDMY(ed)}${zusatzE} · ${dauer} Arbeitszeit (Start und Ende zählen mit, Wochenenden/Feiertage/Ferien nicht)` : t.name;
               const bX = sT * pxProTag, bW = Math.max((eT - sT) * pxProTag, 3);
               const isSel = selectedIds.includes(t.id), hasSel = selGuids?.size ? t.objektGuids.some(g => selGuids!.has(g)) : false;
               const isEditing = editingTaskId === t.id || calEdit?.taskId === t.id;
@@ -694,7 +716,7 @@ export default function GanttChart({ tagRef, laeuft, selektionFokus, projectId =
                 const bracketH = 4;
                 const tickH = 3;
                 const zeigeDauerText = !!sd && bW > 40;
-                const durText = `${dauer}d`;
+                const durText = dauer;
                 const barMidX = bX + bW / 2;
                 const textGapHalb = zeigeDauerText ? Math.max(0, Math.min(bW / 2 - tickH - 2, durText.length * 3.3 + 4)) : 0;
                 return (
@@ -726,16 +748,22 @@ export default function GanttChart({ tagRef, laeuft, selektionFokus, projectId =
                   {showDates && <text x={bX - 3} y={y + ROW_H / 2 + 4} fontSize={11} fill={dateColor} textAnchor="end"
                     style={{ cursor: editable ? "pointer" : "default" }}
                     onClick={editable ? (e) => { e.stopPropagation(); setEditingTaskId(t.id); const r = (e.target as SVGElement).getBoundingClientRect(); setCalEdit({ taskId: t.id, field: "start", value: fmtDMY(sd!), x: r.left, y: r.bottom }); } : (e) => melden(`row-${t.id}`, e.clientX, e.clientY)}
-                  >{fmtDatum(sd!, longDates)}</text>}
+                  >{fmtDatum(sd!, longDates)}{zusatzS}</text>}
                   {sd && (() => {
                     // Ein Task über Wochenende/Feiertag/Ferien wird als mehrere Balkenstücke gezeichnet (Lücke = freie Tage, dünne Linie als Verbindung).
                     // Ziehen an den Enden bleibt am Anfang des ersten und am Ende des letzten Stücks (Anfasser unten).
                     const bloecke = ed ? arbeitsBloecke(effStart, effEnd, kalender) : [];
-                    const stuecke = bloecke.length > 1 ? bloecke.map(b => ({ x: (sT + b.von) * pxProTag, w: Math.max((b.bis - b.von + 1) * pxProTag, 3) })) : [{ x: bX, w: bW }];
+                    const stuecke = bloecke.length > 1 ? bloecke.map(b => ({ x: (sTag + b.von) * pxProTag, w: (b.bis - b.von + 1) * pxProTag })) : [{ x: bX, w: bW }];
+                    if (bloecke.length > 1) {
+                      const a0 = tagesAnteil(sMin) * pxProTag, a1 = (1 - tagesAnteil(eMin)) * pxProTag;
+                      stuecke[0] = { x: stuecke[0].x + a0, w: Math.max(stuecke[0].w - a0, 3) };
+                      const l = stuecke.length - 1;
+                      stuecke[l] = { x: stuecke[l].x, w: Math.max(stuecke[l].w - a1, 3) };
+                    }
                     const rektHandler = {
                       style: editable && ed ? { cursor: "move" } : undefined,
                       onClick: (e: React.MouseEvent) => { e.stopPropagation(); if (!editable) melden(`row-${t.id}`, e.clientX, e.clientY); },
-                      onMouseDown: editable && ed ? (e: React.MouseEvent) => startBarDrag(e, t.id, "move", sd, ed) : undefined,
+                      onMouseDown: editable && ed ? (e: React.MouseEvent) => startBarDrag(e, t.id, "move", t) : undefined,
                     };
                     return (<>
                       {stuecke.length > 1 && <line x1={stuecke[0].x + stuecke[0].w} y1={y + ROW_H / 2} x2={stuecke[stuecke.length - 1].x} y2={y + ROW_H / 2}
@@ -747,14 +775,14 @@ export default function GanttChart({ tagRef, laeuft, selektionFokus, projectId =
                       ))}
                     </>);
                   })()}
-                  {sd && bW > 28 && <text x={bX + bW / 2} y={y + ROW_H / 2 + 4} fontSize={12} fill="#333" fontWeight={600} textAnchor="middle" style={{ pointerEvents: "none" }}>{dauer}d</text>}
+                  {sd && bW > 28 && <text x={bX + bW / 2} y={y + ROW_H / 2 + 4} fontSize={12} fill="#333" fontWeight={600} textAnchor="middle" style={{ pointerEvents: "none" }}>{dauer}</text>}
                   {showDates && <text x={bX + bW + 3} y={y + ROW_H / 2 + 4} fontSize={11} fill={dateColor}
                     style={{ cursor: editable ? "pointer" : "default" }}
                     onClick={editable ? (e) => { e.stopPropagation(); setEditingTaskId(t.id); const r = (e.target as SVGElement).getBoundingClientRect(); setCalEdit({ taskId: t.id, field: "end", value: fmtDMY(ed!), x: r.left, y: r.bottom }); } : (e) => melden(`row-${t.id}`, e.clientX, e.clientY)}
-                  >{fmtDatum(ed!, longDates)}</text>}
+                  >{fmtDatum(ed!, longDates)}{zusatzE}</text>}
                   {editable && sd && ed && bW > 8 && (<>
-                    <rect x={bX} y={y + 3} width={handleW} height={ROW_H - 6} rx={1} fill="rgba(255,255,255,.3)" style={{ cursor: "ew-resize" }} onMouseDown={e => startBarDrag(e, t.id, "start", sd, ed)} />
-                    <rect x={bX + bW - handleW} y={y + 3} width={handleW} height={ROW_H - 6} rx={1} fill="rgba(255,255,255,.3)" style={{ cursor: "ew-resize" }} onMouseDown={e => startBarDrag(e, t.id, "end", sd, ed)} />
+                    <rect x={bX} y={y + 3} width={handleW} height={ROW_H - 6} rx={1} fill="rgba(255,255,255,.3)" style={{ cursor: "ew-resize" }} onMouseDown={e => startBarDrag(e, t.id, "start", t)} />
+                    <rect x={bX + bW - handleW} y={y + 3} width={handleW} height={ROW_H - 6} rx={1} fill="rgba(255,255,255,.3)" style={{ cursor: "ew-resize" }} onMouseDown={e => startBarDrag(e, t.id, "end", t)} />
                   </>)}
                 </g>
               );
@@ -775,8 +803,8 @@ export default function GanttChart({ tagRef, laeuft, selektionFokus, projectId =
             const t = sorted.find(s => s.task.id === calEdit.taskId)?.task;
             if (!t) return;
             const iso = val.split(".").reverse().join("-");
-            const paar = datumsPaarVerschieben(t.start, t.end, iso, calEdit.field);
-            onDateChange(t.id, paar.start, paar.end);
+            const paar = zeitraumVerschieben(t, iso, calEdit.field === "start" ? "start" : "end", kalender);
+            onDateChange(t.id, paar.start, paar.end, paar.startZeit, paar.endZeit);
             setCalEdit(null);
             setEditingTaskId(null);
           }} />

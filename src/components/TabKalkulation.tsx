@@ -4,13 +4,14 @@ import { useState, useEffect, useRef, useMemo, Fragment } from "react";
 import type { SimProjekt, Task, Kran } from "../types";
 import { istGruppe, berechneNummern, parseDateUniversal } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
-import { arbeitstageZwischen, LEERER_KALENDER } from "./kalenderHelpers";
+import { LEERER_KALENDER } from "./kalenderHelpers";
 import { LEERE_STAMMDATEN, alleKuerzel, gewerkeFuerKuerzel, dauerBerechnetTask, bezeichnungFuerKuerzel, ausschlussFilterListe, aktiveFilterIds, objektAusgeschlossen, mengenRelevanteSignatur } from "./stammdatenHelpers";
 import type { Gewerk, Rate, Stammdaten } from "./stammdatenHelpers";
 import { kuerzelVorschlag } from "./bauteilkatalogHelpers";
 import { StatTile, CategoryBarChart, CockpitAbschnitt, useEingeklappt, FARBEN } from "./cockpitCharts";
 import { ladeObjektAttribute, guidsZuBatch, zeigeBauteileImModell } from "./modelHelpers";
 import { berechneAlleMengen } from "./mengenBerechnung";
+import { dauerTage, fmtDauer } from "./zeitHelpers";
 import { berechneMenge, mengeStatus } from "./formelHelpers";
 import { kalkulationAlsCsv, parseKalkulationCsv, kalkulationAlsJson, parseKalkulationJson } from "./kalkulationExportHelpers";
 import Schwebend from "./Schwebend";
@@ -48,8 +49,8 @@ function spalteWert(z: Zeile, spalte: SortSpalte): string {
     case "nr": return z.nr;
     case "task": return z.t.name;
     case "kuerzel": return z.t.bauteilKuerzel || "–";
-    case "geplant": return `${z.geplant}d`;
-    case "berechnet": return `${z.berechnet}d`;
+    case "geplant": return fmtDauer(z.geplant, "stunden");
+    case "berechnet": return fmtDauer(z.berechnet, "stunden");
   }
 }
 
@@ -413,8 +414,8 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
 
   const zeilen: Zeile[] = sim.tasks.map((t, i) => {
     if (t.isGroup || istGruppe(sim.tasks, i)) return null;
-    const geplant = arbeitstageZwischen(t.start, t.end, kalender);
-    const berechnet = dauerBerechnetTask(t, stammdaten);
+    const geplant = dauerTage(t, kalender); // Arbeitstage (bei Halbtagen/Uhrzeit mit Nachkommastellen)
+    const berechnet = dauerBerechnetTask(t, stammdaten, sim.zeiteinheit);
     const abweichung = berechnet > 0 && (berechnet > geplant * 1.5 || berechnet < geplant * 0.67);
     return { t, nr: nummern.get(t.id) ?? "", geplant, berechnet, differenz: berechnet - geplant, abweichung };
   }).filter((z): z is Zeile => z !== null);
@@ -685,7 +686,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
         );
       }
       case "geplant":
-        return <span style={{ fontSize: 12, color: "#888", paddingTop: 3 }}>{z.geplant}d</span>;
+        return <span style={{ fontSize: 12, color: "#888", paddingTop: 3 }}>{fmtDauer(z.geplant, sim?.zeiteinheit === "tage" || !sim?.zeiteinheit ? "tage" : sim.zeiteinheit)}</span>;
       case "berechnet": {
         const istManuell = z.t.berechneteDauerManuell != null;
         const farbe = z.abweichung ? "#d9622b" : istManuell ? "#333" : "var(--tc-blue)";

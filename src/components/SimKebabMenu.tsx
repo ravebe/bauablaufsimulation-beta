@@ -11,6 +11,8 @@ import { EXPORT_FORMATE } from "./ganttExportFormate";
 import { useClickOutside } from "../hooks/useClickOutside";
 import Schwebend from "./Schwebend";
 import SimInfoBox from "./SimInfoBox";
+import type { Zeiteinheit } from "./zeitHelpers";
+import { ZEITEINHEIT_LABEL } from "./zeitHelpers";
 import type { ApiInstance } from "../hooks/useApi";
 
 interface Props {
@@ -23,6 +25,8 @@ interface Props {
   onIfcExport?: () => void;
   onVerlauf?: () => void;
   api?: ApiInstance | null;
+  /** Zeiteinheit der Simulation setzen (nur mit Bearbeitungsrecht) */
+  onZeiteinheit?: (e: Zeiteinheit) => void;
 }
 
 // Spalten wie beim Excel-Export (ganttExportFormate.ts) — Gruppen über "Gruppe"/"Ebene", siehe ganttTabelle.ts
@@ -63,7 +67,7 @@ function downloadGanttVorlage() {
   XLSX.writeFile(wb, "4D_Gantt_Vorlage.xlsx");
 }
 
-export default function SimKebabMenu({ sim, darfBearbeiten, onKopieren, onUmbenennen, onLoeschen, onKalender, onIfcExport, onVerlauf, api }: Props) {
+export default function SimKebabMenu({ sim, darfBearbeiten, onKopieren, onUmbenennen, onLoeschen, onKalender, onIfcExport, onVerlauf, api, onZeiteinheit }: Props) {
   const [offen, setOffen] = useState(false);
   const [infoOffen, setInfoOffen] = useState(false);
   const [exportSubOffen, setExportSubOffen] = useState(false);
@@ -141,6 +145,23 @@ export default function SimKebabMenu({ sim, darfBearbeiten, onKopieren, onUmbene
                 >IFC 4D (.ifc) …</button>
               )}
             </>
+          )}
+          {onZeiteinheit && (
+            <div style={{ padding: "7px 14px", borderBottom: "0.5px solid #eef1f4" }} title="Wie genau Termine geplant werden — Arbeitszeit 08–12 und 13–17 Uhr (8 h pro Tag), wie MS Project">
+              <div style={{ fontSize: 11, marginBottom: 5 }}>Zeiteinheit</div>
+              <div style={{ display: "flex", gap: 4 }}>
+                {(["tage", "halbtage", "stunden"] as Zeiteinheit[]).map(e => {
+                  const aktiv = (sim.zeiteinheit ?? "tage") === e;
+                  return (
+                    <button key={e} onClick={() => { onZeiteinheit(e); setOffen(false); }}
+                      style={{ flex: 1, fontSize: 10, fontWeight: 600, padding: "3px 4px", cursor: "pointer", fontFamily: "inherit",
+                        border: `1px solid ${aktiv ? "var(--tc-blue)" : "var(--tc-border)"}`, background: aktiv ? "var(--tc-blue-bg)" : "#fff", color: aktiv ? "var(--tc-blue)" : "var(--tc-text-2)" }}>
+                      {ZEITEINHEIT_LABEL[e]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           )}
           {onKalender && (
             <button

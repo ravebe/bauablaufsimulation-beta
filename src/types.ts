@@ -1,6 +1,8 @@
 import type { Kalender } from "./components/kalenderHelpers";
-import { arbeitstageZwischen, LEERER_KALENDER, endDatumAusArbeitstagen, startDatumAusArbeitstagen, arbeitstagPlus, arbeitstageVersatz, folgeStart, ersterArbeitstagAb, letzterArbeitstagBis } from "./components/kalenderHelpers";
+import { arbeitstageZwischen, LEERER_KALENDER, arbeitstagPlus, arbeitstageVersatz } from "./components/kalenderHelpers";
 import type { Stammdaten } from "./components/stammdatenHelpers";
+import type { Zeiteinheit, Zeitpunkt } from "./components/zeitHelpers";
+import { startZeitpunkt, endZeitpunkt, zeitFelder, naechsteArbeitszeit, letzteArbeitszeit, arbeitsMinutenZwischen, endeAusArbeitsMinuten, startAusArbeitsMinuten, folgeStartZeitpunkt, vergleicheZeitpunkte, zeitZuMin, ARBEITSBEGINN_MIN, ARBEITSENDE_MIN } from "./components/zeitHelpers";
 
 export type TaskTyp = "neubau" | "bestand" | "abbruch" | "temporaer" | "baustelleneinrichtung" | "drittprojekt";
 
@@ -32,6 +34,8 @@ export interface Task {
   isGroup?: boolean; // true = Gruppentitel (keine Bauteile, kein Typ)
   predecessorId?: string; // ID des (ersten) Vorgänger-Tasks
   lagDays?: number; // Wartetage nach Vorgänger-Ende (default 0)
+  startZeit?: string; // "HH:MM" bei Zeiteinheit Halbtage/Uhrzeit — fehlt = 08:00 (siehe zeitHelpers.ts)
+  endZeit?: string;   // "HH:MM" — fehlt = 17:00
   weitereVorgaenger?: { id: string; lagDays: number }[]; // 2. bis 30. Vorgänger mit eigenen Wartetagen (wie MS Project) — siehe vorgaengerListe()
   bauteilKuerzel?: string; // Bauteil-Kürzel für die Kalkulation (z.B. "WB"), siehe stammdatenHelpers.ts
   mengen?: Record<string, number>; // Gewerk-key → Menge, für die Menge→Tage-Kalkulation
@@ -98,6 +102,7 @@ export interface Ausschluss { guid: string; taskId?: string; }
 export interface SimProjekt {
   id: string;
   name: string;
+  zeiteinheit?: Zeiteinheit; // Tage (Standard) / Halbtage / Uhrzeit — Einstellung im ⋮ der Simulationskarte, siehe zeitHelpers.ts
   erstelltAm: string; // ISO string
   erstellerId?: string; // TC User ID des Erstellers
   geaendertAm?: string; // ISO-Zeitstempel der letzten Bearbeitung (gesetzt in updateSim, App.tsx) — u.a. für den IFC-4D-Export
@@ -158,13 +163,13 @@ export interface TcSelectionEvent {
 export function parseDateUniversal(s: string): Date | null {
   if (!s) return null;
   // DD.MM.YYYY
-  const de = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  const de = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:[ T]\d{1,2}:\d{2}(?::\d{2})?)?$/);
   if (de) return new Date(Number(de[3]), Number(de[2]) - 1, Number(de[1]));
   // YYYY-MM-DD
   const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
   // MM/DD/YYYY
-  const us = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  const us = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T]\d{1,2}:\d{2}(?::\d{2})?)?$/);
   if (us) return new Date(Number(us[3]), Number(us[1]) - 1, Number(us[2]));
   // Fallback
   const d = new Date(s);
@@ -331,14 +336,23 @@ export function datumsPaarVerschieben(altStart: string, altEnde: string, neuesDa
   if (!n) return { start: altStart, end: altEnde };
   const neu = normalizeDatum(neuesDatum);
   if (!s || !e) return geaendert === "start" ? { start: neu, end: altEnde } : { start: altStart, end: neu };
-  const dauer = arbeitstageZwischen(altStart, altEnde, kalender);
-  // Tasks beginnen und enden nur an Arbeitstagen: ein freier Starttag rückt auf den nächsten, ein freier Endtag auf den vorherigen Arbeitstag
+  const r = zeitraumVerschieben({ start: altStart, end: altEnde }, neu, geaendert, kalender);
+  return { start: r.start, end: r.end };
+}
+
+/** Wie datumsPaarVerschieben, aber mit Uhrzeiten (Zeiteinheit Halbtage/Uhrzeit): die Dauer in ARBEITSZEIT bleibt erhalten. Tasks
+ *  beginnen und enden nur in der Arbeitszeit an Arbeitstagen. neueMin = neue Uhrzeit (Minuten), sonst bleibt die bisherige. */
+export function zeitraumVerschieben(t: { start: string; end: string; startZeit?: string; endZeit?: string }, neuesDatum: string, geaendert: "start" | "end",
+  kalender: Kalender = LEERER_KALENDER, neueMin?: number): { start: string; end: string; startZeit: string | undefined; endZeit: string | undefined } {
+  const S = startZeitpunkt(t), E = endZeitpunkt(t);
+  const dauer = arbeitsMinutenZwischen(S, E, kalender);
+  const neu = normalizeDatum(neuesDatum);
   if (geaendert === "start") {
-    const start = ersterArbeitstagAb(neu, kalender);
-    return { start, end: endDatumAusArbeitstagen(start, dauer, kalender) };
+    const s = naechsteArbeitszeit({ datum: neu, min: neueMin ?? S.min }, kalender);
+    return zeitFelder(s, endeAusArbeitsMinuten(s, dauer, kalender));
   }
-  const end = letzterArbeitstagBis(neu, kalender);
-  return { start: startDatumAusArbeitstagen(end, dauer, kalender), end };
+  const e = letzteArbeitszeit({ datum: neu, min: neueMin ?? E.min }, kalender);
+  return zeitFelder(startAusArbeitsMinuten(e, dauer, kalender), e);
 }
 
 export function normalizeDatum(s: string): string {
@@ -551,33 +565,34 @@ export function ersetzeLetztenVorgaengerEintrag(text: string, nr: string): strin
   return teile.map(s => s.trim()).filter(Boolean).join(", ");
 }
 
-/** Ende eines Vorgängers (Gruppen: aus ihren Tasks). */
-function vorgaengerEnde(tasks: Task[], id: string): string | null {
+/** Ende eines Vorgängers als Zeitpunkt (Gruppen: Tagesende ihres letzten Tasks). */
+function vorgaengerEndZeitpunkt(tasks: Task[], id: string): Zeitpunkt | null {
   const idx = tasks.findIndex(t => t.id === id);
   if (idx < 0) return null;
   const p = tasks[idx];
-  return (p.isGroup || istGruppe(tasks, idx)) ? gruppenDaten(tasks, idx).end || null : p.end || null;
+  if (p.isGroup || istGruppe(tasks, idx)) { const e = gruppenDaten(tasks, idx).end; return e ? { datum: e, min: ARBEITSENDE_MIN } : null; }
+  return p.end ? endZeitpunkt(p) : null;
 }
 
 /** Start eines Tasks aus ALLEN Vorgängern: der späteste Folge-Start (Tag nach Vorgänger-Ende + Wartetage, auf Arbeitstag gerückt). */
-export function vorgaengerStart(tasks: Task[], t: Task, kalender: Kalender = LEERER_KALENDER): string | null {
-  let spaetester: string | null = null;
+export function vorgaengerStart(tasks: Task[], t: Task, kalender: Kalender = LEERER_KALENDER): Zeitpunkt | null {
+  let spaetester: Zeitpunkt | null = null;
   for (const v of vorgaengerListe(t)) {
-    const ende = vorgaengerEnde(tasks, v.id);
+    const ende = vorgaengerEndZeitpunkt(tasks, v.id);
     if (!ende) continue;
-    const s = folgeStart(ende, v.lagDays, kalender);
-    if (!spaetester || s > spaetester) spaetester = s;
+    const s = folgeStartZeitpunkt(ende, v.lagDays, kalender);
+    if (!spaetester || vergleicheZeitpunkte(s, spaetester) > 0) spaetester = s;
   }
   return spaetester;
 }
 
 /** Der massgebende Vorgänger (der den spätesten Start erzwingt) — für die Anzeige "26+" bei mehreren. */
 export function massgebenderVorgaenger(tasks: Task[], t: Task, kalender: Kalender = LEERER_KALENDER): string | undefined {
-  let best: { id: string; s: string } | undefined;
+  let best: { id: string; s: Zeitpunkt } | undefined;
   for (const v of vorgaengerListe(t)) {
-    const ende = vorgaengerEnde(tasks, v.id);
-    const s = ende ? folgeStart(ende, v.lagDays, kalender) : "";
-    if (!best || s > best.s) best = { id: v.id, s };
+    const ende = vorgaengerEndZeitpunkt(tasks, v.id);
+    const s = ende ? folgeStartZeitpunkt(ende, v.lagDays, kalender) : { datum: "", min: 0 };
+    if (!best || vergleicheZeitpunkte(s, best.s) > 0) best = { id: v.id, s };
   }
   return best?.id;
 }
@@ -591,20 +606,26 @@ export function datumPlusTage(datum: string, tage: number): string {
 }
 
 /** Verschiebt einen Task auf ein neues Startdatum (Dauer in Arbeitstagen bleibt erhalten). Bei Gruppen werden alle Kinder um dieselbe Anzahl Arbeitstage mitverschoben. */
-export function verschiebeAufStart(tasks: Task[], taskId: string, neuerStart: string, kalender: Kalender = LEERER_KALENDER): Task[] {
+export function verschiebeAufStart(tasks: Task[], taskId: string, neuerStart: string | Zeitpunkt, kalender: Kalender = LEERER_KALENDER): Task[] {
   const idx = tasks.findIndex(t => t.id === taskId);
   if (idx < 0) return tasks;
   const t = tasks[idx];
-  const verschiebe = (x: Task, start: string): Task => ({ ...x, start, end: endDatumAusArbeitstagen(start, arbeitstageZwischen(x.start, x.end, kalender), kalender) });
+  // Dauer in Arbeitszeit bleibt; ohne Uhrzeit bleibt die bisherige Startzeit des Tasks
+  const verschiebe = (x: Task, start: string | Zeitpunkt): Task => {
+    const ziel = typeof start === "string" ? { datum: start, min: zeitZuMin(x.startZeit, ARBEITSBEGINN_MIN) } : start;
+    const s = naechsteArbeitszeit(ziel, kalender);
+    return { ...x, ...zeitFelder(s, endeAusArbeitsMinuten(s, arbeitsMinutenZwischen(startZeitpunkt(x), endZeitpunkt(x), kalender), kalender)) };
+  };
+  if (typeof neuerStart !== "string" && t.isGroup) neuerStart = neuerStart.datum;
   if (t.isGroup) {
     const { start: altStart } = gruppenDaten(tasks, idx, kalender);
-    if (!parseDateUniversal(altStart) || !parseDateUniversal(neuerStart)) return tasks;
+    if (typeof neuerStart !== "string" || !parseDateUniversal(altStart) || !parseDateUniversal(neuerStart)) return tasks;
     const delta = arbeitstageVersatz(altStart, neuerStart, kalender);
     if (delta === 0) return tasks;
     const kinder = new Set(getKinder(tasks, idx));
     return tasks.map((x, i) => (i === idx || kinder.has(i)) ? verschiebe(x, arbeitstagPlus(x.start, delta, kalender)) : x);
   }
-  return tasks.map((x, i) => i === idx ? verschiebe(x, ersterArbeitstagAb(neuerStart, kalender)) : x);
+  return tasks.map((x, i) => i === idx ? verschiebe(x, neuerStart) : x);
 }
 
 /** Gültige Vorgänger-Kandidaten für einen Task: kein Zyklus, Gruppen nur als Vorgänger von Gruppen */
@@ -632,7 +653,7 @@ export function kaskadiereNachfolger(tasks: Task[], geaenderteId: string, kalend
       if (!vorgaengerListe(t).some(v => v.id === predId)) continue;
       // Nachfolger beginnt nach dem SPÄTESTEN seiner Vorgänger (Tag nach Ende + Wartetage, auf Arbeitstag gerückt)
       const neuerStart = vorgaengerStart(result, t, kalender);
-      if (!neuerStart || neuerStart === t.start) continue;
+      if (!neuerStart || (neuerStart.datum === t.start && neuerStart.min === zeitZuMin(t.startZeit, ARBEITSBEGINN_MIN))) continue;
       result = verschiebeAufStart(result, t.id, neuerStart, kalender);
       queue.push(t.id);
     }
@@ -647,12 +668,12 @@ export function normalisiereAufArbeitstage(tasks: Task[], kalender: Kalender = L
   let geaendert = 0;
   const neu = tasks.map((t, i) => {
     if (t.isGroup || istGruppe(tasks, i) || !parseDateUniversal(t.start) || !parseDateUniversal(t.end)) return t;
-    const dauer = arbeitstageZwischen(t.start, t.end, kalender);
-    const start = ersterArbeitstagAb(t.start, kalender);
-    const end = endDatumAusArbeitstagen(start, dauer, kalender);
-    if (start === t.start && end === t.end) return t;
+    const dauer = arbeitsMinutenZwischen(startZeitpunkt(t), endZeitpunkt(t), kalender);
+    const s = naechsteArbeitszeit(startZeitpunkt(t), kalender);
+    const f = zeitFelder(s, endeAusArbeitsMinuten(s, dauer, kalender));
+    if (f.start === t.start && f.end === t.end && f.startZeit === t.startZeit && f.endZeit === t.endZeit) return t;
     geaendert++;
-    return { ...t, start, end };
+    return { ...t, ...f };
   });
   return { tasks: neu, geaendert };
 }

@@ -2,6 +2,8 @@
 // die Menge→Tage-Formel aus dem AVOR-Tool (Grundlage für Kalkulation/Ressourcen/Kosten-Tabs).
 import type { Task } from "../types";
 import { istGruppe } from "../types";
+import type { Zeiteinheit } from "./zeitHelpers";
+import { rundeAufEinheit } from "./zeitHelpers";
 
 export interface Rate {
   kuerzel: string;
@@ -301,8 +303,9 @@ export function dauerGewerk(menge: number, rate: Rate | undefined, arbeitszeitSt
 }
 
 /** Rundungsregel aus AVOR-Spec: >2 Tage aufrunden, <0.01 vernachlässigbar (0), sonst Mindestdauer 2. */
-export function rundeDauer(rohTage: number): number {
-  if (rohTage > 2) return Math.ceil(rohTage);
+export function rundeDauer(rohTage: number, einheit: Zeiteinheit = "tage"): number {
+  // aufgerundet auf die Zeiteinheit der Simulation: ganze Tage, halbe Tage oder Stunden
+  if (rohTage > 2) return rundeAufEinheit(rohTage, einheit);
   if (rohTage < 0.01) return 0;
   return 2;
 }
@@ -345,7 +348,7 @@ export function hatKalkulationsWerte(task: Task, stammdaten: Stammdaten): boolea
 
 /** Berechnete Dauer eines Tasks: manuelle Übersteuerung (Task.berechneteDauerManuell, siehe Tab
  *  Kalkulation), sonst Summe über alle Gewerke mit hinterlegter Menge, gerundet. */
-export function dauerBerechnetTask(task: Task, stammdaten: Stammdaten): number {
+export function dauerBerechnetTask(task: Task, stammdaten: Stammdaten, einheit: Zeiteinheit = "tage"): number {
   if (task.berechneteDauerManuell != null) return task.berechneteDauerManuell;
   if (!task.bauteilKuerzel || !task.mengen) return 0;
   let roh = 0;
@@ -354,7 +357,7 @@ export function dauerBerechnetTask(task: Task, stammdaten: Stammdaten): number {
     if (!menge) continue;
     roh += dauerGewerk(menge, rateFuerKuerzel(gewerk, task.bauteilKuerzel), stammdaten.arbeitszeitStdProTag);
   }
-  return rundeDauer(roh);
+  return rundeDauer(roh, einheit);
 }
 
 /** Kosten eines Tasks in CHF: Summe Menge × CHF/Einheit über alle Gewerke mit hinterlegter Menge. */

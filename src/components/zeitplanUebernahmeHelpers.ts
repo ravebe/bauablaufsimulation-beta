@@ -9,7 +9,8 @@ import { istGruppe, vorgaengerListe } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { dauerBerechnetTask, gewerkeFuerKuerzel, hatKalkulationsWerte } from "./stammdatenHelpers";
 import type { Kalender } from "./kalenderHelpers";
-import { endDatumAusArbeitstagen, folgeStart, ersterArbeitstagAb } from "./kalenderHelpers";
+import type { Zeiteinheit, Zeitpunkt } from "./zeitHelpers";
+import { startZeitpunkt, endZeitpunkt, naechsteArbeitszeit, endeAusArbeitsMinuten, folgeStartZeitpunkt, vergleicheZeitpunkte, zeitFelder, MIN_PRO_ARBEITSTAG, schrittTage } from "./zeitHelpers";
 
 export interface ZeitplanBereitschaft {
   bereit: boolean;
@@ -54,37 +55,37 @@ export function pruefeZeitplanBereitschaft(tasks: Task[], stammdaten: Stammdaten
  *  verändert, ihre Anzeige leitet sich weiterhin aus den (hier aktualisierten) Kind-Tasks ab.
  *  Tasks ohne hinterlegte Kalkulationswerte (hatKalkulationsWerte() false) bleiben unangetastet —
  *  sonst würde "berechnete Dauer" 0 Tage ergeben und den Task fälschlich auf Start=Ende zusammenziehen. */
-export function berechneZeitplanUebernahme(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender): Task[] {
+export function berechneZeitplanUebernahme(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender, einheit: Zeiteinheit = "tage"): Task[] {
   const byId = new Map(tasks.map(t => [t.id, t]));
   const ersterId = echteTasks(tasks)[0]?.id;
-  const geloest = new Map<string, { start: string; end: string }>();
+  const geloest = new Map<string, { start: Zeitpunkt; end: Zeitpunkt }>();
   const inArbeit = new Set<string>();
 
-  function loese(id: string): { start: string; end: string } {
+  function loese(id: string): { start: Zeitpunkt; end: Zeitpunkt } | null {
     const cached = geloest.get(id);
     if (cached) return cached;
     const t = byId.get(id);
-    if (!t) return { start: "", end: "" };
-    if (inArbeit.has(id)) return { start: t.start, end: t.end }; // Zyklus-Schutz (sollte durch istZirkular() nie vorkommen)
+    if (!t) return null;
+    if (inArbeit.has(id)) return { start: startZeitpunkt(t), end: endZeitpunkt(t) }; // Zyklus-Schutz (sollte durch istZirkular() nie vorkommen)
     inArbeit.add(id);
 
-    let result: { start: string; end: string };
+    let result: { start: Zeitpunkt; end: Zeitpunkt };
     if (!hatKalkulationsWerte(t, stammdaten)) {
-      result = { start: t.start, end: t.end };
+      result = { start: startZeitpunkt(t), end: endZeitpunkt(t) };
     } else {
       // Tasks laufen nur an Arbeitstagen: ein Anker-Start auf Wochenende/Feiertag/Ferien rückt auf den nächsten Arbeitstag
       const vorg = vorgaengerListe(t);
       // mehrere Vorgänger: der späteste Folge-Start gewinnt
       const start = (id === ersterId || vorg.length === 0)
-        ? ersterArbeitstagAb(t.start, kalender)
+        ? naechsteArbeitszeit(startZeitpunkt(t), kalender)
         : (() => {
-            let s = "";
-            for (const v of vorg) { const e = loese(v.id).end; if (e) { const f = folgeStart(e, v.lagDays, kalender); if (f > s) s = f; } }
-            return s || t.start;
+            let s: Zeitpunkt | null = null;
+            for (const v of vorg) { const e = loese(v.id)?.end; if (e?.datum) { const f = folgeStartZeitpunkt(e, v.lagDays, kalender); if (!s || vergleicheZeitpunkte(f, s) > 0) s = f; } }
+            return s ?? naechsteArbeitszeit(startZeitpunkt(t), kalender);
           })();
-      const dauer = dauerBerechnetTask(t, stammdaten);
-      const end = endDatumAusArbeitstagen(start, dauer, kalender);
-      result = { start, end };
+      // berechnete Dauer (Arbeitstage, auf die Zeiteinheit gerundet) → Ende in Arbeitszeit; Tasks laufen nur in der Arbeitszeit
+      const dauer = dauerBerechnetTask(t, stammdaten, einheit);
+      result = { start, end: endeAusArbeitsMinuten(start, Math.max(dauer, schrittTage(einheit)) * MIN_PRO_ARBEITSTAG, kalender) };
     }
 
     geloest.set(id, result);
@@ -94,15 +95,15 @@ export function berechneZeitplanUebernahme(tasks: Task[], stammdaten: Stammdaten
 
   return tasks.map((t, i) => {
     if (t.isGroup || istGruppe(tasks, i)) return t;
-    const { start, end } = loese(t.id);
-    return { ...t, start, end };
+    const r = loese(t.id);
+    return r ? { ...t, ...zeitFelder(r.start, r.end) } : t;
   });
 }
 
 /** true, wenn berechneZeitplanUebernahme() gegenüber den aktuellen Start-/Endterminen tatsächlich
  *  etwas ändern würde — steuert, ob der Button "Berechnete Dauer übernehmen" hervorgehoben wird
  *  oder (bei bereits übernommenem Stand) neutral/grau bleibt. */
-export function zeitplanHatAenderungen(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender): boolean {
-  const neu = berechneZeitplanUebernahme(tasks, stammdaten, kalender);
-  return neu.some((t, i) => t.start !== tasks[i].start || t.end !== tasks[i].end);
+export function zeitplanHatAenderungen(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender, einheit: Zeiteinheit = "tage"): boolean {
+  const neu = berechneZeitplanUebernahme(tasks, stammdaten, kalender, einheit);
+  return neu.some((t, i) => t.start !== tasks[i].start || t.end !== tasks[i].end || t.startZeit !== tasks[i].startZeit || t.endZeit !== tasks[i].endZeit);
 }

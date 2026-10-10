@@ -37,8 +37,9 @@ export function exportZeilen(tasks: Task[], kalender?: Kalender): ExportZeile[] 
       gruppe,
       ebene: getOutlineLevel(t),
       name: t.name,
-      start: zeitraum.start ? formatDatum(zeitraum.start) : "",
-      ende: zeitraum.end ? formatDatum(zeitraum.end) : "",
+      // Uhrzeit nur, wenn der Task eine eigene Start-/Endzeit hat (Zeiteinheit Halbtage/Uhrzeit): "09.11.2026 13:00"
+      start: zeitraum.start ? formatDatum(zeitraum.start) + (!gruppe && t.startZeit ? ` ${t.startZeit}` : "") : "",
+      ende: zeitraum.end ? formatDatum(zeitraum.end) + (!gruppe && t.endZeit ? ` ${t.endZeit}` : "") : "",
       typ: gruppe ? "" : t.typ,
       // mehrere Vorgänger wie MS Project: "26, 27+2" — die Wartetage des ERSTEN stehen in der Spalte Wartetage, die weiteren als +n
       vorgaenger: vorgaengerListe(t).map((v, k) => `${nummern.get(v.id) ?? ""}${k > 0 && v.lagDays ? (v.lagDays > 0 ? `+${v.lagDays}` : `${v.lagDays}`) : ""}`).join(", "),

@@ -13,7 +13,8 @@
 import type { Task, TaskTyp } from "../types";
 import { getOutlineLevel, istGruppe, parseDateUniversal, normalizeDatum, vorgaengerListe, MAX_VORGAENGER } from "../types";
 import type { Kalender } from "./kalenderHelpers";
-import { arbeitstageZwischen, LEERER_KALENDER } from "./kalenderHelpers";
+import { LEERER_KALENDER } from "./kalenderHelpers";
+import { dauerTage, startZeitpunkt, endZeitpunkt, minZuZeit, importZeit } from "./zeitHelpers";
 
 const GUID_MARKER = "4DSIM_GUIDS:";
 const ZEHNTELMIN_PRO_ARBEITSTAG = 4800;      // 8 h × 60 min × 10
@@ -93,7 +94,8 @@ export function generateMsProjectXml(tasks: Task[], projectName: string, kalende
   const taskXml = tasks.map((t, i) => {
     const uid = i + 1;
     const gruppe = istGruppe(tasks, i);
-    const dauerTage = arbeitstageZwischen(t.start, t.end, kalender);
+    const dauerMin = Math.round(dauerTage(t, kalender) * 480); // Arbeitszeit in Minuten (8-h-Tage)
+    const sz = `${minZuZeit(startZeitpunkt(t).min)}:00`, ez = `${minZuZeit(endZeitpunkt(t).min)}:00`;
     const notesLine = t.objektGuids.length > 0 ? `${GUID_MARKER}${t.objektGuids.join(",")}` : "";
 
     const predXml = vorgaengerListe(t).map(v => {
@@ -105,7 +107,7 @@ export function generateMsProjectXml(tasks: Task[], projectName: string, kalende
 
     // Termin festhalten (Anfang nicht früher als), damit MS Project den Vorgang nicht an den Projektbeginn zieht
     const constraint = !gruppe && t.start
-      ? `\n      <ConstraintType>4</ConstraintType>\n      <ConstraintDate>${fmtDateTime(t.start, "08:00:00")}</ConstraintDate>`
+      ? `\n      <ConstraintType>4</ConstraintType>\n      <ConstraintDate>${fmtDateTime(t.start, sz)}</ConstraintDate>`
       : "";
 
     return `    <Task>
@@ -116,9 +118,9 @@ export function generateMsProjectXml(tasks: Task[], projectName: string, kalende
       <IsNull>0</IsNull>
       <OutlineLevel>${getOutlineLevel(t)}</OutlineLevel>
       <Priority>500</Priority>
-      <Start>${fmtDateTime(t.start, "08:00:00")}</Start>
-      <Finish>${fmtDateTime(t.end, "17:00:00")}</Finish>
-      <Duration>PT${dauerTage * 8}H0M0S</Duration>
+      <Start>${fmtDateTime(t.start, sz)}</Start>
+      <Finish>${fmtDateTime(t.end, ez)}</Finish>
+      <Duration>PT${Math.floor(dauerMin / 60)}H${dauerMin % 60}M0S</Duration>
       <DurationFormat>7</DurationFormat>
       <Summary>${gruppe ? 1 : 0}</Summary>
       <Milestone>0</Milestone>
@@ -171,7 +173,7 @@ export function parseMsProjectXmlMitHinweisen(text: string): { tasks: Task[]; hi
 
   // 1. Rohdaten sammeln + lokale IDs vergeben (Projekt-Summary-Zeile mit OutlineLevel 0 überspringen)
   interface Roh { uid: string; localId: string; name: string; outlineLevel: number; summary: boolean;
-    start: string; end: string; typ: TaskTyp; bauteilKuerzel: string | undefined; objektGuids: string[]; links: { uid: string; lag: number }[]; }
+    start: string; end: string; startZeit?: string; endZeit?: string; typ: TaskTyp; bauteilKuerzel: string | undefined; objektGuids: string[]; links: { uid: string; lag: number }[]; }
   const roh: Roh[] = [];
   for (const el of taskEls) {
     if (g(el, "IsNull") === "1") continue;
@@ -212,6 +214,7 @@ export function parseMsProjectXmlMitHinweisen(text: string): { tasks: Task[]; hi
       uid, localId: crypto.randomUUID(), name: g(el, "Name") || "Task",
       outlineLevel, summary: g(el, "Summary") === "1",
       start: normalizeDatum(startRoh), end: normalizeDatum(finishRoh),
+      startZeit: importZeit(startRoh, "start"), endZeit: importZeit(finishRoh, "ende"),
       typ, bauteilKuerzel: kuerzelRaw || undefined, objektGuids, links,
     });
   }
@@ -227,6 +230,8 @@ export function parseMsProjectXmlMitHinweisen(text: string): { tasks: Task[]; hi
       name: r.name,
       start: r.start,
       end: r.end,
+      ...(r.startZeit ? { startZeit: r.startZeit } : {}),
+      ...(r.endZeit ? { endZeit: r.endZeit } : {}),
       typ: r.typ,
       bauteilKuerzel: r.bauteilKuerzel,
       objektGuids: r.objektGuids,
@@ -245,7 +250,7 @@ export function parseMsProjectXmlMitHinweisen(text: string): { tasks: Task[]; hi
   if (lagInArbeitstagen) hinweise.push(`${lagInArbeitstagen} Wartezeit(en) waren in Arbeitstagen angegeben und wurden als Kalendertage übernommen (in der App zählen Wartetage als Kalendertage).`);
   if (mitGuids) hinweise.push(`${mitGuids} Vorgang/Vorgänge mit Bauteil-Verknüpfungen aus den Notizen übernommen — diese gelten nur für dieselbe Modellversion. Text1 (Typ), Text2 (Kürzel) und die Notizen sind in MS Project für die App reserviert.`);
   if (unbekannterTyp) hinweise.push(`${unbekannterTyp} Vorgang/Vorgänge mit unbekanntem Wert in Text1 — als Neubau übernommen (Text1 ist für den Task-Typ reserviert).`);
-  if (mitUhrzeit) hinweise.push(`${mitUhrzeit} Vorgang/Vorgänge mit Uhrzeiten oder halben Tagen — vorerst auf ganze Tage gerundet.`);
+  void mitUhrzeit; // Uhrzeiten werden übernommen; die Zeiteinheit stellt der Import automatisch um (siehe TabProjekte)
 
   // Kalender der Datei: Wochenendarbeit erlaubt?
   const projektKalUid = doc.querySelector("Project > CalendarUID")?.textContent?.trim();

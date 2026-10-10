@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 import type { Task, TaskTyp } from "../types";
 import { isValidDatum, normalizeDatum } from "../types";
 import { istMsProjectXml, parseMsProjectXmlMitHinweisen } from "./msProjectXml";
+import { importZeit } from "./zeitHelpers";
 import { baueImportTasks, leseGruppenFlag } from "./ganttTabelle";
 import type { ImportZeile } from "./ganttTabelle";
 
@@ -155,6 +156,8 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
           name,
           start: parseDatum(startCell?.v ?? startRaw),
           end: parseDatum(endCell?.v ?? endRaw),
+          startZeit: importZeit(startCell?.v ?? startRaw, "start"),
+          endZeit: importZeit(endCell?.v ?? endRaw, "ende"),
           typ: parseTyp(typCol ? getCachedValue(ws, typCol, r) : "neubau"),
           objektGuids: [],
           bauteilKuerzel: kuerzelCol ? (getCachedValue(ws, kuerzelCol, r).trim() || undefined) : undefined,
@@ -181,6 +184,8 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
         name: String(findCol(row, ["Name", "name", "Vorgangsname", "Vorgang", "Task", "Bezeichnung"]) ?? `Task ${i + 1}`),
         start: parseDatum(findCol(row, ["Start", "start", "Startdatum", "startdatum", "Anfang", "Begin", "Von"])),
         end: parseDatum(findCol(row, ["Ende", "end", "Enddatum", "enddatum", "Finish", "Fertig", "Bis", "End"])),
+        startZeit: importZeit(findCol(row, ["Start", "start", "Startdatum", "startdatum", "Anfang", "Begin", "Von"]), "start"),
+        endZeit: importZeit(findCol(row, ["Ende", "end", "Enddatum", "enddatum", "Finish", "Fertig", "Bis", "End"]), "ende"),
         typ: parseTyp(findCol(row, ["Typ", "typ", "Type", "type", "Kategorie"])),
         objektGuids: [] as string[],
         bauteilKuerzel: String(findCol(row, KUERZEL_SPALTEN) ?? "").trim() || undefined,
@@ -217,6 +222,8 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
           name: g("Name") || g("name") || `Task ${i + 1}`,
           start: parseDatum(g("Start") || g("start") || g("EarlyStart") || ""),
           end: parseDatum(g("Finish") || g("finish") || g("Ende") || g("End") || g("EarlyFinish") || ""),
+          startZeit: importZeit(g("Start") || g("start") || g("EarlyStart") || "", "start"),
+          endZeit: importZeit(g("Finish") || g("finish") || g("Ende") || g("End") || g("EarlyFinish") || "", "ende"),
           typ: parseTyp(g("Typ") || g("typ") || g("Type") || "neubau"),
           objektGuids: [],
           bauteilKuerzel: (g("Kuerzel") || g("Kürzel") || g("kuerzel")) || undefined,
@@ -254,6 +261,8 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
           name: s(o.name) || `Task ${i + 1}`,
           start: parseDatum(o.start),
           end: parseDatum(o.end ?? o.ende),
+          startZeit: importZeit(o.start, "start"),
+          endZeit: importZeit(o.end ?? o.ende, "ende"),
           typ: parseTyp(o.typ),
           objektGuids: !istGrp && Array.isArray(o.guids) ? o.guids.map(String) : [],
           bauteilKuerzel: s(o.kuerzel).trim() || undefined,

@@ -32,14 +32,14 @@ describe("mehrere Vorgänger", () => {
   });
   it("Start = spätester Folge-Start aller Vorgänger, Kaskade richtet danach aus", () => {
     const tasks = plan().map(t => t.id === "C" ? mitVorgaengern(t, [{ id: "A", lagDays: 0 }, { id: "B", lagDays: 0 }]) : t);
-    expect(vorgaengerStart(tasks, tasks[2], KAL)).toBe("2026-11-13");             // nach B (Do) → Fr
+    expect(vorgaengerStart(tasks, tasks[2], KAL)).toEqual({ datum: "2026-11-13", min: 480 });             // nach B (Do) → Fr
     expect(massgebenderVorgaenger(tasks, tasks[2], KAL)).toBe("B");
     const r = kaskadiereNachfolger(tasks, "A", KAL);
     expect(r[2]).toMatchObject({ start: "2026-11-13", end: "2026-11-16" });       // 2 Arbeitstage Fr–Mo
   });
   it("Wartetage pro Vorgänger: A+5 schlägt B", () => {
     const tasks = plan().map(t => t.id === "C" ? mitVorgaengern(t, [{ id: "A", lagDays: 5 }, { id: "B", lagDays: 0 }]) : t);
-    expect(vorgaengerStart(tasks, tasks[2], KAL)).toBe("2026-11-16");             // Di + 1 + 5 = Mo
+    expect(vorgaengerStart(tasks, tasks[2], KAL)).toEqual({ datum: "2026-11-16", min: 480 });             // Di + 1 + 5 = Mo
     expect(massgebenderVorgaenger(tasks, tasks[2], KAL)).toBe("A");
   });
   it("Text und Eingabe wie MS Project: \"1, 2+2\"", () => {

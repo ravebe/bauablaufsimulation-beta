@@ -4,7 +4,8 @@ import { createPortal } from "react-dom";
 import type { SimProjekt, Task } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { formatDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, nsKey, sucheSortiereTasks, TASK_TYP_FARBE, TASK_TYP_LABEL, vorgaengerListe, vorgaengerText, massgebenderVorgaenger } from "../types";
-import { arbeitstageZwischen, LEERER_KALENDER } from "./kalenderHelpers";
+import { LEERER_KALENDER } from "./kalenderHelpers";
+import { dauerTage, fmtDauer } from "./zeitHelpers";
 import GanttChart from "./GanttChart";
 import { bindeListenScroll, useSelektionFokus, zentriereZeile } from "./listenScroll";
 import { useDoppelklickHinweis } from "../hooks/useDoppelklickHinweis";
@@ -541,6 +542,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
       {ganttOffen ? (
           <GanttChart
             projectId={projectId}
+            zeiteinheit={aktiveSim?.zeiteinheit}
             tasks={tasks}
             currentTag={currentTag}
             totalTage={totalTage}
@@ -604,7 +606,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
           const gDaten = isGrp ? gruppenDaten(allTasks, allIdx, kalender) : null;
           const sd = parseDateUniversal(isGrp && gDaten ? gDaten.start : task.start);
           const ed = parseDateUniversal(isGrp && gDaten ? gDaten.end : task.end);
-          const dauer = isGrp && gDaten ? gDaten.tage : (sd && ed ? arbeitstageZwischen(task.start, task.end, kalender) : 1);
+          const dauer = fmtDauer(isGrp && gDaten ? gDaten.tage : (sd && ed ? dauerTage(task, kalender) : 1), aktiveSim?.zeiteinheit);
           const istSelTask = selTaskId === task.id;
           const level = getOutlineLevel(task);
           const indent = (level - 1) * 12;
@@ -645,7 +647,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
                 <span style={{ fontSize: 11, color: isGrp ? "#888" : "#333" }}
                   onClick={e => { e.stopPropagation(); melden(`end-${task.id}`, e.clientX, e.clientY); }}>{ed ? formatDatum(isGrp && gDaten ? gDaten.end : task.end) : ""}</span>
               </span>
-              <span style={{ fontSize: 12, color: "#8a9baa", flexShrink: 0, width: 44, textAlign: "right", paddingLeft: 4, boxSizing: "border-box" }}>{dauer}d</span>
+              <span style={{ fontSize: 12, color: "#8a9baa", flexShrink: 0, width: 44, textAlign: "right", paddingLeft: 4, boxSizing: "border-box" }}>{dauer}</span>
             </div>
           );
         });
