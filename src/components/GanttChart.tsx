@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, useLayoutEffect, useCallback, useMemo } fr
 import { lsGet, lsSet } from "../hooks/lokalSpeicher";
 import { createPortal } from "react-dom";
 import type { Task } from "../types";
-import { parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks, nsKey, TASK_TYP_FARBE } from "../types";
+import { datumsPaarAnpassen, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks, nsKey, TASK_TYP_FARBE } from "../types";
 import type { Kalender } from "./kalenderHelpers";
 import { istArbeitstag, LEERER_KALENDER, getKW } from "./kalenderHelpers";
 import DatePicker from "./DatePicker";
@@ -750,8 +750,8 @@ export default function GanttChart({ tagRef, laeuft, selektionFokus, projectId =
             const t = sorted.find(s => s.task.id === calEdit.taskId)?.task;
             if (!t) return;
             const iso = val.split(".").reverse().join("-");
-            if (calEdit.field === "start") onDateChange(t.id, iso, t.end);
-            else onDateChange(t.id, t.start, iso);
+            const paar = datumsPaarAnpassen(calEdit.field === "start" ? iso : t.start, calEdit.field === "start" ? t.end : iso, calEdit.field);
+            onDateChange(t.id, paar.start, paar.end);
             setCalEdit(null);
             setEditingTaskId(null);
           }} />

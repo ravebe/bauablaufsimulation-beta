@@ -322,6 +322,14 @@ export function isValidDatum(s: string): boolean {
 }
 
 // Datum zu YYYY-MM-DD normalisieren (für interne Speicherung)
+/** Ein Task dauert mindestens 1 Tag (Start <= Ende): wird ein Datum so geändert, dass es hinter dem Ende bzw. vor dem Start liegt,
+ *  zieht das andere Datum nach (Start nach hinten → Ende = Start; Ende nach vorne → Start = Ende). Alle Werte ISO (YYYY-MM-DD). */
+export function datumsPaarAnpassen(start: string, ende: string, geaendert: "start" | "end"): { start: string; end: string } {
+  const s = parseDateUniversal(start), e = parseDateUniversal(ende);
+  if (!s || !e || s.getTime() <= e.getTime()) return { start, end: ende };
+  return geaendert === "start" ? { start, end: start } : { start: ende, end: ende };
+}
+
 export function normalizeDatum(s: string): string {
   const d = parseDateUniversal(s);
   if (!d) return s;
