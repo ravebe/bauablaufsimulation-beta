@@ -4,11 +4,13 @@ import { useState, useEffect, useRef } from "react";
 import type { SimProjekt } from "../types";
 import { istGruppe, nsKey } from "../types";
 import type { Gewerk, GewerkeKatalog, Rate, Stammdaten, AusschlussFilter } from "./stammdatenHelpers";
-import { LEERE_STAMMDATEN, GEWERKE_KATALOGE, alleKuerzel, stammdatenAlsJson, parseStammdatenJson, stammdatenAlsCsv, parseStammdatenCsv, ausschlussFilterListe, aktiveFilterIds, einheitUmrechnungsfaktor, istRateKranpflichtig } from "./stammdatenHelpers";
+import { LEERE_STAMMDATEN, GEWERKE_KATALOGE, mengenRelevanteSignatur, alleKuerzel, stammdatenAlsJson, parseStammdatenJson, stammdatenAlsCsv, parseStammdatenCsv, ausschlussFilterListe, aktiveFilterIds, einheitUmrechnungsfaktor, istRateKranpflichtig } from "./stammdatenHelpers";
 import { StatTile } from "./cockpitCharts";
 import type { ApiInstance } from "../hooks/useApi";
 import { ladeAttributListe, ladeObjektAttribute, attrItemsAusWerten, keyZuAttrItem, type AttrItem } from "./modelHelpers";
 import { parseFormel, FormelFehler } from "./formelHelpers";
+import { berechneAlleMengen } from "./mengenBerechnung";
+import type { MeldungStufe } from "./mengenBerechnung";
 import Schwebend from "./Schwebend";
 import PunkteMenu from "./PunkteMenu";
 
@@ -37,6 +39,16 @@ const LS_RATEN_COLW = "4d-ressourcen-raten-colw";
 export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion = [], aktivesModellId = null, projectId = null }: Props) {
   const [ladeErgebnis, setLadeErgebnis] = useState<string | null>(null);
   const [importFehler, setImportFehler] = useState<string | null>(null);
+  // Ergebnis von "Mengen berechnen": fett grün/orange/rot, beim nächsten Klick irgendwo wieder grau (wie Tab Kalkulation)
+  const [mengenLaeuft, setMengenLaeuft] = useState(false);
+  const [mengenMeldung, setMengenMeldung] = useState<{ text: string; stufe: MeldungStufe } | null>(null);
+  const [mengenFrisch, setMengenFrisch] = useState(false);
+  useEffect(() => { if (mengenMeldung) setMengenFrisch(true); }, [mengenMeldung]);
+  useEffect(() => {
+    const grau = () => setMengenFrisch(false);
+    document.addEventListener("pointerdown", grau, true);
+    return () => document.removeEventListener("pointerdown", grau, true);
+  }, []);
   const importInputRef = useRef<HTMLInputElement>(null);
   const importCsvInputRef = useRef<HTMLInputElement>(null);
   const [neueKategorieName, setNeueKategorieName] = useState("");
@@ -369,9 +381,24 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     ? attrListe.filter(a => !oeffnungPickerQuery || a.name.toLowerCase().includes(oeffnungPickerQuery.toLowerCase()) || a.pset.toLowerCase().includes(oeffnungPickerQuery.toLowerCase())).slice(0, 20)
     : [];
 
+  async function mengenBerechnen() {
+    if (!api || !sim) return;
+    setMengenLaeuft(true);
+    setMengenMeldung(null);
+    try {
+      const erg = await berechneAlleMengen(api, sim, stammdaten);
+      updateSim({ ...sim, tasks: erg.tasks, mengenBerechnetSignatur: mengenRelevanteSignatur(stammdaten) });
+      setMengenMeldung({ text: erg.text, stufe: erg.stufe });
+    } finally { setMengenLaeuft(false); }
+  }
+
   // ⋮-Menü (Export, Import, Kategorie hinzufügen) — einmal je Tab, rechts auf Höhe "Umsatz CHF/Mannstunde"
   const ressourcenMenu = (
-    <PunkteMenu title="Export, Import, Kategorie hinzufügen" abschnitte={[
+    <PunkteMenu title="Mengen berechnen, Export, Import, Kategorie hinzufügen" abschnitte={[
+      ...(!readOnly && api ? [{ titel: "Aktionen", eintraege: [
+        { label: mengenLaeuft ? "Wird berechnet…" : "Mengen aus Formeln berechnen", onClick: mengenBerechnen, disabled: mengenLaeuft,
+          title: "Berechnet die Mengen aus den Formeln für alle Bauteile je Task (wie in Tab Kalkulation) — manuell überschriebene Werte bleiben unangetastet" },
+      ] }] : []),
       ...(stammdaten.gewerke.length > 0 ? [{ titel: "Export", eintraege: [
         { label: "JSON", onClick: stammdatenExportieren, title: "Alle Kategorien/Kürzel/Leistungswerte als JSON-Datei — z.B. für ein anderes Trimble-Connect-Projekt" },
         { label: "CSV", onClick: stammdatenExportierenCsv, title: "Raten (Kürzel/LW/Personen/CHF/Formel) als CSV — in Excel bearbeitbar, danach wieder importierbar" },
@@ -437,6 +464,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
         !readOnly && <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>{ressourcenMenu}</div>
       )}
 
+      {mengenMeldung && <div style={{ fontSize: 10, marginBottom: 10, ...(mengenFrisch ? { fontWeight: 700, color: mengenMeldung.stufe === "ok" ? "var(--tc-green-dark)" : mengenMeldung.stufe === "teil" ? "#e08a00" : "var(--tc-red)" } : { color: "var(--tc-text-3)" }) }}>{mengenMeldung.text}</div>}
       {ladeErgebnis && <div style={{ fontSize: 10, color: "var(--tc-text-3)", marginBottom: 10 }}>{ladeErgebnis}</div>}
 
       <div style={{ overflowX: "auto" }}>

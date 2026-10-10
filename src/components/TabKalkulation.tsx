@@ -10,6 +10,7 @@ import type { Gewerk, Rate, Stammdaten } from "./stammdatenHelpers";
 import { kuerzelVorschlag } from "./bauteilkatalogHelpers";
 import { StatTile, CategoryBarChart, CockpitAbschnitt, useEingeklappt, FARBEN } from "./cockpitCharts";
 import { ladeObjektAttribute, guidsZuBatch, zeigeBauteileImModell } from "./modelHelpers";
+import { berechneAlleMengen } from "./mengenBerechnung";
 import { berechneMenge, mengeStatus } from "./formelHelpers";
 import { kalkulationAlsCsv, parseKalkulationCsv, kalkulationAlsJson, parseKalkulationJson } from "./kalkulationExportHelpers";
 import Schwebend from "./Schwebend";
@@ -318,49 +319,11 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     if (!api || !sim) return;
     setMengenLaeuft(true);
     setMengenErgebnis(null);
-    const alleFilter = ausschlussFilterListe(stammdaten);
-    let autoCount = 0, fehlerCount = 0, manuellCount = 0, taskCount = 0;
-    const updatedTasks = [...sim.tasks];
-    for (let i = 0; i < updatedTasks.length; i++) {
-      const t = updatedTasks[i];
-      if (t.isGroup || istGruppe(updatedTasks, i) || !t.bauteilKuerzel) continue;
-      const gewerkeMitFormel = gewerkeFuerKuerzel(stammdaten, t.bauteilKuerzel)
-        .map(g => ({ g, rate: g.raten.find(r => r.kuerzel === t.bauteilKuerzel) }))
-        .filter((e): e is { g: typeof e.g; rate: NonNullable<typeof e.rate> } => !!e.rate?.formel?.trim());
-      const zuBerechnen = gewerkeMitFormel.filter(e =>
-        !(t.mengenQuelle?.[e.g.key] === "manuell" && !t.mengenObjekte?.[e.g.key]));
-      if (zuBerechnen.length === 0) continue;
-      taskCount++;
-
-      let objektWerteMap = new Map<string, Record<string, string>>();
-      if (t.objektGuids.length > 0) {
-        try { objektWerteMap = await ladeObjektAttribute(api, t.objektGuids); } catch { /* unten als Fehler behandelt */ }
-      }
-
-      const mengen = { ...(t.mengen ?? {}) };
-      const mengenQuelle = { ...(t.mengenQuelle ?? {}) };
-      const mengenInfo = { ...(t.mengenInfo ?? {}) };
-      for (const { g, rate } of zuBerechnen) {
-        const aktiveIds = aktiveFilterIds(rate);
-        const eintraege = t.objektGuids
-          .map(guid => ({ guid, werte: objektWerteMap.get(guid) ?? {} }))
-          .filter(e => aktiveIds.length === 0 || !objektAusgeschlossen(e.werte, alleFilter, aktiveIds));
-        const overrides = t.mengenObjekte?.[g.key];
-        const erg = berechneMenge(rate.formel!, eintraege, overrides);
-        if (erg.wert !== null) mengen[g.key] = erg.wert; else delete mengen[g.key];
-
-        const status = mengeStatus(erg, !!overrides && Object.keys(overrides).length > 0);
-        mengenQuelle[g.key] = status.quelle;
-        if (status.info) mengenInfo[g.key] = status.info; else delete mengenInfo[g.key];
-        if (status.quelle === "auto") autoCount++; else if (status.quelle === "fehler") fehlerCount++; else manuellCount++;
-      }
-      updatedTasks[i] = { ...t, mengen, mengenQuelle, mengenInfo };
-    }
-    updateSim({ ...sim, tasks: updatedTasks, mengenBerechnetSignatur: mengenRelevanteSignatur(stammdaten) });
+    const erg = await berechneAlleMengen(api, sim, stammdaten);
+    updateSim({ ...sim, tasks: erg.tasks, mengenBerechnetSignatur: mengenRelevanteSignatur(stammdaten) });
     setMengenLaeuft(false);
-    setMengenStufe(taskCount === 0 ? "fehler" : fehlerCount === 0 ? "ok" : autoCount > 0 ? "teil" : "fehler");
-    setMengenErgebnis(taskCount === 0 ? "Keine Leistungspositionen mit Formel gefunden"
-      : `${taskCount} Tasks aktualisiert · ${autoCount} Mengen berechnet, ${fehlerCount} mit Fehlern${manuellCount > 0 ? `, ${manuellCount} teilweise manuell` : ""}`);
+    setMengenStufe(erg.stufe);
+    setMengenErgebnis(erg.text);
   }
 
   // Löscht ausschliesslich manuell eingegebene Mengen (mengenQuelle "manuell") über alle Tasks —
