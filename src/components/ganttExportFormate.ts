@@ -39,7 +39,7 @@ function xmlTag(name: string): string {
 /** Tabellenzeile (Excel/CSV) in Spaltenreihenfolge; einzug = Name je Ebene optisch einrücken */
 function tabellenZeile(z: ExportZeile, extraSpalten: string[], einzug: boolean, reihenfolge: number): Record<string, string | number> {
   return {
-    Reihenfolge: reihenfolge,
+    "Gantt-Reihenfolge": reihenfolge,
     Nr: z.nr,
     Gruppe: z.gruppe ? "x" : "",
     Ebene: z.ebene,
@@ -59,7 +59,7 @@ export function exportXlsx(tasks: Task[], simName: string, kalender?: Kalender) 
   const extraSpalten = sammleExtraSpalten(tasks);
   const rows = exportZeilen(tasks, kalender).map((z, i) => tabellenZeile(z, extraSpalten, true, i + 1));
   const ws = XLSX.utils.json_to_sheet(rows);
-  ws["!cols"] = [{ wch: 11 }, { wch: 5 }, { wch: 7 }, { wch: 6 }, { wch: 34 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, ...extraSpalten.map(() => ({ wch: 14 })), { wch: 8 }, { wch: 10 }];
+  ws["!cols"] = [{ wch: 17 }, { wch: 5 }, { wch: 7 }, { wch: 6 }, { wch: 34 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, ...extraSpalten.map(() => ({ wch: 14 })), { wch: 8 }, { wch: 10 }];
   if (ws["!ref"]) ws["!autofilter"] = { ref: ws["!ref"] }; // Filterpfeile in der Titelzeile
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Gantt");
@@ -92,7 +92,7 @@ export function exportXml(tasks: Task[], simName: string, kalender?: Kalender) {
       : "";
     const extraLines = extraSpalten.map(k => `\n    <${xmlTag(k)}>${esc(z.extra[k] ?? "")}</${xmlTag(k)}>`).join("");
     const taskLines = z.gruppe ? "" : `\n    <Type>${z.typ}</Type>\n    <Kuerzel>${esc(z.kuerzel)}</Kuerzel>\n    <Objects>${z.bauteile}</Objects>`;
-    return `  <Task>\n    <Reihenfolge>${i + 1}</Reihenfolge>\n    <Nr>${esc(z.nr)}</Nr>\n    <Gruppe>${z.gruppe ? 1 : 0}</Gruppe>\n    <Ebene>${z.ebene}</Ebene>\n    <Name>${esc(z.name)}</Name>\n    <Start>${z.start}</Start>\n    <Finish>${z.ende}</Finish>${taskLines}${vorgLines}${extraLines}\n  </Task>`;
+    return `  <Task>\n    <Gantt_Reihenfolge>${i + 1}</Gantt_Reihenfolge>\n    <Nr>${esc(z.nr)}</Nr>\n    <Gruppe>${z.gruppe ? 1 : 0}</Gruppe>\n    <Ebene>${z.ebene}</Ebene>\n    <Name>${esc(z.name)}</Name>\n    <Start>${z.start}</Start>\n    <Finish>${z.ende}</Finish>${taskLines}${vorgLines}${extraLines}\n  </Task>`;
   }).join("\n");
   const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<Gantt>\n${tasksXml}\n</Gantt>`;
   download(xml, `${simName}_Gantt.xml`, "application/xml");
@@ -105,7 +105,7 @@ export function exportMsProject(tasks: Task[], simName: string, kalender: Kalend
 
 export function exportJson(tasks: Task[], simName: string, kalender?: Kalender) {
   const data = exportZeilen(tasks, kalender).map((z, i) => ({
-    reihenfolge: i + 1, nr: z.nr, gruppe: z.gruppe, ebene: z.ebene,
+    gantt_reihenfolge: i + 1, nr: z.nr, gruppe: z.gruppe, ebene: z.ebene,
     name: z.name, start: z.start, end: z.ende,
     typ: z.gruppe ? null : z.typ, kuerzel: z.kuerzel || null,
     bauteile: z.gruppe ? 0 : z.bauteile, guids: z.gruppe ? [] : tasks[i].objektGuids,

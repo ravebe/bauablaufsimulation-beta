@@ -64,7 +64,7 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
   }
 
   // Standard-Spaltennamen die NICHT als Extra gelten
-  const STANDARD = new Set(["name","start","startdatum","ende","enddatum","end","finish","fertig","anfang","begin","von","bis","typ","type","kategorie","vorgangsname","vorgang","task","bezeichnung","vorgänger","vorganger","predecessor","wartetage","lag","lagdays","lag days","kürzel","kuerzel","bauteil-kürzel","bauteil-kuerzel","bauteile","nr","nr.","nummer","gruppe","ebene","gliederungsebene","outlinelevel","reihenfolge"]);
+  const STANDARD = new Set(["name","start","startdatum","ende","enddatum","end","finish","fertig","anfang","begin","von","bis","typ","type","kategorie","vorgangsname","vorgang","task","bezeichnung","vorgänger","vorganger","predecessor","wartetage","lag","lagdays","lag days","kürzel","kuerzel","bauteil-kürzel","bauteil-kuerzel","bauteile","nr","nr.","nummer","gruppe","ebene","gliederungsebene","outlinelevel","reihenfolge","gantt-reihenfolge"]);
   const VORGAENGER_SPALTEN = ["Vorgänger", "vorgänger", "Vorganger", "Predecessor", "predecessor"];
   const WARTETAGE_SPALTEN = ["Wartetage", "wartetage", "Lag", "lag", "Lag Days", "LagDays"];
   const KUERZEL_SPALTEN = ["Kürzel", "kürzel", "Kuerzel", "kuerzel", "Bauteil-Kürzel", "bauteil-kürzel"];
@@ -72,6 +72,8 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
   const NR_SPALTEN = ["Nr", "Nr.", "Nummer"];
   const GRUPPE_SPALTEN = ["Gruppe"];
   const EBENE_SPALTEN = ["Ebene", "Gliederungsebene", "OutlineLevel"];
+  // Position im Gantt — stellt beim Import die Reihenfolge wieder her, auch wenn die Datei in Excel umsortiert wurde
+  const REIHENFOLGE_SPALTEN = ["Gantt-Reihenfolge", "Reihenfolge"];
 
   function extraSpalten(row: Record<string, unknown>): Record<string, string> {
     const extra: Record<string, string> = {};
@@ -124,6 +126,7 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
     const nrCol = findHeader(NR_SPALTEN);
     const gruppeCol = findHeader(GRUPPE_SPALTEN);
     const ebeneCol = findHeader(EBENE_SPALTEN);
+    const reihenCol = findHeader(REIHENFOLGE_SPALTEN);
 
     const rows: ImportZeile[] = [];
     for (let r = 2; r <= range.e.r + 1; r++) {
@@ -159,6 +162,7 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
         nrRoh: nrCol ? getCachedValue(ws, nrCol, r) : "",
         gruppeRoh: gruppeCol ? getCachedValue(ws, gruppeCol, r) : "",
         ebeneRoh: ebeneCol ? getCachedValue(ws, ebeneCol, r) : "",
+        reihenfolgeRoh: reihenCol ? getCachedValue(ws, reihenCol, r) : "",
       });
     }
     return baueImportTasks(rows);
@@ -184,11 +188,12 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
       nrRoh: String(findCol(row, NR_SPALTEN) ?? ""),
       gruppeRoh: findCol(row, GRUPPE_SPALTEN) ?? "",
       ebeneRoh: String(findCol(row, EBENE_SPALTEN) ?? ""),
+      reihenfolgeRoh: String(findCol(row, REIHENFOLGE_SPALTEN) ?? ""),
     })).filter(r => r.task.name.trim() !== "");
     return baueImportTasks(rows);
   }
 
-  const XML_STANDARD_TAGS = new Set(["name","start","earlystart","finish","end","ende","typ","type","kuerzel","kürzel","objects","bauteile","vorgaenger","vorgänger","predecessor","wartetage","lag","nr","gruppe","ebene","reihenfolge"]);
+  const XML_STANDARD_TAGS = new Set(["name","start","earlystart","finish","end","ende","typ","type","kuerzel","kürzel","objects","bauteile","vorgaenger","vorgänger","predecessor","wartetage","lag","nr","gruppe","ebene","reihenfolge","gantt_reihenfolge"]);
 
   function parseXml(text: string): Task[] {
     if (istMsProjectXml(text)) return parseMsProjectXml(text);
@@ -219,13 +224,14 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
         nrRoh: g("Nr"),
         gruppeRoh: g("Gruppe"),
         ebeneRoh: g("Ebene"),
+        reihenfolgeRoh: g("Gantt_Reihenfolge") || g("Reihenfolge"),
       });
     });
     return baueImportTasks(rows);
   }
 
   // JSON aus dem eigenen Export (Array von Tasks, oder { tasks: [...] })
-  const JSON_STANDARD = new Set(["reihenfolge", "nr", "gruppe", "ebene", "name", "start", "end", "ende", "typ", "kuerzel", "bauteile", "guids", "vorgaenger", "wartetage"]);
+  const JSON_STANDARD = new Set(["reihenfolge", "gantt_reihenfolge", "nr", "gruppe", "ebene", "name", "start", "end", "ende", "typ", "kuerzel", "bauteile", "guids", "vorgaenger", "wartetage"]);
 
   function parseJson(text: string): Task[] {
     const roh: unknown = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text); // BOM entfernen
@@ -255,6 +261,7 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
         nrRoh: s(o.nr),
         gruppeRoh: o.gruppe ?? "",
         ebeneRoh: s(o.ebene),
+        reihenfolgeRoh: s(o.gantt_reihenfolge ?? o.reihenfolge),
       };
     });
     return baueImportTasks(rows);

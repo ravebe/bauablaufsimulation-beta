@@ -65,6 +65,7 @@ export interface ImportZeile {
   nrRoh?: string;
   gruppeRoh?: unknown;
   ebeneRoh?: string;
+  reihenfolgeRoh?: string;
 }
 
 /**
@@ -72,7 +73,11 @@ export interface ImportZeile {
  * berechnen und die Vorgänger auflösen. Die Vorgänger-Spalte darf eine Nummer aus der Spalte "Nr",
  * eine Nummer wie in der App (A, B… / 1, 2…) oder einen Task-Namen enthalten.
  */
-export function baueImportTasks(zeilen: ImportZeile[]): Task[] {
+export function baueImportTasks(zeilenRoh: ImportZeile[]): Task[] {
+  // Spalte "Gantt-Reihenfolge": sind alle Zeilen nummeriert, wird danach sortiert (stabil) — so übersteht die Reihenfolge Sortieren/Filtern in Excel
+  const pos = zeilenRoh.map(z => Number(String(z.reihenfolgeRoh ?? "").trim().replace(",", ".")));
+  const sortieren = zeilenRoh.length > 0 && zeilenRoh.every((z, i) => String(z.reihenfolgeRoh ?? "").trim() !== "" && Number.isFinite(pos[i]));
+  const zeilen = sortieren ? zeilenRoh.map((z, i) => ({ z, p: pos[i], i })).sort((a, b) => a.p - b.p || a.i - b.i).map(x => x.z) : zeilenRoh;
   const flags = zeilen.map(z => leseGruppenFlag(z.gruppeRoh));
   const hatEbene = zeilen.some(z => (z.ebeneRoh ?? "").trim() !== "");
   const hatGruppen = flags.some(f => f === true);

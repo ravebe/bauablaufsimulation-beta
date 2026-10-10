@@ -59,6 +59,13 @@ describe("ganttTabelle", () => {
     expect(imp[1].isGroup).toBe(true);
   });
 
+  it("Gantt-Reihenfolge stellt die Reihenfolge nach Umsortieren in Excel wieder her", () => {
+    const imp = baueImportTasks([
+      zeile("C", { reihenfolgeRoh: "3" }), zeile("A", { reihenfolgeRoh: "1" }), zeile("B", { reihenfolgeRoh: "2" }),
+    ]);
+    expect(imp.map(t => t.name)).toEqual(["A", "B", "C"]);
+  });
+
   it("ohne Gruppen-Spalten wie bisher: Vorgänger = Zeilennummer; fremde Werte in 'Gruppe' bleiben Zusatzspalte", () => {
     const imp = baueImportTasks([
       zeile("A1", { gruppeRoh: "Team Nord" }), zeile("A2", { vorgRoh: "1" }),
