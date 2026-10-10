@@ -192,7 +192,11 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp);
   }
 
-  const gridTemplate = ALLE_SPALTEN.map(s => `${colW[s]}px`).join(" ");
+  // Spalte Kräne wächst automatisch mit den zugewiesenen Kranchips (breitester Chip), damit sie nicht in die Spalte Personal (Soll) ragen
+  const zugewieseneKranIds = new Set((sim?.tasks ?? []).flatMap(t => t.kraene ?? []));
+  const kranChipBreite = Math.max(0, ...(sim?.kraene ?? []).filter(k => zugewieseneKranIds.has(k.id)).map(k => Math.ceil(k.name.length * 6.5) + 36));
+  const colWEff: Record<Spalte, number> = { ...colW, kraene: Math.max(colW.kraene, kranChipBreite) };
+  const gridTemplate = ALLE_SPALTEN.map(s => `${colWEff[s]}px`).join(" ");
 
   if (!sim) return <div style={{ padding: 14, fontSize: 12, color: "var(--tc-text-3)" }}>Kein aktives Projekt ausgewählt</div>;
 
