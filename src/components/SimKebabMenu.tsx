@@ -10,6 +10,8 @@ import type { SimProjekt } from "../types";
 import { EXPORT_FORMATE } from "./ganttExportFormate";
 import { useClickOutside } from "../hooks/useClickOutside";
 import Schwebend from "./Schwebend";
+import SimInfoBox from "./SimInfoBox";
+import type { ApiInstance } from "../hooks/useApi";
 
 interface Props {
   sim: SimProjekt;
@@ -20,6 +22,7 @@ interface Props {
   onKalender?: () => void;
   onIfcExport?: () => void;
   onVerlauf?: () => void;
+  api?: ApiInstance | null;
 }
 
 // Spalten wie beim Excel-Export (ganttExportFormate.ts) — Gruppen über "Gruppe"/"Ebene", siehe ganttTabelle.ts
@@ -60,14 +63,15 @@ function downloadGanttVorlage() {
   XLSX.writeFile(wb, "4D_Gantt_Vorlage.xlsx");
 }
 
-export default function SimKebabMenu({ sim, darfBearbeiten, onKopieren, onUmbenennen, onLoeschen, onKalender, onIfcExport, onVerlauf }: Props) {
+export default function SimKebabMenu({ sim, darfBearbeiten, onKopieren, onUmbenennen, onLoeschen, onKalender, onIfcExport, onVerlauf, api }: Props) {
   const [offen, setOffen] = useState(false);
+  const [infoOffen, setInfoOffen] = useState(false);
   const [exportSubOffen, setExportSubOffen] = useState(false);
   const [umbenennOffen, setUmbenennOffen] = useState(false);
   const [neuerName, setNeuerName] = useState("");
   const knopfRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const ref = useClickOutside<HTMLDivElement>(offen, () => { setOffen(false); setExportSubOffen(false); setUmbenennOffen(false); }, menuRef);
+  const ref = useClickOutside<HTMLDivElement>(offen, () => { setOffen(false); setExportSubOffen(false); setUmbenennOffen(false); setInfoOffen(false); }, menuRef);
 
   function speichernUmbenennen() {
     if (neuerName.trim()) onUmbenennen(neuerName.trim());
@@ -79,7 +83,7 @@ export default function SimKebabMenu({ sim, darfBearbeiten, onKopieren, onUmbene
     <div ref={ref} style={{ position: "relative" }} onClick={e => e.stopPropagation()}>
       <button ref={knopfRef}
         style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "var(--tc-text-3)", padding: "0 4px" }}
-        onClick={() => { setOffen(o => !o); setExportSubOffen(false); setUmbenennOffen(false); }}
+        onClick={() => { setOffen(o => !o); setExportSubOffen(false); setUmbenennOffen(false); setInfoOffen(false); }}
       >⋮</button>
       {offen && (
         <Schwebend anker={knopfRef} menuRef={menuRef} ausrichtung="rechts" onClick={e => e.stopPropagation()} style={{
@@ -156,10 +160,18 @@ export default function SimKebabMenu({ sim, darfBearbeiten, onKopieren, onUmbene
           >Projekt kopieren</button>
           {darfBearbeiten && (
           <button
-            style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", fontSize: 11, cursor: "pointer" }}
+            style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", fontSize: 11, cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
             onClick={() => { onLoeschen(); setOffen(false); }}
           >Simulation löschen</button>
           )}
+          <button
+            style={{ display: "flex", width: "100%", justifyContent: "space-between", alignItems: "center", padding: "8px 14px", background: "none", border: "none", fontSize: 11, cursor: "pointer", borderBottom: infoOffen ? "0.5px solid #eef1f4" : "none" }}
+            onClick={() => setInfoOffen(o => !o)}
+          >
+            <span>Info</span>
+            <span>{infoOffen ? "▲" : "▼"}</span>
+          </button>
+          {infoOffen && <SimInfoBox sim={sim} api={api} />}
         </Schwebend>
       )}
     </div>
