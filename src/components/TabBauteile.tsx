@@ -8,7 +8,7 @@ import type { ApiInstance } from "../hooks/useApi";
 import { getEchteBauteile, clearEchteBauteileCache } from "./modelHelpers";
 import { useClickOutside } from "../hooks/useClickOutside";
 import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
-import { LEERER_KALENDER, folgeStart } from "./kalenderHelpers";
+import { LEERER_KALENDER, folgeStart, ersterArbeitstagAb } from "./kalenderHelpers";
 import { pruefeZeitplanBereitschaft, berechneZeitplanUebernahme, zeitplanHatAenderungen } from "./zeitplanUebernahmeHelpers";
 import TabTasks from "./TabTasks";
 import { UnbenutzteZeilen, UnbenutzteDetail } from "./UnbenutzteBauteile";
@@ -233,7 +233,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
 
   function neuErstellen() {
     if (!aktiveSim || !neuTaskInput.trim()) return;
-    const heute = new Date().toISOString().slice(0, 10);
+    const heute = ersterArbeitstagAb(new Date().toISOString().slice(0, 10), aktiveSim.kalender ?? LEERER_KALENDER); // Tasks beginnen nur an Arbeitstagen
     const idx = aktivTaskId
       ? aktiveSim.tasks.findIndex(t => t.id === aktivTaskId)
       : (neuTyp === "gruppe" ? 0 : aktiveSim.tasks.length);

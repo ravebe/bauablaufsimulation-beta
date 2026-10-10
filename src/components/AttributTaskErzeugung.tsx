@@ -1,7 +1,7 @@
 // AttributTaskErzeugung.tsx — Tasks aus Bauteil-Attributen erzeugen (Gruppierung nach Attributwert-Kombination)
 import { useState, useRef, useEffect } from "react";
 import type { SimProjekt, Task, AttrRef } from "../types";
-import { datumPlusTage } from "../types";
+import { ersterArbeitstagAb, LEERER_KALENDER } from "./kalenderHelpers";
 import { ausgeschlosseneGuids } from "./ausschlussHelpers";
 import type { ApiInstance } from "../hooks/useApi";
 import { getModellObjekte, ladeObjektAttribute, ladeAttributListe, type AttrItem } from "./modelHelpers";
@@ -153,7 +153,7 @@ export default function AttributTaskErzeugung({ api, sim, onUpdate, done }: Prop
       for (const t of sim.tasks) if (t.attrGruppe) bestehendeByKey.set(gruppenSchluessel(t.attrGruppe), t);
       const unveraenderteTasks = sim.tasks.filter(t => !t.attrGruppe);
 
-      const heute = new Date().toISOString().slice(0, 10);
+      const heute = ersterArbeitstagAb(new Date().toISOString().slice(0, 10), sim.kalender ?? LEERER_KALENDER); // Tasks beginnen nur an Arbeitstagen
       let neu = 0, aktualisiert = 0;
       const sortierteGruppen = [...gruppen.entries()].sort((a, b) =>
         (finalNamen.get(a[0]) ?? "").localeCompare(finalNamen.get(b[0]) ?? ""));
@@ -162,7 +162,7 @@ export default function AttributTaskErzeugung({ api, sim, onUpdate, done }: Prop
         const bestehender = bestehendeByKey.get(key);
         if (bestehender) { aktualisiert++; return { ...bestehender, name, objektGuids: g.guids, attrGruppe: g.attrGruppe }; }
         neu++;
-        return { id: crypto.randomUUID(), name, start: heute, end: datumPlusTage(heute, 1), typ: "neubau", objektGuids: g.guids, attrGruppe: g.attrGruppe } as Task;
+        return { id: crypto.randomUUID(), name, start: heute, end: heute, typ: "neubau", objektGuids: g.guids, attrGruppe: g.attrGruppe } as Task;
       });
 
       setFortschrittProzent(100);

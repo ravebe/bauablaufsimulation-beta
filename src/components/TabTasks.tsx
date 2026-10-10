@@ -658,11 +658,11 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                     </>
                   ) : !readOnly ? (
                     <>
-                      <DatePicker value={formatDatum(task.start)} onChange={(val: string) => {
+                      <DatePicker value={formatDatum(task.start)} kalender={aktiveSim.kalender} onChange={(val: string) => {
                         const norm = normalizeDatum(val);
                         if (norm) updateSim({ ...aktiveSim, tasks: kaskadiereNachfolger(aktiveSim.tasks.map(t => t.id === task.id ? { ...t, ...datumsPaarVerschieben(t.start, t.end, norm, "start", aktiveSim.kalender) } : t), task.id, aktiveSim.kalender) });
                       }} />
-                      <DatePicker value={formatDatum(task.end)} onChange={(val: string) => {
+                      <DatePicker value={formatDatum(task.end)} kalender={aktiveSim.kalender} onChange={(val: string) => {
                         const norm = normalizeDatum(val);
                         if (norm) updateSim({ ...aktiveSim, tasks: kaskadiereNachfolger(aktiveSim.tasks.map(t => t.id === task.id ? { ...t, ...datumsPaarVerschieben(t.start, t.end, norm, "end", aktiveSim.kalender) } : t), task.id, aktiveSim.kalender) });
                       }} />

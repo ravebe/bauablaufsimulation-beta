@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import type { SimModell, SimProjekt, Task } from "../types";
+import { normalisiereAufArbeitstage } from "../types";
 import { darfBearbeiten as darfSimBearbeiten } from "../zugriff";
 import type { ApiInstance } from "../hooks/useApi";
 import GanttImport from "./GanttImport";
@@ -519,7 +520,12 @@ export default function TabProjekte({ api, laedt, sims, setSims, aktivId, setAkt
                 <GanttImport
                   onImport={(neueTasks, dateiname) => {
                     // Bisherige Tasks zuordnen: Bauteil-Verknüpfungen, IDs und Kalkulationsdaten bleiben erhalten
-                    const ab = gleicheGanttAb(simsRef.current.find(s => s.id === sim.id)?.tasks ?? [], neueTasks);
+                    // Importierte Termine auf Arbeitstage bringen (Start auf Arbeitstag, Wochenenden/Feiertage/Ferien aus der Dauer geschnitten)
+                    const norm = normalisiereAufArbeitstage(neueTasks, simsRef.current.find(s => s.id === sim.id)?.kalender);
+                    const ab = gleicheGanttAb(simsRef.current.find(s => s.id === sim.id)?.tasks ?? [], norm.tasks);
+                    if (norm.geaendert > 0) {
+                      setModellMsg({ simId: sim.id, typ: "ok", text: `${norm.geaendert} Task(s) beim Import auf Arbeitstage angepasst (Start auf einen Arbeitstag, Wochenenden/Feiertage/Ferien nicht mitgezählt)` });
+                    }
                     setSims(prev => prev.map(s => s.id === sim.id ? {
                       ...s, tasks: ab.tasks,
                       autoVerknuepft: ab.bauteileUebernommen > 0 ? s.autoVerknuepft : false,

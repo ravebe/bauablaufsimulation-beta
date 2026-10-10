@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import type { Task } from "../types";
 import { datumsPaarVerschieben, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks, nsKey, TASK_TYP_FARBE } from "../types";
 import type { Kalender } from "./kalenderHelpers";
-import { istArbeitstag, LEERER_KALENDER, getKW, arbeitstageZwischen, endDatumAusArbeitstagen } from "./kalenderHelpers";
+import { istArbeitstag, LEERER_KALENDER, getKW, arbeitstageZwischen, endDatumAusArbeitstagen, ersterArbeitstagAb, letzterArbeitstagBis, arbeitsBloecke } from "./kalenderHelpers";
 import DatePicker from "./DatePicker";
 import { useDoppelklickHinweis } from "../hooks/useDoppelklickHinweis";
 import { ZoomControls } from "./cockpitCharts";
@@ -316,10 +316,10 @@ export default function GanttChart({ tagRef, laeuft, selektionFokus, projectId =
       if (mode === "start") { nS = Math.max(0, oS + dd); if (nS >= nE) nS = nE - 1; }
       else if (mode === "end") { nE = Math.max(nS + 1, oE + dd); }
       else { nS = Math.max(0, oS + dd); nE = nS + dur; }
-      const startIso = fmtISO(new Date(minDate.getTime() + nS * 86400000));
-      // Verschieben: Dauer in ARBEITSTAGEN bleibt erhalten (Wochenenden/Feiertage werden übersprungen)
-      const endIso = mode === "move" ? endDatumAusArbeitstagen(startIso, dauerWd, kalender) : fmtISO(new Date(minDate.getTime() + (nE - 1) * 86400000));
-      onDateChange(taskId, startIso, endIso);
+      // Start immer auf einen Arbeitstag (vorwärts), Ende immer auf einen Arbeitstag (rückwärts); beim Verschieben bleibt die Dauer in ARBEITSTAGEN erhalten
+      const startIso = ersterArbeitstagAb(fmtISO(new Date(minDate.getTime() + nS * 86400000)), kalender);
+      const endIso = mode === "move" ? endDatumAusArbeitstagen(startIso, dauerWd, kalender) : letzterArbeitstagBis(fmtISO(new Date(minDate.getTime() + (nE - 1) * 86400000)), kalender);
+      onDateChange(taskId, startIso, endIso < startIso ? startIso : endIso);
     };
     const onUp = () => { setEditingTaskId(null); setTimeout(() => { scrollLock.current = false; }, 200); document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
     document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp);
@@ -723,12 +723,26 @@ export default function GanttChart({ tagRef, laeuft, selektionFokus, projectId =
                     style={{ cursor: editable ? "pointer" : "default" }}
                     onClick={editable ? (e) => { e.stopPropagation(); setEditingTaskId(t.id); const r = (e.target as SVGElement).getBoundingClientRect(); setCalEdit({ taskId: t.id, field: "start", value: fmtDMY(sd!), x: r.left, y: r.bottom }); } : (e) => melden(`row-${t.id}`, e.clientX, e.clientY)}
                   >{fmtDatum(sd!, longDates)}</text>}
-                  {sd && <rect x={bX} y={y + 5} width={bW} height={ROW_H - 10} rx={3}
-                    fill={barFill} opacity={isEditing ? 1 : isSel ? 1 : 0.85}
-                    stroke={barStroke} strokeWidth={barStrokeW}
-                    style={editable && ed ? { cursor: "move" } : undefined}
-                    onClick={e => { e.stopPropagation(); if (!editable) melden(`row-${t.id}`, e.clientX, e.clientY); }}
-                    onMouseDown={editable && ed ? (e) => startBarDrag(e, t.id, "move", sd, ed) : undefined} />}
+                  {sd && (() => {
+                    // Ein Task über Wochenende/Feiertag/Ferien wird als mehrere Balkenstücke gezeichnet (Lücke = freie Tage, dünne Linie als Verbindung).
+                    // Ziehen an den Enden bleibt am Anfang des ersten und am Ende des letzten Stücks (Anfasser unten).
+                    const bloecke = ed ? arbeitsBloecke(effStart, effEnd, kalender) : [];
+                    const stuecke = bloecke.length > 1 ? bloecke.map(b => ({ x: (sT + b.von) * pxProTag, w: Math.max((b.bis - b.von + 1) * pxProTag, 3) })) : [{ x: bX, w: bW }];
+                    const rektHandler = {
+                      style: editable && ed ? { cursor: "move" } : undefined,
+                      onClick: (e: React.MouseEvent) => { e.stopPropagation(); if (!editable) melden(`row-${t.id}`, e.clientX, e.clientY); },
+                      onMouseDown: editable && ed ? (e: React.MouseEvent) => startBarDrag(e, t.id, "move", sd, ed) : undefined,
+                    };
+                    return (<>
+                      {stuecke.length > 1 && <line x1={stuecke[0].x + stuecke[0].w} y1={y + ROW_H / 2} x2={stuecke[stuecke.length - 1].x} y2={y + ROW_H / 2}
+                        stroke={barFill} strokeWidth={2} opacity={0.4} style={{ pointerEvents: "none" }} />}
+                      {stuecke.map((st, k) => (
+                        <rect key={k} x={st.x} y={y + 5} width={st.w} height={ROW_H - 10} rx={3}
+                          fill={barFill} opacity={isEditing ? 1 : isSel ? 1 : 0.85}
+                          stroke={barStroke} strokeWidth={barStrokeW} {...rektHandler} />
+                      ))}
+                    </>);
+                  })()}
                   {sd && bW > 28 && <text x={bX + bW / 2} y={y + ROW_H / 2 + 4} fontSize={12} fill="#333" fontWeight={600} textAnchor="middle" style={{ pointerEvents: "none" }}>{dauer}d</text>}
                   {showDates && <text x={bX + bW + 3} y={y + ROW_H / 2 + 4} fontSize={11} fill={dateColor}
                     style={{ cursor: editable ? "pointer" : "default" }}
@@ -753,7 +767,7 @@ export default function GanttChart({ tagRef, laeuft, selektionFokus, projectId =
 
       {calEdit && onDateChange && (
         <div style={{ position: "fixed", left: calEdit.x, top: calEdit.y, zIndex: 300 }}>
-          <DatePicker value={calEdit.value} defaultOpen onChange={(val: string) => {
+          <DatePicker value={calEdit.value} defaultOpen kalender={kalender} onChange={(val: string) => {
             const t = sorted.find(s => s.task.id === calEdit.taskId)?.task;
             if (!t) return;
             const iso = val.split(".").reverse().join("-");

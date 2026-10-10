@@ -313,16 +313,17 @@ export function erzeuge4dIfc(e: IfcExportEingabe): IfcExportErgebnis {
     const oberste = tasks.map((_, i) => i).filter(i => elternIdx[i] === null).map(i => taskIds[i]);
     w.add(`IFCRELASSIGNSTOCONTROL('${g("rel-schedule-tasks")}',${oh},$,$,${refs(oberste)},$,${ref(scheduleId)})`);
 
-    // Kalender: Mo–Fr 08–17 Uhr, Feiertage + Ferien als Ausnahmen
+    // Kalender: Mo–Fr 08–17 Uhr, Feiertage + Ferien als Ausnahmen (bei ausgeschaltetem Schalter "arbeitsfreie Tage berücksichtigen": Mo–So, keine Ausnahmen)
+    const alleTage = kal.freieTageGelten === false;
     const periode = w.add(`IFCTIMEPERIOD('${ARBEITSBEGINN}','${ARBEITSENDE}')`);
-    const muster = w.add(`IFCRECURRENCEPATTERN(.WEEKLY.,$,(1,2,3,4,5),$,$,$,$,(${ref(periode)}))`);
-    const arbeitszeit = w.add(`IFCWORKTIME(${stepText("Arbeitstage Mo-Fr")},$,$,${ref(muster)},$,$)`);
+    const muster = w.add(`IFCRECURRENCEPATTERN(.WEEKLY.,$,(${alleTage ? "1,2,3,4,5,6,7" : "1,2,3,4,5"}),$,$,$,$,(${ref(periode)}))`);
+    const arbeitszeit = w.add(`IFCWORKTIME(${stepText(alleTage ? "Arbeitstage Mo-So" : "Arbeitstage Mo-Fr")},$,$,${ref(muster)},$,$)`);
     const ausnahmen: number[] = [];
-    for (const f of kal.feiertage) {
+    for (const f of alleTage ? [] : kal.feiertage) {
       const d = isoDatum(f.datum);
       if (d) ausnahmen.push(w.add(`IFCWORKTIME(${label(f.name || "Feiertag")},$,$,$,'${d}','${d}')`));
     }
-    for (const f of kal.ferien ?? []) {
+    for (const f of alleTage ? [] : (kal.ferien ?? [])) {
       const v = isoDatum(f.von), b = isoDatum(f.bis);
       if (v && b) ausnahmen.push(w.add(`IFCWORKTIME(${label(f.name || "Ferien")},$,$,$,'${v}','${b}')`));
     }

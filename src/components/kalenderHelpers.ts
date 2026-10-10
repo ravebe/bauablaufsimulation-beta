@@ -4,7 +4,8 @@ import { parseDateUniversal } from "../types";
 
 export type Feiertag = { datum: string; name: string }; // YYYY-MM-DD
 export type Ferienzeitraum = { von: string; bis: string; name: string }; // YYYY-MM-DD, inklusive
-export type Kalender = { feiertage: Feiertag[]; ferien?: Ferienzeitraum[] };
+/** freieTageGelten: false = jeder Tag ist ein Arbeitstag (Wochenendarbeit erlaubt; Wochenenden, Feiertage und Ferien werden ignoriert). Fehlt das Feld, gilt true. */
+export type Kalender = { feiertage: Feiertag[]; ferien?: Ferienzeitraum[]; freieTageGelten?: boolean };
 export const LEERER_KALENDER: Kalender = { feiertage: [], ferien: [] };
 
 /** ISO-8601-Kalenderwoche (Mo–So, KW1 enthält den ersten Donnerstag des Jahres). */
@@ -17,6 +18,7 @@ export function getKW(d: Date): number {
 
 /** Ist dieses Datum ein Arbeitstag (kein Wochenende, kein Feiertag, keine Ferien im Kalender)? */
 export function istArbeitstag(datum: string, kalender: Kalender): boolean {
+  if (kalender.freieTageGelten === false) return true; // Schalter im Kalender-Dialog: arbeitsfreie Tage nicht berücksichtigen
   const d = parseDateUniversal(datum);
   if (!d) return true;
   const dow = d.getDay();
@@ -26,7 +28,8 @@ export function istArbeitstag(datum: string, kalender: Kalender): boolean {
   return true;
 }
 
-/** Anzahl Arbeitstage zwischen start und end (inklusive beider Enden), mindestens 1. */
+/** Anzahl Arbeitstage zwischen start und end (inklusive beider Enden), mindestens 1. Liegt in der Spanne KEIN Arbeitstag (z.B. ein Task
+ *  komplett in den Ferien oder von Samstag bis Sonntag), zählen deren Kalendertage als Dauer — der Task behält so seine Tage und wird nur nach hinten geschoben. */
 export function arbeitstageZwischen(start: string, end: string, kalender: Kalender): number {
   const s = parseDateUniversal(start);
   const e = parseDateUniversal(end);
@@ -38,7 +41,25 @@ export function arbeitstageZwischen(start: string, end: string, kalender: Kalend
     if (istArbeitstag(iso, kalender)) count++;
     cur.setDate(cur.getDate() + 1);
   }
-  return Math.max(1, count);
+  if (count === 0) return Math.max(1, Math.round((e.getTime() - s.getTime()) / 86400000) + 1);
+  return count;
+}
+
+/** Zusammenhängende Arbeitsblöcke zwischen start und end als Tages-Offsets ab start (0 = Starttag): ein Block pro Stück ohne freie Tage.
+ *  Grundlage für die Gantt-Balken, die an Wochenenden/Feiertagen/Ferien unterbrochen gezeichnet werden. */
+export function arbeitsBloecke(start: string, end: string, kalender: Kalender): { von: number; bis: number }[] {
+  const s = parseDateUniversal(start), e = parseDateUniversal(end);
+  if (!s || !e || e.getTime() < s.getTime()) return [];
+  const n = Math.min(3660, Math.round((e.getTime() - s.getTime()) / 86400000));
+  const bloecke: { von: number; bis: number }[] = [];
+  let von = -1;
+  for (let i = 0; i <= n; i++) {
+    const iso = toIso(new Date(s.getFullYear(), s.getMonth(), s.getDate() + i));
+    if (istArbeitstag(iso, kalender)) { if (von < 0) von = i; }
+    else if (von >= 0) { bloecke.push({ von, bis: i - 1 }); von = -1; }
+  }
+  if (von >= 0) bloecke.push({ von, bis: n });
+  return bloecke;
 }
 
 function toIso(d: Date): string {
@@ -122,6 +143,19 @@ export function ersterArbeitstagAb(datum: string, kalender: Kalender): string {
     const iso = toIso(cur);
     if (istArbeitstag(iso, kalender)) return iso;
     cur.setDate(cur.getDate() + 1);
+  }
+  return datum;
+}
+
+/** Letzter Arbeitstag am oder VOR dem Datum (ist es selbst ein Arbeitstag, bleibt es unverändert). */
+export function letzterArbeitstagBis(datum: string, kalender: Kalender): string {
+  const d = parseDateUniversal(datum);
+  if (!d) return datum;
+  const cur = new Date(d.getTime());
+  for (let i = 0; i < 4000; i++) {
+    const iso = toIso(cur);
+    if (istArbeitstag(iso, kalender)) return iso;
+    cur.setDate(cur.getDate() - 1);
   }
   return datum;
 }

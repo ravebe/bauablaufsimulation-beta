@@ -12,18 +12,35 @@ interface Props { sim: SimProjekt; updateSim: (s: SimProjekt) => void; onClose: 
 export default function KalenderManager({ sim, updateSim, onClose }: Props) {
   const [feiertage, setFeiertage] = useState<Feiertag[]>(sim.kalender?.feiertage ?? []);
   const [ferien, setFerien] = useState<Ferienzeitraum[]>(sim.kalender?.ferien ?? []);
+  // Schalter: Wochenenden, Feiertage und Ferien berücksichtigen (Standard: an). Aus = jeder Tag ist ein Arbeitstag.
+  const [freieTageGelten, setFreieTageGelten] = useState<boolean>(sim.kalender?.freieTageGelten !== false);
 
   function heuteIso() {
     const heute = new Date();
     return `${heute.getFullYear()}-${String(heute.getMonth() + 1).padStart(2, "0")}-${String(heute.getDate()).padStart(2, "0")}`;
   }
 
-  function speichern(neueFeiertage: Feiertag[], neueFerien: Ferienzeitraum[]) {
+  function speichern(neueFeiertage: Feiertag[], neueFerien: Ferienzeitraum[], gelten: boolean = freieTageGelten) {
     const feiertageSortiert = [...neueFeiertage].sort((a, b) => a.datum.localeCompare(b.datum));
     const ferienSortiert = [...neueFerien].sort((a, b) => a.von.localeCompare(b.von));
     setFeiertage(feiertageSortiert);
     setFerien(ferienSortiert);
-    updateSim({ ...sim, kalender: { feiertage: feiertageSortiert, ferien: ferienSortiert } });
+    updateSim({ ...sim, kalender: { feiertage: feiertageSortiert, ferien: ferienSortiert, ...(gelten ? {} : { freieTageGelten: false }) } });
+  }
+
+  function schalterUmlegen() {
+    if (freieTageGelten) {
+      const ok = confirm(
+        "Arbeitsfreie Tage ausschalten?\n\n" +
+        "• Wochenenden, Feiertage und Ferien zählen dann als normale Arbeitstage — Tasks dürfen am Wochenende und in den Ferien laufen.\n" +
+        "• Eine Dauer von 9 Tagen sind dann 9 Arbeitstage am Stück (Kalendertage).\n" +
+        "• Starttage werden nicht mehr auf den nächsten Arbeitstag verschoben, und das Wochenende ist keine Pause mehr.\n" +
+        "• Bestehende Termine bleiben unverändert; angezeigte Dauern werden neu gezählt.\n\nFortfahren?");
+      if (!ok) return;
+    }
+    const neu = !freieTageGelten;
+    setFreieTageGelten(neu);
+    speichern(feiertage, ferien, neu);
   }
 
   function zeileAendern(idx: number, feld: "datum" | "name", wert: string) {
@@ -81,10 +98,23 @@ export default function KalenderManager({ sim, updateSim, onClose }: Props) {
 
         <div style={{ padding: "14px 18px" }}>
           <div style={{ fontSize: 11, color: "var(--tc-text-2)", lineHeight: 1.5, marginBottom: 12 }}>
-            Wochenenden gelten immer als arbeitsfrei. Zusätzliche Feiertage (Einzeltage) und Ferien (Zeiträume)
-            hier eintragen — sie wirken sich auf angezeigte Dauern, die Gantt-Schattierung und den MS-Project-Export
-            dieser Simulation aus.
+            Wochenenden, Feiertage (Einzeltage) und Ferien (Zeiträume) sind arbeitsfrei: Tasks beginnen und enden nur an
+            Arbeitstagen, die Dauer zählt nur Arbeitstage. Das wirkt sich auf Dauern, Folge-Tasks, die Gantt-Schattierung
+            sowie den MS-Project- und IFC-Export dieser Simulation aus.
           </div>
+
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "8px 10px", marginBottom: 14, cursor: "pointer",
+            background: freieTageGelten ? "var(--tc-blue-bg)" : "#fff6e5", border: `1px solid ${freieTageGelten ? "#b0d4f0" : "#f0c975"}` }}>
+            <input type="checkbox" checked={freieTageGelten} onChange={schalterUmlegen} style={{ marginTop: 2 }} />
+            <span style={{ fontSize: 11, lineHeight: 1.45 }}>
+              <b>Wochenenden, Feiertage und Ferien berücksichtigen</b>
+              <span style={{ display: "block", color: "var(--tc-text-3)", fontSize: 10 }}>
+                {freieTageGelten
+                  ? "Eingeschaltet (Standard): Tasks laufen nur an Arbeitstagen; ein Start am Wochenende rückt auf den nächsten Arbeitstag."
+                  : "⚠ Ausgeschaltet: Wochenendarbeit erlaubt — jeder Tag zählt als Arbeitstag, nichts wird auf einen Werktag verschoben (9 Tage = 9 Arbeitstage). Die Listen unten bleiben gespeichert, wirken aber nicht."}
+              </span>
+            </span>
+          </label>
 
           <div style={{ fontSize: 9, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px", marginBottom: 6 }}>FEIERTAGE</div>
           {feiertage.length === 0 && (

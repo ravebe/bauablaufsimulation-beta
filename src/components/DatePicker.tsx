@@ -1,11 +1,15 @@
 import { useState, useRef, useEffect } from "react";
 import Schwebend from "./Schwebend";
+import type { Kalender } from "./kalenderHelpers";
+import { istArbeitstag } from "./kalenderHelpers";
 
 interface Props {
   value: string;
   onChange: (val: string) => void;
   readOnly?: boolean;
   defaultOpen?: boolean;
+  /** Ist der Schalter "Wochenenden, Feiertage und Ferien berücksichtigen" an, sind diese freien Tage ausgegraut und nicht wählbar */
+  kalender?: Kalender;
 }
 
 const TAGE = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
@@ -22,7 +26,7 @@ function fmtDMY(d: Date): string {
 
 const CAL_W = 224;
 
-export default function DatePicker({ value, onChange, readOnly, defaultOpen }: Props) {
+export default function DatePicker({ value, onChange, readOnly, defaultOpen, kalender }: Props) {
   const [offen, setOffen] = useState(!!defaultOpen);
   const parsed = parseDMY(value);
   const [monat, setMonat] = useState(parsed?.getMonth() ?? new Date().getMonth());
@@ -48,6 +52,8 @@ export default function DatePicker({ value, onChange, readOnly, defaultOpen }: P
   const ersterTag = new Date(jahr, monat, 1).getDay();
   const tageImMonat = new Date(jahr, monat + 1, 0).getDate();
   const heute = new Date();
+  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const gesperrt = (d: Date) => !!kalender && !istArbeitstag(iso(d), kalender);
 
   function prev() { if (monat === 0) { setMonat(11); setJahr(j => j - 1); } else setMonat(m => m - 1); }
   function next() { if (monat === 11) { setMonat(0); setJahr(j => j + 1); } else setMonat(m => m + 1); }
@@ -87,9 +93,11 @@ export default function DatePicker({ value, onChange, readOnly, defaultOpen }: P
               const d = new Date(jahr, monat, tag);
               const istH = d.toDateString() === heute.toDateString();
               const istG = parsed && d.toDateString() === parsed.toDateString();
+              const frei = gesperrt(d);
               return (
-                <button key={tag} onClick={() => waehlen(tag)} style={{
-                  width: 28, height: 28, borderRadius: "50%", border: "none", cursor: "pointer",
+                <button key={tag} disabled={frei} title={frei ? "Arbeitsfrei (Wochenende, Feiertag oder Ferien) — nicht wählbar" : undefined} onClick={() => waehlen(tag)} style={{
+                  width: 28, height: 28, borderRadius: "50%", border: "none", cursor: frei ? "not-allowed" : "pointer", opacity: frei ? 0.3 : 1,
+                  textDecoration: frei ? "line-through" : "none",
                   fontSize: 12, fontWeight: istG || istH ? 700 : 400, margin: "auto",
                   background: istG ? "#3a7bd5" : istH ? "rgba(255,255,255,.15)" : "transparent",
                   color: istG ? "#fff" : istH ? "#90caf9" : "rgba(255,255,255,.85)",
@@ -98,10 +106,10 @@ export default function DatePicker({ value, onChange, readOnly, defaultOpen }: P
               );
             })}
           </div>
-          <button onClick={() => { setMonat(heute.getMonth()); setJahr(heute.getFullYear()); waehlen(heute.getDate()); }}
-            style={{ display: "block", width: "100%", padding: "8px 0", background: "rgba(255,255,255,.08)",
+          <button disabled={gesperrt(heute)} onClick={() => { setMonat(heute.getMonth()); setJahr(heute.getFullYear()); waehlen(heute.getDate()); }}
+            style={{ display: "block", opacity: gesperrt(heute) ? 0.35 : 1, cursor: gesperrt(heute) ? "not-allowed" : "pointer", width: "100%", padding: "8px 0", background: "rgba(255,255,255,.08)",
               border: "none", borderTop: "1px solid rgba(255,255,255,.15)", color: "#90caf9",
-              cursor: "pointer", fontSize: 12, fontWeight: 600, borderRadius: "0 0 6px 6px" }}>Heute</button>
+              fontSize: 12, fontWeight: 600, borderRadius: "0 0 6px 6px" }}>Heute</button>
         </Schwebend>
       )}
     </div>

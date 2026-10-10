@@ -1,5 +1,5 @@
 import type { Kalender } from "./components/kalenderHelpers";
-import { arbeitstageZwischen, LEERER_KALENDER, endDatumAusArbeitstagen, startDatumAusArbeitstagen, arbeitstagPlus, arbeitstageVersatz, folgeStart } from "./components/kalenderHelpers";
+import { arbeitstageZwischen, LEERER_KALENDER, endDatumAusArbeitstagen, startDatumAusArbeitstagen, arbeitstagPlus, arbeitstageVersatz, folgeStart, ersterArbeitstagAb, letzterArbeitstagBis } from "./components/kalenderHelpers";
 import type { Stammdaten } from "./components/stammdatenHelpers";
 
 export type TaskTyp = "neubau" | "bestand" | "abbruch" | "temporaer" | "baustelleneinrichtung" | "drittprojekt";
@@ -331,9 +331,13 @@ export function datumsPaarVerschieben(altStart: string, altEnde: string, neuesDa
   const neu = normalizeDatum(neuesDatum);
   if (!s || !e) return geaendert === "start" ? { start: neu, end: altEnde } : { start: altStart, end: neu };
   const dauer = arbeitstageZwischen(altStart, altEnde, kalender);
-  return geaendert === "start"
-    ? { start: neu, end: endDatumAusArbeitstagen(neu, dauer, kalender) }
-    : { start: startDatumAusArbeitstagen(neu, dauer, kalender), end: neu };
+  // Tasks beginnen und enden nur an Arbeitstagen: ein freier Starttag rückt auf den nächsten, ein freier Endtag auf den vorherigen Arbeitstag
+  if (geaendert === "start") {
+    const start = ersterArbeitstagAb(neu, kalender);
+    return { start, end: endDatumAusArbeitstagen(start, dauer, kalender) };
+  }
+  const end = letzterArbeitstagBis(neu, kalender);
+  return { start: startDatumAusArbeitstagen(end, dauer, kalender), end };
 }
 
 export function normalizeDatum(s: string): string {
@@ -513,7 +517,7 @@ export function verschiebeAufStart(tasks: Task[], taskId: string, neuerStart: st
     const kinder = new Set(getKinder(tasks, idx));
     return tasks.map((x, i) => (i === idx || kinder.has(i)) ? verschiebe(x, arbeitstagPlus(x.start, delta, kalender)) : x);
   }
-  return tasks.map((x, i) => i === idx ? verschiebe(x, neuerStart) : x);
+  return tasks.map((x, i) => i === idx ? verschiebe(x, ersterArbeitstagAb(neuerStart, kalender)) : x);
 }
 
 /** Gültige Vorgänger-Kandidaten für einen Task: kein Zyklus, Gruppen nur als Vorgänger von Gruppen */
@@ -553,10 +557,29 @@ export function kaskadiereNachfolger(tasks: Task[], geaenderteId: string, kalend
   return result;
 }
 
+/** Setzt jeden Task (keine Gruppen) auf Arbeitstage: Start auf den nächsten Arbeitstag, Ende so, dass die Dauer in Arbeitstagen bleibt
+ *  (Spanne ohne Arbeitstag, z.B. in den Ferien oder Sa–So: Kalendertage der Spanne = Arbeitstage; Wochenenden in langen Spannen werden
+ *  weggeschnitten). Gibt die Tasks und die Anzahl geänderter Tasks zurück — auch für den Import. */
+export function normalisiereAufArbeitstage(tasks: Task[], kalender: Kalender = LEERER_KALENDER): { tasks: Task[]; geaendert: number } {
+  let geaendert = 0;
+  const neu = tasks.map((t, i) => {
+    if (t.isGroup || istGruppe(tasks, i) || !parseDateUniversal(t.start) || !parseDateUniversal(t.end)) return t;
+    const dauer = arbeitstageZwischen(t.start, t.end, kalender);
+    const start = ersterArbeitstagAb(t.start, kalender);
+    const end = endDatumAusArbeitstagen(start, dauer, kalender);
+    if (start === t.start && end === t.end) return t;
+    geaendert++;
+    return { ...t, start, end };
+  });
+  return { tasks: neu, geaendert };
+}
+
 /** Richtet alle Folge-Tasks neu an ihren Vorgängern aus (Nachfolger = Arbeitstag nach Vorgänger-Ende + Wartetage): beseitigt Überlappungen
- *  von Tasks, die noch am selben Tag wie ihr Vorgänger beginnen. Tasks ohne Vorgänger bleiben unverändert. */
+ *  von Tasks, die noch am selben Tag wie ihr Vorgänger beginnen, und setzt alle Tasks auf Arbeitstage (Start/Ende nie auf Wochenende, Feiertag oder Ferien). */
 export function richteKettenNeuAus(tasks: Task[], kalender: Kalender = LEERER_KALENDER): Task[] {
-  let result = tasks;
+  // 1. Jeder Task (auch ohne Vorgänger) beginnt und endet an Arbeitstagen; die Dauer in Arbeitstagen bleibt (mindestens 1)
+  let result = normalisiereAufArbeitstage(tasks, kalender).tasks;
+  // 2. Folge-Tasks an ihren Vorgängern ausrichten
   for (const t of tasks) if (!t.predecessorId) result = kaskadiereNachfolger(result, t.id, kalender);
   return result;
 }
