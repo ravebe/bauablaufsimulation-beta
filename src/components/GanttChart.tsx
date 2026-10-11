@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, useLayoutEffect, useCallback, useMemo } fr
 import { lsGet, lsSet } from "../hooks/lokalSpeicher";
 import { createPortal } from "react-dom";
 import type { Task, VorgaengerLink } from "../types";
-import { vorgaengerListe, vorgaengerText, parseVorgaengerText, massgebenderVorgaenger, letzterVorgaengerEintrag, ersetzeLetztenVorgaengerEintrag, zeitraumVerschieben, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks, nsKey, TASK_TYP_FARBE } from "../types";
+import { vorgaengerKandidaten, vorgaengerListe, vorgaengerText, parseVorgaengerText, massgebenderVorgaenger, letzterVorgaengerEintrag, ersetzeLetztenVorgaengerEintrag, zeitraumVerschieben, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks, nsKey, TASK_TYP_FARBE } from "../types";
 import type { Kalender } from "./kalenderHelpers";
 import { istArbeitstag, LEERER_KALENDER, getKW, arbeitstageZwischen, arbeitsBloecke } from "./kalenderHelpers";
 import DatePicker from "./DatePicker";
@@ -593,7 +593,8 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
                       {predPickerTaskId === t.id && (() => {
                         const predUebernehmen = () => {
                           // "26, 27+2" — mehrere Vorgänger mit Komma, je eigene Wartetage als +n (sonst gilt das Feld Wartetage)
-                          const { liste } = parseVorgaengerText(predInput, gueltigeVorgaenger(tasks, t.id), nummern, Number(lagInput) || 0);
+                          const { liste, unbekannt } = parseVorgaengerText(predInput, gueltigeVorgaenger(tasks, t.id), nummern, Number(lagInput) || 0);
+                          if (unbekannt.length) alert(`Nicht übernommen: ${unbekannt.join(", ")} — unbekannte Nummer oder Zirkelbezug (der Task hängt bereits von diesem ab).`);
                           if (liste.length || !predInput.trim()) onSetPredecessor?.(t.id, liste);
                           setPredPickerTaskId(null);
                         };
@@ -612,16 +613,19 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
                               onChange={e => { setPredInput(e.target.value); setPredListOffen(true); }} />
                             {predListOffen && (
                               <div className="ac-dropdown" ref={predDropdownRef} style={{ maxHeight: 120 }}>
-                                {gueltigeVorgaenger(tasks, t.id)
+                                {vorgaengerKandidaten(tasks, t.id)
                                   .filter(c => {
                                     const lbl = nummern.get(c.id) ?? "";
                                     const tok = letzterVorgaengerEintrag(predInput).toLowerCase();
                                     return !tok || lbl.toLowerCase().startsWith(tok) || c.name.toLowerCase().includes(tok);
                                   })
                                   .map(c => (
-                                    <div key={c.id} data-cid={c.id} className="ac-item" style={{ fontSize: 11, padding: "3px 6px" }}
-                                      onMouseDown={() => { setPredInput(ersetzeLetztenVorgaengerEintrag(predInput, nummern.get(c.id) ?? "")); setPredListOffen(false); }}>
-                                      <span style={{ fontWeight: 600 }}>{nummern.get(c.id)}</span> — {c.name}
+                                    <div key={c.id} data-cid={c.id} className="ac-item"
+                                      // gesperrt (Zirkelbezug): ausgegraut, nicht wählbar, Grund beim Darüberfahren
+                                      style={{ fontSize: 11, padding: "3px 6px", ...(c.sperrPfad ? { color: "#b5bec7", cursor: "not-allowed", background: "none" } : {}) }}
+                                      title={c.sperrPfad ? `Nicht wählbar — Zirkelbezug: ${c.sperrPfad.map(id => nummern.get(id) ?? "?").join(" → ")}. ${nummern.get(c.id)} hängt bereits von diesem Task ab; zuerst diese Kette ändern.` : undefined}
+                                      onMouseDown={c.sperrPfad ? (e => e.preventDefault()) : (() => { setPredInput(ersetzeLetztenVorgaengerEintrag(predInput, nummern.get(c.id) ?? "")); setPredListOffen(false); })}>
+                                      <span style={{ fontWeight: 600 }}>{nummern.get(c.id)}</span> — {c.name}{c.sperrPfad && <span style={{ fontSize: 9, marginLeft: 4 }}>⟲ {c.sperrPfad.map(id => nummern.get(id) ?? "?").join(" → ")}</span>}
                                     </div>
                                   ))}
                               </div>

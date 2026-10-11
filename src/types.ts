@@ -632,6 +632,33 @@ export function verschiebeAufStart(tasks: Task[], taskId: string, neuerStart: st
   return tasks.map((x, i) => i === idx ? verschiebe(x, neuerStart) : x);
 }
 
+/** Weg eines Zirkelbezugs: hängt predId über seine Vorgänger-Kette schon von taskId ab, liefert die Kette [predId, …, taskId]
+ *  (z.B. 48 → 47 → 46), sonst null. */
+export function zirkelPfad(tasks: Task[], taskId: string, predId: string): string[] | null {
+  const byId = new Map(tasks.map(t => [t.id, t]));
+  const besucht = new Set<string>();
+  const suche = (id: string): string[] | null => {
+    if (id === taskId) return [id];
+    if (besucht.has(id)) return null;
+    besucht.add(id);
+    const t = byId.get(id);
+    if (!t) return null;
+    for (const v of vorgaengerListe(t)) { const p = suche(v.id); if (p) return [id, ...p]; }
+    return null;
+  };
+  return suche(predId);
+}
+
+/** Alle Tasks gleicher Art (Task/Gruppe) für die Vorgänger-Auswahl — gesperrte (Zirkelbezug) mit ihrer Kette, damit die Auswahl
+ *  sie ausgegraut samt Grund zeigen kann statt sie stillschweigend wegzulassen. */
+export function vorgaengerKandidaten(tasks: Task[], taskId: string): (Task & { sperrPfad?: string[] })[] {
+  const idx = tasks.findIndex(t => t.id === taskId);
+  if (idx < 0) return [];
+  const taskIstGruppe = istGruppe(tasks, idx);
+  return tasks.filter((t, i) => t.id !== taskId && istGruppe(tasks, i) === taskIstGruppe)
+    .map(t => { const p = zirkelPfad(tasks, taskId, t.id); return p ? { ...t, sperrPfad: p } : t; });
+}
+
 /** Gültige Vorgänger-Kandidaten für einen Task: kein Zyklus, Gruppen nur als Vorgänger von Gruppen */
 export function gueltigeVorgaenger(tasks: Task[], taskId: string): Task[] {
   const idx = tasks.findIndex(t => t.id === taskId);

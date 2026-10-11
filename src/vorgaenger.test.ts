@@ -102,3 +102,15 @@ describe("MS-Project-Export", () => {
     expect(x).not.toContain("<Exceptions>");
   });
 });
+
+import { zirkelPfad, vorgaengerKandidaten } from "./types";
+describe("Vorgänger-Auswahl zeigt gesperrte Tasks mit Grund", () => {
+  it("48 → 47 → 46: 48 ist für 46 gesperrt, mit Kette", () => {
+    const ts = [task("46", "2026-11-09", "2026-11-09"), task("47", "2026-11-10", "2026-11-10", { predecessorId: "46" }), task("48", "2026-11-11", "2026-11-11", { predecessorId: "47" }), task("45", "2026-11-06", "2026-11-06")];
+    expect(zirkelPfad(ts, "46", "48")).toEqual(["48", "47", "46"]);
+    expect(zirkelPfad(ts, "46", "45")).toBeNull();
+    const k = vorgaengerKandidaten(ts, "46");
+    expect(k.find(x => x.id === "48")?.sperrPfad).toEqual(["48", "47", "46"]);
+    expect(k.find(x => x.id === "45")?.sperrPfad).toBeUndefined();
+  });
+});

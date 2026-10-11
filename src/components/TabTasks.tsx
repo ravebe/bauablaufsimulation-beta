@@ -9,7 +9,7 @@ import ZeitWahl from "./ZeitWahl";
 import { startZeitpunkt, endZeitpunkt, fmtZeitZusatz } from "./zeitHelpers";
 import { formatDatum, normalizeDatum, zeitraumVerschieben, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, getKinder,
   berechneNummern, gueltigeVorgaenger, verschiebeAufStart, kaskadiereNachfolger, vorgaengerListe, mitVorgaengern, vorgaengerText, parseVorgaengerText,
-  massgebenderVorgaenger, vorgaengerStart, letzterVorgaengerEintrag, ersetzeLetztenVorgaengerEintrag,
+  massgebenderVorgaenger, vorgaengerStart, vorgaengerKandidaten, letzterVorgaengerEintrag, ersetzeLetztenVorgaengerEintrag,
   taskVerschieben as verschiebeTaskBlock, sucheSortiereTasks, nsKey, TASK_TYP_LISTE, TASK_TYP_LABEL, TASK_TYP_FARBE } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { batchGetProperties, batchConvertToObjectIds } from "../hooks/useApi";
@@ -620,7 +620,8 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                   {predPickerTaskId === task.id && (() => {
                     const predUebernehmen = () => {
                       // "26, 27+2" — mehrere Vorgänger mit Komma, je eigene Wartetage als +n (sonst gilt das Feld Wartetage)
-                      const { liste } = parseVorgaengerText(predInput, gueltigeVorgaenger(aktiveSim.tasks, task.id), nummern, Number(lagInput) || 0);
+                      const { liste, unbekannt } = parseVorgaengerText(predInput, gueltigeVorgaenger(aktiveSim.tasks, task.id), nummern, Number(lagInput) || 0);
+                      if (unbekannt.length) alert(`Nicht übernommen: ${unbekannt.join(", ")} — unbekannte Nummer oder Zirkelbezug (der Task hängt bereits von diesem ab).`);
                       if (liste.length || !predInput.trim()) vorgängerSetzen(task.id, liste);
                       else setPredPickerTaskId(null);
                     };
@@ -639,16 +640,19 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                           onChange={e => { setPredInput(e.target.value); setPredListOffen(true); }} />
                         {predListOffen && (
                           <div className="ac-dropdown" ref={predDropdownRef} style={{ maxHeight: 120 }}>
-                            {gueltigeVorgaenger(aktiveSim.tasks, task.id)
+                            {vorgaengerKandidaten(aktiveSim.tasks, task.id)
                               .filter(c => {
                                 const lbl = nummern.get(c.id) ?? "";
                                 const tok = letzterVorgaengerEintrag(predInput).toLowerCase();
                                 return !tok || lbl.toLowerCase().startsWith(tok) || c.name.toLowerCase().includes(tok);
                               })
                               .map(c => (
-                                <div key={c.id} data-cid={c.id} className="ac-item" style={{ fontSize: 11, padding: "3px 6px" }}
-                                  onMouseDown={() => { setPredInput(ersetzeLetztenVorgaengerEintrag(predInput, nummern.get(c.id) ?? "")); setPredListOffen(false); }}>
-                                  <span style={{ fontWeight: 600 }}>{nummern.get(c.id)}</span> — {c.name}
+                                <div key={c.id} data-cid={c.id} className="ac-item"
+                                  // gesperrt (Zirkelbezug): ausgegraut, nicht wählbar, Grund beim Darüberfahren
+                                  style={{ fontSize: 11, padding: "3px 6px", ...(c.sperrPfad ? { color: "#b5bec7", cursor: "not-allowed", background: "none" } : {}) }}
+                                  title={c.sperrPfad ? `Nicht wählbar — Zirkelbezug: ${c.sperrPfad.map(id => nummern.get(id) ?? "?").join(" → ")}. ${nummern.get(c.id)} hängt bereits von diesem Task ab; zuerst diese Kette ändern.` : undefined}
+                                  onMouseDown={c.sperrPfad ? (e => e.preventDefault()) : (() => { setPredInput(ersetzeLetztenVorgaengerEintrag(predInput, nummern.get(c.id) ?? "")); setPredListOffen(false); })}>
+                                  <span style={{ fontWeight: 600 }}>{nummern.get(c.id)}</span> — {c.name}{c.sperrPfad && <span style={{ fontSize: 9, marginLeft: 4 }}>⟲ {c.sperrPfad.map(id => nummern.get(id) ?? "?").join(" → ")}</span>}
                                 </div>
                               ))}
                           </div>
