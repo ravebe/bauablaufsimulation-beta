@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { lsSet } from "../hooks/lokalSpeicher";
 import type { SimProjekt, Task , VorgaengerLink } from "../types";
 import { parseDateUniversal, istGruppe, getKinder, getOutlineLevel, kaskadiereNachfolger, richteKettenNeuAus, verschiebeAufStart, mitVorgaengern, vorgaengerStart,
-  taskVerschieben as verschiebeTaskBlock, nsKey } from "../types";
+  taskVerschieben as verschiebeTaskBlock, nsKey, vorgaengerListe, zirkelPfad } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { getEchteBauteile, clearEchteBauteileCache } from "./modelHelpers";
 import { useClickOutside } from "../hooks/useClickOutside";
@@ -297,16 +297,25 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   // (Task 2 ← Task 1, Task 3 ← Task 2, …), Gruppen dabei als eigene, separate Kette von Gruppen
   // untereinander (nicht mit den Tasks vermischt — eine Gruppe trägt kein eigenes Start-/Enddatum,
   // siehe berechneZeitplanUebernahme(), das würde die Terminkaskade sonst mit veralteten Werten füttern).
+  // Nur Tasks/Gruppen ohne jeden Vorgänger werden ergänzt — bestehende Vorgänger bleiben unangetastet;
+  // eine Verknüpfung, die einen Zirkelbezug ergäbe, wird übersprungen.
   function autoVorgaenger() {
     if (!aktiveSim) return;
     const tasks = aktiveSim.tasks;
     const gruppenIds = tasks.filter((_, i) => istGruppe(tasks, i)).map(t => t.id);
     const echteIds = tasks.filter((_, i) => !istGruppe(tasks, i)).map(t => t.id);
-    const vorgaengerMap = new Map<string, string | undefined>();
+    let neueTasks = tasks;
     for (const ids of [gruppenIds, echteIds]) {
-      ids.forEach((id, i) => vorgaengerMap.set(id, i === 0 ? undefined : ids[i - 1]));
+      ids.forEach((id, i) => {
+        if (i === 0) return;
+        const t = neueTasks.find(x => x.id === id);
+        if (!t || vorgaengerListe(t).length > 0) return;
+        const predId = ids[i - 1];
+        if (zirkelPfad(neueTasks, id, predId)) return;
+        neueTasks = neueTasks.map(x => x.id === id ? { ...x, predecessorId: predId } : x);
+      });
     }
-    const neueTasks = tasks.map(t => vorgaengerMap.has(t.id) ? { ...t, predecessorId: vorgaengerMap.get(t.id), weitereVorgaenger: undefined } : t);
+    if (neueTasks === tasks) return;
     updateSim({ ...aktiveSim, tasks: neueTasks });
   }
 
@@ -368,7 +377,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                       onClick={() => { autoVorgaenger(); setWerkzeugOffen(false); }}>
                       <div style={{ fontSize: 11, fontWeight: 500, color: "var(--tc-text)" }}>Auto-Vorgänger</div>
                       <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 2 }}>
-                        Verkettet Tasks und Gruppen automatisch der Reihenfolge nach: Task 2 erhält Task 1 als Vorgänger, Task 3 erhält Task 2 usw. — Gruppen bekommen dieselbe Verkettung untereinander.
+                        Verkettet Tasks und Gruppen automatisch der Reihenfolge nach: Task 2 erhält Task 1 als Vorgänger, Task 3 erhält Task 2 usw. — Gruppen bekommen dieselbe Verkettung untereinander. Nur Tasks ohne Vorgänger werden ergänzt; bestehende Vorgänger bleiben erhalten.
                       </div>
                     </button>
                   )}
