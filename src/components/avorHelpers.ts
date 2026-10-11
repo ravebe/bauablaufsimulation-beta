@@ -3,7 +3,8 @@
 import type { Task } from "../types";
 import { parseDateUniversal } from "../types";
 import type { Kalender } from "./kalenderHelpers";
-import { istArbeitstag, arbeitstageZwischen } from "./kalenderHelpers";
+import { istArbeitstag } from "./kalenderHelpers";
+import { arbeitsAnteilAmTag, dauerTage } from "./zeitHelpers";
 import type { Stammdaten, Gewerk, Rate } from "./stammdatenHelpers";
 import { istMengeKranpflichtig, hatKranpflichtigeRaten } from "./stammdatenHelpers";
 
@@ -47,12 +48,15 @@ export function personalauslastung(tasks: Task[], stammdaten: Stammdaten, kalend
     if (istArbeitstag(iso, kalender)) {
       for (const t of tasks) {
         if (!laeuftAn(t, iso)) continue;
+        // Halbtag/Stunden: Kolonne zählt mit dem Anteil des Tages, an dem der Task arbeitet (ganzer Tag = 1)
+        const anteil = arbeitsAnteilAmTag(t, iso, kalender);
+        if (!anteil) continue;
         for (const gewerk of stammdaten.gewerke) {
           const menge = t.mengen![gewerk.key];
           if (!menge) continue;
           const rate = rateFuer(gewerk, t.bauteilKuerzel!);
           if (!rate) continue;
-          werte[gewerk.key] = (werte[gewerk.key] ?? 0) + rate.anzahlPersonen;
+          werte[gewerk.key] = (werte[gewerk.key] ?? 0) + rate.anzahlPersonen * anteil;
         }
       }
     }
@@ -78,7 +82,7 @@ export function personalSollProTag(tasks: Task[], kalender: Kalender): number[] 
     if (istArbeitstag(iso, kalender)) {
       for (const t of tasks) {
         if (t.isGroup || !t.personalSoll || iso < t.start || iso > t.end) continue;
-        summe += t.personalSoll;
+        summe += t.personalSoll * arbeitsAnteilAmTag(t, iso, kalender);
       }
     }
     ergebnis.push(summe);
@@ -106,7 +110,7 @@ export function kranauslastung(tasks: Task[], stammdaten: Stammdaten, kalender: 
         const hatKranGewerk = Object.keys(t.mengen!).some(k => t.mengen![k] > 0 && istMengeKranpflichtig(stammdaten, k, t.bauteilKuerzel));
         if (!hatKranGewerk) continue;
         const bereich = t.kranbereich?.trim() || "unbekannt";
-        werte[bereich] = (werte[bereich] ?? 0) + 1;
+        werte[bereich] = (werte[bereich] ?? 0) + arbeitsAnteilAmTag(t, iso, kalender);
       }
     }
     ergebnis.push({ tag: iso, werte });
@@ -132,7 +136,7 @@ export function mengenProTag(tasks: Task[], gewerkKey: string, kalender: Kalende
         if (kuerzel && t.bauteilKuerzel !== kuerzel) continue;
         const m = t.mengen?.[gewerkKey];
         if (!m || iso < t.start || iso > t.end) continue;
-        menge += m / arbeitstageZwischen(t.start, t.end, kalender);
+        menge += m * arbeitsAnteilAmTag(t, iso, kalender) / dauerTage(t, kalender);
       }
     }
     ergebnis.push({ tag: iso, menge });
@@ -164,14 +168,16 @@ export function ertragsoptik(tasks: Task[], stammdaten: Stammdaten, kalender: Ka
     if (istArbeitstag(iso, kalender)) {
       for (const t of tasks) {
         if (!laeuftAn(t, iso)) continue;
-        const arbeitstage = arbeitstageZwischen(t.start, t.end, kalender);
+        const anteil = arbeitsAnteilAmTag(t, iso, kalender);
+        if (!anteil) continue;
+        const arbeitstage = dauerTage(t, kalender);
         for (const gewerk of stammdaten.gewerke) {
           const menge = t.mengen![gewerk.key];
           if (!menge) continue;
           const rate = rateFuer(gewerk, t.bauteilKuerzel!);
           if (!rate) continue;
-          ertragKum += rate.anzahlPersonen * stammdaten.arbeitszeitStdProTag * umsatz;
-          if (rate.chfProEinheit) kostenKum += (menge * rate.chfProEinheit) / arbeitstage;
+          ertragKum += rate.anzahlPersonen * stammdaten.arbeitszeitStdProTag * umsatz * anteil;
+          if (rate.chfProEinheit) kostenKum += (menge * rate.chfProEinheit) * anteil / arbeitstage;
         }
       }
     }

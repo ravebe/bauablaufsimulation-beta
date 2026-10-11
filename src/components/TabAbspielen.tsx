@@ -5,7 +5,7 @@ import type { SimProjekt, Task } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { formatDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, nsKey, sucheSortiereTasks, TASK_TYP_FARBE, TASK_TYP_LABEL, vorgaengerListe, vorgaengerText, massgebenderVorgaenger } from "../types";
 import { LEERER_KALENDER } from "./kalenderHelpers";
-import { dauerTage, fmtDauer } from "./zeitHelpers";
+import { dauerTage, fmtDauer, startPos, endPos, datumZeitBeiPos, schrittTage } from "./zeitHelpers";
 import GanttChart from "./GanttChart";
 import { bindeListenScroll, useSelektionFokus, zentriereZeile } from "./listenScroll";
 import { useDoppelklickHinweis } from "../hooks/useDoppelklickHinweis";
@@ -25,11 +25,6 @@ function tagVonDatum(s: string, min: Date): number {
   const d = parseDateUniversal(s);
   if (!d) return 0;
   return Math.round((d.getTime() - min.getTime()) / 86400000);
-}
-
-function datumBeiTag(min: Date, tag: number): string {
-  const d = new Date(min.getTime() + tag * 86400000);
-  return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 export default function TabAbspielen({ api, projectId = null, aktiveSim, aktivesModellId, taskSort = "gantt", sharedNadelTag, onIfcExport }: Props) {
@@ -93,7 +88,8 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
     if (allDates.length === 0) return { minDate: null, maxDate: null, totalTage: 0 };
     const min = new Date(Math.min(...allDates.map(d => d.getTime())));
     const max = new Date(Math.max(...allDates.map(d => d.getTime())));
-    return { minDate: min, maxDate: max, totalTage: Math.max(1, Math.round((max.getTime() - min.getTime()) / 86400000)) };
+    // bis zum Arbeitsende des letzten Tages (Tasks sind aktiv für startPos <= Tag < endPos, siehe zeitHelpers.ts)
+    return { minDate: min, maxDate: max, totalTage: Math.max(1, Math.round((max.getTime() - min.getTime()) / 86400000)) + 1 };
   })();
 
   useEffect(() => () => { if (animRef.current) cancelAnimationFrame(animRef.current); }, []);
@@ -168,15 +164,14 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
   // --- Ist Task aktiv bei Tag? ---
   function istAktiv(t: Task, tag: number): boolean {
     if (!minDate) return false;
-    const s = tagVonDatum(t.start, minDate);
-    const e = t.end ? tagVonDatum(t.end, minDate) : s;
-    return tag >= s && tag <= e;
+    const s = startPos(t, minDate);
+    const e = endPos(t, minDate);
+    return tag >= s && tag < e;
   }
 
   function istVorbei(t: Task, tag: number): boolean {
     if (!minDate) return false;
-    const e = t.end ? tagVonDatum(t.end, minDate) : tagVonDatum(t.start, minDate);
-    return tag > e;
+    return tag >= endPos(t, minDate);
   }
 
   // --- Startzustand ---
@@ -219,25 +214,25 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
 
     for (const t of alleTasks) {
       if (t.objektGuids.length === 0) continue;
-      const s = tagVonDatum(t.start, minDate);
-      const e = t.end ? tagVonDatum(t.end, minDate) : s;
+      const s = startPos(t, minDate);
+      const e = endPos(t, minDate);
 
       if (t.typ === "neubau") {
-        if (tag >= s) { showGuids.push(...t.objektGuids); if (tag <= e) selGuidsLocal.push(...t.objektGuids); if (farbeEin) colorNeubau.push(...t.objektGuids); }
+        if (tag >= s) { showGuids.push(...t.objektGuids); if (tag < e) selGuidsLocal.push(...t.objektGuids); if (farbeEin) colorNeubau.push(...t.objektGuids); }
         else hideGuids.push(...t.objektGuids);
       } else if (t.typ === "bestand") {
         showGuids.push(...t.objektGuids); colorBestand.push(...t.objektGuids);
       } else if (t.typ === "abbruch") {
-        if (tag > e) hideGuids.push(...t.objektGuids);
+        if (tag >= e) hideGuids.push(...t.objektGuids);
         else { showGuids.push(...t.objektGuids); if (tag >= s) colorAbbruch.push(...t.objektGuids); }
       } else if (t.typ === "temporaer") {
-        if (tag > e) hideGuids.push(...t.objektGuids);
+        if (tag >= e) hideGuids.push(...t.objektGuids);
         else { showGuids.push(...t.objektGuids); if (farbeEin && tag >= s) colorTemp.push(...t.objektGuids); }
       } else if (t.typ === "baustelleneinrichtung") {
-        if (tag > e) hideGuids.push(...t.objektGuids);
+        if (tag >= e) hideGuids.push(...t.objektGuids);
         else { showGuids.push(...t.objektGuids); if (farbeEin && tag >= s) colorBaustelleneinrichtung.push(...t.objektGuids); }
       } else if (t.typ === "drittprojekt") {
-        if (tag > e) hideGuids.push(...t.objektGuids);
+        if (tag >= e) hideGuids.push(...t.objektGuids);
         else { showGuids.push(...t.objektGuids); if (farbeEin && tag >= s) colorDrittprojekt.push(...t.objektGuids); }
       }
     }
@@ -272,12 +267,12 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
     const tag = currentTagRef.current;
     for (const t of aktiveSim.tasks) {
       if (t.objektGuids.length === 0) continue;
-      const s = tagVonDatum(t.start, minDate);
-      const e = t.end ? tagVonDatum(t.end, minDate) : s;
+      const s = startPos(t, minDate);
+      const e = endPos(t, minDate);
       if (t.typ === "neubau" && tag >= s) colorNeubau.push(...t.objektGuids);
-      else if (t.typ === "temporaer" && tag >= s && tag <= e) colorTemp.push(...t.objektGuids);
-      else if (t.typ === "baustelleneinrichtung" && tag >= s && tag <= e) colorBaustelleneinrichtung.push(...t.objektGuids);
-      else if (t.typ === "drittprojekt" && tag >= s && tag <= e) colorDrittprojekt.push(...t.objektGuids);
+      else if (t.typ === "temporaer" && tag >= s && tag < e) colorTemp.push(...t.objektGuids);
+      else if (t.typ === "baustelleneinrichtung" && tag >= s && tag < e) colorBaustelleneinrichtung.push(...t.objektGuids);
+      else if (t.typ === "drittprojekt" && tag >= s && tag < e) colorDrittprojekt.push(...t.objektGuids);
     }
     if (colorNeubau.length > 0) setzeZustandAsync(colorNeubau, { color: neu ? FARBEN.neubau : "reset" });
     if (colorTemp.length > 0) setzeZustandAsync(colorTemp, { color: neu ? FARBEN.temporaer : "reset" });
@@ -290,8 +285,8 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
     if (!minDate) return [] as { tag: number; taskId: string; type: "start" | "end" }[];
     const evts: { tag: number; taskId: string; type: "start" | "end" }[] = [];
     for (const t of tasks) {
-      evts.push({ tag: tagVonDatum(t.start, minDate), taskId: t.id, type: "start" });
-      if (t.end) evts.push({ tag: tagVonDatum(t.end, minDate), taskId: t.id, type: "end" });
+      evts.push({ tag: startPos(t, minDate), taskId: t.id, type: "start" });
+      if (t.end) evts.push({ tag: endPos(t, minDate), taskId: t.id, type: "end" });
     }
     return evts.sort((a, b) => a.tag - b.tag);
   })();
@@ -323,8 +318,8 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
     let statusChanged = false;
 
     for (const t of tasks) {
-      const s = tagVonDatum(t.start, minDate);
-      const e = t.end ? tagVonDatum(t.end, minDate) : s;
+      const s = startPos(t, minDate);
+      const e = endPos(t, minDate);
 
       // Start-Event
       if (tag >= s && !gestartet.current.has(t.id)) {
@@ -344,10 +339,10 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
       }
 
       // Neubau bleibt selektiert während aktiv
-      if (t.typ === "neubau" && tag >= s && tag <= e) selGuidsLocal.push(...t.objektGuids);
+      if (t.typ === "neubau" && tag >= s && tag < e) selGuidsLocal.push(...t.objektGuids);
 
       // End-Event
-      if (tag > e && !beendet.current.has(t.id)) {
+      if (tag >= e && !beendet.current.has(t.id)) {
         beendet.current.add(t.id);
         statusChanged = true;
         if (t.typ === "abbruch") {
@@ -445,7 +440,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
     if (sliderDebounceRef.current) clearTimeout(sliderDebounceRef.current);
     sliderDebounceRef.current = setTimeout(async () => {
       gestartet.current.clear(); beendet.current.clear();
-      tasks.forEach(t => { const s = tagVonDatum(t.start, minDate!); const e = t.end ? tagVonDatum(t.end, minDate!) : s; if (tag >= s) gestartet.current.add(t.id); if (tag > e) beendet.current.add(t.id); });
+      tasks.forEach(t => { const s = startPos(t, minDate!); const e = endPos(t, minDate!); if (tag >= s) gestartet.current.add(t.id); if (tag >= e) beendet.current.add(t.id); });
       await zustandBeiTag(tag);
     }, 150);
   }
@@ -459,7 +454,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
     const isGrp = task.isGroup || (allIdx >= 0 && istGruppe(allTasks, allIdx));
     const gDaten = isGrp && allIdx >= 0 ? gruppenDaten(allTasks, allIdx) : null;
     const startDatum = isGrp && gDaten ? gDaten.start : task.start;
-    const tag = tagVonDatum(startDatum, minDate);
+    const tag = isGrp ? tagVonDatum(startDatum, minDate) : startPos(task, minDate);
     await sliderChange(tag);
 
     // Gruppe: nach Timeline-Update alle Kind-Objekte selektieren
@@ -480,7 +475,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
 
   if (!aktiveSim) return <div className="tc-empty"><div className="tc-empty-icon">▶</div><div className="tc-empty-title">Keine aktive Simulation</div></div>;
 
-  const aktuellesDatum = minDate ? datumBeiTag(minDate, currentTag) : "";
+  const aktuellesDatum = minDate ? datumZeitBeiPos(minDate, currentTag, aktiveSim.zeiteinheit, totalTage) : "";
   const dot = (typ: string) => ({ width: 6, height: 6, borderRadius: "50%" as const, display: "inline-block" as const, margin: "0 8px 0 3px", flexShrink: 0 as const,
     background: (FARBEN as Record<string, string>)[typ] ?? FARBEN.bestand });
 
@@ -500,7 +495,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
 
       {totalTage > 0 && minDate && maxDate && (
         <div style={{ marginTop: 4 }}>
-          <input type="range" min={0} max={totalTage} step={0.5} value={currentTag}
+          <input type="range" min={0} max={totalTage} step={schrittTage(aktiveSim.zeiteinheit)} value={currentTag}
             onChange={e => sliderChange(Number(e.target.value))} disabled={laeuft} style={{ width: "100%", margin: "4px 0 0" }} />
           {/* Start | aktuelles Datum | Ende — unter dem Slider */}
           <div style={{ display: "flex", alignItems: "baseline", fontSize: 11, color: "var(--tc-text-3)" }}>

@@ -313,6 +313,8 @@ export default function TabProjekte({ api, laedt, sims, setSims, aktivId, setAkt
       const kalenderLeer = !s.kalender || (s.kalender.feiertage.length === 0 && (s.kalender.ferien ?? []).length === 0);
       return {
         ...s, tasks, kraene,
+        // IFC mit Halbtagen/Uhrzeiten → Zeiteinheit feiner stellen
+        ...(feinerAls(benoetigteZeiteinheit(tasks), s.zeiteinheit ?? "tage") ? { zeiteinheit: benoetigteZeiteinheit(tasks) } : {}),
         kalender: kalenderLeer && u.kalender ? u.kalender : s.kalender,
         ganttImport: { dateiname: `${modellName} (IFC)`, version: (s.ganttImport?.version ?? 0) + 1 },
         autoVerknuepft: true,

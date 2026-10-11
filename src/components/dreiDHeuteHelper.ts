@@ -6,6 +6,7 @@
 import type { Task } from "../types";
 import { parseDateUniversal, TASK_TYP_FARBE } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
+import { startPos, endPos } from "./zeitHelpers";
 
 export const TYP_FARBEN = TASK_TYP_FARBE;
 
@@ -61,28 +62,28 @@ export async function dreiDZustandAufTagSetzen(api: ApiInstance, tasks: Task[], 
 
   for (const t of tasks) {
     if (t.objektGuids.length === 0) continue;
-    const s = tagVonDatum(t.start, minDate);
-    const e = t.end ? tagVonDatum(t.end, minDate) : s;
+    const s = startPos(t, minDate);
+    const e = endPos(t, minDate); // exklusiv, siehe zeitHelpers.ts
 
     if (t.typ === "neubau") {
       if (tag >= s) {
         showGuids.push(...t.objektGuids);
-        if (tag <= e) { selGuidsLocal.push(...t.objektGuids); aktive.push(t); }
+        if (tag < e) { selGuidsLocal.push(...t.objektGuids); aktive.push(t); }
         if (farbeEin) colorNeubau.push(...t.objektGuids);
       } else hideGuids.push(...t.objektGuids);
     } else if (t.typ === "bestand") {
       showGuids.push(...t.objektGuids); colorBestand.push(...t.objektGuids);
     } else if (t.typ === "abbruch") {
-      if (tag > e) hideGuids.push(...t.objektGuids);
+      if (tag >= e) hideGuids.push(...t.objektGuids);
       else { showGuids.push(...t.objektGuids); if (tag >= s) colorAbbruch.push(...t.objektGuids); if (tag >= s) aktive.push(t); }
     } else if (t.typ === "temporaer") {
-      if (tag > e) hideGuids.push(...t.objektGuids);
+      if (tag >= e) hideGuids.push(...t.objektGuids);
       else { showGuids.push(...t.objektGuids); if (farbeEin && tag >= s) colorTemp.push(...t.objektGuids); if (tag >= s) aktive.push(t); }
     } else if (t.typ === "baustelleneinrichtung") {
-      if (tag > e) hideGuids.push(...t.objektGuids);
+      if (tag >= e) hideGuids.push(...t.objektGuids);
       else { showGuids.push(...t.objektGuids); if (farbeEin && tag >= s) colorBaustelleneinrichtung.push(...t.objektGuids); if (tag >= s) aktive.push(t); }
     } else if (t.typ === "drittprojekt") {
-      if (tag > e) hideGuids.push(...t.objektGuids);
+      if (tag >= e) hideGuids.push(...t.objektGuids);
       else { showGuids.push(...t.objektGuids); if (farbeEin && tag >= s) colorDrittprojekt.push(...t.objektGuids); if (tag >= s) aktive.push(t); }
     }
   }

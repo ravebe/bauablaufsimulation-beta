@@ -10,6 +10,7 @@ import type { Task, TaskTyp, Kran } from "../types";
 import type { Kalender, Feiertag, Ferienzeitraum } from "./kalenderHelpers";
 import { erkenneIfcSchema } from "./ifcExport";
 import type { IfcSchemaFamilie } from "./ifcExport";
+import { importZeit } from "./zeitHelpers";
 
 /** Schnelltest auf dem Dateiende (z.B. letzte 1–2 MB): unsere angehängten 4D-Daten liegen dort.
  *  Nur IfcTask zählt — leseBauablaufAusIfc braucht Vorgänge; ein Pset "Bauablauf" an den Bauteilen oder
@@ -77,7 +78,7 @@ function scan(text: string, nimm: (id: number, typ: string, a: string) => boolea
 const TYPEN = new Set([
   "IFCTASK", "IFCTASKTIME", "IFCSCHEDULETIMECONTROL", "IFCRELASSIGNSTASKS", "IFCRELNESTS", "IFCRELSEQUENCE",
   "IFCLAGTIME", "IFCRELASSIGNSTOPROCESS", "IFCRELASSIGNSTOPRODUCT", "IFCWORKSCHEDULE", "IFCWORKPLAN",
-  "IFCWORKCALENDAR", "IFCWORKTIME", "IFCDATEANDTIME", "IFCCALENDARDATE", "IFCRELASSIGNSTOCONTROL",
+  "IFCWORKCALENDAR", "IFCWORKTIME", "IFCDATEANDTIME", "IFCCALENDARDATE", "IFCLOCALTIME", "IFCRELASSIGNSTOCONTROL",
 ]);
 
 const TYP_AUS_LABEL: Record<string, TaskTyp> = {
@@ -125,12 +126,24 @@ export function leseBauablaufAusIfc(text: string, neueId: () => string = () => c
     return undefined;
   };
 
+  // Uhrzeit aus IFC4-String ("2026-11-09T13:00:00") oder IFC2X3-IfcDateAndTime → IfcLocalTime; Standardzeiten (08/17 Uhr) → undefined
+  const zeit = (s: string | undefined, art: "start" | "ende"): string | undefined => {
+    const t = str(s);
+    if (t) return importZeit(t, art);
+    const r = e.get(ref1(s) ?? -1);
+    if (r?.typ !== "IFCDATEANDTIME") return undefined;
+    const lt = e.get(ref1(args(r.a)[1]) ?? -1);
+    if (lt?.typ !== "IFCLOCALTIME") return undefined;
+    const [h, m] = args(lt.a).map(x => Number(x) || 0);
+    return importZeit(`2000-01-01T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`, art);
+  };
+
   // 2. Termine
-  const termin = new Map<number, { start?: string; ende?: string }>();
+  const termin = new Map<number, { start?: string; ende?: string; startZeit?: string; endZeit?: string }>();
   if (ist4) {
     for (const [id, t] of tasksE) {
       const tt = e.get(ref1(args(t.a)[11]) ?? -1);
-      if (tt?.typ === "IFCTASKTIME") { const a = args(tt.a); termin.set(id, { start: datum(a[5]), ende: datum(a[6]) }); }
+      if (tt?.typ === "IFCTASKTIME") { const a = args(tt.a); termin.set(id, { start: datum(a[5]), ende: datum(a[6]), startZeit: zeit(a[5], "start"), endZeit: zeit(a[6], "ende") }); }
     }
   } else {
     for (const [, r] of e) {
@@ -139,7 +152,7 @@ export function leseBauablaufAusIfc(text: string, neueId: () => string = () => c
       const tc = e.get(ref1(a[7]) ?? -1);
       if (!tc) continue;
       const ta = args(tc.a);
-      for (const tid of refsIn(a[4])) termin.set(tid, { start: datum(ta[8]), ende: datum(ta[12]) });
+      for (const tid of refsIn(a[4])) termin.set(tid, { start: datum(ta[8]), ende: datum(ta[12]), startZeit: zeit(ta[8], "start"), endZeit: zeit(ta[12], "ende") });
     }
   }
 
@@ -249,6 +262,8 @@ export function leseBauablaufAusIfc(text: string, neueId: () => string = () => c
       name: str(a[2]) || "Vorgang",
       start: t.start ?? t.ende ?? heute,
       end: t.ende ?? t.start ?? heute,
+      ...(t.startZeit && !gruppe ? { startZeit: t.startZeit } : {}),
+      ...(t.endZeit && !gruppe ? { endZeit: t.endZeit } : {}),
       typ,
       objektGuids: [],
       outlineLevel: level,

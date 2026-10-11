@@ -184,6 +184,43 @@ export function fmtZeitZusatz(min: number, art: "start" | "ende", e: Zeiteinheit
   return ` ${minZuZeit(min)}`;
 }
 
+/** Tag-Index eines Datums ab min (0 = Tag von min). */
+export function tagIndex(datum: string, min: Date): number {
+  const d = parseDateUniversal(datum);
+  return d ? Math.round((d.getTime() - min.getTime()) / 86400000) : 0;
+}
+
+/** Position des Task-Starts auf der Tagesachse (Tag-Index + Tagesanteil: 08:00 = n, 13:00 = n + 0.5). */
+export function startPos(t: MitZeit, min: Date): number {
+  return tagIndex(t.start, min) + tagesAnteil(zeitZuMin(t.startZeit, ARBEITSBEGINN_MIN));
+}
+
+/** Position des Task-Endes (exklusiv: ein ganzer Tag n endet bei n + 1, ein Ende 12:00 bei n + 0.5).
+ *  Ein Task ist aktiv für startPos <= tag < endPos; bei ganzen Tagen identisch mit "Starttag <= Tag <= Endtag". */
+export function endPos(t: MitZeit, min: Date): number {
+  return tagIndex(t.end || t.start, min) + tagesAnteil(zeitZuMin(t.endZeit, ARBEITSENDE_MIN));
+}
+
+/** Anteil eines Arbeitstags (0 … 1), den der Task am Datum arbeitet — 0 an freien Tagen und ausserhalb des Tasks. Bei ganzen
+ *  Tagen immer 0 oder 1, bei Halbtagen/Uhrzeit auch Bruchteile. Grundlage der Tagesreihen (Personal, Kran, Kosten …). */
+export function arbeitsAnteilAmTag(t: MitZeit, datum: string, kal: Kalender): number {
+  if (!t.start || !t.end || datum < t.start || datum > t.end || !istArbeitstag(datum, kal)) return 0;
+  const von = datum === t.start ? arbeitsMinBis(zeitZuMin(t.startZeit, ARBEITSBEGINN_MIN)) : 0;
+  const bis = datum === t.end ? arbeitsMinBis(zeitZuMin(t.endZeit, ARBEITSENDE_MIN)) : MIN_PRO_ARBEITSTAG;
+  return Math.max(0, bis - von) / MIN_PRO_ARBEITSTAG;
+}
+
+/** Anzeige "09.11.2026" bzw. mit Zeit "09.11.2026 NM" / "09.11.2026 13:30" für eine Position auf der Tagesachse. */
+export function datumZeitBeiPos(min: Date, pos: number, e: Zeiteinheit = "tage", maxTag?: number): string {
+  let tag = Math.floor(pos + 1e-9), anteil = pos - tag;
+  if (maxTag !== undefined && tag >= maxTag) { tag = maxTag - 1; anteil = 1; }
+  const d = new Date(min.getFullYear(), min.getMonth(), min.getDate() + tag);
+  const datum = d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+  if (e === "tage") return datum;
+  if (e === "halbtage") return `${datum} ${anteil < 0.5 ? "VM" : "NM"}`;
+  return `${datum} ${minZuZeit(uhrzeitAusArbeitsMin(Math.round(Math.min(anteil, 1) * MIN_PRO_ARBEITSTAG), anteil >= 1 ? "ende" : "start"))}`;
+}
+
 /** Position im Tag (0 … 1) für die Gantt-Balken: Arbeitszeit bis zu dieser Uhrzeit / 8 h. */
 export const tagesAnteil = (min: number) => arbeitsMinBis(min) / MIN_PRO_ARBEITSTAG;
 

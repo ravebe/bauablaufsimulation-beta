@@ -10,7 +10,8 @@
 import type { Task, Kran, Zeitraster } from "../types";
 import { parseDateUniversal } from "../types";
 import type { Kalender } from "./kalenderHelpers";
-import { arbeitstageZwischen, istArbeitstag } from "./kalenderHelpers";
+import { istArbeitstag } from "./kalenderHelpers";
+import { arbeitsAnteilAmTag, dauerTage, startZeitpunkt, endZeitpunkt, vergleicheZeitpunkte } from "./zeitHelpers";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { rateFuerKuerzel, istMengeKranpflichtig } from "./stammdatenHelpers";
 import { kranauslastung } from "./avorHelpers";
@@ -49,17 +50,18 @@ export function personenstundenBedarfProKranbereich(tasks: Task[], stammdaten: S
 
 /** Zeitraum (min Start / max Ende) je Kranbereich — Grundlage für die Arbeitstage-Anzahl im
  *  Gantt-Modus (echte Termine statt frei eingegebener Sandbox-Dauer). */
-export function zeitraumProKranbereich(tasks: Task[]): Map<string, { start: string; end: string }> {
-  const ergebnis = new Map<string, { start: string; end: string }>();
+export function zeitraumProKranbereich(tasks: Task[]): Map<string, { start: string; end: string; startZeit?: string; endZeit?: string }> {
+  const ergebnis = new Map<string, { start: string; end: string; startZeit?: string; endZeit?: string }>();
   for (const t of tasks) {
     if (t.isGroup || !t.bauteilKuerzel || !t.mengen) continue;
     const s = parseDateUniversal(t.start), e = parseDateUniversal(t.end);
     if (!s || !e) continue;
     const bereich = kranbereichVonTask(t);
     const bestehend = ergebnis.get(bereich);
-    if (!bestehend) { ergebnis.set(bereich, { start: t.start, end: t.end }); continue; }
-    if (t.start < bestehend.start) bestehend.start = t.start;
-    if (t.end > bestehend.end) bestehend.end = t.end;
+    if (!bestehend) { ergebnis.set(bereich, { start: t.start, end: t.end, startZeit: t.startZeit, endZeit: t.endZeit }); continue; }
+    // frühester Start / spätestes Ende inkl. Uhrzeit (Zeiteinheit Halbtage/Uhrzeit)
+    if (vergleicheZeitpunkte(startZeitpunkt(t), startZeitpunkt(bestehend)) < 0) { bestehend.start = t.start; bestehend.startZeit = t.startZeit; }
+    if (vergleicheZeitpunkte(endZeitpunkt(t), endZeitpunkt(bestehend)) > 0) { bestehend.end = t.end; bestehend.endZeit = t.endZeit; }
   }
   return ergebnis;
 }
@@ -112,9 +114,9 @@ export function auswertungPhase(anzahlPersonen: number, bedarfPersonenstunden: n
 }
 
 /** Arbeitstage einer Phase im Gantt-Modus aus ihrem echten Kranbereich-Zeitraum. */
-export function arbeitstageGanttModus(bereich: string, zeitraeume: Map<string, { start: string; end: string }>, kalender: Kalender): number {
+export function arbeitstageGanttModus(bereich: string, zeitraeume: Map<string, { start: string; end: string; startZeit?: string; endZeit?: string }>, kalender: Kalender): number {
   const z = zeitraeume.get(bereich);
-  return z ? arbeitstageZwischen(z.start, z.end, kalender) : 0;
+  return z ? dauerTage(z, kalender) : 0; // Arbeitstage inkl. halber Tage/Stunden
 }
 
 // === Kran-Personal-Bilanz (grob, siehe kranHelpers.ts für die analoge Kranstunden-Bilanz in der
@@ -155,7 +157,7 @@ export function personenstundenProKranUndBucket(tasks: Task[], kraene: Kran[], s
     if (beteiligteSerien.length === 0) continue;
     const anteil = kranAnteil(t.kraene.length);
 
-    const arbeitstageDesTasks = arbeitstageZwischen(t.start, t.end, kalender);
+    const arbeitstageDesTasks = dauerTage(t, kalender);
     const proArbeitstag = taskPersonenstunden / arbeitstageDesTasks;
 
     const start = parseDateUniversal(t.start), end = parseDateUniversal(t.end);
@@ -163,9 +165,10 @@ export function personenstundenProKranUndBucket(tasks: Task[], kraene: Kran[], s
     const cur = new Date(start.getTime());
     while (cur.getTime() <= end.getTime()) {
       const iso = toIso(cur);
-      if (istArbeitstag(iso, kalender)) {
+      const tagesAnteil = istArbeitstag(iso, kalender) ? arbeitsAnteilAmTag(t, iso, kalender) : 0;
+      if (tagesAnteil > 0) {
         const bi = bucketIndexFuer(iso);
-        if (bi !== -1) for (const s of beteiligteSerien) s.personenstunden[bi] += proArbeitstag * anteil;
+        if (bi !== -1) for (const s of beteiligteSerien) s.personenstunden[bi] += proArbeitstag * anteil * tagesAnteil;
       }
       cur.setDate(cur.getDate() + 1);
     }

@@ -6,6 +6,7 @@ import type { Task, Kran, Zeitraster } from "../types";
 import { parseDateUniversal } from "../types";
 import type { Kalender } from "./kalenderHelpers";
 import { istArbeitstag, getKW } from "./kalenderHelpers";
+import { arbeitsAnteilAmTag } from "./zeitHelpers";
 import { projektzeitraum } from "./avorHelpers";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { istMengeKranpflichtig } from "./stammdatenHelpers";
@@ -149,9 +150,11 @@ export function kranstundenProKranUndBucket(tasks: Task[], kraene: Kran[], stamm
     const cur = new Date(start.getTime());
     while (cur.getTime() <= end.getTime()) {
       const iso = toIso(cur);
-      if (istArbeitstag(iso, kalender)) {
+      // Halbtag/Stunden: der Kran ist nur für den Anteil des Tages beansprucht, an dem der Task arbeitet
+      const tagesAnteil = istArbeitstag(iso, kalender) ? arbeitsAnteilAmTag(t, iso, kalender) : 0;
+      if (tagesAnteil > 0) {
         const bi = bucketIndexFuer(iso);
-        if (bi !== -1) for (const s of beteiligteSerien) s.bedarf[bi] += stammdaten.arbeitszeitStdProTag * anteil;
+        if (bi !== -1) for (const s of beteiligteSerien) s.bedarf[bi] += stammdaten.arbeitszeitStdProTag * anteil * tagesAnteil;
       }
       cur.setDate(cur.getDate() + 1);
     }
