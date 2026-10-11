@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, useLayoutEffect, useCallback, useMemo } fr
 import { lsGet, lsSet } from "../hooks/lokalSpeicher";
 import { createPortal } from "react-dom";
 import type { Task, VorgaengerLink } from "../types";
-import { vorgaengerKandidaten, vorgaengerListe, vorgaengerText, parseVorgaengerText, massgebenderVorgaenger, letzterVorgaengerEintrag, ersetzeLetztenVorgaengerEintrag, zeitraumVerschieben, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks, nsKey, TASK_TYP_FARBE } from "../types";
+import { vorgaengerKandidaten, vorgaengerListe, vorgaengerText, vorgaengerEingabe, parseWartetage, parseVorgaengerText, massgebenderVorgaenger, letzterVorgaengerEintrag, ersetzeLetztenVorgaengerEintrag, zeitraumVerschieben, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks, nsKey, TASK_TYP_FARBE } from "../types";
 import type { Kalender } from "./kalenderHelpers";
 import { istArbeitstag, LEERER_KALENDER, getKW, arbeitstageZwischen, arbeitsBloecke } from "./kalenderHelpers";
 import DatePicker from "./DatePicker";
@@ -10,6 +10,7 @@ import { useDoppelklickHinweis } from "../hooks/useDoppelklickHinweis";
 import { ZoomControls } from "./cockpitCharts";
 import type { Zeiteinheit } from "./zeitHelpers";
 import { startZeitpunkt, endZeitpunkt, arbeitsMinutenZwischen, naechsteArbeitszeit, letzteArbeitszeit, endeAusArbeitsMinuten, uhrzeitAusArbeitsMin, vergleicheZeitpunkte, zeitFelder, schrittTage, tagesAnteil, dauerTage, fmtDauer, fmtZeitZusatz, zeitZuMin, ARBEITSBEGINN_MIN, ARBEITSENDE_MIN, MIN_PRO_ARBEITSTAG } from "./zeitHelpers";
+import { markiereInhalt } from "./markiereInhalt";
 import { bindeListenScroll, useSelektionFokus } from "./listenScroll";
 
 interface Props {
@@ -213,8 +214,10 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
     const POPOVER_W = 190;
     setPredPos({ top: r.bottom + 2, left: Math.min(r.right - POPOVER_W, window.innerWidth - POPOVER_W - 4) });
     setPredPickerTaskId(t.id);
-    setPredInput(vorgaengerText(t, nummern));
-    setLagInput("0");
+    // Wartetage im Feld (nicht als +n im Text), damit sie beim erneuten Öffnen dort stehen und eine Änderung wirkt
+    const eingabe = vorgaengerEingabe(t, nummern);
+    setPredInput(eingabe.text);
+    setLagInput(String(eingabe.lag));
     // Bei bereits gesetztem Vorgänger gleich Wartetage zeigen statt der Liste (nur bei neuer Auswahl automatisch aufklappen)
     setPredListOffen(!t.predecessorId);
   }
@@ -638,7 +641,7 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
                       {predPickerTaskId === t.id && (() => {
                         const predUebernehmen = () => {
                           // "26, 27+2" — mehrere Vorgänger mit Komma, je eigene Wartetage als +n (sonst gilt das Feld Wartetage)
-                          const { liste, unbekannt } = parseVorgaengerText(predInput, gueltigeVorgaenger(tasks, t.id), nummern, Number(lagInput) || 0);
+                          const { liste, unbekannt } = parseVorgaengerText(predInput, gueltigeVorgaenger(tasks, t.id), nummern, parseWartetage(lagInput));
                           if (unbekannt.length) alert(`Nicht übernommen: ${unbekannt.join(", ")} — unbekannte Nummer oder Zirkelbezug (der Task hängt bereits von diesem ab).`);
                           if (liste.length || !predInput.trim()) onSetPredecessor?.(t.id, liste);
                           setPredPickerTaskId(null);
@@ -677,7 +680,8 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
                             )}
                           </div>
                           <div style={{ fontSize: 9, color: "#8a9baa", marginTop: 6 }}>Wartetage (für Nummern ohne +n)</div>
-                          <input type="number" className="ac-input" style={{ fontSize: 11, padding: "3px 6px", width: "100%", marginTop: 2 }}
+                          <input type="text" inputMode="numeric" className="ac-input" style={{ fontSize: 11, padding: "3px 6px", width: "100%", marginTop: 2 }}
+                        {...markiereInhalt}
                             value={lagInput}
                             onChange={e => setLagInput(e.target.value)} />
                           <div style={{ display: "flex", gap: 4, marginTop: 6 }}>

@@ -114,3 +114,27 @@ describe("Vorgänger-Auswahl zeigt gesperrte Tasks mit Grund", () => {
     expect(k.find(x => x.id === "45")?.sperrPfad).toBeUndefined();
   });
 });
+
+import { vorgaengerEingabe, parseWartetage } from "./types";
+describe("Vorgänger-Auswahl: Wartetage im Feld statt als +n", () => {
+  it("ein Vorgänger mit 1 Wartetag → Text '1', Feld 1; geändertes Feld wirkt beim Übernehmen", () => {
+    const ts = plan();
+    const c = mitVorgaengern(ts[2], [{ id: "A", lagDays: 1 }]);
+    const nr = berechneNummern([ts[0], ts[1], c]);
+    const e = vorgaengerEingabe(c, nr);
+    expect(e).toEqual({ text: nr.get("A"), lag: 1 });
+    expect(parseVorgaengerText(e.text, ts, nr, parseWartetage("2")).liste).toEqual([{ id: "A", lagDays: 2 }]);
+  });
+  it("abweichende Wartetage bleiben als +n im Text", () => {
+    const ts = plan();
+    const c = mitVorgaengern(ts[2], [{ id: "A", lagDays: 1 }, { id: "B", lagDays: 0 }]);
+    const nr = berechneNummern([ts[0], ts[1], c]);
+    expect(vorgaengerEingabe(c, nr)).toEqual({ text: `${nr.get("A")}, ${nr.get("B")}+0`, lag: 1 });
+  });
+  it("parseWartetage: leer/ungültig = 0, Komma", () => {
+    expect(parseWartetage("")).toBe(0);
+    expect(parseWartetage("abc")).toBe(0);
+    expect(parseWartetage("2,4")).toBe(2);
+    expect(parseWartetage("-1")).toBe(-1);
+  });
+});

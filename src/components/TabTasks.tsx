@@ -8,7 +8,7 @@ import type { VorgaengerLink } from "../types";
 import ZeitWahl from "./ZeitWahl";
 import { startZeitpunkt, endZeitpunkt, fmtZeitZusatz } from "./zeitHelpers";
 import { formatDatum, normalizeDatum, zeitraumVerschieben, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, getKinder,
-  berechneNummern, gueltigeVorgaenger, verschiebeAufStart, kaskadiereNachfolger, vorgaengerListe, mitVorgaengern, vorgaengerText, parseVorgaengerText,
+  berechneNummern, gueltigeVorgaenger, verschiebeAufStart, kaskadiereNachfolger, vorgaengerListe, mitVorgaengern, vorgaengerText, vorgaengerEingabe, parseWartetage, parseVorgaengerText,
   massgebenderVorgaenger, vorgaengerStart, vorgaengerKandidaten, letzterVorgaengerEintrag, ersetzeLetztenVorgaengerEintrag,
   taskVerschieben as verschiebeTaskBlock, sucheSortiereTasks, nsKey, TASK_TYP_LISTE, TASK_TYP_LABEL, TASK_TYP_FARBE } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
@@ -16,6 +16,7 @@ import { batchGetProperties, batchConvertToObjectIds } from "../hooks/useApi";
 import DatePicker from "./DatePicker";
 import { bindeListenScroll, useSelektionFokus, zentriereZeile } from "./listenScroll";
 import { bauteileAusschliessen } from "./ausschlussHelpers";
+import { markiereInhalt } from "./markiereInhalt";
 import SelectionTools from "./SelectionTools";
 
 // Alle Werte eines Objekts flach sammeln
@@ -373,8 +374,10 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
     const POPOVER_W = 190;
     setPredPos({ top: r.bottom + 2, left: Math.min(r.right - POPOVER_W, window.innerWidth - POPOVER_W - 4) });
     setPredPickerTaskId(task.id);
-    setPredInput(vorgaengerText(task, nummern));
-    setLagInput("0");
+    // Wartetage im Feld (nicht als +n im Text), damit sie beim erneuten Öffnen dort stehen und eine Änderung wirkt
+    const eingabe = vorgaengerEingabe(task, nummern);
+    setPredInput(eingabe.text);
+    setLagInput(String(eingabe.lag));
     // Bei bereits gesetztem Vorgänger gleich Wartetage zeigen statt der Liste (nur bei neuer Auswahl automatisch aufklappen)
     setPredListOffen(!task.predecessorId);
   }
@@ -620,7 +623,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                   {predPickerTaskId === task.id && (() => {
                     const predUebernehmen = () => {
                       // "26, 27+2" — mehrere Vorgänger mit Komma, je eigene Wartetage als +n (sonst gilt das Feld Wartetage)
-                      const { liste, unbekannt } = parseVorgaengerText(predInput, gueltigeVorgaenger(aktiveSim.tasks, task.id), nummern, Number(lagInput) || 0);
+                      const { liste, unbekannt } = parseVorgaengerText(predInput, gueltigeVorgaenger(aktiveSim.tasks, task.id), nummern, parseWartetage(lagInput));
                       if (unbekannt.length) alert(`Nicht übernommen: ${unbekannt.join(", ")} — unbekannte Nummer oder Zirkelbezug (der Task hängt bereits von diesem ab).`);
                       if (liste.length || !predInput.trim()) vorgängerSetzen(task.id, liste);
                       else setPredPickerTaskId(null);
@@ -659,7 +662,8 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                         )}
                       </div>
                       <div style={{ fontSize: 9, color: "#8a9baa", marginTop: 6 }}>Wartetage (für Nummern ohne +n)</div>
-                      <input type="number" className="ac-input" style={{ fontSize: 11, padding: "3px 6px", width: "100%", marginTop: 2 }}
+                      <input type="text" inputMode="numeric" className="ac-input" style={{ fontSize: 11, padding: "3px 6px", width: "100%", marginTop: 2 }}
+                        {...markiereInhalt}
                         value={lagInput}
                         onChange={e => setLagInput(e.target.value)} />
                       <div style={{ display: "flex", gap: 4, marginTop: 6 }}>

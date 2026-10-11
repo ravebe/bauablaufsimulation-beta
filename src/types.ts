@@ -538,6 +538,23 @@ export function vorgaengerText(t: Task, nummern: Map<string, string>): string {
   return vorgaengerListe(t).map(v => `${nummern.get(v.id) ?? "?"}${v.lagDays ? (v.lagDays > 0 ? `+${v.lagDays}` : `${v.lagDays}`) : ""}`).join(", ");
 }
 
+/** Vorbelegung der Vorgänger-Auswahl: die häufigsten Wartetage stehen im Feld "Wartetage", die Nummern mit genau diesen
+ *  Wartetagen ohne +n im Text (nur abweichende mit +n) — so wirkt eine Änderung im Feld auf alle diese Vorgänger. */
+export function vorgaengerEingabe(t: Task, nummern: Map<string, string>): { text: string; lag: number } {
+  const liste = vorgaengerListe(t);
+  const anzahl = new Map<number, number>();
+  for (const v of liste) anzahl.set(v.lagDays, (anzahl.get(v.lagDays) ?? 0) + 1);
+  let lag = liste[0]?.lagDays ?? 0;
+  for (const [l, n] of anzahl) if (n > (anzahl.get(lag) ?? 0)) lag = l;
+  const text = liste.map(v => `${nummern.get(v.id) ?? "?"}${v.lagDays === lag ? "" : v.lagDays >= 0 ? `+${v.lagDays}` : `${v.lagDays}`}`).join(", ");
+  return { text, lag };
+}
+
+/** Wartetage aus dem Eingabefeld (leer/ungültig = 0, Komma erlaubt) */
+export function parseWartetage(s: string): number {
+  return Math.round(Number(s.trim().replace(",", "."))) || 0;
+}
+
 /** Liest "26, 27+2; 30-1" — Nummern wie in der App (Gruppen A, B…, Tasks 1, 2…). Einträge ohne +n/-n erhalten standardLag.
  *  Unbekannte Nummern landen in "unbekannt". */
 export function parseVorgaengerText(text: string, kandidaten: Task[], nummern: Map<string, string>, standardLag = 0): { liste: VorgaengerLink[]; unbekannt: string[] } {
