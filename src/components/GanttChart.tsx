@@ -476,7 +476,7 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
       <div style={{ display: "flex", flexShrink: 0 }}>
         <div style={{ width: labelW, flexShrink: 0, height: HEAD_H, background: "#f5f7f9", borderBottom: "1px solid #d4dce4", borderRight: "1px solid #d4dce4", display: "flex", alignItems: "center", padding: "0 6px", position: "relative" }}>
           <span style={{ fontSize: 11, fontWeight: 600, color: "#555" }}>Task</span>
-          <span style={{ marginLeft: "auto", fontSize: 10, color: "#8a9baa" }}>{showObjektCount ? "Objekte" : "Tage"}</span>
+          <span style={{ marginLeft: "auto", fontSize: 10, color: "#8a9baa", width: 46, boxSizing: "border-box", alignSelf: "stretch", display: "flex", alignItems: "center", justifyContent: "flex-end", borderLeft: "1px solid #e4e8ec", marginRight: -2 }}>{showObjektCount ? "Objekte" : "Tage"}</span>
           <div onMouseDown={startResize} style={{ position: "absolute", top: 0, right: -3, width: 6, height: "100%", cursor: "col-resize", zIndex: 5 }} />
         </div>
         <div ref={headerRef} style={{ flex: 1, height: HEAD_H, overflow: "hidden", background: "#f5f7f9", borderBottom: "1px solid #d4dce4" }}>
@@ -579,7 +579,7 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
                         onDoubleClick={editable ? (e) => { e.stopPropagation(); setRenameId(t.id); setRenameVal(t.name); } : undefined}
                         style={{ flex: 1, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: editable ? "text" : "default", color: isEditing ? "#E65100" : isSel ? "#2d7dbd" : "#333", fontWeight: isEditing || isSel || isGrp ? 600 : 400 }}>{lbl}</span>
                     )}
-                    <span style={{ flexShrink: 0, fontSize: 10, marginRight: 16, minWidth: 34, textAlign: "right", cursor: editable ? "pointer" : "default" }}
+                    <span style={{ flexShrink: 0, fontSize: 10, marginRight: 8, minWidth: 34, textAlign: "right", cursor: editable ? "pointer" : "default" }}
                       onClick={e => { e.stopPropagation(); if (editable) oeffnePredPicker(t, e); else melden(`pred-${t.id}`, e.clientX, e.clientY); }}
                       title="Vorgänger festlegen">
                       <span style={{ fontWeight: 500, color: "#666" }}>
@@ -642,7 +642,9 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
                       );
                       })()}
                     </span>
-                    <span style={{ flexShrink: 0, fontSize: 11, color: "#8a9baa", minWidth: 33, textAlign: "right" }}>{
+                    {/* Spalte Objekte/Tage — feine Trennlinie über die ganze Zeilenhöhe wie in der Liste */}
+                    <span style={{ flexShrink: 0, fontSize: 11, color: "#8a9baa", width: 46, boxSizing: "border-box", alignSelf: "stretch",
+                      display: "flex", alignItems: "center", justifyContent: "flex-end", borderLeft: "1px solid #e4e8ec", paddingLeft: 4 }}>{
                       isGrp && showObjektCount
                         ? (() => { const ids: string[] = []; for (let ci = origIdx + 1; ci < tasks.length; ci++) { if (getOutlineLevel(tasks[ci]) <= getOutlineLevel(t)) break; ids.push(...tasks[ci].objektGuids); } const cnt = new Set(ids).size; return cnt > 0 ? `O ${cnt}` : ""; })()
                         : isGrp && gDaten ? fmtDauer(gDaten.tage, zeiteinheit)
