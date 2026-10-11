@@ -94,7 +94,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   const allEnds = (aktiveSim?.tasks ?? []).map(t => parseDateUniversal(t.end)).filter(Boolean) as Date[];
   const minDate = allStarts.length ? new Date(Math.min(...allStarts.map(d => d.getTime()))) : null;
   const maxDate = allEnds.length ? new Date(Math.max(...allEnds.map(d => d.getTime()))) : null;
-  const totalTage = minDate && maxDate ? Math.max(1, Math.ceil((maxDate.getTime() - minDate.getTime()) / 86400000)) : 0;
+  const totalTage = minDate && maxDate ? Math.max(1, Math.round((maxDate.getTime() - minDate.getTime()) / 86400000)) : 0;
 
   // Shared Nadel lesen wenn Tab sichtbar wird
   const prevSichtbar = useRef(false);

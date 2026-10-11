@@ -96,7 +96,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
   useEffect(() => {
     currentTagRef.current = currentTag;
     if (sharedNadelTag && minDate && currentTag >= 0) {
-      sharedNadelTag.current = minDate.getTime() + currentTag * 86400000;
+      sharedNadelTag.current = new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate() + Math.round(currentTag)).getTime(); // Kalendertag (zeitumstellungssicher)
     }
   }, [currentTag]);
 

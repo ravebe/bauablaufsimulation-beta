@@ -86,8 +86,8 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
     label.scrollTop = top; body.scrollTop = top;
     const sd = parseDateUniversal(t.start), ed = parseDateUniversal(t.end);
     if (sd && minDate) {
-      const sT = (sd.getTime() - minDate.getTime()) / 86400000;
-      const eT = ed ? (ed.getTime() - minDate.getTime()) / 86400000 + 1 : sT + 1;
+      const sT = Math.round((sd.getTime() - minDate.getTime()) / 86400000);
+      const eT = ed ? Math.round((ed.getTime() - minDate.getTime()) / 86400000) + 1 : sT + 1;
       body.scrollLeft = Math.max(0, ((sT + eT) / 2) * pxRef.current - body.clientWidth / 2);
       if (headerRef.current) headerRef.current.scrollLeft = body.scrollLeft;
     }
@@ -418,7 +418,8 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
   // Alle Tage pre-compute
   const allDays: { x: number; date: Date; dow: number }[] = [];
   for (let d = 0; d <= totalTage; d++) {
-    const dt = new Date(minDate.getTime() + d * 86400000);
+    // Kalendertag d ab minDate — nicht "+ d × 24 h": nach der Zeitumstellung (z.B. 25.10.) landet das sonst auf 23:00 des Vortags (Tag doppelt, Schattierung verschoben)
+    const dt = new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate() + d);
     allDays.push({ x: d * pxProTag, date: dt, dow: dt.getDay() });
   }
 
