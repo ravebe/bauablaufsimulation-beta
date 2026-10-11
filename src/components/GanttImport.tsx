@@ -4,11 +4,13 @@ import type { Task, TaskTyp } from "../types";
 import { isValidDatum, normalizeDatum } from "../types";
 import { istMsProjectXml, parseMsProjectXmlMitHinweisen } from "./msProjectXml";
 import { importZeit } from "./zeitHelpers";
+import type { Kalender } from "./kalenderHelpers";
 import { baueImportTasks, leseGruppenFlag } from "./ganttTabelle";
 import type { ImportZeile } from "./ganttTabelle";
 
 interface Props {
-  onImport: (tasks: Task[], dateiname: string) => void;
+  /** extras.kalender: Feiertage/Ferien aus dem Projektkalender einer MS-Project-Datei */
+  onImport: (tasks: Task[], dateiname: string, extras?: { kalender?: Kalender }) => void;
   taskCount: number;
   ganttInfo?: { dateiname: string; version: number } | null;
   /** "x Tasks geladen" nur zeigen, wenn per Klick auf den geladenen Gantt aufgeklappt (ohne Gantt immer) */
@@ -30,6 +32,7 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
   // Hinweise des letzten Imports (z.B. MS Project: andere Verknüpfungsarten, Notizen-GUIDs, Uhrzeiten, Wochenendarbeit)
   const [hinweise, setHinweise] = useState<string[]>([]);
   const hinweiseRef = useRef<string[]>([]);
+  const kalenderRef = useRef<Kalender | undefined>(undefined);
 
   // Datum aus beliebigem Format → YYYY-MM-DD normalisieren
   function parseDatum(v: unknown): string {
@@ -45,6 +48,9 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
     if (!s) return "";
     return normalizeDatum(s); // dd.mm.yyyy, yyyy-mm-dd, mm/dd/yyyy → yyyy-mm-dd
   }
+
+  // Ja-Werte einer Meilenstein-Spalte: x, ja, 1, true, yes
+  const istJa = (v: unknown) => /^(x|ja|1|true|yes|wahr)$/i.test(String(v ?? "").trim());
 
   function parseTyp(v: unknown): TaskTyp {
     const s = String(v ?? "").toLowerCase().trim();
@@ -68,7 +74,7 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
   }
 
   // Standard-Spaltennamen die NICHT als Extra gelten
-  const STANDARD = new Set(["name","start","startdatum","ende","enddatum","end","finish","fertig","anfang","begin","von","bis","typ","type","kategorie","vorgangsname","vorgang","task","bezeichnung","vorgänger","vorganger","predecessor","wartetage","lag","lagdays","lag days","kürzel","kuerzel","bauteil-kürzel","bauteil-kuerzel","bauteile","nr","nr.","nummer","gruppe","ebene","gliederungsebene","outlinelevel","reihenfolge","gantt-reihenfolge"]);
+  const STANDARD = new Set(["name","start","startdatum","ende","enddatum","end","finish","fertig","anfang","begin","von","bis","typ","type","kategorie","vorgangsname","vorgang","task","bezeichnung","vorgänger","vorganger","predecessor","wartetage","lag","lagdays","lag days","kürzel","kuerzel","bauteil-kürzel","bauteil-kuerzel","bauteile","nr","nr.","nummer","gruppe","ebene","gliederungsebene","outlinelevel","reihenfolge","gantt-reihenfolge","meilenstein"]);
   const VORGAENGER_SPALTEN = ["Vorgänger", "vorgänger", "Vorganger", "Predecessor", "predecessor"];
   const WARTETAGE_SPALTEN = ["Wartetage", "wartetage", "Lag", "lag", "Lag Days", "LagDays"];
   const KUERZEL_SPALTEN = ["Kürzel", "kürzel", "Kuerzel", "kuerzel", "Bauteil-Kürzel", "bauteil-kürzel"];
@@ -124,6 +130,7 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
     const startCol = findHeader(["Start", "Startdatum", "Anfang", "Begin", "Von"]);
     const endCol = findHeader(["Ende", "Enddatum", "End", "Finish", "Fertig", "Bis"]);
     const typCol = findHeader(["Typ", "Type", "Kategorie"]);
+    const meilensteinCol = findHeader(["Meilenstein", "Milestone"]);
     const vorgCol = findHeader(VORGAENGER_SPALTEN);
     const lagCol = findHeader(WARTETAGE_SPALTEN);
     const kuerzelCol = findHeader(KUERZEL_SPALTEN);
@@ -159,6 +166,7 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
           startZeit: importZeit(startCell?.v ?? startRaw, "start"),
           endZeit: importZeit(endCell?.v ?? endRaw, "ende"),
           typ: parseTyp(typCol ? getCachedValue(ws, typCol, r) : "neubau"),
+          ...(istJa(meilensteinCol ? getCachedValue(ws, meilensteinCol, r) : "") ? { meilenstein: true } : {}),
           objektGuids: [],
           bauteilKuerzel: kuerzelCol ? (getCachedValue(ws, kuerzelCol, r).trim() || undefined) : undefined,
           extraSpalten: Object.keys(extra).length > 0 ? extra : undefined,
@@ -187,6 +195,7 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
         startZeit: importZeit(findCol(row, ["Start", "start", "Startdatum", "startdatum", "Anfang", "Begin", "Von"]), "start"),
         endZeit: importZeit(findCol(row, ["Ende", "end", "Enddatum", "enddatum", "Finish", "Fertig", "Bis", "End"]), "ende"),
         typ: parseTyp(findCol(row, ["Typ", "typ", "Type", "type", "Kategorie"])),
+        ...(istJa(findCol(row, ["Meilenstein", "meilenstein", "Milestone"])) ? { meilenstein: true } : {}),
         objektGuids: [] as string[],
         bauteilKuerzel: String(findCol(row, KUERZEL_SPALTEN) ?? "").trim() || undefined,
         extraSpalten: extraSpalten(row),
@@ -201,10 +210,10 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
     return baueImportTasks(rows);
   }
 
-  const XML_STANDARD_TAGS = new Set(["name","start","earlystart","finish","end","ende","typ","type","kuerzel","kürzel","objects","bauteile","vorgaenger","vorgänger","predecessor","wartetage","lag","nr","gruppe","ebene","reihenfolge","gantt_reihenfolge"]);
+  const XML_STANDARD_TAGS = new Set(["name","start","earlystart","finish","end","ende","typ","type","kuerzel","kürzel","objects","bauteile","vorgaenger","vorgänger","predecessor","wartetage","lag","nr","gruppe","ebene","reihenfolge","gantt_reihenfolge","meilenstein"]);
 
   function parseXml(text: string): Task[] {
-    if (istMsProjectXml(text)) { const r = parseMsProjectXmlMitHinweisen(text); hinweiseRef.current = r.hinweise; return r.tasks; }
+    if (istMsProjectXml(text)) { const r = parseMsProjectXmlMitHinweisen(text); hinweiseRef.current = r.hinweise; kalenderRef.current = r.kalender; return r.tasks; }
     const parser = new DOMParser();
     const doc = parser.parseFromString(text, "text/xml");
     const rows: ImportZeile[] = [];
@@ -225,6 +234,7 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
           startZeit: importZeit(g("Start") || g("start") || g("EarlyStart") || "", "start"),
           endZeit: importZeit(g("Finish") || g("finish") || g("Ende") || g("End") || g("EarlyFinish") || "", "ende"),
           typ: parseTyp(g("Typ") || g("typ") || g("Type") || "neubau"),
+          ...(istJa(g("Meilenstein")) ? { meilenstein: true } : {}),
           objektGuids: [],
           bauteilKuerzel: (g("Kuerzel") || g("Kürzel") || g("kuerzel")) || undefined,
           extraSpalten: Object.keys(extra).length > 0 ? extra : undefined,
@@ -241,7 +251,7 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
   }
 
   // JSON aus dem eigenen Export (Array von Tasks, oder { tasks: [...] })
-  const JSON_STANDARD = new Set(["reihenfolge", "gantt_reihenfolge", "nr", "gruppe", "ebene", "name", "start", "end", "ende", "typ", "kuerzel", "bauteile", "guids", "vorgaenger", "wartetage"]);
+  const JSON_STANDARD = new Set(["meilenstein", "reihenfolge", "gantt_reihenfolge", "nr", "gruppe", "ebene", "name", "start", "end", "ende", "typ", "kuerzel", "bauteile", "guids", "vorgaenger", "wartetage"]);
 
   function parseJson(text: string): Task[] {
     const roh: unknown = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text); // BOM entfernen
@@ -264,6 +274,7 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
           startZeit: importZeit(o.start, "start"),
           endZeit: importZeit(o.end ?? o.ende, "ende"),
           typ: parseTyp(o.typ),
+          ...(istJa(o.meilenstein) ? { meilenstein: true } : {}),
           objektGuids: !istGrp && Array.isArray(o.guids) ? o.guids.map(String) : [],
           bauteilKuerzel: s(o.kuerzel).trim() || undefined,
           extraSpalten: Object.keys(extra).length > 0 ? extra : undefined,
@@ -294,6 +305,7 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
     setMsg(null);
     setHinweise([]);
     hinweiseRef.current = [];
+    kalenderRef.current = undefined;
     try {
       const ext = file.name.split(".").pop()?.toLowerCase();
       let tasks: Task[] = [];
@@ -325,7 +337,7 @@ export default function GanttImport({ onImport, taskCount, ganttInfo, detailsOff
       const errs = validiere(tasks);
       setFehler(errs);
 
-      onImport(tasks, file.name);
+      onImport(tasks, file.name, { kalender: kalenderRef.current });
       const gruppen = tasks.filter(t => t.isGroup).length;
       setHinweise(hinweiseRef.current);
       setMsg(`${tasks.length - gruppen} Tasks${gruppen > 0 ? ` in ${gruppen} Gruppen` : ""} importiert${errs.length > 0 ? ` · ${errs.length} Datumsfehler` : ""}`);

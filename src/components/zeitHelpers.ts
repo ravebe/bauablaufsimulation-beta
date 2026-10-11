@@ -26,9 +26,10 @@ export function minZuZeit(min: number): string {
   return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(Math.round(min % 60)).padStart(2, "0")}`;
 }
 
-type MitZeit = { start: string; end: string; startZeit?: string; endZeit?: string };
+type MitZeit = { start: string; end: string; startZeit?: string; endZeit?: string; meilenstein?: boolean };
 export const startZeitpunkt = (t: MitZeit): Zeitpunkt => ({ datum: t.start, min: zeitZuMin(t.startZeit, ARBEITSBEGINN_MIN) });
-export const endZeitpunkt = (t: MitZeit): Zeitpunkt => ({ datum: t.end, min: zeitZuMin(t.endZeit, ARBEITSENDE_MIN) });
+// Meilenstein: Dauer 0 — Ende = Start (ein Zeitpunkt, z.B. Freitag 17:00)
+export const endZeitpunkt = (t: MitZeit): Zeitpunkt => t.meilenstein ? startZeitpunkt(t) : ({ datum: t.end, min: zeitZuMin(t.endZeit, ARBEITSENDE_MIN) });
 
 /** Task-Felder aus Start/Ende — Standardzeiten (08:00 / 17:00) werden nicht gespeichert. */
 export function zeitFelder(s: Zeitpunkt, e: Zeitpunkt): { start: string; end: string; startZeit: string | undefined; endZeit: string | undefined } {
@@ -95,6 +96,7 @@ export function letzteArbeitszeit(p: Zeitpunkt, kal: Kalender): Zeitpunkt {
 /** Arbeitsminuten von s bis e. Liegt in der Spanne kein Arbeitstag (Ferien, Sa–So), zählen die Kalendertage als Arbeitstage
  *  (gleiche Regel wie arbeitstageZwischen). */
 export function arbeitsMinutenZwischen(s: Zeitpunkt, e: Zeitpunkt, kal: Kalender): number {
+  if (s.datum === e.datum && s.min === e.min) return 0; // ein Zeitpunkt (Meilenstein)
   const sd = parseDateUniversal(s.datum), ed = parseDateUniversal(e.datum);
   if (!sd || !ed) return MIN_PRO_ARBEITSTAG;
   let summe = 0;
@@ -153,6 +155,7 @@ export function vergleicheZeitpunkte(a: Zeitpunkt, b: Zeitpunkt): number {
 
 /** Dauer eines Tasks in Arbeitstagen (Halbtag = 0.5, Stunde = 0.125). */
 export function dauerTage(t: MitZeit, kal: Kalender): number {
+  if (t.meilenstein) return 0;
   return arbeitsMinutenZwischen(startZeitpunkt(t), endZeitpunkt(t), kal) / MIN_PRO_ARBEITSTAG;
 }
 
@@ -184,6 +187,15 @@ export function fmtZeitZusatz(min: number, art: "start" | "ende", e: Zeiteinheit
   return ` ${minZuZeit(min)}`;
 }
 
+/** Zeitpunkt eines Meilensteins: innerhalb der Arbeitszeit eines Arbeitstags (auch genau 17:00) bleibt er, sonst rückt er auf die nächste Arbeitszeit. */
+export function meilensteinZeitpunkt(p: Zeitpunkt, kal: Kalender): Zeitpunkt {
+  return istArbeitstag(p.datum, kal) && p.min >= ARBEITSBEGINN_MIN && p.min <= ARBEITSENDE_MIN ? p : naechsteArbeitszeit(p, kal);
+}
+/** Task-Felder eines Meilensteins (Start = Ende, nur eine Uhrzeit). */
+export function meilensteinFelder(p: Zeitpunkt): { start: string; end: string; startZeit: string | undefined; endZeit: undefined } {
+  return { start: p.datum, end: p.datum, startZeit: p.min === ARBEITSBEGINN_MIN ? undefined : minZuZeit(p.min), endZeit: undefined };
+}
+
 /** Tag-Index eines Datums ab min (0 = Tag von min). */
 export function tagIndex(datum: string, min: Date): number {
   const d = parseDateUniversal(datum);
@@ -198,13 +210,14 @@ export function startPos(t: MitZeit, min: Date): number {
 /** Position des Task-Endes (exklusiv: ein ganzer Tag n endet bei n + 1, ein Ende 12:00 bei n + 0.5).
  *  Ein Task ist aktiv für startPos <= tag < endPos; bei ganzen Tagen identisch mit "Starttag <= Tag <= Endtag". */
 export function endPos(t: MitZeit, min: Date): number {
+  if (t.meilenstein) return startPos(t, min);
   return tagIndex(t.end || t.start, min) + tagesAnteil(zeitZuMin(t.endZeit, ARBEITSENDE_MIN));
 }
 
 /** Anteil eines Arbeitstags (0 … 1), den der Task am Datum arbeitet — 0 an freien Tagen und ausserhalb des Tasks. Bei ganzen
  *  Tagen immer 0 oder 1, bei Halbtagen/Uhrzeit auch Bruchteile. Grundlage der Tagesreihen (Personal, Kran, Kosten …). */
 export function arbeitsAnteilAmTag(t: MitZeit, datum: string, kal: Kalender): number {
-  if (!t.start || !t.end || datum < t.start || datum > t.end || !istArbeitstag(datum, kal)) return 0;
+  if (t.meilenstein || !t.start || !t.end || datum < t.start || datum > t.end || !istArbeitstag(datum, kal)) return 0;
   const von = datum === t.start ? arbeitsMinBis(zeitZuMin(t.startZeit, ARBEITSBEGINN_MIN)) : 0;
   const bis = datum === t.end ? arbeitsMinBis(zeitZuMin(t.endZeit, ARBEITSENDE_MIN)) : MIN_PRO_ARBEITSTAG;
   return Math.max(0, bis - von) / MIN_PRO_ARBEITSTAG;
@@ -238,6 +251,7 @@ export function rundeZeitenAufEinheit<T extends MitZeit>(t: T, e: Zeiteinheit): 
 export function benoetigteZeiteinheit(tasks: MitZeit[]): Zeiteinheit {
   let halb = false;
   for (const t of tasks) {
+    if (t.meilenstein) continue; // Meilensteine liegen oft auf 17:00 (Ende des Vorgängers) — kein Grund für eine feinere Einheit
     for (const z of [t.startZeit, t.endZeit]) {
       if (!z) continue;
       const m = zeitZuMin(z, -1);

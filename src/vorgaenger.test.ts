@@ -74,10 +74,18 @@ describe("MS-Project-Export", () => {
     mitVorgaengern(task("B", "2026-11-13", "2026-11-16"), [{ id: "A", lagDays: 3 }]),
   ];
   const xml = generateMsProjectXml(tasks, "Test", { feiertage: [{ datum: "2026-12-25", name: "Weihnachten" }], ferien: [] });
-  it("1-Tages-Vorgang ist kein Meilenstein, Termine als 'Anfang nicht früher als'", () => {
+  it("1-Tages-Vorgang ist kein Meilenstein; ohne Vorgänger manuell geplant, mit Vorgänger über die Verknüpfung", () => {
     expect(xml).not.toContain("<Milestone>1</Milestone>");
-    expect(xml).toContain("<ConstraintType>4</ConstraintType>");
-    expect(xml).toContain("<ConstraintDate>2026-11-13T08:00:00</ConstraintDate>");
+    const block = (name: string) => xml.slice(xml.indexOf(`<Name>${name}</Name>`), xml.indexOf("</Task>", xml.indexOf(`<Name>${name}</Name>`)));
+    expect(block("A")).toContain("<Manual>1</Manual>");
+    expect(block("B")).toContain("<Manual>0</Manual>");
+    expect(xml).not.toContain("<ConstraintType>4</ConstraintType>"); // B liegt genau dort, wo die Verknüpfung ihn hinsetzt
+  });
+  it("liegt ein verknüpfter Vorgang bewusst später, kommt 'Anfang nicht früher als' dazu", () => {
+    const spaet = [tasks[0], { ...tasks[1], start: "2026-11-16", end: "2026-11-17" }];
+    const x = generateMsProjectXml(spaet, "Test", { feiertage: [], ferien: [] });
+    expect(x).toContain("<ConstraintType>4</ConstraintType>");
+    expect(x).toContain("<ConstraintDate>2026-11-16T08:00:00</ConstraintDate>");
   });
   it("Wartetage als verstrichene Tage (LagFormat 8)", () => {
     expect(xml).toContain("<LinkLag>43200</LinkLag>");

@@ -19,6 +19,7 @@ export interface ExportZeile {
   start: string; // dd.mm.yyyy
   ende: string;
   typ: string;   // leer bei Gruppen
+  meilenstein: boolean;
   vorgaenger: string;
   wartetage: number | "";
   kuerzel: string;
@@ -39,8 +40,10 @@ export function exportZeilen(tasks: Task[], kalender?: Kalender): ExportZeile[] 
       name: t.name,
       // Uhrzeit nur, wenn der Task eine eigene Start-/Endzeit hat (Zeiteinheit Halbtage/Uhrzeit): "09.11.2026 13:00"
       start: zeitraum.start ? formatDatum(zeitraum.start) + (!gruppe && t.startZeit ? ` ${t.startZeit}` : "") : "",
-      ende: zeitraum.end ? formatDatum(zeitraum.end) + (!gruppe && t.endZeit ? ` ${t.endZeit}` : "") : "",
+      ende: !gruppe && t.meilenstein ? (t.start ? formatDatum(t.start) + (t.startZeit ? ` ${t.startZeit}` : "") : "")
+        : zeitraum.end ? formatDatum(zeitraum.end) + (!gruppe && t.endZeit ? ` ${t.endZeit}` : "") : "",
       typ: gruppe ? "" : t.typ,
+      meilenstein: !gruppe && !!t.meilenstein,
       // mehrere Vorgänger wie MS Project: "26, 27+2" — die Wartetage des ERSTEN stehen in der Spalte Wartetage, die weiteren als +n
       vorgaenger: vorgaengerListe(t).map((v, k) => `${nummern.get(v.id) ?? ""}${k > 0 && v.lagDays ? (v.lagDays > 0 ? `+${v.lagDays}` : `${v.lagDays}`) : ""}`).join(", "),
       wartetage: t.predecessorId ? (t.lagDays ?? 0) : "",

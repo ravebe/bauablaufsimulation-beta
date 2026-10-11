@@ -211,7 +211,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   function ganttDateChange(taskId: string, newStart: string, newEnd: string, startZeit?: string, endZeit?: string) {
     if (!aktiveSim) return;
     const tasks = kaskadiereNachfolger(
-      aktiveSim.tasks.map(t => t.id === taskId ? { ...t, start: newStart, end: newEnd, startZeit, endZeit } : t),
+      aktiveSim.tasks.map(t => t.id !== taskId ? t : t.meilenstein ? { ...t, start: newStart, end: newStart, startZeit, endZeit: undefined } : { ...t, start: newStart, end: newEnd, startZeit, endZeit }),
       taskId, aktiveSim.kalender ?? LEERER_KALENDER
     );
     updateSim({ ...aktiveSim, tasks });

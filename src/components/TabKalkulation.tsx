@@ -413,7 +413,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   }
 
   const zeilen: Zeile[] = sim.tasks.map((t, i) => {
-    if (t.isGroup || istGruppe(sim.tasks, i)) return null;
+    if (t.isGroup || istGruppe(sim.tasks, i) || t.meilenstein) return null; // Meilensteine: Dauer 0, nichts zu kalkulieren
     const geplant = dauerTage(t, kalender); // Arbeitstage (bei Halbtagen/Uhrzeit mit Nachkommastellen)
     const berechnet = dauerBerechnetTask(t, stammdaten, sim.zeiteinheit);
     const abweichung = berechnet > 0 && (berechnet > geplant * 1.5 || berechnet < geplant * 0.67);

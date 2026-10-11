@@ -540,11 +540,29 @@ export default function TabProjekte({ api, laedt, sims, setSims, aktivId, setAkt
                 <>
                 <div className="tc-section-label" style={{ marginBottom: 4 }}>Gantt</div>
                 <GanttImport
-                  onImport={(neueTasks, dateiname) => {
+                  onImport={(neueTasks, dateiname, extras) => {
                     // Bisherige Tasks zuordnen: Bauteil-Verknüpfungen, IDs und Kalkulationsdaten bleiben erhalten
                     // Importierte Termine auf Arbeitstage bringen (Start auf Arbeitstag, Wochenenden/Feiertage/Ferien aus der Dauer geschnitten)
                     const bisher = simsRef.current.find(s => s.id === sim.id);
-                    const norm = normalisiereAufArbeitstage(neueTasks, bisher?.kalender);
+                    // Feiertage/Ferien aus der Datei (MS Project): leerer Kalender → übernehmen, sonst nach Rückfrage ergänzen
+                    let kalender = bisher?.kalender;
+                    const dateiKal = extras?.kalender;
+                    let kalenderMeldung = "";
+                    if (dateiKal && (dateiKal.feiertage.length || (dateiKal.ferien ?? []).length)) {
+                      const leer = !kalender || (kalender.feiertage.length === 0 && (kalender.ferien ?? []).length === 0);
+                      const n = `${dateiKal.feiertage.length} Feiertag(e) und ${(dateiKal.ferien ?? []).length} Ferienzeitraum/-zeiträume`;
+                      if (leer) { kalender = { ...(kalender ?? { feiertage: [] }), feiertage: dateiKal.feiertage, ferien: dateiKal.ferien }; kalenderMeldung = `${n} aus der Datei in den Kalender übernommen.`; }
+                      else if (confirm(`Die Datei enthält ${n}.\n\nOK = zum bestehenden Kalender der Simulation hinzufügen (gleiche Tage werden nicht doppelt eingetragen)\nAbbrechen = bisherigen Kalender unverändert lassen`)) {
+                        const k = kalender!;
+                        const tage = new Set(k.feiertage.map(f => f.datum));
+                        const zeitr = new Set((k.ferien ?? []).map(f => `${f.von}|${f.bis}`));
+                        kalender = { ...k,
+                          feiertage: [...k.feiertage, ...dateiKal.feiertage.filter(f => !tage.has(f.datum))].sort((a, b) => a.datum.localeCompare(b.datum)),
+                          ferien: [...(k.ferien ?? []), ...(dateiKal.ferien ?? []).filter(f => !zeitr.has(`${f.von}|${f.bis}`))].sort((a, b) => a.von.localeCompare(b.von)) };
+                        kalenderMeldung = `${n} aus der Datei zum Kalender hinzugefügt.`;
+                      }
+                    }
+                    const norm = normalisiereAufArbeitstage(neueTasks, kalender);
                     const ab = gleicheGanttAb(bisher?.tasks ?? [], norm.tasks);
                     // Halbtage/Uhrzeiten in der Datei → Zeiteinheit automatisch feiner stellen (wie MS Project)
                     const alteEinheit: Zeiteinheit = bisher?.zeiteinheit ?? "tage";
@@ -556,11 +574,13 @@ export default function TabProjekte({ api, laedt, sims, setSims, aktivId, setAkt
                         + (ab.wegfallend.bauteile > 0 ? ` — ${ab.wegfallend.tasks} bisherige Task(s) nicht mehr in der Datei, deren ${ab.wegfallend.bauteile} Bauteile stehen jetzt unter „Noch nicht verknüpft“` : ""));
                     }
                     if (norm.geaendert > 0) meldungen.push(`${norm.geaendert} Task(s) lagen ganz oder teilweise auf Wochenenden, Feiertagen oder Ferien und wurden auf Arbeitstage verschoben (Start auf den nächsten Arbeitstag, freie Tage zählen nicht zur Dauer). Für Wochenendarbeit im Kalender-Dialog den Schalter ausschalten.`);
+                    if (kalenderMeldung) meldungen.push(kalenderMeldung);
                     if (neueEinheit) meldungen.push(`Die Datei enthält ${neueEinheit === "halbtage" ? "halbe Tage" : "Uhrzeiten"} — Zeiteinheit automatisch auf «${ZEITEINHEIT_LABEL[neueEinheit]}» gestellt (⋮ der Simulationskarte).`);
                     if (meldungen.length) setModellMsg({ simId: sim.id, typ: ab.wegfallend.bauteile > 0 ? "err" : "ok", text: meldungen.join(" · ") });
                     setSims(prev => prev.map(s => s.id === sim.id ? {
                       ...s, tasks: ab.tasks,
                       ...(neueEinheit ? { zeiteinheit: neueEinheit } : {}),
+                      ...(kalender !== s.kalender ? { kalender } : {}),
                       autoVerknuepft: ab.bauteileUebernommen > 0 ? s.autoVerknuepft : false,
                       ganttImport: { dateiname, version: (s.ganttImport?.version ?? 0) + 1 },
                     } : s));

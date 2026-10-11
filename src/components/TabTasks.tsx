@@ -326,6 +326,16 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
     lsSet(nsKey(STORAGE_PREFIX + aktiveSim.id, projectId), JSON.stringify(cfg));
   }
 
+  // Meilenstein ein/aus (wirkt auf alle markierten Tasks): ein Meilenstein hat Dauer 0 (Ende = Start), ausgeschaltet wird daraus ein 1-Tages-Task
+  function meilensteinUmschalten(taskId: string, an: boolean) {
+    const ids = selectedIds.length > 1 ? new Set(selectedIds) : new Set([taskId]);
+    const kal = aktiveSim.kalender ?? LEERER_KALENDER;
+    let tasks = aktiveSim.tasks.map(t => !ids.has(t.id) || t.isGroup ? t
+      : an ? { ...t, meilenstein: true, end: t.start, endZeit: undefined } : { ...t, meilenstein: undefined, end: t.start, endZeit: undefined });
+    for (const id of ids) tasks = kaskadiereNachfolger(tasks, id, kal);
+    updateSim({ ...aktiveSim, tasks });
+  }
+
   function typAendern(taskId: string, typ: TaskTyp) {
     const idsToChange = selectedIds.length > 1 ? new Set(selectedIds) : new Set([taskId]);
     updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => idsToChange.has(t.id) ? { ...t, typ } : t) });
@@ -679,6 +689,9 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                         }} />
                         <ZeitWahl einheit={einheit} art="start" min={startZeitpunkt(task).min} onChange={m => zeitAendern(task.id, task.start, "start", m)} />
                       </span>
+                      {task.meilenstein ? (
+                        <span style={{ fontSize: 10, color: "#555" }} title="Meilenstein — Dauer 0">◆ Meilenstein</span>
+                      ) : (
                       <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
                         <DatePicker value={formatDatum(task.end)} kalender={aktiveSim.kalender} onChange={(val: string) => {
                           const norm = normalizeDatum(val);
@@ -686,6 +699,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                         }} />
                         <ZeitWahl einheit={einheit} art="ende" min={endZeitpunkt(task).min} onChange={m => zeitAendern(task.id, task.end, "end", m)} />
                       </span>
+                      )}
                     </>
                   ) : (
                     <>
@@ -808,6 +822,13 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                 );
               })}
             </div>
+            )}
+            {typOffen && (
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, marginTop: 6, cursor: "pointer" }}
+                title="Meilenstein: ein Zeitpunkt ohne Dauer (Raute im Gantt) — z.B. Abnahme, Rohbau fertig. Wird mit MS Project als Meilenstein ausgetauscht.">
+                <input type="checkbox" checked={!!aktivTask.meilenstein} onChange={e => meilensteinUmschalten(aktivTask.id, e.target.checked)} />
+                ◆ Meilenstein (Dauer 0)
+              </label>
             )}
           </div>
           )}

@@ -2,7 +2,7 @@ import type { Kalender } from "./components/kalenderHelpers";
 import { arbeitstageZwischen, LEERER_KALENDER, arbeitstagPlus, arbeitstageVersatz } from "./components/kalenderHelpers";
 import type { Stammdaten } from "./components/stammdatenHelpers";
 import type { Zeiteinheit, Zeitpunkt } from "./components/zeitHelpers";
-import { startZeitpunkt, endZeitpunkt, zeitFelder, naechsteArbeitszeit, letzteArbeitszeit, arbeitsMinutenZwischen, endeAusArbeitsMinuten, startAusArbeitsMinuten, folgeStartZeitpunkt, vergleicheZeitpunkte, zeitZuMin, ARBEITSBEGINN_MIN, ARBEITSENDE_MIN } from "./components/zeitHelpers";
+import { meilensteinZeitpunkt, meilensteinFelder, startZeitpunkt, endZeitpunkt, zeitFelder, naechsteArbeitszeit, letzteArbeitszeit, arbeitsMinutenZwischen, endeAusArbeitsMinuten, startAusArbeitsMinuten, folgeStartZeitpunkt, vergleicheZeitpunkte, zeitZuMin, ARBEITSBEGINN_MIN, ARBEITSENDE_MIN } from "./components/zeitHelpers";
 
 export type TaskTyp = "neubau" | "bestand" | "abbruch" | "temporaer" | "baustelleneinrichtung" | "drittprojekt";
 
@@ -34,6 +34,7 @@ export interface Task {
   isGroup?: boolean; // true = Gruppentitel (keine Bauteile, kein Typ)
   predecessorId?: string; // ID des (ersten) Vorgänger-Tasks
   lagDays?: number; // Wartetage nach Vorgänger-Ende (default 0)
+  meilenstein?: boolean; // Meilenstein: Dauer 0, Ende = Start (Raute im Gantt) — wie in MS Project
   startZeit?: string; // "HH:MM" bei Zeiteinheit Halbtage/Uhrzeit — fehlt = 08:00 (siehe zeitHelpers.ts)
   endZeit?: string;   // "HH:MM" — fehlt = 17:00
   weitereVorgaenger?: { id: string; lagDays: number }[]; // 2. bis 30. Vorgänger mit eigenen Wartetagen (wie MS Project) — siehe vorgaengerListe()
@@ -342,11 +343,12 @@ export function datumsPaarVerschieben(altStart: string, altEnde: string, neuesDa
 
 /** Wie datumsPaarVerschieben, aber mit Uhrzeiten (Zeiteinheit Halbtage/Uhrzeit): die Dauer in ARBEITSZEIT bleibt erhalten. Tasks
  *  beginnen und enden nur in der Arbeitszeit an Arbeitstagen. neueMin = neue Uhrzeit (Minuten), sonst bleibt die bisherige. */
-export function zeitraumVerschieben(t: { start: string; end: string; startZeit?: string; endZeit?: string }, neuesDatum: string, geaendert: "start" | "end",
+export function zeitraumVerschieben(t: { start: string; end: string; startZeit?: string; endZeit?: string; meilenstein?: boolean }, neuesDatum: string, geaendert: "start" | "end",
   kalender: Kalender = LEERER_KALENDER, neueMin?: number): { start: string; end: string; startZeit: string | undefined; endZeit: string | undefined } {
   const S = startZeitpunkt(t), E = endZeitpunkt(t);
-  const dauer = arbeitsMinutenZwischen(S, E, kalender);
   const neu = normalizeDatum(neuesDatum);
+  if (t.meilenstein) return meilensteinFelder(meilensteinZeitpunkt({ datum: neu, min: neueMin ?? S.min }, kalender));
+  const dauer = arbeitsMinutenZwischen(S, E, kalender);
   if (geaendert === "start") {
     const s = naechsteArbeitszeit({ datum: neu, min: neueMin ?? S.min }, kalender);
     return zeitFelder(s, endeAusArbeitsMinuten(s, dauer, kalender));
@@ -580,7 +582,8 @@ export function vorgaengerStart(tasks: Task[], t: Task, kalender: Kalender = LEE
   for (const v of vorgaengerListe(t)) {
     const ende = vorgaengerEndZeitpunkt(tasks, v.id);
     if (!ende) continue;
-    const s = folgeStartZeitpunkt(ende, v.lagDays, kalender);
+    // ein Meilenstein ohne Wartetage liegt genau auf dem Ende seines Vorgängers (wie MS Project), ein Task beginnt danach
+    const s = t.meilenstein && !v.lagDays ? meilensteinZeitpunkt(ende, kalender) : folgeStartZeitpunkt(ende, v.lagDays, kalender);
     if (!spaetester || vergleicheZeitpunkte(s, spaetester) > 0) spaetester = s;
   }
   return spaetester;
@@ -613,6 +616,7 @@ export function verschiebeAufStart(tasks: Task[], taskId: string, neuerStart: st
   // Dauer in Arbeitszeit bleibt; ohne Uhrzeit bleibt die bisherige Startzeit des Tasks
   const verschiebe = (x: Task, start: string | Zeitpunkt): Task => {
     const ziel = typeof start === "string" ? { datum: start, min: zeitZuMin(x.startZeit, ARBEITSBEGINN_MIN) } : start;
+    if (x.meilenstein) return { ...x, ...meilensteinFelder(meilensteinZeitpunkt(ziel, kalender)) };
     const s = naechsteArbeitszeit(ziel, kalender);
     return { ...x, ...zeitFelder(s, endeAusArbeitsMinuten(s, arbeitsMinutenZwischen(startZeitpunkt(x), endZeitpunkt(x), kalender), kalender)) };
   };
@@ -668,9 +672,9 @@ export function normalisiereAufArbeitstage(tasks: Task[], kalender: Kalender = L
   let geaendert = 0;
   const neu = tasks.map((t, i) => {
     if (t.isGroup || istGruppe(tasks, i) || !parseDateUniversal(t.start) || !parseDateUniversal(t.end)) return t;
-    const dauer = arbeitsMinutenZwischen(startZeitpunkt(t), endZeitpunkt(t), kalender);
-    const s = naechsteArbeitszeit(startZeitpunkt(t), kalender);
-    const f = zeitFelder(s, endeAusArbeitsMinuten(s, dauer, kalender));
+    const f = t.meilenstein
+      ? meilensteinFelder(meilensteinZeitpunkt(startZeitpunkt(t), kalender))
+      : (() => { const s = naechsteArbeitszeit(startZeitpunkt(t), kalender); return zeitFelder(s, endeAusArbeitsMinuten(s, arbeitsMinutenZwischen(startZeitpunkt(t), endZeitpunkt(t), kalender), kalender)); })();
     if (f.start === t.start && f.end === t.end && f.startZeit === t.startZeit && f.endZeit === t.endZeit) return t;
     geaendert++;
     return { ...t, ...f };

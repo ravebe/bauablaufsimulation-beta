@@ -300,9 +300,9 @@ export function erzeuge4dIfc(e: IfcExportEingabe): IfcExportErgebnis {
         ? ref(w.add(`IFCTASKTIME($,$,$,.WORKTIME.,'${isoDauerArbeitszeit(tage)}','${start}T${sz}','${ende}T${ez}',$,$,$,$,$,$,$,$,$,$,$,$,$)`))
         : "$";
       const pt = gruppe ? "NOTDEFINED" : TASK_TYP_IFC4[t.typ];
-      taskIds.push(w.add(`IFCTASK('${tg}',${oh},${name},$,${label(typLabel(t, i))},${ident},$,$,$,.F.,$,${tt},.${pt}.)`));
+      taskIds.push(w.add(`IFCTASK('${tg}',${oh},${name},$,${label(typLabel(t, i))},${ident},$,$,$,${!gruppe && t.meilenstein ? ".T." : ".F."},$,${tt},.${pt}.)`));
     } else {
-      const taskId = w.add(`IFCTASK('${tg}',${oh},${name},$,${label(typLabel(t, i))},${ident},$,$,.F.,$)`);
+      const taskId = w.add(`IFCTASK('${tg}',${oh},${name},$,${label(typLabel(t, i))},${ident},$,$,${!gruppe && t.meilenstein ? ".T." : ".F."},$)`);
       taskIds.push(taskId);
       const zeit = start && ende
         ? ref(w.add(`IFCSCHEDULETIMECONTROL('${g(`time|${t.id}`)}',${oh},$,$,$,$,$,$,${ref(datumZeit2x3(start, sz))},$,$,$,${ref(datumZeit2x3(ende, ez))},${stepReal(tage * ARBEITSSTUNDEN_PRO_TAG * 3600)},$,$,$,$,$,$,$,$,$)`))

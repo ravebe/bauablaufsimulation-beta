@@ -263,6 +263,7 @@ export function leseBauablaufAusIfc(text: string, neueId: () => string = () => c
       start: t.start ?? t.ende ?? heute,
       end: t.ende ?? t.start ?? heute,
       ...(t.startZeit && !gruppe ? { startZeit: t.startZeit } : {}),
+      ...(!gruppe && (ist4 ? a[9] : a[8])?.trim() === ".T." ? { meilenstein: true } : {}), // IfcTask.IsMilestone
       ...(t.endZeit && !gruppe ? { endZeit: t.endZeit } : {}),
       typ,
       objektGuids: [],

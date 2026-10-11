@@ -37,7 +37,7 @@ function xmlTag(name: string): string {
 }
 
 /** Tabellenzeile (Excel/CSV) in Spaltenreihenfolge; einzug = Name je Ebene optisch einrücken */
-function tabellenZeile(z: ExportZeile, extraSpalten: string[], einzug: boolean, reihenfolge: number): Record<string, string | number> {
+function tabellenZeile(z: ExportZeile, extraSpalten: string[], einzug: boolean, reihenfolge: number, mitMeilenstein = false): Record<string, string | number> {
   return {
     "Gantt-Reihenfolge": reihenfolge,
     Nr: z.nr,
@@ -47,6 +47,7 @@ function tabellenZeile(z: ExportZeile, extraSpalten: string[], einzug: boolean, 
     Start: z.start,
     Ende: z.ende,
     Typ: z.typ,
+    ...(mitMeilenstein ? { Meilenstein: z.meilenstein ? "x" : "" } : {}),
     Vorgänger: z.vorgaenger,
     Wartetage: z.wartetage,
     ...Object.fromEntries(extraSpalten.map(k => [k, z.extra[k] ?? ""])),
@@ -57,9 +58,10 @@ function tabellenZeile(z: ExportZeile, extraSpalten: string[], einzug: boolean, 
 
 export function exportXlsx(tasks: Task[], simName: string, kalender?: Kalender) {
   const extraSpalten = sammleExtraSpalten(tasks);
-  const rows = exportZeilen(tasks, kalender).map((z, i) => tabellenZeile(z, extraSpalten, true, i + 1));
+  const mitM = tasks.some(t => t.meilenstein); // Spalte "Meilenstein" nur, wenn es welche gibt
+  const rows = exportZeilen(tasks, kalender).map((z, i) => tabellenZeile(z, extraSpalten, true, i + 1, mitM));
   const ws = XLSX.utils.json_to_sheet(rows);
-  ws["!cols"] = [{ wch: 17 }, { wch: 5 }, { wch: 7 }, { wch: 6 }, { wch: 34 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, ...extraSpalten.map(() => ({ wch: 14 })), { wch: 8 }, { wch: 10 }];
+  ws["!cols"] = [{ wch: 17 }, { wch: 5 }, { wch: 7 }, { wch: 6 }, { wch: 34 }, { wch: 16 }, { wch: 16 }, { wch: 10 }, ...(mitM ? [{ wch: 11 }] : []), { wch: 10 }, { wch: 10 }, ...extraSpalten.map(() => ({ wch: 14 })), { wch: 8 }, { wch: 10 }];
   if (ws["!ref"]) ws["!autofilter"] = { ref: ws["!ref"] }; // Filterpfeile in der Titelzeile
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Gantt");
@@ -73,15 +75,16 @@ export function exportCsv(tasks: Task[], simName: string, kalender?: Kalender) {
     const s = String(v);
     return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
-  const rows = exportZeilen(tasks, kalender).map((z, i) => tabellenZeile(z, extraSpalten, false, i + 1));
-  const header = Object.keys(tabellenZeile(leereZeile(), extraSpalten, false, 0));
+  const mitM = tasks.some(t => t.meilenstein);
+  const rows = exportZeilen(tasks, kalender).map((z, i) => tabellenZeile(z, extraSpalten, false, i + 1, mitM));
+  const header = Object.keys(tabellenZeile(leereZeile(), extraSpalten, false, 0, mitM));
   const lines = [header.map(feld).join(sep), ...rows.map(r => header.map(h => feld(r[h] ?? "")).join(sep))];
   const csv = "﻿" + lines.join("\n"); // BOM for Excel
   download(csv, `${simName}_Gantt.csv`, "text/csv;charset=utf-8");
 }
 
 function leereZeile(): ExportZeile {
-  return { nr: "", gruppe: false, ebene: 1, name: "", start: "", ende: "", typ: "", vorgaenger: "", wartetage: "", kuerzel: "", bauteile: "", extra: {} };
+  return { nr: "", gruppe: false, ebene: 1, name: "", start: "", ende: "", typ: "", meilenstein: false, vorgaenger: "", wartetage: "", kuerzel: "", bauteile: "", extra: {} };
 }
 
 export function exportXml(tasks: Task[], simName: string, kalender?: Kalender) {
@@ -91,7 +94,7 @@ export function exportXml(tasks: Task[], simName: string, kalender?: Kalender) {
       ? `\n    <Vorgaenger>${esc(z.vorgaenger)}</Vorgaenger>\n    <Wartetage>${z.wartetage}</Wartetage>`
       : "";
     const extraLines = extraSpalten.map(k => `\n    <${xmlTag(k)}>${esc(z.extra[k] ?? "")}</${xmlTag(k)}>`).join("");
-    const taskLines = z.gruppe ? "" : `\n    <Type>${z.typ}</Type>\n    <Kuerzel>${esc(z.kuerzel)}</Kuerzel>\n    <Objects>${z.bauteile}</Objects>`;
+    const taskLines = z.gruppe ? "" : `${z.meilenstein ? "\n    <Meilenstein>1</Meilenstein>" : ""}\n    <Type>${z.typ}</Type>\n    <Kuerzel>${esc(z.kuerzel)}</Kuerzel>\n    <Objects>${z.bauteile}</Objects>`;
     return `  <Task>\n    <Gantt_Reihenfolge>${i + 1}</Gantt_Reihenfolge>\n    <Nr>${esc(z.nr)}</Nr>\n    <Gruppe>${z.gruppe ? 1 : 0}</Gruppe>\n    <Ebene>${z.ebene}</Ebene>\n    <Name>${esc(z.name)}</Name>\n    <Start>${z.start}</Start>\n    <Finish>${z.ende}</Finish>${taskLines}${vorgLines}${extraLines}\n  </Task>`;
   }).join("\n");
   const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<Gantt>\n${tasksXml}\n</Gantt>`;
@@ -107,7 +110,7 @@ export function exportJson(tasks: Task[], simName: string, kalender?: Kalender) 
   const data = exportZeilen(tasks, kalender).map((z, i) => ({
     gantt_reihenfolge: i + 1, nr: z.nr, gruppe: z.gruppe, ebene: z.ebene,
     name: z.name, start: z.start, end: z.ende,
-    typ: z.gruppe ? null : z.typ, kuerzel: z.kuerzel || null,
+    typ: z.gruppe ? null : z.typ, ...(z.meilenstein ? { meilenstein: true } : {}), kuerzel: z.kuerzel || null,
     bauteile: z.gruppe ? 0 : z.bauteile, guids: z.gruppe ? [] : tasks[i].objektGuids,
     vorgaenger: z.vorgaenger || null,
     wartetage: z.vorgaenger ? z.wartetage : null,

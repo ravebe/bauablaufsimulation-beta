@@ -517,7 +517,7 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
           <div style={{ height: bodyH }}>
             {sorted.map(({ task: t, origIdx }, i) => {
               const sd = parseDateUniversal(t.start), ed = parseDateUniversal(t.end);
-              const dauer = sd && ed ? fmtDauer(dauerTage(t, kalender), zeiteinheit) : "1d";
+              const dauer = t.meilenstein ? "◆" : sd && ed ? fmtDauer(dauerTage(t, kalender), zeiteinheit) : "1d";
               const isSel = selectedIds.includes(t.id);
               const hasSel = selGuids?.size ? t.objektGuids.some(g => selGuids!.has(g)) : false;
               const isEditing = editingTaskId === t.id || calEdit?.taskId === t.id;
@@ -738,6 +738,26 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
                     {showDates && <text x={bX - 3} y={y + ROW_H / 2 + 4} fontSize={11} fill="#888" textAnchor="end">{fmtDatum(sd!, longDates)}</text>}
                     {zeigeDauerText && <text x={barMidX} y={y + ROW_H / 2 + 4} fontSize={11} fill="#555" fontWeight={600} textAnchor="middle" style={{ pointerEvents: "none" }}>{durText}</text>}
                     {showDates && <text x={bX + bW + 3} y={y + ROW_H / 2 + 4} fontSize={11} fill="#888">{fmtDatum(ed!, longDates)}</text>}
+                  </g>
+                );
+              }
+
+              // Meilenstein: Raute am Zeitpunkt (Dauer 0), nur verschiebbar
+              if (t.meilenstein && sd) {
+                const mx = bX, my = y + ROW_H / 2, r = 7;
+                return (
+                  <g key={t.id}>
+                    <title>{`${t.name}\nMeilenstein ${fmtDMY(sd)}${zusatzS}`}</title>
+                    <rect x={0} y={y} width={chartW} height={ROW_H} fill={isEditing ? "#FFF8E1" : isSel ? "#e8f0fe" : hasSel ? "#f0f0f0" : "transparent"} />
+                    <line x1={0} y1={y + ROW_H} x2={chartW} y2={y + ROW_H} stroke="#eef1f4" strokeWidth={0.5} />
+                    <polygon points={`${mx},${my - r} ${mx + r},${my} ${mx},${my + r} ${mx - r},${my}`} fill={isEditing ? "#FF9800" : "#333"}
+                      stroke={isSel ? "#2d7dbd" : "none"} strokeWidth={1.5} style={editable ? { cursor: "move" } : undefined}
+                      onClick={e => { e.stopPropagation(); if (!editable) melden(`row-${t.id}`, e.clientX, e.clientY); }}
+                      onMouseDown={editable ? (e => startBarDrag(e, t.id, "move", t)) : undefined} />
+                    {showDates && <text x={mx + r + 4} y={my + 4} fontSize={11} fill={dateColor}
+                      style={{ cursor: editable ? "pointer" : "default" }}
+                      onClick={editable ? (e) => { e.stopPropagation(); setEditingTaskId(t.id); const rr = (e.target as SVGElement).getBoundingClientRect(); setCalEdit({ taskId: t.id, field: "start", value: fmtDMY(sd), x: rr.left, y: rr.bottom }); } : (e) => melden(`row-${t.id}`, e.clientX, e.clientY)}
+                    >{fmtDatum(sd, longDates)}{zusatzS}</text>}
                   </g>
                 );
               }

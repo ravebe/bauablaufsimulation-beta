@@ -601,7 +601,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
           const gDaten = isGrp ? gruppenDaten(allTasks, allIdx, kalender) : null;
           const sd = parseDateUniversal(isGrp && gDaten ? gDaten.start : task.start);
           const ed = parseDateUniversal(isGrp && gDaten ? gDaten.end : task.end);
-          const dauer = fmtDauer(isGrp && gDaten ? gDaten.tage : (sd && ed ? dauerTage(task, kalender) : 1), aktiveSim?.zeiteinheit);
+          const dauer = task.meilenstein ? "◆" : fmtDauer(isGrp && gDaten ? gDaten.tage : (sd && ed ? dauerTage(task, kalender) : 1), aktiveSim?.zeiteinheit);
           const istSelTask = selTaskId === task.id;
           const level = getOutlineLevel(task);
           const indent = (level - 1) * 12;

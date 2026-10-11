@@ -1,7 +1,7 @@
 // ganttAbgleich.ts — beim erneuten Gantt-Import (Excel/CSV/XML/MS Project) die bisherigen Tasks den neuen
 // zuordnen, damit Bauteil-Verknüpfungen und Kalkulationsdaten erhalten bleiben. Vorher ersetzte der Import
 // die ganze Task-Liste — alle Verknüpfungen waren weg.
-// Zuordnung: 1. gleicher Pfad (Gruppen + Name, z.B. "Rohbau › UG › Wand 01"), 2. gleicher Name, falls auf
+// Zuordnung: 0. gleiche Task-ID (MS-Project-GUID), 1. gleicher Pfad (Gruppen + Name, z.B. "Rohbau › UG › Wand 01"), 2. gleicher Name, falls auf
 // beiden Seiten eindeutig. Gruppen werden mit abgeglichen (nur für stabile IDs).
 import type { Task } from "../types";
 import { vorgaengerListe, mitVorgaengern as mitVorgaengernSetzen } from "../types";
@@ -37,10 +37,18 @@ export function gleicheGanttAb(alt: Task[], neu: Task[]): AbgleichErgebnis {
   const frei = new Set(alt.map((_, i) => i));
   const zuordnung = new Map<number, number>(); // neuIdx → altIdx
 
+  // 0. gleiche Task-ID (MS Project trägt sie im GUID-Feld) — erkennt auch umbenannte Vorgänge
+  const altNachId = new Map(alt.map((t, i) => [t.id, i]));
+  neu.forEach((t, ni) => {
+    const ai = altNachId.get(t.id);
+    if (ai !== undefined && frei.has(ai) && !!alt[ai].isGroup === !!t.isGroup) { zuordnung.set(ni, ai); frei.delete(ai); }
+  });
+
   // 1. gleicher Pfad
   const altNachPfad = new Map<string, number[]>();
   altPfade.forEach((p, i) => altNachPfad.set(p, [...(altNachPfad.get(p) ?? []), i]));
   neuPfade.forEach((p, ni) => {
+    if (zuordnung.has(ni)) return;
     const kandidat = (altNachPfad.get(p) ?? []).find(ai => frei.has(ai) && !!alt[ai].isGroup === !!neu[ni].isGroup);
     if (kandidat !== undefined) { zuordnung.set(ni, kandidat); frei.delete(kandidat); }
   });
