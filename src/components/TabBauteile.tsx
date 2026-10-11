@@ -45,6 +45,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   const [alleGuids, setAlleGuids] = useState<string[] | null>(null);
   // statt eines Tasks gewählt: "Noch nicht verknüpft" bzw. "Aus Simulation entfernt"
   const [unbenutzt, setUnbenutzt] = useState<UnbenutztArt | null>(null);
+  const [unbenutztOffen, setUnbenutztOffen] = useState(false);
   const [resetSignal, setResetSignal] = useState(0);
   const [selGuids, setSelGuids] = useState<Set<string>>(new Set());
   const [ganttOffen, setGanttOffen] = useState(false);
@@ -198,11 +199,22 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   // "OFFEN" (Kopf der Task-Liste) = genau die Bauteile unter "Noch nicht verknüpft"
   const offenAnzahl = alleGuids ? unbenutzteListen(aktiveSim, alleGuids).offen?.length ?? null : null;
 
-  // Zu unterst: "Noch nicht verknüpft" / "Aus Simulation entfernt" — wie Tasks wählbar, Detail statt Task-Detail
-  const unbenutztZeilen = (
-    <UnbenutzteZeilen sim={aktiveSim} alleGuids={alleGuids} aktiv={unbenutzt}
-      onWaehlen={a => { setUnbenutzt(a); if (a) setSelectedIds([]); }} />
-  );
+  // Eigener auf-/zuklappbarer Bereich unter "Bauteile zugewiesen": "Noch nicht verknüpft" / "Aus Simulation entfernt" —
+  // wie Tasks wählbar, ihr Detail ersetzt dann das Task-Detail
+  const unbenutztListen = aktiveSim ? unbenutzteListen(aktiveSim, alleGuids) : null;
+  const unbenutztBereich = aktiveSim ? (
+    <div className="detail-block">
+      <div className="detail-block-title" style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
+        onClick={() => setUnbenutztOffen(o => !o)}>
+        <span style={{ display: "inline-block", transform: `scaleX(1.6) rotate(${unbenutztOffen ? 0 : -90}deg)`, transition: "transform .15s", fontSize: 9 }}>▼</span>
+        Nicht verknüpft {unbenutztListen?.offen ? unbenutztListen.offen.length : "…"} · Aus Simulation entfernt {unbenutztListen?.entfernt.length ?? 0}
+      </div>
+      {unbenutztOffen && (
+        <UnbenutzteZeilen sim={aktiveSim} alleGuids={alleGuids} aktiv={unbenutzt}
+          onWaehlen={a => { setUnbenutzt(a); if (a) setSelectedIds([]); }} />
+      )}
+    </div>
+  ) : null;
   const unbenutztDetail = unbenutzt ? (
     <UnbenutzteDetail api={api} sim={aktiveSim} alleGuids={alleGuids} art={unbenutzt} selGuids={selGuids}
       readOnly={readOnly} updateSim={updateSim} />
@@ -504,7 +516,6 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
           }} style={{ height: 6, cursor: "ns-resize", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <div style={{ width: 40, height: 3, background: "#d4dce4", borderRadius: 2 }} />
           </div>
-          <div style={{ borderTop: "1px solid var(--tc-border-light)" }}>{unbenutztZeilen}</div>
           <TabTasks
             detailErsatz={unbenutztDetail}
             api={api}
@@ -525,7 +536,6 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
         </>
       ) : (
         <TabTasks
-          unterListe={unbenutztZeilen}
           detailErsatz={unbenutztDetail}
           api={api}
           projectId={projectId}
@@ -543,6 +553,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
           suchQuery={suchQuery}
         />
       )}
+      {unbenutztBereich}
       {combinedTask && !readOnly && !combinedTask.isGroup && (
         <>
           <div className="detail-block">
