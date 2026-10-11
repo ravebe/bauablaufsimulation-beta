@@ -51,10 +51,10 @@ export async function ifcGuidsInVersion(api: ApiInstance, mid: string, versionId
 
 /** Lädt die Zielversion und baut alter objektGuid → neuer objektGuid über die IFC-GUIDs auf */
 export async function ordneInVersionZu(api: ApiInstance, mid: string, versionId: string, tasks: Task[],
-  guidById: Map<number, string>, onVersuch?: (n: number) => void): Promise<Umstellung> {
+  guidById: Map<number, string>, onVersuch?: (n: number) => void, maxVersuche = 18): Promise<Umstellung> {
   const guids = [...new Set(guidById.values())];
   let neueIds = new Map<string, number>();
-  for (let versuch = 1; versuch <= 18; versuch++) {
+  for (let versuch = 1; versuch <= maxVersuche; versuch++) {
     try { await api.viewer.toggleModelVersion({ id: mid, versionId }, true, false); } catch { /* evtl. noch in Verarbeitung */ }
     if (guids.length === 0) break;
     neueIds = await batchConvertToRuntimeIds(api, mid, guids);

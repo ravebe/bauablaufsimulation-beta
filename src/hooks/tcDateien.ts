@@ -223,15 +223,18 @@ export async function ladeTcVersionHoch(api: ApiInstance, ziel: TcDateiInfo, inh
   return { region: ziel.region, ...datei };
 }
 
-/** Wartet, bis Trimble Connect die Version verarbeitet hat (Viewer kann sie erst dann laden). */
+/** Wartet, bis Trimble Connect die Version verarbeitet hat (Viewer kann sie erst dann laden).
+ *  Liefert "fehler" bei Status ERROR/CANCELLED statt abzubrechen — Connect meldet ERROR auch, wenn nur ein
+ *  Nebenschritt (z.B. Vorschaubild) scheitert und die Version im Viewer trotzdem ladbar ist; ob sie das ist,
+ *  entscheidet der anschliessende Ladeversuch. */
 export async function warteAufVerarbeitung(api: ApiInstance, fileId: string, versionId: string,
-  onStatus: (s: string) => void, maxMinuten = 20): Promise<void> {
+  onStatus: (s: string) => void, maxMinuten = 20): Promise<"ok" | "fehler"> {
   const ende = Date.now() + maxMinuten * 60000;
   while (Date.now() < ende) {
     const info = await tcDateiInfo(api, fileId, versionId).catch(() => null);
     const status = String(info?.status ?? "").toUpperCase();
-    if (status === "DONE" || (info && !status)) return; // ohne Status-Feld: Laden im Viewer wird ohnehin wiederholt
-    if (status === "ERROR" || status === "CANCELLED") throw new Error(`Trimble Connect konnte die Datei nicht verarbeiten (Status ${status}).`);
+    if (status === "DONE" || (info && !status)) return "ok"; // ohne Status-Feld: Laden im Viewer wird ohnehin wiederholt
+    if (status === "ERROR" || status === "CANCELLED") return "fehler";
     onStatus(status || "unbekannt");
     await new Promise(r => setTimeout(r, 10000));
   }

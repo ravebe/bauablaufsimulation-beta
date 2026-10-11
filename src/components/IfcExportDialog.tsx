@@ -135,11 +135,14 @@ export default function IfcExportDialog({ sim, updateSim, api, geladeneModelle, 
       }
 
       // 2. Warten, bis Connect die Version verarbeitet hat, dann im Viewer laden
-      await warteAufVerarbeitung(api, mid, neu.versionId, s => schritt(mid, `Warte auf Konvertierung durch Trimble Connect (${s}) … das kann einige Minuten dauern. Danach wird die Simulation automatisch auf die neue Version umgestellt.`));
+      // Status ERROR heisst nicht zwingend "unbrauchbar" — trotzdem laden versuchen (dann mit weniger Versuchen)
+      const verarbeitung = await warteAufVerarbeitung(api, mid, neu.versionId, s => schritt(mid, `Warte auf Konvertierung durch Trimble Connect (${s}) … das kann einige Minuten dauern. Danach wird die Simulation automatisch auf die neue Version umgestellt.`));
       schritt(mid, "Neue Version im Viewer laden …");
       const { mapping, umgestellt, nichtGefunden } = await ordneInVersionZu(api, mid, neu.versionId, mitAusschlussTask(simRef.current), guidById,
-        n => schritt(mid, `Neue Version im Viewer laden … (Versuch ${n + 1})`))
-        .catch(e => { throw new Error("Die neue Version ist in Trimble Connect hochgeladen, konnte aber nicht im Viewer geladen werden. Die Simulation verwendet weiterhin die bisherige Version.", { cause: e }); });
+        n => schritt(mid, `Neue Version im Viewer laden … (Versuch ${n + 1})`), verarbeitung === "fehler" ? 4 : 18)
+        .catch(e => { throw new Error(verarbeitung === "fehler"
+          ? "Die neue Version ist in Trimble Connect hochgeladen, Connect meldet bei der Verarbeitung aber einen Fehler und sie lässt sich nicht im Viewer laden. Die Simulation verwendet weiterhin die bisherige Version."
+          : "Die neue Version ist in Trimble Connect hochgeladen, konnte aber nicht im Viewer geladen werden. Die Simulation verwendet weiterhin die bisherige Version.", { cause: e }); });
 
       // 3. Simulation umstellen: Version pinnen + Bauteil-Zuordnungen auf die neuen Runtime-IDs
       const aktuell = simRef.current;
