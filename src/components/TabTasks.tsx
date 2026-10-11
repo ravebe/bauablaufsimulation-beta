@@ -5,7 +5,6 @@ import { createPortal } from "react-dom";
 import type { SimProjekt, Task, TaskTyp } from "../types";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import type { VorgaengerLink } from "../types";
-import ZeitWahl from "./ZeitWahl";
 import { startZeitpunkt, endZeitpunkt, fmtZeitZusatz } from "./zeitHelpers";
 import { formatDatum, normalizeDatum, zeitraumVerschieben, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, getKinder,
   berechneNummern, gueltigeVorgaenger, verschiebeAufStart, kaskadiereNachfolger, vorgaengerListe, mitVorgaengern, vorgaengerText, vorgaengerEingabe, parseWartetage, parseVorgaengerText,
@@ -691,21 +690,23 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                     <>
                       {/* Datum (und bei Halbtagen/Uhrzeit die Zeit) ändern: Dauer in Arbeitszeit bleibt, Nachfolger ziehen nach */}
                       <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                        <DatePicker value={formatDatum(task.start)} kalender={aktiveSim.kalender} onChange={(val: string) => {
+                        <DatePicker value={formatDatum(task.start)} kalender={aktiveSim.kalender}
+                          zeit={{ einheit, art: "start", min: startZeitpunkt(task).min }} anzeigeZusatz={fmtZeitZusatz(startZeitpunkt(task).min, "start", einheit)}
+                          onChange={(val: string, min?: number) => {
                           const norm = normalizeDatum(val);
-                          if (norm) zeitAendern(task.id, norm, "start");
+                          if (norm) zeitAendern(task.id, norm, "start", min);
                         }} />
-                        <ZeitWahl einheit={einheit} art="start" min={startZeitpunkt(task).min} onChange={m => zeitAendern(task.id, task.start, "start", m)} />
                       </span>
                       {task.meilenstein ? (
                         <span style={{ fontSize: 10, color: "#555" }} title="Meilenstein — Dauer 0">◆ Meilenstein</span>
                       ) : (
                       <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                        <DatePicker value={formatDatum(task.end)} kalender={aktiveSim.kalender} onChange={(val: string) => {
+                        <DatePicker value={formatDatum(task.end)} kalender={aktiveSim.kalender}
+                          zeit={{ einheit, art: "ende", min: endZeitpunkt(task).min }} anzeigeZusatz={fmtZeitZusatz(endZeitpunkt(task).min, "ende", einheit)}
+                          onChange={(val: string, min?: number) => {
                           const norm = normalizeDatum(val);
-                          if (norm) zeitAendern(task.id, norm, "end");
+                          if (norm) zeitAendern(task.id, norm, "end", min);
                         }} />
-                        <ZeitWahl einheit={einheit} art="ende" min={endZeitpunkt(task).min} onChange={m => zeitAendern(task.id, task.end, "end", m)} />
                       </span>
                       )}
                     </>

@@ -876,15 +876,19 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
 
       {calEdit && onDateChange && (
         <div style={{ position: "fixed", left: calEdit.x, top: calEdit.y, zIndex: 300 }}>
-          <DatePicker value={calEdit.value} defaultOpen kalender={kalender} onChange={(val: string) => {
-            const t = sorted.find(s => s.task.id === calEdit.taskId)?.task;
+          {/* ohneAnzeige: das Datum steht schon am Balken; bei Halbtagen/Uhrzeit unter dem Kalender die Zeit wählen */}
+          {(() => { const ct = sorted.find(s => s.task.id === calEdit.taskId)?.task; return (
+          <DatePicker value={calEdit.value} defaultOpen ohneAnzeige kalender={kalender}
+            zeit={ct ? { einheit: zeiteinheit, art: calEdit.field === "start" ? "start" : "ende", min: calEdit.field === "start" ? startZeitpunkt(ct).min : endZeitpunkt(ct).min } : undefined}
+            onChange={(val: string, min?: number) => {
+            const t = ct;
             if (!t) return;
             const iso = val.split(".").reverse().join("-");
-            const paar = zeitraumVerschieben(t, iso, calEdit.field === "start" ? "start" : "end", kalender);
+            const paar = zeitraumVerschieben(t, iso, calEdit.field === "start" ? "start" : "end", kalender, min);
             onDateChange(t.id, paar.start, paar.end, paar.startZeit, paar.endZeit);
             setCalEdit(null);
             setEditingTaskId(null);
-          }} />
+          }} />); })()}
           <div style={{ position: "fixed", inset: 0, zIndex: -1 }} onClick={() => { setCalEdit(null); setEditingTaskId(null); }} />
         </div>
       )}

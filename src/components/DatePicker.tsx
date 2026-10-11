@@ -2,14 +2,41 @@ import { useState, useRef, useEffect } from "react";
 import Schwebend from "./Schwebend";
 import type { Kalender } from "./kalenderHelpers";
 import { istArbeitstag } from "./kalenderHelpers";
+import type { Zeiteinheit } from "./zeitHelpers";
+import { ARBEITSBEGINN_MIN, ARBEITSENDE_MIN, MITTAG_VON_MIN, MITTAG_BIS_MIN, minZuZeit } from "./zeitHelpers";
 
 interface Props {
   value: string;
-  onChange: (val: string) => void;
+  /** min: gewählte Uhrzeit in Minuten (nur mit `zeit`, Zeiteinheit Halbtage/Uhrzeit) */
+  onChange: (val: string, min?: number) => void;
   readOnly?: boolean;
   defaultOpen?: boolean;
   /** Ist der Schalter "Wochenenden, Feiertage und Ferien berücksichtigen" an, sind diese freien Tage ausgegraut und nicht wählbar */
   kalender?: Kalender;
+  /** Zeiteinheit Halbtage/Uhrzeit: unter dem Kalender Vormittag/Nachmittag bzw. die Stunden wählen. Ein Tag wird dann nur
+   *  vorgemerkt; ein Klick auf die Zeit oder "Übernehmen" übernimmt Datum und Zeit. */
+  zeit?: { einheit: Zeiteinheit; art: "start" | "ende"; min: number };
+  /** Kein eigener Text (z.B. im Gantt, wo das Datum schon am Balken steht) — nur der Kalender an dieser Stelle */
+  ohneAnzeige?: boolean;
+  /** Zusatz hinter dem Datum, z.B. " 13:00" oder " NM" */
+  anzeigeZusatz?: string;
+}
+
+/** Wählbare Zeiten: Start zu Beginn einer Arbeitsstunde, Ende am Schluss (Arbeitszeit 08–12 / 13–17 Uhr) */
+function zeitOptionen(einheit: Zeiteinheit, art: "start" | "ende"): { min: number; label: string }[] {
+  if (einheit === "halbtage") return art === "start"
+    ? [{ min: ARBEITSBEGINN_MIN, label: "Vormittag" }, { min: MITTAG_BIS_MIN, label: "Nachmittag" }]
+    : [{ min: MITTAG_VON_MIN, label: "Vormittag" }, { min: ARBEITSENDE_MIN, label: "Nachmittag" }];
+  const stunden = art === "start" ? [8, 9, 10, 11, 13, 14, 15, 16] : [9, 10, 11, 12, 14, 15, 16, 17];
+  return stunden.map(h => ({ min: h * 60, label: minZuZeit(h * 60) }));
+}
+/** Welche Option entspricht der aktuellen Zeit (Halbtage: VM/NM-Hälfte, Uhrzeit: angefangene Stunde) */
+function istZeitGewaehlt(einheit: Zeiteinheit, art: "start" | "ende", opt: number, min: number): boolean {
+  if (einheit === "halbtage") {
+    const nm = art === "start" ? min >= MITTAG_BIS_MIN : min > MITTAG_VON_MIN;
+    return nm === (art === "start" ? opt >= MITTAG_BIS_MIN : opt > MITTAG_VON_MIN);
+  }
+  return art === "start" ? Math.floor(min / 60) * 60 === opt : Math.ceil(min / 60) * 60 === opt;
 }
 
 const TAGE = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
@@ -26,9 +53,13 @@ function fmtDMY(d: Date): string {
 
 const CAL_W = 224;
 
-export default function DatePicker({ value, onChange, readOnly, defaultOpen, kalender }: Props) {
+export default function DatePicker({ value, onChange, readOnly, defaultOpen, kalender, zeit, ohneAnzeige, anzeigeZusatz }: Props) {
   const [offen, setOffen] = useState(!!defaultOpen);
   const parsed = parseDMY(value);
+  const mitZeit = !!zeit && zeit.einheit !== "tage";
+  // Mit Zeitwahl: Tag nur vormerken, übernommen wird mit der Zeit bzw. "Übernehmen"
+  const [vorgemerkt, setVorgemerkt] = useState<Date | null>(parsed);
+  const [zeitMin, setZeitMin] = useState(zeit?.min ?? ARBEITSBEGINN_MIN);
   const [monat, setMonat] = useState(parsed?.getMonth() ?? new Date().getMonth());
   const [jahr, setJahr] = useState(parsed?.getFullYear() ?? new Date().getFullYear());
   const ref = useRef<HTMLDivElement>(null);
@@ -47,6 +78,7 @@ export default function DatePicker({ value, onChange, readOnly, defaultOpen, kal
 
   useEffect(() => {
     if (offen && parsed) { setMonat(parsed.getMonth()); setJahr(parsed.getFullYear()); }
+    if (offen) { setVorgemerkt(parsed); setZeitMin(zeit?.min ?? ARBEITSBEGINN_MIN); }
   }, [offen]);
 
   const ersterTag = new Date(jahr, monat, 1).getDay();
@@ -57,7 +89,16 @@ export default function DatePicker({ value, onChange, readOnly, defaultOpen, kal
 
   function prev() { if (monat === 0) { setMonat(11); setJahr(j => j - 1); } else setMonat(m => m - 1); }
   function next() { if (monat === 11) { setMonat(0); setJahr(j => j + 1); } else setMonat(m => m + 1); }
-  function waehlen(tag: number) { onChange(fmtDMY(new Date(jahr, monat, tag))); setOffen(false); }
+  function waehlen(tag: number) {
+    const d = new Date(jahr, monat, tag);
+    if (mitZeit) { setVorgemerkt(d); return; }
+    onChange(fmtDMY(d)); setOffen(false);
+  }
+  function uebernehmen(min: number) {
+    const d = vorgemerkt ?? parsed;
+    if (!d) return;
+    onChange(fmtDMY(d), min); setOffen(false);
+  }
 
   const zellen: (number | null)[] = [];
   for (let i = 0; i < ersterTag; i++) zellen.push(null);
@@ -71,7 +112,7 @@ export default function DatePicker({ value, onChange, readOnly, defaultOpen, kal
     <div ref={ref} style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
       <span ref={triggerRef} onClick={e => { e.stopPropagation(); setOffen(o => !o); }}
         style={{ fontSize: 11, color: "#2d7dbd", cursor: "pointer" }}>
-        {value || "—"}
+        {ohneAnzeige ? null : <>{value || "—"}{anzeigeZusatz}</>}
       </span>
 
       {offen && (
@@ -92,24 +133,49 @@ export default function DatePicker({ value, onChange, readOnly, defaultOpen, kal
               if (tag === null) return <div key={`e${i}`} />;
               const d = new Date(jahr, monat, tag);
               const istH = d.toDateString() === heute.toDateString();
-              const istG = parsed && d.toDateString() === parsed.toDateString();
+              const auswahl = mitZeit ? vorgemerkt : parsed;
+              const istG = auswahl && d.toDateString() === auswahl.toDateString();
               const frei = gesperrt(d);
               return (
                 <button key={tag} disabled={frei} title={frei ? "Arbeitsfrei (Wochenende, Feiertag oder Ferien) — nicht wählbar" : undefined} onClick={() => waehlen(tag)} style={{
-                  width: 28, height: 28, borderRadius: "50%", border: "none", cursor: frei ? "not-allowed" : "pointer", opacity: frei ? 0.3 : 1,
-                  textDecoration: frei ? "line-through" : "none",
+                  width: 28, height: 28, borderRadius: "50%", border: "none", cursor: frei ? "not-allowed" : "pointer",
                   fontSize: 12, fontWeight: istG || istH ? 700 : 400, margin: "auto",
                   background: istG ? "#3a7bd5" : istH ? "rgba(255,255,255,.15)" : "transparent",
-                  color: istG ? "#fff" : istH ? "#90caf9" : "rgba(255,255,255,.85)",
+                  color: istG ? "#fff" : frei ? "rgba(255,255,255,.28)" : istH ? "#90caf9" : "rgba(255,255,255,.85)",
                   outline: istH && !istG ? "1.5px solid #90caf9" : "none",
                 }}>{tag}</button>
               );
             })}
           </div>
-          <button disabled={gesperrt(heute)} onClick={() => { setMonat(heute.getMonth()); setJahr(heute.getFullYear()); waehlen(heute.getDate()); }}
-            style={{ display: "block", opacity: gesperrt(heute) ? 0.35 : 1, cursor: gesperrt(heute) ? "not-allowed" : "pointer", width: "100%", padding: "8px 0", background: "rgba(255,255,255,.08)",
-              border: "none", borderTop: "1px solid rgba(255,255,255,.15)", color: "#90caf9",
-              fontSize: 12, fontWeight: 600, borderRadius: "0 0 6px 6px" }}>Heute</button>
+          {mitZeit && zeit && (
+            <div style={{ borderTop: "1px solid rgba(255,255,255,.15)", padding: "8px 8px 10px" }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,.6)", textAlign: "center", letterSpacing: 1, marginBottom: 6 }}>
+                {zeit.einheit === "halbtage" ? (zeit.art === "start" ? "BEGINN" : "ENDE") : (zeit.art === "start" ? "BEGINN UM" : "ENDE UM")}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: zeit.einheit === "halbtage" ? "1fr 1fr" : "repeat(4, 1fr)", gap: 4 }}>
+                {zeitOptionen(zeit.einheit, zeit.art).map(o => {
+                  const gew = istZeitGewaehlt(zeit.einheit, zeit.art, o.min, zeitMin);
+                  return (
+                    <button key={o.min} onClick={() => { setZeitMin(o.min); uebernehmen(o.min); }}
+                      title={zeit.einheit === "halbtage" ? `${zeit.art === "start" ? "Beginnt" : "Endet"} um ${minZuZeit(o.min)}` : undefined}
+                      style={{ height: 26, borderRadius: 13, border: "none", cursor: "pointer", fontSize: 12, fontWeight: gew ? 700 : 400,
+                        background: gew ? "#3a7bd5" : "rgba(255,255,255,.08)", color: gew ? "#fff" : "rgba(255,255,255,.85)", fontFamily: "inherit" }}>{o.label}</button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          <div style={{ display: "flex", borderTop: "1px solid rgba(255,255,255,.15)" }}>
+            <button disabled={gesperrt(heute)} onClick={() => { setMonat(heute.getMonth()); setJahr(heute.getFullYear()); waehlen(heute.getDate()); }}
+              style={{ flex: 1, opacity: gesperrt(heute) ? 0.35 : 1, cursor: gesperrt(heute) ? "not-allowed" : "pointer", padding: "8px 0", background: "rgba(255,255,255,.08)",
+                border: "none", color: "#90caf9",
+                fontSize: 12, fontWeight: 600, borderRadius: mitZeit ? "0 0 0 6px" : "0 0 6px 6px" }}>Heute</button>
+            {mitZeit && (
+              <button onClick={() => uebernehmen(zeitMin)}
+                style={{ flex: 1, cursor: "pointer", padding: "8px 0", background: "#3a7bd5", border: "none", color: "#fff",
+                  fontSize: 12, fontWeight: 600, borderRadius: "0 0 6px 0" }}>Übernehmen</button>
+            )}
+          </div>
         </Schwebend>
       )}
     </div>
