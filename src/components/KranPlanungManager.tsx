@@ -16,7 +16,7 @@ export default function KranPlanungManager({ sim, updateSim, readOnly, onClose }
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}
       onClick={onClose}>
-      <div style={{ background: "#fff", width: 820, maxWidth: "94vw", maxHeight: "88vh", overflowY: "auto",
+      <div style={{ background: "#fff", borderRadius: 8, width: 820, maxWidth: "94vw", maxHeight: "88vh", overflowY: "auto",
         boxShadow: "0 8px 30px rgba(0,0,0,.25)", fontFamily: "var(--tc-font)" }}
         onClick={e => e.stopPropagation()}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 18px 0", borderBottom: "1px solid var(--tc-border-light)" }}>

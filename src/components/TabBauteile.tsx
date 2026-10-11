@@ -458,7 +458,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
       {zeitplanBestaetigenOffen && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}
           onClick={() => setZeitplanBestaetigenOffen(false)}>
-          <div style={{ background: "#fff", width: 420, maxWidth: "92vw", boxShadow: "0 8px 30px rgba(0,0,0,.25)", fontFamily: "var(--tc-font)" }}
+          <div style={{ background: "#fff", borderRadius: 8, overflow: "hidden", width: 420, maxWidth: "92vw", boxShadow: "0 8px 30px rgba(0,0,0,.25)", fontFamily: "var(--tc-font)" }}
             onClick={e => e.stopPropagation()}>
             <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--tc-border-light)", fontSize: 16, fontWeight: 700, color: "var(--tc-text)" }}>
               Berechnete Dauer übernehmen

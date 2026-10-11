@@ -121,7 +121,7 @@ export default function ZugriffskontrollManager({ api, onClose, sims, setSims, a
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}
       onClick={onClose}>
-      <div style={{ background: "#fff", width: 520, maxWidth: "92vw", maxHeight: "85vh", overflowY: "auto",
+      <div style={{ background: "#fff", borderRadius: 8, width: 520, maxWidth: "92vw", maxHeight: "85vh", overflowY: "auto",
         boxShadow: "0 8px 30px rgba(0,0,0,.25)", fontFamily: "var(--tc-font)" }}
         onClick={e => { e.stopPropagation(); setOffenerDropdown(null); setSimDropdownOffen(false); }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid var(--tc-border-light)" }}>

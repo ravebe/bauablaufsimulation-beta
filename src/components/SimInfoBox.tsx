@@ -1,6 +1,7 @@
 // SimInfoBox.tsx — schlanke Zusammenfassung einer Simulation (Ersteller, letzte Änderung, Tasks, Zeitraum, Bauteile, Modelle …).
-// Wird im ⋮-Menü der Simulationskarte unter "Info" aufgeklappt, siehe SimKebabMenu.tsx.
+// Eigenes Fenster (wie Hilfe), geöffnet im ⋮-Menü der Simulationskarte unter "Info", siehe SimKebabMenu.tsx.
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { SimProjekt } from "../types";
 import { formatDatum } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
@@ -11,7 +12,7 @@ const datumZeit = (iso?: string) => {
   return d && !isNaN(d.getTime()) ? d.toLocaleString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : null;
 };
 
-export default function SimInfoBox({ sim, api }: { sim: SimProjekt; api?: ApiInstance | null }) {
+export default function SimInfoBox({ sim, api, onClose }: { sim: SimProjekt; api?: ApiInstance | null; onClose: () => void }) {
   const [erstellerName, setErstellerName] = useState<string | null>(null);
   useEffect(() => {
     if (!sim.erstellerId || !api?.project.getMembers) return;
@@ -37,10 +38,19 @@ export default function SimInfoBox({ sim, api }: { sim: SimProjekt; api?: ApiIns
     ["Modelle", sim.modelle.length === 0 ? "keine" : sim.modelle.map(m => `${m.name}${m.vierD ? " (4D)" : ""}`).join(", ")],
     ["Gantt-Datei", sim.ganttImport ? `${sim.ganttImport.dateiname} · Version ${sim.ganttImport.version}` : "—"],
   ];
-  return (
-    <div style={{ padding: "8px 14px 10px", background: "#fafbfc", fontSize: 10, lineHeight: 1.45, maxWidth: 320 }}>
-      <div style={{ fontWeight: 700, fontSize: 11, color: "var(--tc-text)", marginBottom: 4, wordBreak: "break-word" }}>{sim.name}</div>
-      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: 10, rowGap: 2 }}>
+  return createPortal(
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}
+      onClick={onClose}>
+      <div style={{ background: "#fff", borderRadius: 8, width: 460, maxWidth: "92vw", maxHeight: "85vh", overflowY: "auto",
+        boxShadow: "0 8px 30px rgba(0,0,0,.25)", fontFamily: "var(--tc-font)" }}
+        onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "14px 18px", borderBottom: "1px solid var(--tc-border-light)" }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: "var(--tc-text)" }}>Info</div>
+          <button className="tc-btn-ghost" style={{ fontSize: 14, padding: "2px 8px" }} onClick={onClose}>✕</button>
+        </div>
+      <div style={{ padding: "14px 18px 16px", fontSize: 12, lineHeight: 1.5 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: "var(--tc-text)", marginBottom: 8, wordBreak: "break-word" }}>{sim.name}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: 14, rowGap: 4 }}>
         {zeilen.map(([k, v]) => (
           <div key={k} style={{ display: "contents" }}>
             <span style={{ color: "var(--tc-text-3)", whiteSpace: "nowrap" }}>{k}</span>
@@ -48,6 +58,9 @@ export default function SimInfoBox({ sim, api }: { sim: SimProjekt; api?: ApiIns
           </div>
         ))}
       </div>
-    </div>
+      </div>
+      </div>
+    </div>,
+    document.body
   );
 }

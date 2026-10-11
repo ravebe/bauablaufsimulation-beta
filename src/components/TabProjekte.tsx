@@ -770,7 +770,7 @@ export default function TabProjekte({ api, laedt, sims, setSims, aktivId, setAkt
       {kopierDialog && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}
           onClick={() => setKopierDialog(null)}>
-          <div style={{ background: "#fff", width: 420, maxWidth: "92vw", boxShadow: "0 8px 30px rgba(0,0,0,.25)", fontFamily: "var(--tc-font)" }}
+          <div style={{ background: "#fff", borderRadius: 8, overflow: "hidden", width: 420, maxWidth: "92vw", boxShadow: "0 8px 30px rgba(0,0,0,.25)", fontFamily: "var(--tc-font)" }}
             onClick={e => e.stopPropagation()}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid var(--tc-border-light)" }}>
               <div style={{ fontSize: 16, fontWeight: 700, color: "var(--tc-text)" }}>Simulation kopieren</div>
@@ -824,7 +824,7 @@ export default function TabProjekte({ api, laedt, sims, setSims, aktivId, setAkt
       {updateDialog && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}
           onClick={() => setUpdateDialog(null)}>
-          <div style={{ background: "#fff", width: 420, maxWidth: "92vw", boxShadow: "0 8px 30px rgba(0,0,0,.25)", fontFamily: "var(--tc-font)" }}
+          <div style={{ background: "#fff", borderRadius: 8, overflow: "hidden", width: 420, maxWidth: "92vw", boxShadow: "0 8px 30px rgba(0,0,0,.25)", fontFamily: "var(--tc-font)" }}
             onClick={e => e.stopPropagation()}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid var(--tc-border-light)" }}>
               <div style={{ fontSize: 16, fontWeight: 700, color: "var(--tc-text)" }}>Neue Modellversion verfügbar</div>

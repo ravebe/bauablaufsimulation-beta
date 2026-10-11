@@ -106,7 +106,7 @@ export default function HilfeManager({ initialTab, onClose }: Props) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}
       onClick={onClose}>
-      <div style={{ background: "#fff", width: 720, maxWidth: "92vw", maxHeight: "85vh", display: "flex",
+      <div style={{ background: "#fff", borderRadius: 8, overflow: "hidden", width: 720, maxWidth: "92vw", maxHeight: "85vh", display: "flex",
         boxShadow: "0 8px 30px rgba(0,0,0,.25)", fontFamily: "var(--tc-font)" }}
         onClick={e => e.stopPropagation()}>
         <div style={{ width: 190, flexShrink: 0, borderRight: "1px solid var(--tc-border-light)", padding: "14px 10px", overflowY: "auto" }}>

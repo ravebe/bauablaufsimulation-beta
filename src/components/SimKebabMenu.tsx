@@ -75,7 +75,7 @@ export default function SimKebabMenu({ sim, darfBearbeiten, onKopieren, onUmbene
   const [neuerName, setNeuerName] = useState("");
   const knopfRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const ref = useClickOutside<HTMLDivElement>(offen, () => { setOffen(false); setExportSubOffen(false); setUmbenennOffen(false); setInfoOffen(false); }, menuRef);
+  const ref = useClickOutside<HTMLDivElement>(offen, () => { setOffen(false); setExportSubOffen(false); setUmbenennOffen(false); }, menuRef);
 
   function speichernUmbenennen() {
     if (neuerName.trim()) onUmbenennen(neuerName.trim());
@@ -87,7 +87,7 @@ export default function SimKebabMenu({ sim, darfBearbeiten, onKopieren, onUmbene
     <div ref={ref} style={{ position: "relative" }} onClick={e => e.stopPropagation()}>
       <button ref={knopfRef}
         style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "var(--tc-text-3)", padding: "0 4px" }}
-        onClick={() => { setOffen(o => !o); setExportSubOffen(false); setUmbenennOffen(false); setInfoOffen(false); }}
+        onClick={() => { setOffen(o => !o); setExportSubOffen(false); setUmbenennOffen(false); }}
       >⋮</button>
       {offen && (
         <Schwebend anker={knopfRef} menuRef={menuRef} ausrichtung="rechts" onClick={e => e.stopPropagation()} style={{
@@ -186,15 +186,12 @@ export default function SimKebabMenu({ sim, darfBearbeiten, onKopieren, onUmbene
           >Simulation löschen</button>
           )}
           <button
-            style={{ display: "flex", width: "100%", justifyContent: "space-between", alignItems: "center", padding: "8px 14px", background: "none", border: "none", fontSize: 11, cursor: "pointer", borderBottom: infoOffen ? "0.5px solid #eef1f4" : "none" }}
-            onClick={() => setInfoOffen(o => !o)}
-          >
-            <span>Info</span>
-            <span>{infoOffen ? "▲" : "▼"}</span>
-          </button>
-          {infoOffen && <SimInfoBox sim={sim} api={api} />}
+            style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", fontSize: 11, cursor: "pointer" }}
+            onClick={() => { setInfoOffen(true); setOffen(false); setExportSubOffen(false); setUmbenennOffen(false); }}
+          >Info …</button>
         </Schwebend>
       )}
+      {infoOffen && <SimInfoBox sim={sim} api={api} onClose={() => setInfoOffen(false)} />}
     </div>
   );
 }
