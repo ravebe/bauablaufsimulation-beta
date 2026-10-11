@@ -11,6 +11,7 @@ import { bindeListenScroll, useSelektionFokus, zentriereZeile } from "./listenSc
 import { useDoppelklickHinweis } from "../hooks/useDoppelklickHinweis";
 import PunkteMenu from "./PunkteMenu";
 import { exportEintraege } from "./exportEintraege";
+import { useFreieTageAusblenden } from "../hooks/useFreieTageAusblenden";
 
 interface Props { api: ApiInstance | null; projectId?: string | null; aktiveSim: SimProjekt | null; aktivesModellId: string | null; taskSort?: "gantt" | "datum" | "aktiv" | "name" | "nummer"; sharedNadelTag?: React.MutableRefObject<number>; onIfcExport?: () => void; }
 
@@ -28,6 +29,7 @@ function tagVonDatum(s: string, min: Date): number {
 }
 
 export default function TabAbspielen({ api, projectId = null, aktiveSim, aktivesModellId, taskSort = "gantt", sharedNadelTag, onIfcExport }: Props) {
+  const [freieTageAus, setFreieTageAus] = useFreieTageAusblenden(projectId);
   const kalender = aktiveSim?.kalender ?? LEERER_KALENDER;
   const [sekProTag, setSekProTag] = useState(0.5);
   const [farbModusAktiv, setFarbModusAktiv] = useState(false);
@@ -531,11 +533,19 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
           onClick={() => setGanttOffen(g => !g)}>
           {ganttOffen ? "☰ Liste" : "▤ Gantt"}
         </button>
-        <PunkteMenu title="Export" abschnitte={exportEintraege(aktiveSim, onIfcExport).length > 0 ? [{ titel: "Export", eintraege: exportEintraege(aktiveSim, onIfcExport) }] : []} />
+        <PunkteMenu title="Optionen / Export" abschnitte={[
+          ...(ganttOffen ? [{ titel: "Optionen", eintraege: [{
+            label: freieTageAus ? "Wochenende, Ferien und Feiertage einblenden" : "Wochenende, Ferien und Feiertage ausblenden",
+            title: "Arbeitsfreie Tage (graue Bänder) im Gantt einklappen bzw. wieder anzeigen",
+            onClick: () => setFreieTageAus(!freieTageAus),
+          }] }] : []),
+          ...(exportEintraege(aktiveSim, onIfcExport).length > 0 ? [{ titel: "Export", eintraege: exportEintraege(aktiveSim, onIfcExport) }] : []),
+        ]} />
       </div>
 
       {ganttOffen ? (
           <GanttChart
+            freieTageAusblenden={freieTageAus}
             projectId={projectId}
             zeiteinheit={aktiveSim?.zeiteinheit}
             tasks={tasks}

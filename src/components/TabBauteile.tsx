@@ -20,6 +20,7 @@ import { useSelektionFokus } from "./listenScroll";
 import Schwebend from "./Schwebend";
 import PunkteMenu from "./PunkteMenu";
 import { exportEintraege } from "./exportEintraege";
+import { useFreieTageAusblenden } from "../hooks/useFreieTageAusblenden";
 
 interface Props {
   api: ApiInstance | null;
@@ -39,6 +40,7 @@ interface Props {
 }
 
 export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveSim, updateSim, aktivesModellId, taskSort, readOnly, sharedNadelTag, sichtbar, onIfcExport }: Props) {
+  const [freieTageAus, setFreieTageAus] = useFreieTageAusblenden(projectId);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [totalObjekte, setTotalObjekte] = useState<number | null>(null);
   // alle Bauteile der Modelle ("modelId:::runtimeId") — für "Noch nicht verknüpft" (UnbenutzteBauteile.tsx)
@@ -442,7 +444,14 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
             }}>
             {ganttOffen ? "☰ Liste" : "▤ Gantt"}
           </button>
-        <PunkteMenu title="Export" abschnitte={exportEintraege(aktiveSim, onIfcExport).length > 0 ? [{ titel: "Export", eintraege: exportEintraege(aktiveSim, onIfcExport) }] : []} />
+        <PunkteMenu title="Optionen / Export" abschnitte={[
+          ...(ganttOffen ? [{ titel: "Optionen", eintraege: [{
+            label: freieTageAus ? "Wochenende, Ferien und Feiertage einblenden" : "Wochenende, Ferien und Feiertage ausblenden",
+            title: "Arbeitsfreie Tage (graue Bänder) im Gantt einklappen bzw. wieder anzeigen",
+            onClick: () => setFreieTageAus(!freieTageAus),
+          }] }] : []),
+          ...(exportEintraege(aktiveSim, onIfcExport).length > 0 ? [{ titel: "Export", eintraege: exportEintraege(aktiveSim, onIfcExport) }] : []),
+        ]} />
         </div>
       </div>
 
@@ -486,6 +495,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
       {ganttOffen ? (
         <>
           <GanttChart
+            freieTageAusblenden={freieTageAus}
             projectId={projectId}
             zeiteinheit={aktiveSim?.zeiteinheit}
             tasks={tasks}

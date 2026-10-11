@@ -44,6 +44,8 @@ interface Props {
   nadelStil?: "normal" | "ghost";
   dateColor?: string;
   kalender?: Kalender;
+  /** Arbeitsfreie Tage (Wochenende, Ferien, Feiertage) auf der Zeitachse einklappen (⋮ → Optionen) */
+  freieTageAusblenden?: boolean;
 }
 
 const FARBEN: Record<string, string> = TASK_TYP_FARBE;
@@ -64,8 +66,39 @@ function fmtDatum(d: Date, lang: boolean): string {
 }
 function fmtDMY(d: Date): string { return `${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`; }
 
-export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selektionFokus, projectId = null, tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selectedIds = [], selGuids, taskSort, height, editable, onDateChange, onTaskReorder, onTaskRename, onSetPredecessor, showObjektCount, suchQuery = "", nadelStil = "normal", dateColor = "#2d7dbd", kalender = LEERER_KALENDER }: Props) {
+export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selektionFokus, projectId = null, tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selectedIds = [], selGuids, taskSort, height, editable, onDateChange, onTaskReorder, onTaskRename, onSetPredecessor, showObjektCount, suchQuery = "", nadelStil = "normal", dateColor = "#2d7dbd", kalender = LEERER_KALENDER, freieTageAusblenden = false }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
+  // Zeitachse: Tag (ab minDate, mit Nachkommastellen) ↔ Achsen-Einheit (x = Einheit × pxProTag). Ohne Ausblenden identisch;
+  // mit Ausblenden haben arbeitsfreie Tage die Breite 0 (eingeklappt). Zoom rechnet in Einheiten und bleibt so unverändert.
+  const minZeit = minDate?.getTime();
+  const achse = useMemo(() => {
+    if (!freieTageAusblenden || minZeit === undefined || totalTage <= 0) return { zuEinheit: (t: number) => t, ausEinheit: (u: number) => u };
+    const basis = new Date(minZeit);
+    const n = totalTage + 1;
+    const w = new Float64Array(n), cum = new Float64Array(n + 1);
+    for (let d = 0; d < n; d++) {
+      const dt = new Date(basis.getFullYear(), basis.getMonth(), basis.getDate() + d);
+      w[d] = istArbeitstag(fmtISO(dt), kalender) ? 1 : 0;
+      cum[d + 1] = cum[d] + w[d];
+    }
+    const zuEinheit = (t: number) => {
+      if (t <= 0) return t;
+      if (t >= n) return cum[n] + (t - n);
+      const d = Math.floor(t);
+      return cum[d] + (t - d) * w[d];
+    };
+    const ausEinheit = (u: number) => {
+      if (u <= 0) return u;
+      if (u >= cum[n]) return n + (u - cum[n]);
+      let lo = 0, hi = n - 1; // letzter Tag mit cum[d] <= u, dann zum nächsten sichtbaren Tag
+      while (lo < hi) { const m = (lo + hi + 1) >> 1; if (cum[m] <= u) lo = m; else hi = m - 1; }
+      while (lo < n - 1 && w[lo] === 0) lo++;
+      return lo + Math.max(0, u - cum[lo]);
+    };
+    return { zuEinheit, ausEinheit };
+  }, [freieTageAusblenden, minZeit, totalTage, kalender]);
+  const achseRef = useRef(achse);
+  achseRef.current = achse;
   const headerRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
   const nadelKopfRef = useRef<SVGGElement>(null);
@@ -96,7 +129,7 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
     if (sd && minDate) {
       const sT = Math.round((sd.getTime() - minDate.getTime()) / 86400000);
       const eT = ed ? Math.round((ed.getTime() - minDate.getTime()) / 86400000) + 1 : sT + 1;
-      body.scrollLeft = Math.max(0, ((sT + eT) / 2) * pxRef.current - body.clientWidth / 2);
+      body.scrollLeft = Math.max(0, ((achseRef.current.zuEinheit(sT) + achseRef.current.zuEinheit(eT)) / 2) * pxRef.current - body.clientWidth / 2);
       if (headerRef.current) headerRef.current.scrollLeft = body.scrollLeft;
     }
   });
@@ -262,7 +295,7 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
   // aktuelle Position her, noch bevor gezeichnet wird — so springt die Nadel nie kurz zurück.
   const setzeNadel = useCallback(() => {
     if (!tagRef) return;
-    const t = `translate(${Math.round(tagRef.current * pxRef.current)},0)`;
+    const t = `translate(${Math.round(achseRef.current.zuEinheit(tagRef.current) * pxRef.current)},0)`;
     nadelKopfRef.current?.setAttribute("transform", t);
     nadelKoerperRef.current?.setAttribute("transform", t);
   }, [tagRef]);
@@ -283,7 +316,7 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
     if (currentTag < 0) return;
     if (currentTag === lastCentered.current) return;
     const el = bodyRef.current; if (!el || !minDate || totalTage <= 0) return;
-    const nadelX = currentTag * pxProTag;
+    const nadelX = achse.zuEinheit(currentTag) * pxProTag;
     const rand = el.clientWidth * 0.15;
     if (nadelX >= el.scrollLeft + rand && nadelX <= el.scrollLeft + el.clientWidth - rand) return;
     lastCentered.current = currentTag;
@@ -334,7 +367,9 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
       return { datum: fmtISO(d), min: uhrzeitAusArbeitsMin(Math.round(anteil * MIN_PRO_ARBEITSTAG), art) };
     };
     const onMove = (ev: MouseEvent) => {
-      const dd = Math.round((ev.clientX - sx) / pxProTag / schritt) * schritt;
+      // Mausweg in Achsen-Einheiten → Tage (eingeklappte freie Tage werden übersprungen)
+      const A = achseRef.current;
+      const dd = Math.round((A.ausEinheit(A.zuEinheit(oS) + (ev.clientX - sx) / pxProTag) - oS) / schritt) * schritt;
       let nS = oS, nE = oE;
       if (mode === "start") { nS = Math.max(0, oS + dd); if (nS > nE - schritt) nS = nE - schritt; }
       else if (mode === "end") { nE = Math.max(nS + schritt, oE + dd); }
@@ -355,7 +390,7 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
     if (needleDrag.current) return;
     const el = bodyRef.current; if (!el) return;
     const x = e.clientX - el.getBoundingClientRect().left + el.scrollLeft;
-    const tag = Math.max(0, Math.min(totalTage, Math.round(x / pxRef.current)));
+    const tag = Math.max(0, Math.min(totalTage, Math.round(achseRef.current.ausEinheit(x / pxRef.current))));
     onNadelClick?.(tag);
     onSliderChange?.(tag);
   }, [totalTage, onNadelClick, onSliderChange]);
@@ -367,7 +402,7 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
     const el = bodyRef.current; if (!el) return;
     const onMove = (ev: MouseEvent) => {
       if (!needleDrag.current || !el) return;
-      const tag = Math.max(0, Math.min(totalTage, Math.round((ev.clientX - el.getBoundingClientRect().left + el.scrollLeft) / pxRef.current)));
+      const tag = Math.max(0, Math.min(totalTage, Math.round(achseRef.current.ausEinheit((ev.clientX - el.getBoundingClientRect().left + el.scrollLeft) / pxRef.current))));
       onNadelClick?.(tag);
       onSliderChange?.(tag);
     };
@@ -413,7 +448,8 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
   });
   sortedRef.current = sorted;
 
-  const chartW = Math.max((totalTage + 1) * pxProTag, 200); // +1: der letzte Tag wird als ganzer Tag gezeichnet
+  const X = (t: number) => achse.zuEinheit(t) * pxProTag; // Tag → x
+  const chartW = Math.max(X(totalTage + 1), 200); // +1: der letzte Tag wird als ganzer Tag gezeichnet
   const bodyH = sorted.length * ROW_H;
   const longDates = pxProTag >= 8;
 
@@ -424,17 +460,18 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
   const showDayNums = pxProTag >= 15;       // Tageszahlen
 
   // Alle Tage pre-compute
-  const allDays: { x: number; date: Date; dow: number }[] = [];
+  const allDays: { x: number; w: number; date: Date; dow: number }[] = [];
   for (let d = 0; d <= totalTage; d++) {
     // Kalendertag d ab minDate — nicht "+ d × 24 h": nach der Zeitumstellung (z.B. 25.10.) landet das sonst auf 23:00 des Vortags (Tag doppelt, Schattierung verschoben)
     const dt = new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate() + d);
-    allDays.push({ x: d * pxProTag, date: dt, dow: dt.getDay() });
+    const x = X(d);
+    allDays.push({ x, w: X(d + 1) - x, date: dt, dow: dt.getDay() });
   }
 
   // Arbeitsfreie Tage (Wochenenden + Feiertage + Ferien aus dem Kalender)
   const weekendBands: { x: number; w: number }[] = [];
   for (const day of allDays) {
-    if (!istArbeitstag(fmtISO(day.date), kalender)) weekendBands.push({ x: day.x, w: pxProTag });
+    if (day.w > 0 && !istArbeitstag(fmtISO(day.date), kalender)) weekendBands.push({ x: day.x, w: day.w });
   }
 
   // Monats-Marker
@@ -462,7 +499,7 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
   // Tages-Nummern
   const dayNums: { x: number; label: string }[] = [];
   if (showDayNums) {
-    for (const day of allDays) { if (day.date.getDate() !== 1) dayNums.push({ x: day.x, label: `${day.date.getDate()}` }); }
+    for (const day of allDays) { if (day.w > 0 && day.date.getDate() !== 1) dayNums.push({ x: day.x + day.w / 2, label: `${day.date.getDate()}` }); }
   }
 
   // Wochen-Trennlinien (So→Mo)
@@ -471,9 +508,9 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
 
   // Tages-Trennlinien
   const dayLines: number[] = [];
-  if (showDayLines) { for (const day of allDays) { if (day.date.getDate() !== 1 && day.dow !== 1) dayLines.push(day.x); } }
+  if (showDayLines) { for (const day of allDays) { if (day.w > 0 && day.date.getDate() !== 1 && day.dow !== 1) dayLines.push(day.x); } }
 
-  const nadelX = currentTag * pxProTag;
+  const nadelX = X(currentTag);
   // Beim Abspielen setzt React die Nadel nur einmal (translate 0); die Position schreibt die rAF-Schleife unten direkt ins DOM
   const imperativ = !!laeuft && !!tagRef;
   const containerH = height ?? 350;
@@ -496,7 +533,7 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
             {/* KW-Labels */}
             {kwMarkers.map((m, i) => <text key={`kw${i}`} x={m.x + 2} y={27} fontSize={9} fill="#8a9baa">{m.label}</text>)}
             {/* Tages-Nummern */}
-            {dayNums.map((m, i) => <text key={`dn${i}`} x={m.x + pxProTag/2} y={28} fontSize={10} fill="#888" textAnchor="middle">{m.label}</text>)}
+            {dayNums.map((m, i) => <text key={`dn${i}`} x={m.x} y={28} fontSize={10} fill="#888" textAnchor="middle">{m.label}</text>)}
             {/* Nadel-Dreieck */}
             {currentTag >= 0 && <g ref={nadelKopfRef} transform={`translate(${imperativ ? 0 : nadelX},0)`}><polygon points={`-5,${HEAD_H} 5,${HEAD_H} 0,${HEAD_H-6}`} fill={nadelStil === "ghost" ? "#EAB308" : "#e63946"} /></g>}
           </svg>
@@ -716,7 +753,7 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
               const dauer = fmtDauer(dauerZahl, zeiteinheit);
               const zusatzS = isGrp ? "" : fmtZeitZusatz(sMin, "start", zeiteinheit), zusatzE = isGrp ? "" : fmtZeitZusatz(eMin, "ende", zeiteinheit);
               const tip = sd && ed ? `${t.name}\n${fmtDMY(sd)}${zusatzS} – ${fmtDMY(ed)}${zusatzE} · ${dauer} Arbeitszeit (Start und Ende zählen mit, Wochenenden/Feiertage/Ferien nicht)` : t.name;
-              const bX = sT * pxProTag, bW = Math.max((eT - sT) * pxProTag, 3);
+              const bX = X(sT), bW = Math.max(X(eT) - bX, 3);
               const isSel = selectedIds.includes(t.id), hasSel = selGuids?.size ? t.objektGuids.some(g => selGuids!.has(g)) : false;
               const isEditing = editingTaskId === t.id || calEdit?.taskId === t.id;
               const handleW = Math.min(6, bW / 3);
@@ -787,7 +824,8 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
                   {sd && (() => {
                     // Ein Task über Wochenende/Feiertag/Ferien wird als mehrere Balkenstücke gezeichnet (Lücke = freie Tage, dünne Linie als Verbindung).
                     // Ziehen an den Enden bleibt am Anfang des ersten und am Ende des letzten Stücks (Anfasser unten).
-                    const bloecke = ed ? arbeitsBloecke(effStart, effEnd, kalender) : [];
+                    // Bei eingeklappten freien Tagen gibt es keine Lücken → ein durchgehender Balken
+                    const bloecke = ed && !freieTageAusblenden ? arbeitsBloecke(effStart, effEnd, kalender) : [];
                     const stuecke = bloecke.length > 1 ? bloecke.map(b => ({ x: (sTag + b.von) * pxProTag, w: (b.bis - b.von + 1) * pxProTag })) : [{ x: bX, w: bW }];
                     if (bloecke.length > 1) {
                       const a0 = tagesAnteil(sMin) * pxProTag, a1 = (1 - tagesAnteil(eMin)) * pxProTag;
