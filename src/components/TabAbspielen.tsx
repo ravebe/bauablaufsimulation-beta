@@ -688,15 +688,9 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
         </button>
       </div>
 
-      {status && (
-        <div className={`alert ${status.startsWith("✓") ? "ok" : status.startsWith("■") ? "err" : "info"}`} style={{ marginTop: 8 }}>
-          {aktiveTasksAnzeige ? aktiveTasksAnzeige.map((t, i) => (
-            <span key={t.id}>
-              {i > 0 && ", "}
-              <span style={{ ...dot(t.typ), width: 7, height: 7 }} />{t.name}
-            </span>
-          )) : status}
-        </div>
+      {/* Nur Ablauf-Meldungen (Bereit machen / Bereit / abgeschlossen) — keine Liste der aktiven Tasks und kein "Gestoppt" */}
+      {status && !aktiveTasksAnzeige && !status.startsWith("■") && (status.startsWith("✓") || status.startsWith("⟳")) && (
+        <div className={`alert ${status.startsWith("✓") ? "ok" : "info"}`} style={{ marginTop: 8 }}>{status}</div>
       )}
 
       {hinweisSichtbar && createPortal(
