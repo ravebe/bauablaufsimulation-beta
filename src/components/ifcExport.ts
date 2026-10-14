@@ -158,6 +158,43 @@ export interface IfcExportErgebnis {
 
 /** Kommentar-Zeile (STEP-Kommentar) am Anfang des 4D-Blocks — markiert, was bei einer erneuten Übernahme ersetzt wird */
 const MARKER_PRAEFIX = "/* BAUABLAUFSIMULATION-4D ";
+
+// Entitätstypen, die dieser Export schreibt — für das Erkennen alter Blöcke ohne Marker (Exporte vor 2026-10-10 15:41)
+const EIGENE_TYPEN = new Set(["IFCAPPLICATION", "IFCCALENDARDATE", "IFCDATEANDTIME", "IFCLAGTIME", "IFCLOCALTIME", "IFCORGANIZATION",
+  "IFCOWNERHISTORY", "IFCPERSON", "IFCPERSONANDORGANIZATION", "IFCPROPERTYSET", "IFCPROPERTYSINGLEVALUE", "IFCRECURRENCEPATTERN",
+  "IFCRELAGGREGATES", "IFCRELASSIGNSTASKS", "IFCRELASSIGNSTOCONTROL", "IFCRELASSIGNSTOPROCESS", "IFCRELASSIGNSTOPRODUCT", "IFCRELDECLARES",
+  "IFCRELDEFINESBYPROPERTIES", "IFCRELNESTS", "IFCRELSEQUENCE", "IFCSCHEDULETIMECONTROL", "IFCTASK", "IFCTASKTIME", "IFCTIMEPERIOD",
+  "IFCWORKCALENDAR", "IFCWORKPLAN", "IFCWORKSCHEDULE", "IFCWORKTIME"]);
+
+/** Beginn eines alten Bauablauf-Blocks ohne Marker (irgendeiner Simulation): ab einem Terminplan bis ENDSEC nur
+ *  Entitäten, die dieser Export schreibt, und dessen Kennung (Pset "Bauablauf_Vorgang" bzw. "Exportiert_am").
+ *  So wird nie ein Teil des Original-Modells entfernt — auch kein Terminplan eines anderen Programms. -1 = keiner. */
+function alterBlockOhneMarker(text: string, endsec: number): number {
+  const vorEnde = text.slice(0, endsec);
+  for (const m of vorEnde.matchAll(/^#\d+\s*=\s*IFCWORK(?:PLAN|SCHEDULE)\s*\(/gim)) {
+    const block = vorEnde.slice(m.index);
+    if (!/'Bauablauf_Vorgang'|IFCPROPERTYSINGLEVALUE\('Exportiert_am'/i.test(block)) continue;
+    let nurEigene = true;
+    for (const t of block.matchAll(/^#\d+\s*=\s*([A-Za-z0-9_]+)\s*\(/gm)) {
+      if (!EIGENE_TYPEN.has(t[1].toUpperCase())) { nurEigene = false; break; }
+    }
+    if (!nurEigene) continue;
+    // IFC2X3: vor dem Terminplan stehen Hilfsentitäten (Datum/Uhrzeit, ggf. eigene OwnerHistory) — mitnehmen,
+    // solange nichts davor (Original-Modell) auf sie verweist
+    let start = m.index;
+    while (start > 0) {
+      const zeilenStart = text.lastIndexOf("\n", start - 2) + 1;
+      const z = text.slice(zeilenStart, start).match(/^#(\d+)\s*=\s*([A-Za-z0-9_]+)\s*\(/);
+      if (!z || !HILFS_TYPEN.has(z[2].toUpperCase())) break;
+      if (new RegExp(`#${z[1]}(?!\\d)`).test(text.slice(0, zeilenStart))) break;
+      start = zeilenStart;
+    }
+    return start;
+  }
+  return -1;
+}
+const HILFS_TYPEN = new Set(["IFCCALENDARDATE", "IFCLOCALTIME", "IFCDATEANDTIME", "IFCPERSON", "IFCORGANIZATION",
+  "IFCPERSONANDORGANIZATION", "IFCAPPLICATION", "IFCOWNERHISTORY"]);
 function markerZeile(simId: string, modellId: string): string {
   return `${MARKER_PRAEFIX}${simId}|${modellId} */`;
 }
@@ -176,16 +213,15 @@ export function erzeuge4dIfc(e: IfcExportEingabe): IfcExportErgebnis {
   // werden ALLE alten Blöcke entfernt und durch den aktuellen ersetzt: sonst hätte jedes Bauteil danach mehrere
   // Psets "Bauablauf_4D". Die Blöcke stehen hintereinander am Ende von DATA, jeder beginnt mit einer Marker-Zeile →
   // ab dem ersten Marker bis ENDSEC entfernen (ein späterer Block kann auf einen früheren verweisen, z.B.
-  // OwnerHistory in IFC2X3 — sie fallen so immer zusammen weg). Ältere Exporte ohne Marker: nur der Block
-  // derselben Simulation ist erkennbar, er beginnt (IFC4) mit dem Terminplan-Entity.
+  // OwnerHistory in IFC2X3 — sie fallen so immer zusammen weg). Ältere Exporte ohne Marker: der Block derselben
+  // Simulation über die GlobalId des Terminplans, Blöcke anderer Simulationen über alterBlockOhneMarker.
   const endsecAlt = text.lastIndexOf("ENDSEC;");
-  let ersetzeVon = text.indexOf(MARKER_PRAEFIX);
-  if (ersetzeVon > endsecAlt) ersetzeVon = -1;
-  if (text.includes(`'${scheduleGuid}'`)) {
-    const pos = text.indexOf(`'${scheduleGuid}'`);
-    const ohneMarker = text.lastIndexOf("\n", pos) + 1;
-    if (ersetzeVon < 0 || ohneMarker < ersetzeVon) ersetzeVon = ohneMarker;
-  }
+  const kandidaten: number[] = [];
+  const marker = text.indexOf(MARKER_PRAEFIX);
+  if (marker >= 0 && marker < endsecAlt) kandidaten.push(marker);
+  if (text.includes(`'${scheduleGuid}'`)) kandidaten.push(text.lastIndexOf("\n", text.indexOf(`'${scheduleGuid}'`)) + 1);
+  if (endsecAlt >= 0) { const alt = alterBlockOhneMarker(text, endsecAlt); if (alt >= 0) kandidaten.push(alt); }
+  const ersetzeVon = kandidaten.length > 0 ? Math.min(...kandidaten) : -1;
   if (ersetzeVon >= 0) {
     if (endsecAlt < 0 || ersetzeVon <= 0 || ersetzeVon > endsecAlt) throw new Error("Der bisherige Bauablauf in der Datei konnte nicht entfernt werden — bitte die Original-IFC (ohne 4D-Daten) verwenden.");
     text = text.slice(0, ersetzeVon) + text.slice(endsecAlt);

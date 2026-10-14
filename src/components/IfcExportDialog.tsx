@@ -30,6 +30,7 @@ interface Props {
 type Status =
   | { art: "bereit" }
   | { art: "laeuft"; schritt: string }
+  | { art: "wartet"; text: string } // hochgeladen, Connect konvertiert noch — orange, es wird weiter versucht
   | { art: "heruntergeladen"; erg: IfcExportErgebnis; dateiname: string }
   | { art: "uebernommen"; erg: IfcExportErgebnis; umgestellt: number; nichtGefunden: number }
   | { art: "fehler"; meldung: string };
@@ -59,7 +60,7 @@ export default function IfcExportDialog({ sim, updateSim, api, geladeneModelle, 
   ])];
   const modellName = (id: string) => sim.modelle.find(m => m.id === id)?.name ?? geladeneModelle.find(m => m.id === id)?.name ?? id;
   const [status, setStatus] = useState<Record<string, Status>>({});
-  const laeuft = Object.values(status).some(s => s.art === "laeuft");
+  const laeuft = Object.values(status).some(s => s.art === "laeuft" || s.art === "wartet");
 
   const setze = (id: string, s: Status) => setStatus(prev => ({ ...prev, [id]: s }));
   const schritt = (id: string, text: string) => setze(id, { art: "laeuft", schritt: text });
@@ -138,11 +139,20 @@ export default function IfcExportDialog({ sim, updateSim, api, geladeneModelle, 
       // Status ERROR heisst nicht zwingend "unbrauchbar" — trotzdem laden versuchen (dann mit weniger Versuchen)
       const verarbeitung = await warteAufVerarbeitung(api, mid, neu.versionId, s => schritt(mid, `Warte auf Konvertierung durch Trimble Connect (${s}) … das kann einige Minuten dauern. Danach wird die Simulation automatisch auf die neue Version umgestellt.`));
       schritt(mid, "Neue Version im Viewer laden …");
-      const { mapping, umgestellt, nichtGefunden } = await ordneInVersionZu(api, mid, neu.versionId, mitAusschlussTask(simRef.current), guidById,
-        n => schritt(mid, `Neue Version im Viewer laden … (Versuch ${n + 1})`), verarbeitung === "fehler" ? 4 : 18)
-        .catch(e => { throw new Error(verarbeitung === "fehler"
-          ? "Die neue Version ist in Trimble Connect hochgeladen, Connect meldet bei der Verarbeitung aber einen Fehler und sie lässt sich nicht im Viewer laden. Die Simulation verwendet weiterhin die bisherige Version."
-          : "Die neue Version ist in Trimble Connect hochgeladen, konnte aber nicht im Viewer geladen werden. Die Simulation verwendet weiterhin die bisherige Version.", { cause: e }); });
+      const versionId = neu.versionId;
+      const { mapping, umgestellt, nichtGefunden } = await ordneInVersionZu(api, mid, versionId, mitAusschlussTask(simRef.current), guidById,
+        undefined, verarbeitung === "fehler" ? 4 : 18)
+        .catch(async e => {
+          // Noch nicht ladbar (Connect meldet z.B. einen Verarbeitungsfehler, die Version wird aber oft später
+          // doch ladbar) → nicht aufgeben, bis 20 min weiter versuchen
+          const bis = Date.now() + 20 * 60000;
+          setze(mid, { art: "wartet", text: "Die neue Version ist in Trimble Connect hochgeladen — warte auf Konvertierung …" });
+          while (Date.now() < bis) {
+            try { return await ordneInVersionZu(api, mid, versionId, mitAusschlussTask(simRef.current), guidById, undefined, 3); }
+            catch { /* weiter warten */ }
+          }
+          throw new Error("Die neue Version ist in Trimble Connect hochgeladen, konnte aber auch nach 20 Minuten nicht im Viewer geladen werden. Die Simulation verwendet weiterhin die bisherige Version.", { cause: e });
+        });
 
       // 3. Simulation umstellen: Version pinnen + Bauteil-Zuordnungen auf die neuen Runtime-IDs
       const aktuell = simRef.current;
@@ -216,6 +226,7 @@ export default function IfcExportDialog({ sim, updateSim, api, geladeneModelle, 
                   </button>
                 </div>
                 {s.art === "laeuft" && <div style={{ fontSize: 11, color: "var(--tc-text-2)", marginTop: 6 }}>{s.schritt}</div>}
+                {s.art === "wartet" && <div style={{ fontSize: 11, color: "#d9622b", marginTop: 6, lineHeight: 1.4 }}>{s.text}</div>}
                 {s.art === "fehler" && (
                   <div style={{ fontSize: 11, color: "#c0392b", marginTop: 6, lineHeight: 1.4 }}>{s.meldung}</div>
                 )}

@@ -131,4 +131,21 @@ describe("ifcExport", () => {
       expect(ergebnis).toBe(fuegeIfcEin(original, erzeuge4dIfc({ ...eingabe(schema), ifcText: original, simId: "sim3" })));
     }
   });
+
+  it("entfernt auch alte Blöcke ohne Marker anderer Simulationen, aber nie einen fremden Terminplan im Modell", () => {
+    for (const schema of ["IFC4", "IFC2X3"]) {
+      const original = ifc(schema);
+      // Export von sim1 vor Einführung der Marker-Zeile
+      const alt = fuegeIfcEin(original, erzeuge4dIfc({ ...eingabe(schema), ifcText: original })).replace(/\/\* BAUABLAUFSIMULATION-4D [^\n]*\*\/\n/, "");
+      expect(alt).not.toContain("BAUABLAUFSIMULATION-4D");
+      const neu = erzeuge4dIfc({ ...eingabe(schema), ifcText: alt, simId: "sim3" });
+      expect(neu.ersetzt).toBe(true);
+      expect(fuegeIfcEin(alt, neu)).toBe(fuegeIfcEin(original, erzeuge4dIfc({ ...eingabe(schema), ifcText: original, simId: "sim3" })));
+    }
+    // fremder Terminplan mitten im Modell (danach Bauteile) bleibt unangetastet
+    const fremd = ifc("IFC4").replace("#20=IFCWALL", "#15=IFCWORKSCHEDULE('1abcdefghijklmnopqrstu',#1,'Fremd',$,$,$,$,$,$,$,$,$,$);\n#16=IFCPROPERTYSINGLEVALUE('Exportiert_am',$,$,$);\n#20=IFCWALL");
+    const erg = erzeuge4dIfc({ ...eingabe("IFC4"), ifcText: fremd });
+    expect(erg.ersetzt).toBe(false);
+    expect(fuegeIfcEin(fremd, erg)).toContain("'Fremd'");
+  });
 });
