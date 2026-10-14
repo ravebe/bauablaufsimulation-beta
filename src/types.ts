@@ -62,7 +62,7 @@ export interface SimModell {
   ifcGuidLayerMap?: Record<string, string>; // GUID → Layer-Name (aus IFC-Parsing)
   // von "In Connect übernehmen" (IfcExportDialog.tsx) hochgeladene Version mit 4D-Daten + die Version
   // ohne 4D-Daten, auf der sie beruht — erneute Exporte/Übernahmen gehen immer von der Basis aus
-  vierD?: { versionId: string; basisVersionId?: string; am: string };
+  vierD?: { versionId: string; basisVersionId?: string; am: string; ausVersionId?: string }; // ausVersionId: gepinnte Version beim Hochladen (noch nicht aktualisiert)
 }
 
 export type Zugriff = "edit" | "read" | "none";

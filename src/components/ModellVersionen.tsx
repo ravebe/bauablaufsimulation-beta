@@ -64,7 +64,7 @@ export default function ModellVersionen({ api, modell, darfBearbeiten, beschaeft
       .then(v => { cache.set(modell.id, { zeit: Date.now(), versionen: v }); if (!abgebrochen) { setVersionen(v); setFehler(null); } })
       .catch(e => { if (!abgebrochen) setFehler(e instanceof Error ? e.message : String(e)); });
     return () => { abgebrochen = true; };
-  }, [api, modell.id, modell.versionId, neuLadenBei]);
+  }, [api, modell.id, modell.versionId, modell.vierD?.versionId, neuLadenBei]); // vierD: neue 4D-Version hochgeladen → ⟳ zeigen
 
   const anzahl = versionen?.length ?? 0;
   const nummer = (v: TcVersion, i: number) => v.revision ?? anzahl - i;

@@ -3,17 +3,16 @@
 // ifcExport.ts) und entweder
 //  - als "<Modell>_4D.ifc" heruntergeladen ("Herunterladen"), oder
 //  - direkt als neue Version derselben Datei in Trimble Connect hochgeladen ("In Connect übernehmen"):
-//    danach wird die Simulation auf die neue Version umgestellt und ihre Bauteil-Zuordnungen über die
-//    IFC-GUIDs auf die Runtime-IDs der neuen Version umgeschrieben.
+//    die Simulation bleibt auf der bisherigen Version (Weiterarbeiten ohne auf die Konvertierung durch
+//    Connect zu warten). Umgestellt wird danach mit dem orangen ⟳ beim Modell (ModellVersionen.tsx), das die
+//    Bauteil-Zuordnungen über die IFC-GUIDs auf die Runtime-IDs der neuen Version umschreibt.
 // Ausgangsbasis ist immer die Version OHNE 4D-Daten (SimModell.vierD.basisVersionId), damit erneute
 // Übernahmen den Bauablauf ersetzen statt ihn doppelt anzuhängen. IFC4/IFC2X3 wird automatisch erkannt.
 import { useEffect, useRef, useState } from "react";
 import type { SimModell, SimProjekt } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { batchConvertToObjectIds } from "../hooks/useApi";
-import { ordneInVersionZu, wendeUmstellungAn } from "./modellVersionHelpers";
-import { mitAusschlussTask, ausschluesseUmstellen } from "./ausschlussHelpers";
-import { ladeTcDatei, ladeTcVersionHoch, tcDateiInfo, warteAufVerarbeitung } from "../hooks/tcDateien";
+import { ladeTcDatei, ladeTcVersionHoch, tcDateiInfo } from "../hooks/tcDateien";
 import { erzeuge4dIfc } from "./ifcExport";
 import type { IfcExportErgebnis } from "./ifcExport";
 
@@ -30,9 +29,8 @@ interface Props {
 type Status =
   | { art: "bereit" }
   | { art: "laeuft"; schritt: string }
-  | { art: "wartet"; text: string } // hochgeladen, Connect konvertiert noch — orange, es wird weiter versucht
   | { art: "heruntergeladen"; erg: IfcExportErgebnis; dateiname: string }
-  | { art: "uebernommen"; erg: IfcExportErgebnis; umgestellt: number; nichtGefunden: number }
+  | { art: "uebernommen"; erg: IfcExportErgebnis }
   | { art: "fehler"; meldung: string };
 
 function download(blob: Blob, filename: string) {
@@ -44,7 +42,8 @@ function download(blob: Blob, filename: string) {
 
 /** Version ohne 4D-Daten, auf der ein Export/eine Übernahme aufbauen soll */
 function basisVersion(sm: SimModell | undefined): string | undefined {
-  if (sm?.vierD && sm.versionId === sm.vierD.versionId) return sm.vierD.basisVersionId;
+  // auch wenn die hochgeladene 4D-Version noch nicht übernommen (⟳) ist — gepinnt ist dann noch ausVersionId
+  if (sm?.vierD && (sm.versionId === sm.vierD.versionId || (sm.vierD.ausVersionId && sm.versionId === sm.vierD.ausVersionId))) return sm.vierD.basisVersionId;
   return sm?.versionId;
 }
 
@@ -60,7 +59,7 @@ export default function IfcExportDialog({ sim, updateSim, api, geladeneModelle, 
   ])];
   const modellName = (id: string) => sim.modelle.find(m => m.id === id)?.name ?? geladeneModelle.find(m => m.id === id)?.name ?? id;
   const [status, setStatus] = useState<Record<string, Status>>({});
-  const laeuft = Object.values(status).some(s => s.art === "laeuft" || s.art === "wartet");
+  const laeuft = Object.values(status).some(s => s.art === "laeuft");
 
   const setze = (id: string, s: Status) => setStatus(prev => ({ ...prev, [id]: s }));
   const schritt = (id: string, text: string) => setze(id, { art: "laeuft", schritt: text });
@@ -121,13 +120,14 @@ export default function IfcExportDialog({ sim, updateSim, api, geladeneModelle, 
       schritt(mid, "Datei in Trimble Connect prüfen …");
       const sm = simRef.current.modelle.find(m => m.id === mid);
       const ziel = await tcDateiInfo(api, mid);
-      if (sm?.versionId && ziel.versionId && ziel.versionId !== sm.versionId) {
+      // die eigene, noch nicht per ⟳ übernommene 4D-Version zählt nicht als fremde neuere Version
+      if (sm?.versionId && ziel.versionId && ziel.versionId !== sm.versionId && ziel.versionId !== sm.vierD?.versionId) {
         throw new Error("In Trimble Connect gibt es eine neuere Version dieses Modells, die die Simulation noch nicht verwendet. "
           + "Bitte die Simulation zuerst auf die neueste Version umstellen — sonst würde die Übernahme deren Änderungen überschreiben.");
       }
 
       // 1. Datei mit 4D-Daten erzeugen und als neue Version hochladen
-      const { erg, blob, guidById, basis } = await erzeuge(api, mid);
+      const { erg, blob, basis } = await erzeuge(api, mid);
       schritt(mid, `Neue Version hochladen (${(blob.size / 1048576).toFixed(1)} MB) …`);
       const neu = await ladeTcVersionHoch(api, ziel, blob);
       if (!neu.versionId) throw new Error("Upload abgeschlossen, aber keine Versions-ID erhalten.");
@@ -135,34 +135,16 @@ export default function IfcExportDialog({ sim, updateSim, api, geladeneModelle, 
         throw new Error(`Trimble Connect hat eine neue Datei statt einer neuen Version angelegt ("${neu.name}"). Die Simulation wurde nicht umgestellt.`);
       }
 
-      // 2. Warten, bis Connect die Version verarbeitet hat, dann im Viewer laden
-      // Status ERROR heisst nicht zwingend "unbrauchbar" — trotzdem laden versuchen (dann mit weniger Versuchen)
-      const verarbeitung = await warteAufVerarbeitung(api, mid, neu.versionId, s => schritt(mid, `Warte auf Konvertierung durch Trimble Connect (${s}) … das kann einige Minuten dauern. Danach wird die Simulation automatisch auf die neue Version umgestellt.`));
-      schritt(mid, "Neue Version im Viewer laden …");
-      const versionId = neu.versionId;
-      const { mapping, umgestellt, nichtGefunden } = await ordneInVersionZu(api, mid, versionId, mitAusschlussTask(simRef.current), guidById,
-        undefined, verarbeitung === "fehler" ? 4 : 18)
-        .catch(async e => {
-          // Noch nicht ladbar (Connect meldet z.B. einen Verarbeitungsfehler, die Version wird aber oft später
-          // doch ladbar) → nicht aufgeben, bis 20 min weiter versuchen
-          const bis = Date.now() + 20 * 60000;
-          setze(mid, { art: "wartet", text: "Die neue Version ist in Trimble Connect hochgeladen — warte auf Konvertierung …" });
-          while (Date.now() < bis) {
-            try { return await ordneInVersionZu(api, mid, versionId, mitAusschlussTask(simRef.current), guidById, undefined, 3); }
-            catch { /* weiter warten */ }
-          }
-          throw new Error("Die neue Version ist in Trimble Connect hochgeladen, konnte aber auch nach 20 Minuten nicht im Viewer geladen werden. Die Simulation verwendet weiterhin die bisherige Version.", { cause: e });
-        });
-
-      // 3. Simulation umstellen: Version pinnen + Bauteil-Zuordnungen auf die neuen Runtime-IDs
+      // 2. Nicht auf die Konvertierung warten: Simulation bleibt auf der bisherigen Version, die neue wird nur
+      //    vermerkt — das orange ⟳ beim Modell (Tab Projekt) stellt um, sobald Connect fertig ist
       const aktuell = simRef.current;
-      const tasks = wendeUmstellungAn(aktuell.tasks, mapping);
-      const vierD = { versionId: neu.versionId, basisVersionId: basis ?? ziel.versionId, am: new Date().toISOString() };
-      const modelle = aktuell.modelle.some(m => m.id === mid)
-        ? aktuell.modelle.map(m => m.id === mid ? { ...m, versionId: neu.versionId, vierD } : m)
-        : [...aktuell.modelle, { id: mid, name: modellName(mid), versionId: neu.versionId, vierD }];
-      updateSim({ ...aktuell, tasks, modelle, ausgeschlossen: ausschluesseUmstellen(aktuell.ausgeschlossen, mapping) });
-      setze(mid, { art: "uebernommen", erg, umgestellt, nichtGefunden });
+      const bisher = aktuell.modelle.find(m => m.id === mid);
+      const vierD = { versionId: neu.versionId, basisVersionId: basis ?? ziel.versionId, am: new Date().toISOString(), ausVersionId: bisher?.versionId ?? ziel.versionId };
+      const modelle = bisher
+        ? aktuell.modelle.map(m => m.id === mid ? { ...m, vierD } : m)
+        : [...aktuell.modelle, { id: mid, name: modellName(mid), versionId: ziel.versionId, vierD }];
+      updateSim({ ...aktuell, modelle });
+      setze(mid, { art: "uebernommen", erg });
     } catch (e) {
       setze(mid, { art: "fehler", meldung: e instanceof Error ? e.message : String(e) });
     }
@@ -187,8 +169,8 @@ export default function IfcExportDialog({ sim, updateSim, api, geladeneModelle, 
             Ergänzt die Original-IFC je Modell um den Bauablauf dieser Simulation (Terminplan, Vorgänge, Termine,
             Vorgänger, Hierarchie, Bauteil-Zuordnung, Kalender) — Schema IFC4 oder IFC2X3 wird automatisch erkannt.
             Jedes zugeordnete Bauteil erhält zusätzlich das Property Set <b>Bauablauf_4D</b>.
-            <br /><b>In Connect übernehmen</b> lädt die Datei als neue Version des Modells hoch und stellt die
-            Simulation darauf um. <b>Herunterladen</b> speichert sie als <b>…_4D.ifc</b>.
+            <br /><b>In Connect übernehmen</b> lädt die Datei als neue Version des Modells hoch — die Simulation bleibt so lange auf der bisherigen
+            Version, bis Connect die neue konvertiert hat und du beim Modell mit ⟳ aktualisierst. <b>Herunterladen</b> speichert sie als <b>…_4D.ifc</b>.
           </div>
 
           {modellIds.length === 0 && (
@@ -226,7 +208,6 @@ export default function IfcExportDialog({ sim, updateSim, api, geladeneModelle, 
                   </button>
                 </div>
                 {s.art === "laeuft" && <div style={{ fontSize: 11, color: "var(--tc-text-2)", marginTop: 6 }}>{s.schritt}</div>}
-                {s.art === "wartet" && <div style={{ fontSize: 11, color: "#d9622b", marginTop: 6, lineHeight: 1.4 }}>{s.text}</div>}
                 {s.art === "fehler" && (
                   <div style={{ fontSize: 11, color: "#c0392b", marginTop: 6, lineHeight: 1.4 }}>{s.meldung}</div>
                 )}
@@ -235,12 +216,12 @@ export default function IfcExportDialog({ sim, updateSim, api, geladeneModelle, 
                     <div style={{ color: "#2e7d32", fontWeight: 600 }}>
                       {s.art === "heruntergeladen"
                         ? `✓ ${s.dateiname} heruntergeladen (${s.erg.schema})`
-                        : `✓ Als neue Version in Trimble Connect übernommen (${s.erg.schema}) — Simulation umgestellt`}
+                        : `✓ Als neue Version in Trimble Connect hochgeladen (${s.erg.schema})`}
                     </div>
                     {s.erg.ersetzt && <div>Bisherige Bauablauf-Daten in der Datei (auch aus anderen Simulationen) wurden durch den aktuellen Stand ersetzt — jedes Bauteil hat nur ein Pset „Bauablauf_4D“.</div>}
                     {s.erg.anzahl.tasks} Vorgänge · {s.erg.anzahl.sequenzen} Vorgänger-Beziehungen · {s.erg.anzahl.verknuepfteBauteile} Bauteile verknüpft · {s.erg.anzahl.entitaeten} neue IFC-Entitäten
-                    {s.art === "uebernommen" && s.nichtGefunden > 0 && (
-                      <div style={{ color: "#b26a00" }}>⚠ {s.nichtGefunden} Bauteil-Zuordnung(en) in der neuen Version nicht gefunden — unverändert gelassen.</div>
+                    {s.art === "uebernommen" && (
+                      <div style={{ color: "#d9622b" }}>Die Simulation verwendet bis dahin die bisherige Version — sobald Trimble Connect die neue konvertiert hat, beim Modell im Tab Projekt mit ⟳ aktualisieren.</div>
                     )}
                     {s.erg.hinweise.map((h, i) => <div key={i} style={{ color: "#b26a00" }}>⚠ {h}</div>)}
                   </div>
