@@ -593,10 +593,13 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
                     onMouseEnter={() => setHoverIdx(i)}
                     onMouseLeave={() => setHoverIdx(null)}
                     style={{
-                      height: ROW_H, display: "flex", alignItems: "center", padding: "0 4px", paddingLeft: 4 + indent, cursor: "pointer", borderBottom: "1px solid #eef1f4",
+                      height: ROW_H, display: "flex", alignItems: "center", padding: "0 4px", cursor: "pointer", borderBottom: "1px solid #eef1f4",
                       background: isGrp && isDropTarget && dragIdx !== null ? "#dbeafe" : isEditing ? "#FFF8E1" : isSel ? "#e8f0fe" : hasSel ? "#f0f0f0" : istHover ? "var(--tc-bg-hover)" : i % 2 === 0 ? "#fafbfc" : "#fff",
                       opacity: dragIdx !== null && selectedIds.includes(t.id) ? 0.4 : 1,
                     }}>
+                    {/* Einrückung als schrumpfbarer Abstand (statt paddingLeft): bei schmaler Spalte rücken die Icons in eine
+                        Flucht, statt Nummer und Tage-Spalte je nach Ebene über den Rand zu schieben */}
+                    <span style={{ width: indent, flexShrink: 1, minWidth: 0 }} />
                     {/* Typ-Punkt/Auf-Zuklapp-Dreieck — beim Hover bzw. während des Ziehens vom Drag-Handle überblendet */}
                     <span style={{ width: 12, height: 12, flexShrink: 0, marginRight: 5, display: "flex", alignItems: "center", justifyContent: "center" }}>
                       {canDrag && (dragIdx === origIdx || (istHover && dragIdx === null)) ? (
@@ -627,7 +630,7 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
                         onDoubleClick={editable ? (e) => { e.stopPropagation(); setRenameId(t.id); setRenameVal(t.name); } : undefined}
                         style={{ flex: 1, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: editable ? "text" : "default", color: isEditing ? "#E65100" : isSel ? "#2d7dbd" : "#333", fontWeight: isEditing || isSel || isGrp ? 600 : 400 }}>{lbl}</span>
                     )}
-                    <span style={{ flexShrink: 0, fontSize: 10, marginRight: 8, minWidth: 34, textAlign: "right", cursor: editable ? "pointer" : "default" }}
+                    <span style={{ flexShrink: 0, fontSize: 10, marginRight: 8, width: 56, overflow: "hidden", whiteSpace: "nowrap", textAlign: "right", cursor: editable ? "pointer" : "default" }}
                       onClick={e => { e.stopPropagation(); if (editable) oeffnePredPicker(t, e); else melden(`pred-${t.id}`, e.clientX, e.clientY); }}
                       title="Vorgänger festlegen">
                       <span style={{ fontWeight: 500, color: "#666" }}>
