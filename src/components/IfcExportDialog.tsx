@@ -176,7 +176,7 @@ export default function IfcExportDialog({ sim, updateSim, api, geladeneModelle, 
           <div style={{ fontSize: 11, color: "var(--tc-text-2)", lineHeight: 1.5, marginBottom: 12 }}>
             Ergänzt die Original-IFC je Modell um den Bauablauf dieser Simulation (Terminplan, Vorgänge, Termine,
             Vorgänger, Hierarchie, Bauteil-Zuordnung, Kalender) — Schema IFC4 oder IFC2X3 wird automatisch erkannt.
-            Jedes zugeordnete Bauteil erhält zusätzlich das Property Set <b>Bauablauf</b>.
+            Jedes zugeordnete Bauteil erhält zusätzlich das Property Set <b>Bauablauf_4D</b>.
             <br /><b>In Connect übernehmen</b> lädt die Datei als neue Version des Modells hoch und stellt die
             Simulation darauf um. <b>Herunterladen</b> speichert sie als <b>…_4D.ifc</b>.
           </div>
@@ -226,7 +226,7 @@ export default function IfcExportDialog({ sim, updateSim, api, geladeneModelle, 
                         ? `✓ ${s.dateiname} heruntergeladen (${s.erg.schema})`
                         : `✓ Als neue Version in Trimble Connect übernommen (${s.erg.schema}) — Simulation umgestellt`}
                     </div>
-                    {s.erg.ersetzt && <div>Bisherige Bauablauf-Daten in der Datei (auch aus anderen Simulationen) wurden durch den aktuellen Stand ersetzt — jedes Bauteil hat nur ein Pset „Bauablauf“.</div>}
+                    {s.erg.ersetzt && <div>Bisherige Bauablauf-Daten in der Datei (auch aus anderen Simulationen) wurden durch den aktuellen Stand ersetzt — jedes Bauteil hat nur ein Pset „Bauablauf_4D“.</div>}
                     {s.erg.anzahl.tasks} Vorgänge · {s.erg.anzahl.sequenzen} Vorgänger-Beziehungen · {s.erg.anzahl.verknuepfteBauteile} Bauteile verknüpft · {s.erg.anzahl.entitaeten} neue IFC-Entitäten
                     {s.art === "uebernommen" && s.nichtGefunden > 0 && (
                       <div style={{ color: "#b26a00" }}>⚠ {s.nichtGefunden} Bauteil-Zuordnung(en) in der neuen Version nicht gefunden — unverändert gelassen.</div>

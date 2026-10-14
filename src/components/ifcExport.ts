@@ -15,7 +15,7 @@
 //    IfcRelAssignsTasks, IfcRelNests, IfcRelSequence (TimeLag in Sekunden), Bauteile über
 //    IfcRelAssignsToProcess. Kein Kalender-Objekt in IFC2X3.
 //
-// Zusätzlich bekommt jedes zugeordnete Bauteil ein Property Set "Bauablauf" (Vorgang, Termine, Typ …),
+// Zusätzlich bekommt jedes zugeordnete Bauteil ein Property Set "Bauablauf_4D" (Vorgang, Termine, Typ …),
 // damit die Infos auch in Viewern ohne 4D-Unterstützung (z.B. Trimble Connect) sichtbar sind.
 import type { Task, TaskTyp, Kran } from "../types";
 import { TASK_TYP_LABEL, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, parseDateUniversal, vorgaengerListe } from "../types";
@@ -29,7 +29,8 @@ export type IfcSchemaFamilie = "IFC4" | "IFC2X3";
 const ARBEITSBEGINN = "08:00:00";
 const ARBEITSENDE = "17:00:00";
 const ARBEITSSTUNDEN_PRO_TAG = 8;
-const PSET_BAUTEIL = "Bauablauf";
+// eigener Name, damit es nicht mit einem Pset "Bauablauf" aus dem Original-Modell (z.B. Tekla: Etappe, Geschoss …) verwechselt wird
+const PSET_BAUTEIL = "Bauablauf_4D";
 const PSET_VORGANG = "Bauablauf_Vorgang";
 
 // IfcTaskTypeEnum (IFC4) je Task-Typ — ohne exaktes Gegenstück USERDEFINED + ObjectType
@@ -138,7 +139,7 @@ export interface IfcExportEingabe {
   /** taskId → IFC-GlobalIds der Bauteile dieses Modells */
   bauteilGuidsJeTask: Map<string, string[]>;
   jetzt?: Date;
-  /** Zusatzinfos für das Pset "Bauablauf" */
+  /** Zusatzinfos für das Pset "Bauablauf_4D" */
   meta?: { erstelltAm?: string; geaendertAm?: string; geaendertVon?: string; exportiertVon?: string; modellVersion?: string };
 }
 
@@ -173,7 +174,7 @@ export function erzeuge4dIfc(e: IfcExportEingabe): IfcExportErgebnis {
   const scheduleGuid = g("workschedule");
   // Enthält die Datei schon Bauablauf-Daten (frühere Übernahme/Download — dieser ODER einer anderen Simulation),
   // werden ALLE alten Blöcke entfernt und durch den aktuellen ersetzt: sonst hätte jedes Bauteil danach mehrere
-  // Psets "Bauablauf". Die Blöcke stehen hintereinander am Ende von DATA, jeder beginnt mit einer Marker-Zeile →
+  // Psets "Bauablauf_4D". Die Blöcke stehen hintereinander am Ende von DATA, jeder beginnt mit einer Marker-Zeile →
   // ab dem ersten Marker bis ENDSEC entfernen (ein späterer Block kann auf einen früheren verweisen, z.B.
   // OwnerHistory in IFC2X3 — sie fallen so immer zusammen weg). Ältere Exporte ohne Marker: nur der Block
   // derselben Simulation ist erkennbar, er beginnt (IFC4) mit dem Terminplan-Entity.

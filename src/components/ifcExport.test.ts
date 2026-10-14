@@ -112,7 +112,7 @@ describe("ifcExport", () => {
     expect(() => erzeuge4dIfc({ ...eingabe("IFC4"), ifcText: ifc("IFC5") })).toThrow(/nicht unterst/);
   });
 
-  it("Export einer anderen Simulation ersetzt auch deren Block — nie zwei Psets \"Bauablauf\" (IFC4 und IFC2X3)", () => {
+  it("Export einer anderen Simulation ersetzt auch deren Block — nie zwei Psets \"Bauablauf_4D\" (IFC4 und IFC2X3)", () => {
     for (const schema of ["IFC4", "IFC2X3"]) {
       const original = ifc(schema).replace("#1=IFCOWNERHISTORY(#2,#3,$,.ADDED.,$,$,$,0);\n", ""); // IFC2X3: eigene OwnerHistory im Block
       const a = fuegeIfcEin(original, erzeuge4dIfc({ ...eingabe(schema), ifcText: original }));
