@@ -620,7 +620,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
             <div key={task.id} data-taskid={task.id} style={{
               display: "flex", alignItems: "center", padding: "5px 8px", gap: 6,
               borderBottom: "1px solid #eef1f4", cursor: laeuft ? "default" : "pointer",
-              background: istSelTask ? "#e8f0fe" : hatSel ? "#f0f0f0" : aktiv ? "#edf7ed" : hoverTaskId === task.id ? "var(--tc-bg-hover)" : "transparent",
+              background: istSelTask ? "#e8f0fe" : hatSel ? "#f0f0f0" : aktiv ? (isGrp ? "#f0f0f0" : "#edf7ed") : hoverTaskId === task.id ? "var(--tc-bg-hover)" : "transparent",
               opacity: vorbei ? 0.5 : 1, fontWeight: aktiv || hatSel || istSelTask || isGrp ? 600 : 400,
             }} onClick={() => zuTask(origIdx)}
               onMouseEnter={() => setHoverTaskId(task.id)}
