@@ -226,7 +226,7 @@ export default function IfcExportDialog({ sim, updateSim, api, geladeneModelle, 
                         ? `✓ ${s.dateiname} heruntergeladen (${s.erg.schema})`
                         : `✓ Als neue Version in Trimble Connect übernommen (${s.erg.schema}) — Simulation umgestellt`}
                     </div>
-                    {s.erg.ersetzt && <div>Der bisherige Bauablauf in der Datei wurde durch den aktuellen Stand der Simulation ersetzt.</div>}
+                    {s.erg.ersetzt && <div>Bisherige Bauablauf-Daten in der Datei (auch aus anderen Simulationen) wurden durch den aktuellen Stand ersetzt — jedes Bauteil hat nur ein Pset „Bauablauf“.</div>}
                     {s.erg.anzahl.tasks} Vorgänge · {s.erg.anzahl.sequenzen} Vorgänger-Beziehungen · {s.erg.anzahl.verknuepfteBauteile} Bauteile verknüpft · {s.erg.anzahl.entitaeten} neue IFC-Entitäten
                     {s.art === "uebernommen" && s.nichtGefunden > 0 && (
                       <div style={{ color: "#b26a00" }}>⚠ {s.nichtGefunden} Bauteil-Zuordnung(en) in der neuen Version nicht gefunden — unverändert gelassen.</div>

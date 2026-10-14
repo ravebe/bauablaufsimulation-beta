@@ -148,7 +148,7 @@ export interface IfcExportErgebnis {
   einfuegePos: number;   // Zeichen-/Byte-Position vor dem letzten ENDSEC; (Ende DATA) — bzw. Beginn des ersetzten alten 4D-Blocks
   /** Ende des ersetzten Bereichs (Position des letzten ENDSEC;); ohne Ersetzung = einfuegePos */
   ersetzeBis: number;
-  /** true: die Datei enthielt den Bauablauf dieser Simulation schon — der alte Block wurde durch den aktuellen ersetzt */
+  /** true: die Datei enthielt schon Bauablauf-Daten (dieser oder einer anderen Simulation) — alle alten Blöcke wurden durch den aktuellen ersetzt */
   ersetzt: boolean;
   einfuegeText: string;  // reines ASCII
   anzahl: { tasks: number; verknuepfteBauteile: number; nichtGefunden: number; sequenzen: number; entitaeten: number };
@@ -156,8 +156,9 @@ export interface IfcExportErgebnis {
 }
 
 /** Kommentar-Zeile (STEP-Kommentar) am Anfang des 4D-Blocks — markiert, was bei einer erneuten Übernahme ersetzt wird */
+const MARKER_PRAEFIX = "/* BAUABLAUFSIMULATION-4D ";
 function markerZeile(simId: string, modellId: string): string {
-  return `/* BAUABLAUFSIMULATION-4D ${simId}|${modellId} */`;
+  return `${MARKER_PRAEFIX}${simId}|${modellId} */`;
 }
 
 /** Erzeugt die 4D-Entitäten. Wirft Error mit deutscher Meldung, wenn die Datei nicht passt. */
@@ -170,18 +171,21 @@ export function erzeuge4dIfc(e: IfcExportEingabe): IfcExportErgebnis {
 
   const g = (teil: string) => ifcGuidAus(`${e.simId}|${e.modellId}|${teil}`);
   const scheduleGuid = g("workschedule");
-  // Enthält die Datei den Bauablauf dieser Simulation schon (frühere Übernahme), wird der alte Block entfernt und
-  // durch den aktuellen ersetzt — so lässt sich nach jeder Änderung erneut übernehmen, auch ohne Änderung.
-  // Der Block steht am Ende von DATA; neuere Exporte tragen eine Marker-Zeile, bei älteren beginnt er (IFC4) mit
-  // dem Terminplan-Entity (in IFC2X3 davor evtl. Hilfsentitäten — unreferenziert, aber gültig).
+  // Enthält die Datei schon Bauablauf-Daten (frühere Übernahme/Download — dieser ODER einer anderen Simulation),
+  // werden ALLE alten Blöcke entfernt und durch den aktuellen ersetzt: sonst hätte jedes Bauteil danach mehrere
+  // Psets "Bauablauf". Die Blöcke stehen hintereinander am Ende von DATA, jeder beginnt mit einer Marker-Zeile →
+  // ab dem ersten Marker bis ENDSEC entfernen (ein späterer Block kann auf einen früheren verweisen, z.B.
+  // OwnerHistory in IFC2X3 — sie fallen so immer zusammen weg). Ältere Exporte ohne Marker: nur der Block
+  // derselben Simulation ist erkennbar, er beginnt (IFC4) mit dem Terminplan-Entity.
   const endsecAlt = text.lastIndexOf("ENDSEC;");
-  let ersetzeVon = -1;
+  let ersetzeVon = text.indexOf(MARKER_PRAEFIX);
+  if (ersetzeVon > endsecAlt) ersetzeVon = -1;
   if (text.includes(`'${scheduleGuid}'`)) {
-    ersetzeVon = text.indexOf(markerZeile(e.simId, e.modellId));
-    if (ersetzeVon < 0) {
-      const pos = text.indexOf(`'${scheduleGuid}'`);
-      ersetzeVon = text.lastIndexOf("\n", pos) + 1;
-    }
+    const pos = text.indexOf(`'${scheduleGuid}'`);
+    const ohneMarker = text.lastIndexOf("\n", pos) + 1;
+    if (ersetzeVon < 0 || ohneMarker < ersetzeVon) ersetzeVon = ohneMarker;
+  }
+  if (ersetzeVon >= 0) {
     if (endsecAlt < 0 || ersetzeVon <= 0 || ersetzeVon > endsecAlt) throw new Error("Der bisherige Bauablauf in der Datei konnte nicht entfernt werden — bitte die Original-IFC (ohne 4D-Daten) verwenden.");
     text = text.slice(0, ersetzeVon) + text.slice(endsecAlt);
   }

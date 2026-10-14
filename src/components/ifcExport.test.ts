@@ -111,4 +111,24 @@ describe("ifcExport", () => {
     expect(fuegeIfcEin(ohneMarker, neu2)).toBe(mit4d);
     expect(() => erzeuge4dIfc({ ...eingabe("IFC4"), ifcText: ifc("IFC5") })).toThrow(/nicht unterst/);
   });
+
+  it("Export einer anderen Simulation ersetzt auch deren Block — nie zwei Psets \"Bauablauf\" (IFC4 und IFC2X3)", () => {
+    for (const schema of ["IFC4", "IFC2X3"]) {
+      const original = ifc(schema).replace("#1=IFCOWNERHISTORY(#2,#3,$,.ADDED.,$,$,$,0);\n", ""); // IFC2X3: eigene OwnerHistory im Block
+      const a = fuegeIfcEin(original, erzeuge4dIfc({ ...eingabe(schema), ifcText: original }));
+      // ältere Version: Block von sim2 hinter dem von sim1 angehängt
+      const zweiBloecke = a.replace(/ENDSEC;\nEND-ISO/, () => {
+        const b = erzeuge4dIfc({ ...eingabe(schema), ifcText: a, simId: "sim2" });
+        return b.einfuegeText + "ENDSEC;\nEND-ISO";
+      });
+      expect(zweiBloecke.match(/BAUABLAUFSIMULATION-4D/g)).toHaveLength(2);
+      const neu = erzeuge4dIfc({ ...eingabe(schema), ifcText: zweiBloecke, simId: "sim3" });
+      expect(neu.ersetzt).toBe(true);
+      const ergebnis = fuegeIfcEin(zweiBloecke, neu);
+      expect(ergebnis.match(/BAUABLAUFSIMULATION-4D/g)).toHaveLength(1);
+      expect(ergebnis).toContain("BAUABLAUFSIMULATION-4D sim3|m");
+      // gleich wie ein Export von sim3 in die Original-Datei
+      expect(ergebnis).toBe(fuegeIfcEin(original, erzeuge4dIfc({ ...eingabe(schema), ifcText: original, simId: "sim3" })));
+    }
+  });
 });
