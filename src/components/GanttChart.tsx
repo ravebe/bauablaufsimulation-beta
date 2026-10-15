@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, useLayoutEffect, useCallback, useMemo } fr
 import { lsGet, lsSet } from "../hooks/lokalSpeicher";
 import { createPortal } from "react-dom";
 import type { Task, VorgaengerLink } from "../types";
-import { vorgaengerKandidaten, vorgaengerListe, vorgaengerText, vorgaengerEingabe, parseWartetage, parseVorgaengerText, massgebenderVorgaenger, letzterVorgaengerEintrag, ersetzeLetztenVorgaengerEintrag, zeitraumVerschieben, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks, nsKey, TASK_TYP_FARBE } from "../types";
+import { vorgaengerKandidaten, vorgaengerZiele, vorgaengerListe, vorgaengerText, vorgaengerEingabe, parseWartetage, parseVorgaengerText, massgebenderVorgaenger, letzterVorgaengerEintrag, ersetzeLetztenVorgaengerEintrag, zeitraumVerschieben, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks, nsKey, TASK_TYP_FARBE } from "../types";
 import type { Kalender } from "./kalenderHelpers";
 import { istArbeitstag, LEERER_KALENDER, getKW, arbeitstageZwischen, arbeitsBloecke } from "./kalenderHelpers";
 import DatePicker from "./DatePicker";
@@ -656,6 +656,7 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
                           onClick={e => e.stopPropagation()}
                           onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); predUebernehmen(); } }}>
                           <div style={{ position: "relative" }}>
+                            {(() => { const n = vorgaengerZiele(tasks, selectedIds, t.id).length; return n > 1 ? <div style={{ fontSize: 10, fontWeight: 600, color: "#2d7dbd", marginBottom: 4 }}>Gilt für {n} markierte {istGruppe(tasks, tasks.findIndex(x => x.id === t.id)) ? "Gruppen" : "Tasks"}</div> : null; })()}
                             <div style={{ fontSize: 9, color: "#8a9baa", marginBottom: 2 }}>Vorgänger — mehrere mit Komma, z.B. 26, 27+2</div>
                             <input className="ac-input" style={{ fontSize: 11, padding: "3px 6px", width: "100%" }}
                               placeholder="— kein Vorgänger —"

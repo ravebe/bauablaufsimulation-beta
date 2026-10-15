@@ -709,6 +709,36 @@ export function kaskadiereNachfolger(tasks: Task[], geaenderteId: string, kalend
   return result;
 }
 
+/** Für welche Tasks gilt eine Vorgänger-Änderung am Task taskId? Ist er Teil einer Mehrfachauswahl, für alle
+ *  markierten derselben Art (Gruppen bzw. Tasks — Gruppen haben nur Gruppen als Vorgänger, und beim Klick auf
+ *  eine Gruppe werden ihre Tasks mitmarkiert), in Listen-Reihenfolge; sonst nur für ihn. */
+export function vorgaengerZiele(tasks: Task[], selectedIds: string[], taskId: string): string[] {
+  if (selectedIds.length < 2 || !selectedIds.includes(taskId)) return [taskId];
+  const idx = tasks.findIndex(t => t.id === taskId);
+  if (idx < 0) return [taskId];
+  const gruppe = istGruppe(tasks, idx);
+  const gewaehlt = new Set(selectedIds);
+  return tasks.filter((t, i) => gewaehlt.has(t.id) && istGruppe(tasks, i) === gruppe).map(t => t.id);
+}
+
+/** Setzt die Vorgänger für alle ziele (leere Liste = entfernen), verschiebt sie hinter den spätesten Vorgänger
+ *  und kaskadiert die Nachfolger. Je Ziel nur gültige Vorgänger (nicht er selbst, kein Zirkelbezug); bleibt
+ *  dadurch keiner übrig, behält das Ziel seine bisherigen (nichts versehentlich löschen). */
+export function setzeVorgaenger(tasks: Task[], ziele: string[], liste: VorgaengerLink[], kalender: Kalender = LEERER_KALENDER): Task[] {
+  let erg = tasks;
+  for (const id of ziele) {
+    const gueltig = new Set(gueltigeVorgaenger(erg, id).map(t => t.id));
+    const eigene = liste.filter(v => gueltig.has(v.id));
+    if (liste.length > 0 && eigene.length === 0) continue;
+    erg = erg.map(t => t.id === id ? mitVorgaengern(t, eigene) : t);
+    const neu = erg.find(t => t.id === id);
+    const start = neu ? vorgaengerStart(erg, neu, kalender) : null;
+    if (start) erg = verschiebeAufStart(erg, id, start, kalender);
+    erg = kaskadiereNachfolger(erg, id, kalender);
+  }
+  return erg;
+}
+
 /** Setzt jeden Task (keine Gruppen) auf Arbeitstage: Start auf den nächsten Arbeitstag, Ende so, dass die Dauer in Arbeitstagen bleibt
  *  (Spanne ohne Arbeitstag, z.B. in den Ferien oder Sa–So: Kalendertage der Spanne = Arbeitstage; Wochenenden in langen Spannen werden
  *  weggeschnitten). Gibt die Tasks und die Anzahl geänderter Tasks zurück — auch für den Import. */

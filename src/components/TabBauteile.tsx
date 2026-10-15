@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { lsSet } from "../hooks/lokalSpeicher";
 import type { SimProjekt, Task , VorgaengerLink } from "../types";
-import { parseDateUniversal, istGruppe, getKinder, getOutlineLevel, kaskadiereNachfolger, richteKettenNeuAus, verschiebeAufStart, mitVorgaengern, vorgaengerStart,
+import { parseDateUniversal, istGruppe, getKinder, getOutlineLevel, kaskadiereNachfolger, richteKettenNeuAus, vorgaengerZiele, setzeVorgaenger,
   taskVerschieben as verschiebeTaskBlock, nsKey, vorgaengerListe, zirkelPfad } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { getEchteBauteile, clearEchteBauteileCache } from "./modelHelpers";
@@ -233,14 +233,9 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
 
   function ganttSetPredecessor(taskId: string, liste: VorgaengerLink[]) {
     if (!aktiveSim) return;
-    const kal = aktiveSim.kalender ?? LEERER_KALENDER;
-    let tasks = aktiveSim.tasks.map(t => t.id === taskId ? mitVorgaengern(t, liste) : t);
-    // Start nach dem spätesten Vorgänger (Tag nach dessen Ende + Wartetage, auf Arbeitstag gerückt)
-    const neu = tasks.find(t => t.id === taskId);
-    const start = neu ? vorgaengerStart(tasks, neu, kal) : null;
-    if (start) tasks = verschiebeAufStart(tasks, taskId, start, kal);
-    tasks = kaskadiereNachfolger(tasks, taskId, kal);
-    updateSim({ ...aktiveSim, tasks });
+    // Bei Mehrfachauswahl für alle markierten Tasks (siehe vorgaengerZiele/setzeVorgaenger in types.ts)
+    const ziele = vorgaengerZiele(aktiveSim.tasks, selectedIds, taskId);
+    updateSim({ ...aktiveSim, tasks: setzeVorgaenger(aktiveSim.tasks, ziele, liste, aktiveSim.kalender ?? LEERER_KALENDER) });
   }
 
   function neuErstellen() {

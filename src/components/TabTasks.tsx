@@ -7,8 +7,8 @@ import { LEERER_KALENDER } from "./kalenderHelpers";
 import type { VorgaengerLink } from "../types";
 import { startZeitpunkt, endZeitpunkt, fmtZeitZusatz } from "./zeitHelpers";
 import { formatDatum, normalizeDatum, zeitraumVerschieben, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, getKinder,
-  berechneNummern, gueltigeVorgaenger, verschiebeAufStart, kaskadiereNachfolger, vorgaengerListe, mitVorgaengern, vorgaengerText, vorgaengerEingabe, parseWartetage, parseVorgaengerText,
-  massgebenderVorgaenger, vorgaengerStart, vorgaengerKandidaten, letzterVorgaengerEintrag, ersetzeLetztenVorgaengerEintrag,
+  berechneNummern, gueltigeVorgaenger, kaskadiereNachfolger, vorgaengerListe, vorgaengerZiele, setzeVorgaenger, vorgaengerText, vorgaengerEingabe, parseWartetage, parseVorgaengerText,
+  massgebenderVorgaenger, vorgaengerKandidaten, letzterVorgaengerEintrag, ersetzeLetztenVorgaengerEintrag,
   taskVerschieben as verschiebeTaskBlock, sucheSortiereTasks, nsKey, TASK_TYP_LISTE, TASK_TYP_LABEL, TASK_TYP_FARBE } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { batchGetProperties, batchConvertToObjectIds } from "../hooks/useApi";
@@ -388,15 +388,10 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
     updateSim({ ...aktiveSim, tasks: kaskadiereNachfolger(tasks, taskId, kal) });
   }
 
+  // Bei Mehrfachauswahl für alle markierten Tasks (siehe vorgaengerZiele/setzeVorgaenger in types.ts)
   function vorgängerSetzen(taskId: string, liste: VorgaengerLink[]) {
-    const kal = aktiveSim.kalender ?? LEERER_KALENDER;
-    let tasks = aktiveSim.tasks.map(t => t.id === taskId ? mitVorgaengern(t, liste) : t);
-    // Start nach dem spätesten Vorgänger (Tag nach dessen Ende + Wartetage, auf Arbeitstag gerückt)
-    const neu = tasks.find(t => t.id === taskId);
-    const start = neu ? vorgaengerStart(tasks, neu, kal) : null;
-    if (start) tasks = verschiebeAufStart(tasks, taskId, start, kal);
-    tasks = kaskadiereNachfolger(tasks, taskId, kal);
-    updateSim({ ...aktiveSim, tasks });
+    const ziele = vorgaengerZiele(aktiveSim.tasks, selectedIds, taskId);
+    updateSim({ ...aktiveSim, tasks: setzeVorgaenger(aktiveSim.tasks, ziele, liste, aktiveSim.kalender ?? LEERER_KALENDER) });
     setPredPickerTaskId(null);
   }
 
@@ -634,7 +629,8 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                       onClick={e => e.stopPropagation()}
                       onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); predUebernehmen(); } }}>
                       <div style={{ position: "relative" }}>
-                        <div style={{ fontSize: 9, color: "#8a9baa", marginBottom: 2 }}>Vorgänger — mehrere mit Komma, z.B. 26, 27+2</div>
+                        {(() => { const n = vorgaengerZiele(aktiveSim.tasks, selectedIds, task.id).length; return n > 1 ? <div style={{ fontSize: 10, fontWeight: 600, color: "#2d7dbd", marginBottom: 4 }}>Gilt für {n} markierte {istGruppe(aktiveSim.tasks, aktiveSim.tasks.findIndex(x => x.id === task.id)) ? "Gruppen" : "Tasks"}</div> : null; })()}
+                            <div style={{ fontSize: 9, color: "#8a9baa", marginBottom: 2 }}>Vorgänger — mehrere mit Komma, z.B. 26, 27+2</div>
                         <input className="ac-input" style={{ fontSize: 11, padding: "3px 6px", width: "100%" }}
                           placeholder="— kein Vorgänger —"
                           value={predInput}

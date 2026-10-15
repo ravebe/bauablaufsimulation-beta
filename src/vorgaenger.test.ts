@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { Task } from "./types";
 import { berechneNummern, kaskadiereNachfolger, mitVorgaengern, parseVorgaengerText, vorgaengerListe, vorgaengerStart, vorgaengerText,
-  massgebenderVorgaenger, istZirkular, letzterVorgaengerEintrag, ersetzeLetztenVorgaengerEintrag, MAX_VORGAENGER } from "./types";
+  massgebenderVorgaenger, istZirkular, letzterVorgaengerEintrag, ersetzeLetztenVorgaengerEintrag, MAX_VORGAENGER, vorgaengerZiele, setzeVorgaenger } from "./types";
 import type { Kalender } from "./components/kalenderHelpers";
 import { exportZeilen, baueImportTasks } from "./components/ganttTabelle";
 import type { ImportZeile } from "./components/ganttTabelle";
@@ -136,5 +136,40 @@ describe("Vorgänger-Auswahl: Wartetage im Feld statt als +n", () => {
     expect(parseWartetage("abc")).toBe(0);
     expect(parseWartetage("2,4")).toBe(2);
     expect(parseWartetage("-1")).toBe(-1);
+  });
+});
+
+describe("Vorgänger für mehrere markierte Tasks", () => {
+  // G1 Gruppe mit A, B, C; D eigenständig
+  const liste = () => [
+    task("G1", "2026-11-09", "2026-11-12", { isGroup: true, outlineLevel: 1 }),
+    task("A", "2026-11-09", "2026-11-10", { outlineLevel: 2 }),
+    task("B", "2026-11-09", "2026-11-10", { outlineLevel: 2 }),
+    task("C", "2026-11-09", "2026-11-10", { outlineLevel: 2 }),
+    task("D", "2026-11-09", "2026-11-12", { outlineLevel: 1 }),
+  ];
+
+  it("vorgaengerZiele: nur bei Mehrfachauswahl inkl. angeklicktem Task, nur gleiche Art, Listen-Reihenfolge", () => {
+    const t = liste();
+    expect(vorgaengerZiele(t, [], "A")).toEqual(["A"]);
+    expect(vorgaengerZiele(t, ["B", "C"], "A")).toEqual(["A"]); // A nicht markiert
+    expect(vorgaengerZiele(t, ["C", "G1", "A", "B"], "A")).toEqual(["A", "B", "C"]); // Gruppe nicht mit
+    expect(vorgaengerZiele(t, ["C", "G1", "A", "B"], "G1")).toEqual(["G1"]);
+  });
+
+  it("setzeVorgaenger: setzt für alle, verschiebt hinter den Vorgänger; Zirkel/sich selbst je Task übersprungen; Entfernen für alle", () => {
+    const t = setzeVorgaenger(liste(), ["A", "B", "D"], [{ id: "D", lagDays: 0 }], KAL);
+    expect(t.find(x => x.id === "A")!.predecessorId).toBe("D");
+    expect(t.find(x => x.id === "B")!.predecessorId).toBe("D");
+    expect(t.find(x => x.id === "A")!.start).toBe("2026-11-13"); // Tag nach Ende D (Do 12.11.)
+    expect(t.find(x => x.id === "D")!.predecessorId).toBeUndefined(); // sich selbst → bisherige behalten
+    const leer = setzeVorgaenger(t, ["A", "B"], [], KAL);
+    expect(leer.find(x => x.id === "A")!.predecessorId).toBeUndefined();
+    expect(leer.find(x => x.id === "B")!.predecessorId).toBeUndefined();
+    // Zirkel: B hängt von A ab → A bekommt B nicht, behält D
+    const kette = setzeVorgaenger(t, ["B"], [{ id: "A", lagDays: 0 }], KAL);
+    const z = setzeVorgaenger(kette, ["A", "C"], [{ id: "B", lagDays: 0 }], KAL);
+    expect(z.find(x => x.id === "A")!.predecessorId).toBe("D");
+    expect(z.find(x => x.id === "C")!.predecessorId).toBe("B");
   });
 });
