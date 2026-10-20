@@ -159,8 +159,8 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
   return (
     <div style={{ padding: 14, fontSize: 12 }} ref={zoom.breitenRef}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 16, position: "sticky", top: 0, background: "#fff", zIndex: 3, paddingBottom: 4 }}>
-        <StatTile label="Peak Personalbedarf" wert={
-          <>{peakWert} Pers.{peakTagLabel && <span style={{ fontSize: 11, fontWeight: 400, color: FARBEN.textSekundaer, marginLeft: 6 }}>{peakTagLabel}</span>}</>
+        <StatTile label="Peak Personalbedarf" title={"Höchste Personenzahl an einem Tag, summiert über alle laufenden Tasks.\nJe Task arbeiten die Gewerke nacheinander, jedes so lange wie in Tab Kalkulation berechnet (Menge × Leistungswert ÷ Kolonne ÷ Std./Tag).\nIst ein Task im Gantt länger/kürzer als berechnet, wird die Kolonne entsprechend kleiner/grösser: Personen = Kolonne × berechnete ÷ geplante Dauer.\nSo ergeben die Personen über den Task genau die kalkulierten Personenstunden."} wert={
+          <>{Math.round(peakWert)} Pers.{peakTagLabel && <span style={{ fontSize: 11, fontWeight: 400, color: FARBEN.textSekundaer, marginLeft: 6 }}>{peakTagLabel}</span>}</>
         } />
         {personalSollGesetzt && (
           <StatTile label="Tage über Personal (Soll)" wert={String(tageUeberPersonalSoll)} status={tageUeberPersonalSoll > 0 ? "warning" : "good"} />

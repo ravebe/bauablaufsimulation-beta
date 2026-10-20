@@ -704,10 +704,10 @@ export function KranBalkenChart({ tage, buckets, serien, einheit = "", hoehe = 1
   );
 }
 
-export function StatTile({ label, wert, status, sub }: { label: string; wert: React.ReactNode; status?: "good" | "warning" | "critical"; sub?: string }) {
+export function StatTile({ label, wert, status, sub, title }: { label: string; wert: React.ReactNode; status?: "good" | "warning" | "critical"; sub?: string; title?: string }) {
   void status; // Zahl bewusst immer schwarz, kein Status-Farbcode mehr — siehe StatTile-Aufrufer für Warn-/Fehlerhinweise
   return (
-    <div style={{ border: "1px solid #dbeafe", background: "#f5f9ff", borderRadius: 8, padding: "8px 12px", minWidth: 120, flex: 1 }}>
+    <div title={title} style={{ border: "1px solid #dbeafe", background: "#f5f9ff", borderRadius: 8, padding: "8px 12px", minWidth: 120, flex: 1 }}>
       <div style={{ fontSize: 9, color: FARBEN.textPrimaer, fontWeight: 600, letterSpacing: ".3px", marginBottom: 3 }}>{label.toUpperCase()}</div>
       <div style={{ fontSize: 18, fontWeight: 700, color: FARBEN.textPrimaer }}>{wert}</div>
       {sub && <div style={{ fontSize: 10, color: FARBEN.textSekundaer, marginTop: 2 }}>{sub}</div>}

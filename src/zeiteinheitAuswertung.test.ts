@@ -45,10 +45,54 @@ describe("AVOR-Auswertungen mit halben Tagen", () => {
     gewerke: [{ key: "sch", label: "Schalung", einheit: "m2", raten: [{ kuerzel: "W", bezeichnung: "Wand", leistungswertHProEinheit: 1, anzahlPersonen: 4, chfProEinheit: 10 }] }],
   } as Stammdaten;
   it("Personal zählt am halben Tag mit dem halben Wert", () => {
+    // 10 m2 × 1 h = 10 Personenstunden, verteilt auf zwei halbe Tage → je 5 h = 0,625 Personen
     const t = task("A", "2026-11-09", "2026-11-10", { startZeit: "13:00", endZeit: "12:00", bauteilKuerzel: "W", mengen: { sch: 10 } });
     const reihe = personalauslastung([t], stammdaten, KAL);
-    expect(reihe.map(r => r.werte.sch ?? 0)).toEqual([2, 2]);
+    expect(reihe.map(r => r.werte.sch ?? 0)).toEqual([0.625, 0.625]);
   });
+});
+
+describe("Personalauslastung: Gewerke nacheinander, Personen aus dem Aufwand", () => {
+  // Wand: Schalung 4 Pers. 3 Tage (96 h), Bewehrung 3 Pers. 1 Tag (24 h), Beton 3 Pers. 1 Tag (24 h) → berechnet 5 Tage
+  const stammdaten: Stammdaten = {
+    ...LEERE_STAMMDATEN,
+    arbeitszeitStdProTag: 8,
+    gewerke: [
+      { key: "sch", label: "Schalung", einheit: "m2", raten: [{ kuerzel: "W", bezeichnung: "Wand", leistungswertHProEinheit: 1, anzahlPersonen: 4, chfProEinheit: null }] },
+      { key: "bew", label: "Bewehrung", einheit: "t", raten: [{ kuerzel: "W", bezeichnung: "Wand", leistungswertHProEinheit: 24, anzahlPersonen: 3, chfProEinheit: null }] },
+      { key: "bet", label: "Beton", einheit: "m3", raten: [{ kuerzel: "W", bezeichnung: "Wand", leistungswertHProEinheit: 2, anzahlPersonen: 3, chfProEinheit: null }] },
+    ],
+  } as Stammdaten;
+  const mengen = { sch: 96, bew: 1, bet: 12 };
+  const summe = (w: Record<string, number>) => Object.values(w).reduce((s, v) => s + v, 0);
+
+  it("geplante = berechnete Dauer: genau die Kolonnen aus Tab Ressourcen, nacheinander", () => {
+    const t = task("W", "2026-11-09", "2026-11-13", { bauteilKuerzel: "W", mengen }); // Mo–Fr = 5 Tage
+    const reihe = personalauslastung([t], stammdaten, KAL);
+    expect(reihe.map(r => r.werte)).toEqual([{ sch: 4 }, { sch: 4 }, { sch: 4 }, { bew: 3 }, { bet: 3 }]);
+  });
+
+  it("im Gantt doppelt so lang: Phasen gestreckt, halbe Kolonne, Personenstunden unverändert", () => {
+    const t = task("W", "2026-11-09", "2026-11-20", { bauteilKuerzel: "W", mengen }); // 10 Arbeitstage (Wochenende frei)
+    const reihe = personalauslastung([t], stammdaten, KAL).filter(r => Object.keys(r.werte).length > 0);
+    expect(reihe).toHaveLength(10);
+    expect(reihe.slice(0, 6).every(r => r.werte.sch === 2)).toBe(true);
+    expect(reihe[6].werte).toEqual({ bew: 1.5 });
+    const personentage = reihe.reduce((s, r) => s + summe(r.werte), 0);
+    expect(personentage * 8).toBeCloseTo(96 + 24 + 24);
+  });
+
+  it("Phasengrenze mitten im Tag: der Tag teilt sich anteilig auf beide Gewerke", () => {
+    const t = task("W", "2026-11-09", "2026-11-12", { bauteilKuerzel: "W", mengen }); // 4 statt 5 Tage → Faktor 0,8
+    const reihe = personalauslastung([t], stammdaten, KAL);
+    // Schalung 2,4 Tage à 5 Pers., Bewehrung 0,8 Tage à 3,75, Beton 0,8 Tage à 3,75
+    expect(reihe[2].werte.sch).toBeCloseTo(2);
+    expect(reihe[2].werte.bew).toBeCloseTo(0.6 * 3.75);
+    expect(reihe.reduce((s, r) => s + summe(r.werte), 0) * 8).toBeCloseTo(144);
+  });
+});
+
+describe("Mengen je Tag mit halben Tagen", () => {
   it("Menge verteilt sich nach Arbeitszeit", () => {
     const t = task("A", "2026-11-09", "2026-11-10", { endZeit: "12:00", bauteilKuerzel: "W", mengen: { sch: 30 } }); // 1,5 Tage: Mo ganz, Di VM
     const reihe = mengenProTag([t], "sch", KAL);

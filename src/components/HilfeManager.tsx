@@ -92,6 +92,7 @@ const THEMEN: Thema[] = [
       "Setzt Stammdaten (Ressourcen) sowie erfasste Mengen/Kürzel (Kalkulation) voraus, sonst bleibt die Ansicht leer.",
       "Über \"Kran-Verfügbarkeit\" Kräne anlegen und ihren Einsatzzeitraum (von/bis) festlegen — Grundlage für Kranoptik und Kapazitäts-Check.",
       "Die Kranoptik zeigt je Kran die geplanten Kranstunden gegen die verfügbare Kapazität, wahlweise je Monat oder Woche; Balken über der Kapazität sind rot markiert (Engpass). Erscheint erst, wenn Kräne angelegt und Tasks in Tab Kalkulation zugewiesen sind.",
+      "Personalauslastung und Peak: Je Task arbeiten die Gewerke nacheinander (Reihenfolge wie in Tab Ressourcen), jedes so lange wie in Tab Kalkulation berechnet. Ist ein Task im Gantt länger oder kürzer als berechnet, wird die Kolonne entsprechend kleiner oder grösser (Personen = Kolonne × berechnete ÷ geplante Dauer) — die Personenstunden je Task entsprechen so immer genau Menge × Leistungswert. Gewerke ohne Leistungswert zählen nicht mit.",
       "Über der Personalauslastung erscheint eine rote gestrichelte \"Personal (Soll)\"-Linie, sobald mindestens ein Task in Tab Kalkulation eine vorgesehene Personenzahl hat.",
       "Der Kapazitäts-Check prüft zusätzlich einen groben Personal-Richtwert je Kran (Ampel, Standard-Obergrenze 13 Personen, einstellbar).",
       "Die Ertragsoptik vergleicht den kumulierten Ertrag mit den kumulierten Kosten.",
