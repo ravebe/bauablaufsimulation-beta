@@ -114,9 +114,15 @@ describe("kranstundenProKranUndBucket", () => {
   it("verteilt den Bedarf gleichmässig auf die zugeordneten Kräne (2 Kräne → je 0.5)", () => {
     const { buckets, serien } = kranstundenProKranUndBucket([taskWoche], [k1, k2], stammdaten, LEERER_KALENDER, "woche");
     expect(buckets.length).toBe(1);
-    // 5 Arbeitstage × 8h × Anteil 0.5 = 20h je Kran
-    expect(serien.find(s => s.kranId === "k1")?.bedarf[0]).toBe(20);
-    expect(serien.find(s => s.kranId === "k2")?.bedarf[0]).toBe(20);
+    // 5 m3 × 1 h = 5 Personenstunden ÷ Kolonne 2 = 2,5 Kranstunden × Anteil 0.5 = 1,25 h je Kran
+    expect(serien.find(s => s.kranId === "k1")?.bedarf[0]).toBeCloseTo(1.25);
+    expect(serien.find(s => s.kranId === "k2")?.bedarf[0]).toBeCloseTo(1.25);
+  });
+
+  it("Kranstunden = Aufwand ÷ Kolonne, unabhängig von der Dauer im Gantt (Stütze 1 Tag statt 2 h)", () => {
+    const stuetze: Task = { ...taskWoche, id: "s", start: "2026-01-05", end: "2026-01-05", mengen: { beton: 4 }, kraene: ["k1"] };
+    const { serien } = kranstundenProKranUndBucket([stuetze], [k1], stammdaten, LEERER_KALENDER, "woche");
+    expect(serien[0].bedarf[0]).toBeCloseTo(2); // 4 h ÷ 2 Personen, nicht 8 h (ganzer Tag)
   });
 
   it("Kapazität = verfügbare Arbeitstage × Arbeitszeit — kein Engpass, wenn beide Kräne durchgehend verfügbar sind", () => {

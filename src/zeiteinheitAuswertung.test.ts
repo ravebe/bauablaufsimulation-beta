@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { Task } from "./types";
 import type { Kalender } from "./components/kalenderHelpers";
 import { arbeitsAnteilAmTag, startPos, endPos, datumZeitBeiPos } from "./components/zeitHelpers";
-import { personalauslastung, mengenProTag } from "./components/avorHelpers";
+import { personalauslastung, mengenProTag, ertragsoptik } from "./components/avorHelpers";
 import type { Stammdaten } from "./components/stammdatenHelpers";
 import { LEERE_STAMMDATEN } from "./components/stammdatenHelpers";
 import { erzeuge4dIfc, fuegeIfcEin } from "./components/ifcExport";
@@ -89,6 +89,26 @@ describe("Personalauslastung: Gewerke nacheinander, Personen aus dem Aufwand", (
     expect(reihe[2].werte.sch).toBeCloseTo(2);
     expect(reihe[2].werte.bew).toBeCloseTo(0.6 * 3.75);
     expect(reihe.reduce((s, r) => s + summe(r.werte), 0) * 8).toBeCloseTo(144);
+  });
+
+  it("Stütze: 1 Tag im Gantt, aber nur 6 Personenstunden → 0,75 Personen, Ertrag 6 h × Umsatz, Kosten Menge × CHF", () => {
+    const sd: Stammdaten = {
+      ...LEERE_STAMMDATEN, arbeitszeitStdProTag: 8, umsatzChfProMannstunde: 80,
+      gewerke: [{ key: "ver", label: "Elemente versetzen", einheit: "Stk", raten: [{ kuerzel: "ST", bezeichnung: "Stütze", leistungswertHProEinheit: 6, anzahlPersonen: 3, chfProEinheit: 500 }] }],
+    } as Stammdaten;
+    const t = task("S", "2026-11-09", "2026-11-09", { bauteilKuerzel: "ST", mengen: { ver: 1 } });
+    expect(personalauslastung([t], sd, KAL)[0].werte.ver).toBeCloseTo(0.75); // 6 h ÷ 8 h
+    const ertrag = ertragsoptik([t], sd, KAL);
+    expect(ertrag[0].ertragKum).toBeCloseTo(480); // 6 h × 80 CHF
+    expect(ertrag[0].kostenKum).toBeCloseTo(500); // 1 Stk × 500 CHF
+  });
+
+  it("Kosten folgen dem Aufwand: Schalungskosten fallen während der Schalung an, Summe bleibt Menge × CHF", () => {
+    const sd: Stammdaten = { ...stammdaten, gewerke: stammdaten.gewerke.map(g => ({ ...g, raten: g.raten.map(r => ({ ...r, chfProEinheit: 10 })) })) } as Stammdaten;
+    const t = task("W", "2026-11-09", "2026-11-13", { bauteilKuerzel: "W", mengen });
+    const reihe = ertragsoptik([t], sd, KAL);
+    expect(reihe[2].kostenKum).toBeCloseTo(960); // nach 3 Tagen ist die Schalung (96 m2 × 10) komplett
+    expect(reihe[4].kostenKum).toBeCloseTo((96 + 1 + 12) * 10);
   });
 });
 

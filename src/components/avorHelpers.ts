@@ -37,27 +37,28 @@ function laeuftAn(t: Task, iso: string): boolean {
 }
 
 /**
- * Personen je Gewerk und Tag für einen Task — nachvollziehbar aus der Kalkulation abgeleitet:
- *  1. Die Gewerke arbeiten nacheinander (Reihenfolge wie in Tab Ressourcen), jedes so lange, wie es laut
- *     Kalkulation braucht: Menge × Leistungswert ÷ (Kolonne × Std./Tag) — dieselbe Rechnung wie die
- *     berechnete Dauer in Tab Kalkulation (dauerGewerk/dauerBerechnetTask in stammdatenHelpers.ts).
+ * Aufwand (Personenstunden) je Gewerk und Tag für einen Task — die gemeinsame Grundlage aller
+ * Auswertungen in Tab AVOR (Personal, Ertrag, Kosten im Zeitverlauf, Kranstunden, Kran-Personal):
+ *  1. Je Gewerk ist der Aufwand Menge × Leistungswert (Personenstunden). Die Gewerke arbeiten
+ *     nacheinander (Reihenfolge wie in Tab Ressourcen), jedes so lange, wie es laut Kalkulation braucht:
+ *     Aufwand ÷ (Kolonne × Std./Tag) — dieselbe Rechnung wie die berechnete Dauer in Tab Kalkulation
+ *     (dauerGewerk/dauerBerechnetTask in stammdatenHelpers.ts).
  *  2. Ist der Task im Gantt länger oder kürzer als die Summe dieser Dauern, werden alle Phasen im gleichen
- *     Verhältnis gestreckt bzw. gestaucht und die Kolonne entsprechend kleiner bzw. grösser:
- *     Personen = Kolonne × berechnete Dauer ÷ geplante Dauer.
- *  Die Personenstunden je Task bleiben so immer genau die kalkulierten (Menge × Leistungswert); stimmt die
- *  geplante Dauer mit der berechneten überein, erscheinen genau die Kolonnengrössen aus Tab Ressourcen.
- *  Gewerke ohne Leistungswert haben keinen Aufwand und zählen nicht mit. Halbe Tage zählen anteilig.
+ *     Verhältnis gestreckt bzw. gestaucht — derselbe Aufwand verteilt sich auf mehr bzw. weniger Tage.
+ *  Summe über alle Tage = Menge × Leistungswert, unabhängig von der Dauer im Gantt. Gewerke ohne
+ *  Leistungswert haben keinen Aufwand. Halbe Tage/Stunden zählen mit ihrem Anteil am Arbeitstag.
  */
-export function personalJeTagFuerTask(t: Task, stammdaten: Stammdaten, kalender: Kalender): Map<string, Record<string, number>> {
+export function aufwandJeTagFuerTask(t: Task, stammdaten: Stammdaten, kalender: Kalender): Map<string, Record<string, number>> {
   const ergebnis = new Map<string, Record<string, number>>();
   if (t.isGroup || !t.bauteilKuerzel || !t.mengen || !t.start || !t.end) return ergebnis;
   const std = stammdaten.arbeitszeitStdProTag;
-  const phasen: { key: string; kolonne: number; tage: number }[] = [];
+  const phasen: { key: string; personenstunden: number; tage: number }[] = [];
   for (const gewerk of stammdaten.gewerke) {
     const menge = t.mengen[gewerk.key];
     const rate = rateFuer(gewerk, t.bauteilKuerzel);
     if (!menge || !rate?.leistungswertHProEinheit || !rate.anzahlPersonen || !std) continue;
-    phasen.push({ key: gewerk.key, kolonne: rate.anzahlPersonen, tage: (menge * rate.leistungswertHProEinheit) / (rate.anzahlPersonen * std) });
+    const personenstunden = menge * rate.leistungswertHProEinheit;
+    phasen.push({ key: gewerk.key, personenstunden, tage: personenstunden / (rate.anzahlPersonen * std) });
   }
   const berechnet = phasen.reduce((s, p) => s + p.tage, 0);
   if (berechnet <= 0) return ergebnis;
@@ -74,20 +75,51 @@ export function personalJeTagFuerTask(t: Task, stammdaten: Stammdaten, kalender:
   const geplant = tage.reduce((sum, tg) => sum + tg.anteil, 0);
   if (geplant <= 0) return ergebnis;
 
-  const faktor = geplant / berechnet; // > 1: im Gantt länger als berechnet → Phasen gestreckt, kleinere Kolonne
+  const faktor = geplant / berechnet; // > 1: im Gantt länger als berechnet → Phasen gestreckt
   let pos = 0;
   for (const tg of tage) {
     const von = pos, bis = pos + tg.anteil;
     const werte: Record<string, number> = {};
     let phaseVon = 0;
     for (const p of phasen) {
-      const phaseBis = phaseVon + p.tage * faktor;
+      const laenge = p.tage * faktor, phaseBis = phaseVon + laenge;
       const ueberlappung = Math.min(bis, phaseBis) - Math.max(von, phaseVon);
-      if (ueberlappung > 1e-9) werte[p.key] = (werte[p.key] ?? 0) + (p.kolonne / faktor) * ueberlappung;
+      if (ueberlappung > 1e-9) werte[p.key] = (werte[p.key] ?? 0) + p.personenstunden * ueberlappung / laenge;
       phaseVon = phaseBis;
     }
     ergebnis.set(tg.iso, werte);
     pos = bis;
+  }
+  return ergebnis;
+}
+
+/** Personen (Vollzeit-Äquivalent) je Gewerk und Tag für einen Task: Aufwand des Tages ÷ Std./Tag (siehe
+ *  aufwandJeTagFuerTask). Stimmt die Dauer im Gantt mit der berechneten überein, sind das genau die
+ *  Kolonnengrössen aus Tab Ressourcen, sonst Kolonne × berechnete ÷ geplante Dauer. */
+export function personalJeTagFuerTask(t: Task, stammdaten: Stammdaten, kalender: Kalender): Map<string, Record<string, number>> {
+  const ergebnis = new Map<string, Record<string, number>>();
+  for (const [iso, aufwand] of aufwandJeTagFuerTask(t, stammdaten, kalender)) {
+    const werte: Record<string, number> = {};
+    for (const [k, ph] of Object.entries(aufwand)) werte[k] = ph / stammdaten.arbeitszeitStdProTag;
+    ergebnis.set(iso, werte);
+  }
+  return ergebnis;
+}
+
+/** Kranstunden je Tag für einen Task: Aufwand der kranpflichtigen Gewerke ÷ Kolonne — also die Zeit, in
+ *  der die Kolonne laut Leistungswert am Bauteil arbeitet (z.B. Stütze 6 Personenstunden ÷ 3 Personen =
+ *  2 Kranstunden), verteilt wie der Aufwand (aufwandJeTagFuerTask). Nicht kranpflichtige Gewerke zählen nicht. */
+export function kranstundenJeTagFuerTask(t: Task, stammdaten: Stammdaten, kalender: Kalender): Map<string, number> {
+  const ergebnis = new Map<string, number>();
+  for (const [iso, aufwand] of aufwandJeTagFuerTask(t, stammdaten, kalender)) {
+    let stunden = 0;
+    for (const [k, ph] of Object.entries(aufwand)) {
+      if (!istMengeKranpflichtig(stammdaten, k, t.bauteilKuerzel)) continue;
+      const gewerk = stammdaten.gewerke.find(g => g.key === k);
+      const kolonne = gewerk ? rateFuer(gewerk, t.bauteilKuerzel!)?.anzahlPersonen : 0;
+      if (kolonne) stunden += ph / kolonne;
+    }
+    if (stunden > 0) ergebnis.set(iso, stunden);
   }
   return ergebnis;
 }
@@ -211,24 +243,33 @@ export function ertragsoptik(tasks: Task[], stammdaten: Stammdaten, kalender: Ka
   const umsatz = stammdaten.umsatzChfProMannstunde ?? 80;
   const ergebnis: { tag: string; ertragKum: number; kostenKum: number }[] = [];
   let ertragKum = 0, kostenKum = 0;
-  const personal = new Map(personalauslastung(tasks, stammdaten, kalender).map(tw => [tw.tag, tw.werte]));
+  // Je Task der Aufwand je Tag (aufwandJeTagFuerTask): Ertrag = Personenstunden × Umsatz/Mannstunde;
+  // Kosten eines Gewerks (Menge × CHF/Einheit) fallen im selben Verhältnis an wie sein Aufwand — ohne
+  // Leistungswert (kein Aufwand) gleichmässig über die Arbeitszeit des Tasks.
+  const aufwandJeTask = new Map(tasks.map(t => [t.id, aufwandJeTagFuerTask(t, stammdaten, kalender)]));
+  const aufwandGesamtJeTask = new Map([...aufwandJeTask].map(([id, jeTag]) => {
+    const summe: Record<string, number> = {};
+    for (const w of jeTag.values()) for (const [k, v] of Object.entries(w)) summe[k] = (summe[k] ?? 0) + v;
+    return [id, summe] as const;
+  }));
   const cur = new Date(zeitraum.start.getTime());
   while (cur.getTime() <= zeitraum.end.getTime()) {
     const iso = toIso(cur);
     if (istArbeitstag(iso, kalender)) {
-      // Ertrag = Personen des Tages (wie Personalauslastung) × Std./Tag × Umsatz/Mannstunde
-      const personenTag = Object.values(personal.get(iso) ?? {}).reduce((s, v) => s + v, 0);
-      ertragKum += personenTag * stammdaten.arbeitszeitStdProTag * umsatz;
       for (const t of tasks) {
         if (!laeuftAn(t, iso)) continue;
         const anteil = arbeitsAnteilAmTag(t, iso, kalender);
         if (!anteil) continue;
-        const arbeitstage = dauerTage(t, kalender);
+        const aufwandTag = aufwandJeTask.get(t.id)?.get(iso) ?? {};
         for (const gewerk of stammdaten.gewerke) {
           const menge = t.mengen![gewerk.key];
           if (!menge) continue;
+          const ph = aufwandTag[gewerk.key] ?? 0;
+          ertragKum += ph * umsatz;
           const rate = rateFuer(gewerk, t.bauteilKuerzel!);
-          if (rate?.chfProEinheit) kostenKum += (menge * rate.chfProEinheit) * anteil / arbeitstage;
+          if (!rate?.chfProEinheit) continue;
+          const gesamt = aufwandGesamtJeTask.get(t.id)?.[gewerk.key] ?? 0;
+          kostenKum += menge * rate.chfProEinheit * (gesamt > 0 ? ph / gesamt : anteil / dauerTage(t, kalender));
         }
       }
     }

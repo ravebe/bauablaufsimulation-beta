@@ -6,8 +6,7 @@ import type { Task, Kran, Zeitraster } from "../types";
 import { parseDateUniversal } from "../types";
 import type { Kalender } from "./kalenderHelpers";
 import { istArbeitstag, getKW } from "./kalenderHelpers";
-import { arbeitsAnteilAmTag } from "./zeitHelpers";
-import { projektzeitraum } from "./avorHelpers";
+import { projektzeitraum, kranstundenJeTagFuerTask } from "./avorHelpers";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { istMengeKranpflichtig } from "./stammdatenHelpers";
 
@@ -121,10 +120,9 @@ export function kranAusTasksEntfernen(tasks: Task[], kranId: string): Task[] {
 export interface KranstundenSerie { kranId: string; kranName: string; bedarf: number[]; kapazitaet: number[] }
 
 /** Geplante Kranstunden je Kran und Zeitraster-Bucket (Monat/Woche) gegen die aus der Verfügbarkeit
- *  abgeleitete Kapazität — Grundlage der Kranoptik (Tab AVOR). Bedarf: für jeden Arbeitstag eines
- *  kranpflichtigen Tasks (mind. ein Gewerk mit Menge > 0 als kranpflichtig markiert) gilt der Kran mit
- *  vollem arbeitszeitStdProTag als beansprucht, bei mehreren zugeordneten Kränen anteilig gleichmässig
- *  verteilt (kranAnteil — 0.5/0.33…). Bewusst grob (Plausibilisierung), keine Stunden-genaue Einsatzplanung. */
+ *  abgeleitete Kapazität — Grundlage der Kranoptik (Tab AVOR). Bedarf je Task: Aufwand der kranpflichtigen
+ *  Gewerke ÷ Kolonne (Einsatzzeit der Kolonne laut Leistungswert, siehe kranstundenJeTagFuerTask in
+ *  avorHelpers.ts), bei mehreren zugeordneten Kränen anteilig gleichmässig verteilt (kranAnteil — 0.5/0.33…). */
 export function kranstundenProKranUndBucket(tasks: Task[], kraene: Kran[], stammdaten: Stammdaten, kalender: Kalender, raster: Zeitraster): { buckets: ZeitrasterBucket[]; serien: KranstundenSerie[] } {
   const buckets = zeitrasterBuckets(tasks, raster);
   if (buckets.length === 0 || kraene.length === 0) return { buckets, serien: [] };
@@ -145,18 +143,9 @@ export function kranstundenProKranUndBucket(tasks: Task[], kraene: Kran[], stamm
     if (beteiligteSerien.length === 0) continue;
     const anteil = kranAnteil(t.kraene.length);
 
-    const start = parseDateUniversal(t.start), end = parseDateUniversal(t.end);
-    if (!start || !end) continue;
-    const cur = new Date(start.getTime());
-    while (cur.getTime() <= end.getTime()) {
-      const iso = toIso(cur);
-      // Halbtag/Stunden: der Kran ist nur für den Anteil des Tages beansprucht, an dem der Task arbeitet
-      const tagesAnteil = istArbeitstag(iso, kalender) ? arbeitsAnteilAmTag(t, iso, kalender) : 0;
-      if (tagesAnteil > 0) {
-        const bi = bucketIndexFuer(iso);
-        if (bi !== -1) for (const s of beteiligteSerien) s.bedarf[bi] += stammdaten.arbeitszeitStdProTag * anteil * tagesAnteil;
-      }
-      cur.setDate(cur.getDate() + 1);
+    for (const [iso, stunden] of kranstundenJeTagFuerTask(t, stammdaten, kalender)) {
+      const bi = bucketIndexFuer(iso);
+      if (bi !== -1) for (const s of beteiligteSerien) s.bedarf[bi] += stunden * anteil;
     }
   }
   return { buckets, serien };

@@ -10,17 +10,12 @@
 import type { Task, Kran, Zeitraster } from "../types";
 import { parseDateUniversal } from "../types";
 import type { Kalender } from "./kalenderHelpers";
-import { istArbeitstag } from "./kalenderHelpers";
-import { arbeitsAnteilAmTag, dauerTage, startZeitpunkt, endZeitpunkt, vergleicheZeitpunkte } from "./zeitHelpers";
+import { dauerTage, startZeitpunkt, endZeitpunkt, vergleicheZeitpunkte } from "./zeitHelpers";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { rateFuerKuerzel, istMengeKranpflichtig } from "./stammdatenHelpers";
-import { kranauslastung } from "./avorHelpers";
+import { kranauslastung, aufwandJeTagFuerTask } from "./avorHelpers";
 import type { ZeitrasterBucket } from "./kranHelpers";
 import { zeitrasterBuckets, kranVerfuegbareArbeitstage, kranAnteil } from "./kranHelpers";
-
-function toIso(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 /** Kranbereich-Schlüssel eines Tasks — leeres/fehlendes Feld landet im "unbekannt"-Sammeltopf,
  *  analog zu kranauslastung() in avorHelpers.ts. */
@@ -128,7 +123,7 @@ export const MAX_PERSONEN_PRO_KRAN = 13;
 export interface KranPersonalSerie { kranId: string; kranName: string; personenstunden: number[]; arbeitstageVerfuegbar: number[] }
 
 /** Personenstunden-Bedarf (Menge × Leistungswert kranpflichtiger Gewerke) je Kran und Zeitraster-Bucket
- *  — gleichmässig über die Arbeitstage jedes Tasks verteilt und bei mehreren zugeordneten Kränen
+ *  — über die Tage verteilt wie der Aufwand (aufwandJeTagFuerTask in avorHelpers.ts) und bei mehreren zugeordneten Kränen
  *  anteilig aufgeteilt (kranAnteil, 0.5/0.33…). Grundlage für personalRichtwertJeBucket(). */
 export function personenstundenProKranUndBucket(tasks: Task[], kraene: Kran[], stammdaten: Stammdaten, kalender: Kalender, raster: Zeitraster): { buckets: ZeitrasterBucket[]; serien: KranPersonalSerie[] } {
   const buckets = zeitrasterBuckets(tasks, raster);
@@ -144,33 +139,15 @@ export function personenstundenProKranUndBucket(tasks: Task[], kraene: Kran[], s
 
   for (const t of tasks) {
     if (t.isGroup || !t.kraene || t.kraene.length === 0 || !t.bauteilKuerzel || !t.mengen) continue;
-    let taskPersonenstunden = 0;
-    for (const gewerk of stammdaten.gewerke) {
-      const menge = t.mengen[gewerk.key];
-      if (!menge || !istMengeKranpflichtig(stammdaten, gewerk.key, t.bauteilKuerzel)) continue;
-      const rate = rateFuerKuerzel(gewerk, t.bauteilKuerzel);
-      if (!rate?.leistungswertHProEinheit) continue;
-      taskPersonenstunden += menge * rate.leistungswertHProEinheit;
-    }
-    if (taskPersonenstunden <= 0) continue;
     const beteiligteSerien = t.kraene.map(id => serieByKranId.get(id)).filter((s): s is KranPersonalSerie => !!s);
     if (beteiligteSerien.length === 0) continue;
     const anteil = kranAnteil(t.kraene.length);
 
-    const arbeitstageDesTasks = dauerTage(t, kalender);
-    const proArbeitstag = taskPersonenstunden / arbeitstageDesTasks;
-
-    const start = parseDateUniversal(t.start), end = parseDateUniversal(t.end);
-    if (!start || !end) continue;
-    const cur = new Date(start.getTime());
-    while (cur.getTime() <= end.getTime()) {
-      const iso = toIso(cur);
-      const tagesAnteil = istArbeitstag(iso, kalender) ? arbeitsAnteilAmTag(t, iso, kalender) : 0;
-      if (tagesAnteil > 0) {
-        const bi = bucketIndexFuer(iso);
-        if (bi !== -1) for (const s of beteiligteSerien) s.personenstunden[bi] += proArbeitstag * anteil * tagesAnteil;
-      }
-      cur.setDate(cur.getDate() + 1);
+    for (const [iso, aufwand] of aufwandJeTagFuerTask(t, stammdaten, kalender)) {
+      let personenstunden = 0;
+      for (const [k, ph] of Object.entries(aufwand)) if (istMengeKranpflichtig(stammdaten, k, t.bauteilKuerzel)) personenstunden += ph;
+      const bi = bucketIndexFuer(iso);
+      if (personenstunden > 0 && bi !== -1) for (const s of beteiligteSerien) s.personenstunden[bi] += personenstunden * anteil;
     }
   }
   return { buckets, serien };
