@@ -23,6 +23,8 @@ import VersionsVerlauf from "./components/VersionsVerlauf";
 import FehlerGrenze from "./components/FehlerGrenze";
 import { useClickOutside } from "./hooks/useClickOutside";
 import { stelleSimWiederHer } from "./hooks/syncHelpers";
+import { setzeArbeitszeit } from "./components/zeitHelpers";
+import { effektiveArbeitszeit } from "./components/stammdatenHelpers";
 import "./App.css";
 
 export type Tab = "projekte" | "bauteile" | "abspielen" | "kalkulation" | "ressourcen" | "avor" | "kosten";
@@ -57,6 +59,9 @@ export default function App() {
   useEffect(() => { fehlerKontextSetzen({ api, projectId, benutzer: userEmail ?? userName }); }, [api, projectId, userEmail, userName]);
 
   const aktiveSim = sims.find(s => s.id === aktivId) ?? null;
+  // Arbeitszeit (Tab Ressourcen) + Zeiteinheit der aktiven Simulation für alle Zeit-Funktionen (zeitHelpers.ts) — bewusst
+  // synchron beim Rendern, damit alle Tabs schon im selben Render mit der richtigen Arbeitszeit rechnen.
+  setzeArbeitszeit(effektiveArbeitszeit(aktiveSim?.stammdaten), aktiveSim?.zeiteinheit);
 
   // Auto-Migration: Alte Sims ohne erstellerId → aktueller User wird Ersteller
   useEffect(() => {

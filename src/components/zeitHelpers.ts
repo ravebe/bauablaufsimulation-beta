@@ -1,7 +1,8 @@
-// zeitHelpers.ts — Zeiteinheit Tage / Halbtage / Uhrzeit (wie MS Project): Arbeitszeit 08:00–12:00 und 13:00–17:00 (8 h/Tag).
-// Ein Task trägt optional eine Start- und Endzeit (Task.startZeit / Task.endZeit, "HH:MM"); fehlen sie, gilt 08:00 bzw. 17:00 —
-// damit ist die Tage-Logik genau der Sonderfall "ganzer Arbeitstag" und alle Tages-Regeln (Arbeitstage, Wartetage als Kalendertage,
-// freie Tage) gelten unverändert. Gerechnet wird in Arbeitsminuten: 1 Arbeitstag = 480 min.
+// zeitHelpers.ts — Zeiteinheit Tage / Halbtage / Uhrzeit (wie MS Project) mit der Arbeitszeit aus Tab Ressourcen (Beginn, Mittag,
+// Ende; Standard 08:00–12:00 / 13:00–17:00). Ein Task trägt optional eine Start- und Endzeit (Task.startZeit / Task.endZeit, "HH:MM");
+// fehlen sie, gilt Arbeitsbeginn bzw. -ende — damit ist die Tage-Logik genau der Sonderfall "ganzer Arbeitstag" und alle Tages-Regeln
+// (Arbeitstage, Wartetage als Kalendertage, freie Tage) gelten unverändert. Gerechnet wird in echten Arbeitsminuten:
+// 1 Arbeitstag = MIN_PRO_ARBEITSTAG (z.B. 8,5 h = 510 min).
 import { parseDateUniversal } from "../types";
 import type { Kalender } from "./kalenderHelpers";
 import { istArbeitstag, arbeitstageZwischen } from "./kalenderHelpers";
@@ -9,11 +10,57 @@ import { istArbeitstag, arbeitstageZwischen } from "./kalenderHelpers";
 export type Zeiteinheit = "tage" | "halbtage" | "stunden";
 export const ZEITEINHEIT_LABEL: Record<Zeiteinheit, string> = { tage: "Tage", halbtage: "Halbtage", stunden: "Uhrzeit" };
 
-export const ARBEITSBEGINN_MIN = 8 * 60;   // 08:00
-export const MITTAG_VON_MIN = 12 * 60;     // 12:00
-export const MITTAG_BIS_MIN = 13 * 60;     // 13:00
-export const ARBEITSENDE_MIN = 17 * 60;    // 17:00
-export const MIN_PRO_ARBEITSTAG = 480;
+// Arbeitszeit der aktiven Simulation (Tab Ressourcen, Stammdaten.arbeitszeit) — gesetzt über setzeArbeitszeit() beim
+// Rendern von App.tsx. Bewusst modulweite Werte (ES-Module-Live-Bindings), damit alle Zeit-Funktionen ohne zusätzlichen
+// Parameter dieselbe Arbeitszeit verwenden. Ohne Aufruf (z.B. in Tests) gilt 08:00–12:00 / 13:00–17:00 = 8 h.
+export let ARBEITSBEGINN_MIN = 8 * 60;
+export let MITTAG_VON_MIN = 12 * 60;
+export let MITTAG_BIS_MIN = 13 * 60;
+export let ARBEITSENDE_MIN = 17 * 60;
+export let MIN_PRO_ARBEITSTAG = 480;
+let VORMITTAG_MIN = 240; // Arbeitsminuten bis zur Mittagspause
+let aktiveZeiteinheit: Zeiteinheit = "tage";
+
+/** Arbeitszeit eines Tages als Uhrzeiten "HH:MM" — Std./Tag ergibt sich daraus (arbeitszeitStunden). */
+export interface Arbeitszeit { beginn: string; mittagVon: string; mittagBis: string; ende: string }
+export const STANDARD_ARBEITSZEIT: Arbeitszeit = { beginn: "08:00", mittagVon: "12:00", mittagBis: "13:00", ende: "17:00" };
+
+/** Fehlertext, wenn die Uhrzeiten keine gültige Arbeitszeit ergeben (Beginn < Mittag von ≤ Mittag bis < Ende), sonst null. */
+export function pruefeArbeitszeit(az: Arbeitszeit): string | null {
+  if ([az.beginn, az.mittagVon, az.mittagBis, az.ende].some(z => typeof z !== "string")) return "Uhrzeiten im Format HH:MM eingeben";
+  const b = zeitZuMin(az.beginn, -1), mv = zeitZuMin(az.mittagVon, -1), mb = zeitZuMin(az.mittagBis, -1), e = zeitZuMin(az.ende, -1);
+  if ([b, mv, mb, e].some(m => m < 0 || m > 24 * 60)) return "Uhrzeiten im Format HH:MM eingeben";
+  if (!(b < mv)) return "Beginn muss vor dem Mittag liegen";
+  if (!(mv <= mb)) return "Mittag bis darf nicht vor Mittag von liegen";
+  if (!(mb < e)) return "Ende muss nach dem Mittag liegen";
+  return null;
+}
+
+/** Arbeitsstunden pro Tag einer Arbeitszeit (Vormittag + Nachmittag). */
+export function arbeitszeitStunden(az: Arbeitszeit): number {
+  return ((zeitZuMin(az.mittagVon, 0) - zeitZuMin(az.beginn, 0)) + (zeitZuMin(az.ende, 0) - zeitZuMin(az.mittagBis, 0))) / 60;
+}
+
+/** Arbeitszeit für Projekte, die noch keine Uhrzeiten haben: aus den bisherigen Std./Tag abgeleitet, Mittag 12–13 Uhr und
+ *  Ende 17:00 (8,5 h → Beginn 07:30, 8 h → 08:00) — die Kalkulation (Std./Tag) bleibt damit unverändert. */
+export function arbeitszeitAusStunden(std: number): Arbeitszeit {
+  const min = Math.round((std > 0 ? std : 8) * 60);
+  if (min > 240 && min < 12 * 60) return { ...STANDARD_ARBEITSZEIT, beginn: minZuZeit(16 * 60 - min) };
+  const halb = Math.round(min / 2); // sehr kurze/lange Tage: gleichmässig um den Mittag
+  return { beginn: minZuZeit(Math.max(0, 12 * 60 - halb)), mittagVon: "12:00", mittagBis: "13:00", ende: minZuZeit(Math.min(24 * 60, 13 * 60 + min - halb)) };
+}
+
+/** Arbeitszeit (und Zeiteinheit, für das Einrasten auf Halbtage) der aktiven Simulation setzen; ungültige Werte → Standard. */
+export function setzeArbeitszeit(az: Arbeitszeit | undefined, einheit: Zeiteinheit = "tage"): void {
+  const gueltig = az && !pruefeArbeitszeit(az) ? az : STANDARD_ARBEITSZEIT;
+  ARBEITSBEGINN_MIN = zeitZuMin(gueltig.beginn, 8 * 60);
+  MITTAG_VON_MIN = zeitZuMin(gueltig.mittagVon, 12 * 60);
+  MITTAG_BIS_MIN = zeitZuMin(gueltig.mittagBis, 13 * 60);
+  ARBEITSENDE_MIN = zeitZuMin(gueltig.ende, 17 * 60);
+  VORMITTAG_MIN = MITTAG_VON_MIN - ARBEITSBEGINN_MIN;
+  MIN_PRO_ARBEITSTAG = VORMITTAG_MIN + (ARBEITSENDE_MIN - MITTAG_BIS_MIN);
+  aktiveZeiteinheit = einheit;
+}
 
 /** Ein Zeitpunkt: Datum (YYYY-MM-DD) + Minuten seit Mitternacht */
 export interface Zeitpunkt { datum: string; min: number }
@@ -49,20 +96,55 @@ function tagPlus(datum: string, n: number): string {
   return iso(new Date(d.getFullYear(), d.getMonth(), d.getDate() + n));
 }
 
-/** Arbeitsminuten eines Arbeitstags bis zur Uhrzeit (0 … 480). */
+/** Arbeitsminuten eines Arbeitstags bis zur Uhrzeit (0 … MIN_PRO_ARBEITSTAG). */
 export function arbeitsMinBis(min: number): number {
   if (min <= ARBEITSBEGINN_MIN) return 0;
   if (min <= MITTAG_VON_MIN) return min - ARBEITSBEGINN_MIN;
-  if (min <= MITTAG_BIS_MIN) return 240;
-  if (min <= ARBEITSENDE_MIN) return min - ARBEITSBEGINN_MIN - 60;
+  if (min <= MITTAG_BIS_MIN) return VORMITTAG_MIN;
+  if (min <= ARBEITSENDE_MIN) return VORMITTAG_MIN + (min - MITTAG_BIS_MIN);
   return MIN_PRO_ARBEITSTAG;
 }
 
-/** Uhrzeit zu einer Arbeitsminute des Tages; genau am Mittag ist ein Start 13:00, ein Ende 12:00. */
+/** Uhrzeit zu einer Arbeitsminute des Tages; genau am Mittag ist ein Start "Mittag bis", ein Ende "Mittag von". */
 export function uhrzeitAusArbeitsMin(a: number, art: "start" | "ende"): number {
-  if (a < 240) return ARBEITSBEGINN_MIN + a;
-  if (a === 240) return art === "ende" ? MITTAG_VON_MIN : MITTAG_BIS_MIN;
-  return MITTAG_BIS_MIN + (Math.min(a, MIN_PRO_ARBEITSTAG) - 240);
+  if (a < VORMITTAG_MIN) return ARBEITSBEGINN_MIN + a;
+  if (a === VORMITTAG_MIN) return art === "ende" ? MITTAG_VON_MIN : MITTAG_BIS_MIN;
+  return MITTAG_BIS_MIN + (Math.min(a, MIN_PRO_ARBEITSTAG) - VORMITTAG_MIN);
+}
+
+/** Wählbare Uhrzeiten je Zeiteinheit: Halbtage = Beginn/Mittag; Uhrzeit = Beginn, jede volle Stunde und Mittag/Ende. */
+export function zeitOptionen(einheit: Zeiteinheit, art: "start" | "ende"): number[] {
+  if (einheit === "halbtage") return art === "start" ? [ARBEITSBEGINN_MIN, MITTAG_BIS_MIN] : [MITTAG_VON_MIN, ARBEITSENDE_MIN];
+  if (einheit === "tage") return [art === "start" ? ARBEITSBEGINN_MIN : ARBEITSENDE_MIN];
+  const volle = (von: number, bis: number) => { const r: number[] = []; for (let h = Math.floor(von / 60) + 1; h * 60 < bis; h++) r.push(h * 60); return r; };
+  return art === "start"
+    ? [ARBEITSBEGINN_MIN, ...volle(ARBEITSBEGINN_MIN, MITTAG_VON_MIN), MITTAG_BIS_MIN, ...volle(MITTAG_BIS_MIN, ARBEITSENDE_MIN)]
+    : [...volle(ARBEITSBEGINN_MIN, MITTAG_VON_MIN), MITTAG_VON_MIN, ...volle(MITTAG_BIS_MIN, ARBEITSENDE_MIN), ARBEITSENDE_MIN];
+}
+
+/** Uhrzeit auf die nächstgelegene wählbare Uhrzeit der Zeiteinheit runden (gemessen in Arbeitsminuten). */
+export function rasteUhrzeit(min: number, art: "start" | "ende", einheit: Zeiteinheit): number {
+  const a = arbeitsMinBis(min);
+  let best = min, abstand = Infinity;
+  for (const o of zeitOptionen(einheit, art)) {
+    const d = Math.abs(arbeitsMinBis(o) - a);
+    if (d < abstand) { abstand = d; best = o; }
+  }
+  return best;
+}
+
+/** Im Modus Halbtage: Zeitpunkt auf den nächstgelegenen Halbtag einrasten (Start: Beginn/Mittag bis, Ende: Mittag von/Ende,
+ *  ggf. Ende des vorigen bzw. Beginn des nächsten Arbeitstags). Nötig, weil Vor- und Nachmittag verschieden lang sein können —
+ *  ein Vormittags-Task (z.B. 4,5 h), der auf den Nachmittag (4 h) verschoben wird, bleibt so genau ein Halbtag. */
+function aufHalbtagEinrasten(p: Zeitpunkt, art: "start" | "ende", kal: Kalender): Zeitpunkt {
+  if (aktiveZeiteinheit !== "halbtage") return p;
+  const a = arbeitsMinBis(p.min);
+  if (art === "ende") {
+    if (a < VORMITTAG_MIN / 2) return letzteArbeitszeit({ datum: tagPlus(p.datum, -1), min: 24 * 60 }, kal);
+    return { datum: p.datum, min: a < (VORMITTAG_MIN + MIN_PRO_ARBEITSTAG) / 2 ? MITTAG_VON_MIN : ARBEITSENDE_MIN };
+  }
+  if (a >= (VORMITTAG_MIN + MIN_PRO_ARBEITSTAG) / 2) return naechsteArbeitszeit({ datum: tagPlus(p.datum, 1), min: 0 }, kal);
+  return { datum: p.datum, min: a < VORMITTAG_MIN / 2 ? ARBEITSBEGINN_MIN : MITTAG_BIS_MIN };
 }
 
 /** Frühester Arbeitszeitpunkt am oder nach p (Mittagspause, Abend und freie Tage werden übersprungen). */
@@ -119,7 +201,7 @@ export function endeAusArbeitsMinuten(s: Zeitpunkt, minuten: number, kal: Kalend
   for (let i = 0; i < 40000; i++) {
     if (istArbeitstag(datum, kal)) {
       const verfuegbar = MIN_PRO_ARBEITSTAG - a;
-      if (rest <= verfuegbar) return { datum, min: uhrzeitAusArbeitsMin(a + rest, "ende") };
+      if (rest <= verfuegbar) return aufHalbtagEinrasten({ datum, min: uhrzeitAusArbeitsMin(a + rest, "ende") }, "ende", kal);
       rest -= verfuegbar;
     }
     datum = tagPlus(datum, 1); a = 0;
@@ -134,7 +216,7 @@ export function startAusArbeitsMinuten(e: Zeitpunkt, minuten: number, kal: Kalen
   let datum = p.datum, b = arbeitsMinBis(p.min);
   for (let i = 0; i < 40000; i++) {
     if (istArbeitstag(datum, kal)) {
-      if (rest <= b) return { datum, min: uhrzeitAusArbeitsMin(b - rest, "start") };
+      if (rest <= b) return aufHalbtagEinrasten({ datum, min: uhrzeitAusArbeitsMin(b - rest, "start") }, "start", kal);
       rest -= b;
     }
     datum = tagPlus(datum, -1); b = MIN_PRO_ARBEITSTAG;
@@ -153,18 +235,22 @@ export function vergleicheZeitpunkte(a: Zeitpunkt, b: Zeitpunkt): number {
   return a.datum < b.datum ? -1 : a.datum > b.datum ? 1 : a.min - b.min;
 }
 
-/** Dauer eines Tasks in Arbeitstagen (Halbtag = 0.5, Stunde = 0.125). */
+/** Dauer eines Tasks in Arbeitstagen (echte Arbeitsstunden ÷ Std./Tag: bei 8,5 h ist eine Stunde 1/8,5 Tag). */
 export function dauerTage(t: MitZeit, kal: Kalender): number {
   if (t.meilenstein) return 0;
   return arbeitsMinutenZwischen(startZeitpunkt(t), endZeitpunkt(t), kal) / MIN_PRO_ARBEITSTAG;
 }
 
+// Raster auf der Tagesachse (Gantt/Abspielen, siehe tagesAnteil): ganze Tage, Halbtage (Mittag = Tagesmitte) oder ~Stunden —
+// Uhrzeiten rasten danach auf die wählbaren Zeiten ein (rasteUhrzeit).
 const SCHRITT: Record<Zeiteinheit, number> = { tage: 1, halbtage: 0.5, stunden: 1 / 8 };
 export const schrittTage = (e: Zeiteinheit = "tage") => SCHRITT[e];
+/** Kleinste Dauer der Zeiteinheit in Arbeitsminuten (Tag, halber Tag, Stunde). */
+export const schrittMinuten = (e: Zeiteinheit = "tage") => e === "stunden" ? 60 : e === "halbtage" ? MIN_PRO_ARBEITSTAG / 2 : MIN_PRO_ARBEITSTAG;
 
-/** Aufrunden auf die Zeiteinheit (ganze Tage, halbe Tage oder Stunden). */
+/** Aufrunden auf die Zeiteinheit (ganze Tage, halbe Tage oder echte Stunden der Arbeitszeit). */
 export function rundeAufEinheit(tage: number, e: Zeiteinheit = "tage"): number {
-  const s = SCHRITT[e];
+  const s = schrittMinuten(e) / MIN_PRO_ARBEITSTAG;
   return Math.ceil(tage / s - 1e-9) * s;
 }
 
@@ -173,7 +259,7 @@ export function fmtDauer(tage: number, e: Zeiteinheit = "tage"): string {
   if (e === "tage") return `${Math.max(1, Math.round(tage))}d`;
   if (e === "halbtage") return `${String(Math.round(tage * 2) / 2).replace(".", ",")}d`;
   const ganze = Math.floor(tage + 1e-9);
-  const std = Math.round((tage - ganze) * 8 * 10) / 10;
+  const std = Math.round((tage - ganze) * MIN_PRO_ARBEITSTAG / 60 * 10) / 10;
   if (std === 0) return `${ganze}d`;
   return ganze > 0 ? `${ganze}d ${String(std).replace(".", ",")}h` : `${String(std).replace(".", ",")}h`;
 }
@@ -231,11 +317,21 @@ export function datumZeitBeiPos(min: Date, pos: number, e: Zeiteinheit = "tage",
   const datum = d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
   if (e === "tage") return datum;
   if (e === "halbtage") return `${datum} ${anteil < 0.5 ? "VM" : "NM"}`;
-  return `${datum} ${minZuZeit(uhrzeitAusArbeitsMin(Math.round(Math.min(anteil, 1) * MIN_PRO_ARBEITSTAG), anteil >= 1 ? "ende" : "start"))}`;
+  return `${datum} ${minZuZeit(uhrzeitAusTagesAnteil(Math.min(anteil, 1), anteil >= 1 ? "ende" : "start"))}`;
 }
 
-/** Position im Tag (0 … 1) für die Gantt-Balken: Arbeitszeit bis zu dieser Uhrzeit / 8 h. */
-export const tagesAnteil = (min: number) => arbeitsMinBis(min) / MIN_PRO_ARBEITSTAG;
+/** Position im Tag (0 … 1) für Gantt-Balken und Abspielen: Vormittag = erste, Nachmittag = zweite Tageshälfte (je linear nach
+ *  Arbeitszeit) — der Mittag liegt so immer in der Tagesmitte, auch wenn Vor- und Nachmittag verschieden lang sind. Nur
+ *  Darstellung; gerechnet wird mit echten Arbeitsminuten (arbeitsAnteilAmTag, dauerTage). */
+export function tagesAnteil(min: number): number {
+  const a = arbeitsMinBis(min);
+  return a <= VORMITTAG_MIN ? 0.5 * a / VORMITTAG_MIN : 0.5 + 0.5 * (a - VORMITTAG_MIN) / (MIN_PRO_ARBEITSTAG - VORMITTAG_MIN);
+}
+/** Umkehrung von tagesAnteil: Uhrzeit zu einer Position im Tag. */
+export function uhrzeitAusTagesAnteil(anteil: number, art: "start" | "ende"): number {
+  const a = anteil <= 0.5 ? anteil * 2 * VORMITTAG_MIN : VORMITTAG_MIN + (anteil - 0.5) * 2 * (MIN_PRO_ARBEITSTAG - VORMITTAG_MIN);
+  return uhrzeitAusArbeitsMin(Math.round(a), art);
+}
 
 /** Uhrzeiten eines Tasks auf eine gröbere Zeiteinheit runden (beim Umstellen Uhrzeit → Halbtage → Tage). */
 export function rundeZeitenAufEinheit<T extends MitZeit>(t: T, e: Zeiteinheit): T {
@@ -247,7 +343,7 @@ export function rundeZeitenAufEinheit<T extends MitZeit>(t: T, e: Zeiteinheit): 
   return { ...t, startZeit: sNeu === ARBEITSBEGINN_MIN ? undefined : minZuZeit(sNeu), endZeit: eNeu === ARBEITSENDE_MIN ? undefined : minZuZeit(eNeu) };
 }
 
-/** Welche Zeiteinheit brauchen diese Tasks? Nur 08/12/13/17 Uhr → Halbtage, andere Uhrzeiten → Uhrzeit, keine → Tage. */
+/** Welche Zeiteinheit brauchen diese Tasks? Nur Beginn/Mittag/Ende → Halbtage, andere Uhrzeiten → Uhrzeit, keine → Tage. */
 export function benoetigteZeiteinheit(tasks: MitZeit[]): Zeiteinheit {
   let halb = false;
   for (const t of tasks) {

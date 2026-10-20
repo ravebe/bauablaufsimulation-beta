@@ -9,7 +9,7 @@ import DatePicker from "./DatePicker";
 import { useDoppelklickHinweis } from "../hooks/useDoppelklickHinweis";
 import { ZoomControls } from "./cockpitCharts";
 import type { Zeiteinheit } from "./zeitHelpers";
-import { startZeitpunkt, endZeitpunkt, arbeitsMinutenZwischen, naechsteArbeitszeit, letzteArbeitszeit, endeAusArbeitsMinuten, uhrzeitAusArbeitsMin, vergleicheZeitpunkte, zeitFelder, schrittTage, tagesAnteil, dauerTage, fmtDauer, fmtZeitZusatz, zeitZuMin, ARBEITSBEGINN_MIN, ARBEITSENDE_MIN, MIN_PRO_ARBEITSTAG } from "./zeitHelpers";
+import { startZeitpunkt, endZeitpunkt, arbeitsMinutenZwischen, naechsteArbeitszeit, letzteArbeitszeit, endeAusArbeitsMinuten, uhrzeitAusTagesAnteil, rasteUhrzeit, vergleicheZeitpunkte, zeitFelder, schrittTage, schrittMinuten, tagesAnteil, dauerTage, fmtDauer, fmtZeitZusatz, zeitZuMin, ARBEITSBEGINN_MIN, ARBEITSENDE_MIN } from "./zeitHelpers";
 import { markiereInhalt } from "./markiereInhalt";
 import { bindeListenScroll, useSelektionFokus } from "./listenScroll";
 
@@ -357,7 +357,7 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
     if (!editable || !minDate || !onDateChange) return;
     e.preventDefault(); e.stopPropagation(); scrollLock.current = true;
     setEditingTaskId(taskId);
-    // Positionen in Tagen ab minDate (mit Tagesanteil der Arbeitszeit: 08:00 = 0, 12:00/13:00 = 0.5, 17:00 = 1)
+    // Positionen in Tagen ab minDate (mit Tagesanteil: Arbeitsbeginn = 0, Mittag = 0.5, Arbeitsende = 1, siehe tagesAnteil)
     const tagIdx = (iso: string) => { const d = parseDateUniversal(iso); return d ? Math.round((d.getTime() - minDate.getTime()) / 86400000) : 0; };
     const S = startZeitpunkt(task), E = endZeitpunkt(task);
     const sx = e.clientX, oS = tagIdx(S.datum) + tagesAnteil(S.min), oE = tagIdx(E.datum) + tagesAnteil(E.min);
@@ -367,7 +367,8 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
       let tag = Math.floor(n + 1e-9), anteil = n - tag;
       if (art === "ende" && anteil < 1e-9) { tag -= 1; anteil = 1; } // Ende genau an der Tagesgrenze = Abend des Vortags
       const d = new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate() + tag);
-      return { datum: fmtISO(d), min: uhrzeitAusArbeitsMin(Math.round(anteil * MIN_PRO_ARBEITSTAG), art) };
+      // auf die wählbaren Uhrzeiten der Zeiteinheit einrasten (Halbtage: Beginn/Mittag/Ende, Uhrzeit: volle Stunden)
+      return { datum: fmtISO(d), min: rasteUhrzeit(uhrzeitAusTagesAnteil(anteil, art), art, zeiteinheit) };
     };
     const onMove = (ev: MouseEvent) => {
       // Mausweg in Achsen-Einheiten → Tage (eingeklappte freie Tage werden übersprungen)
@@ -380,7 +381,7 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
       // Start und Ende nur in der Arbeitszeit an Arbeitstagen; beim Verschieben bleibt die Dauer in ARBEITSZEIT erhalten
       const s = naechsteArbeitszeit(zuZeitpunkt(nS, "start"), kalender);
       let en = mode === "move" ? endeAusArbeitsMinuten(s, dauerMin, kalender) : letzteArbeitszeit(zuZeitpunkt(nE, "ende"), kalender);
-      if (vergleicheZeitpunkte(en, s) <= 0) en = endeAusArbeitsMinuten(s, schritt * MIN_PRO_ARBEITSTAG, kalender);
+      if (vergleicheZeitpunkte(en, s) <= 0) en = endeAusArbeitsMinuten(s, schrittMinuten(zeiteinheit), kalender);
       const f = zeitFelder(s, en);
       onDateChange(taskId, f.start, f.end, f.startZeit, f.endZeit);
     };

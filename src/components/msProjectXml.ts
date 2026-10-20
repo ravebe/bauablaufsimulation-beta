@@ -2,7 +2,7 @@
 // (das Format, das MS Project über "Datei → Speichern unter → XML" liest/schreibt)
 //
 // Abbildung der App-Regeln auf MS Project:
-//  - Dauer = Arbeitszeit (Start und Ende inklusive) → <Duration>, Arbeitszeit 08–12 / 13–17 Uhr (8 h/Tag)
+//  - Dauer = Arbeitszeit (Start und Ende inklusive) → <Duration>, Arbeitszeit aus Tab Ressourcen (Standard 08–12 / 13–17 Uhr)
 //  - Termine bleiben erhalten:
 //      · Vorgänge OHNE Vorgänger werden "manuell geplant" exportiert — MS Project lässt sie, wo sie sind
 //      · Vorgänge MIT Vorgänger rechnet MS Project über die Verknüpfung (gleiche Regeln wie die App); nur wenn der Vorgang
@@ -18,10 +18,9 @@ import type { Task, TaskTyp } from "../types";
 import { getOutlineLevel, istGruppe, parseDateUniversal, normalizeDatum, vorgaengerListe, vorgaengerStart, MAX_VORGAENGER } from "../types";
 import type { Kalender, Feiertag, Ferienzeitraum } from "./kalenderHelpers";
 import { LEERER_KALENDER } from "./kalenderHelpers";
-import { dauerTage, startZeitpunkt, endZeitpunkt, minZuZeit, importZeit, vergleicheZeitpunkte } from "./zeitHelpers";
+import { dauerTage, startZeitpunkt, endZeitpunkt, minZuZeit, importZeit, vergleicheZeitpunkte, ARBEITSBEGINN_MIN, MITTAG_VON_MIN, MITTAG_BIS_MIN, ARBEITSENDE_MIN, MIN_PRO_ARBEITSTAG } from "./zeitHelpers";
 
 const GUID_MARKER = "4DSIM_GUIDS:";
-const ZEHNTELMIN_PRO_ARBEITSTAG = 4800;      // 8 h × 60 min × 10
 const ZEHNTELMIN_PRO_KALENDERTAG = 14400;    // 24 h × 60 min × 10
 const LAGFORMAT_ELAPSED_DAYS = 8;            // "ed" — verstrichene Tage
 // MS-Project-Formate (LagFormat / DurationFormat): 4, 6, 8, 10, 12 und die geschätzten 36…44 sind "verstrichen" (laufen auch über
@@ -42,10 +41,12 @@ function fmtDateTime(iso: string, time: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${time}`;
 }
 
-const ARBEITSZEITEN = `
+// Arbeitszeit aus Tab Ressourcen (siehe zeitHelpers.ts), Zeiten als "HH:MM:SS"
+const zeitXml = (min: number) => `${minZuZeit(min)}:00`;
+const arbeitszeitenXml = () => `
             <WorkingTimes>
-              <WorkingTime><FromTime>08:00:00</FromTime><ToTime>12:00:00</ToTime></WorkingTime>
-              <WorkingTime><FromTime>13:00:00</FromTime><ToTime>17:00:00</ToTime></WorkingTime>
+              <WorkingTime><FromTime>${zeitXml(ARBEITSBEGINN_MIN)}</FromTime><ToTime>${zeitXml(MITTAG_VON_MIN)}</ToTime></WorkingTime>
+              <WorkingTime><FromTime>${zeitXml(MITTAG_BIS_MIN)}</FromTime><ToTime>${zeitXml(ARBEITSENDE_MIN)}</ToTime></WorkingTime>
             </WorkingTimes>`;
 
 /** Projektkalender (UID 1): Wochentage + Feiertage/Ferien als arbeitsfreie Ausnahmen */
@@ -57,7 +58,7 @@ function kalenderXml(kalender: Kalender): string {
     return `
           <WeekDay>
             <DayType>${tag}</DayType>
-            <DayWorking>${arbeitet ? 1 : 0}</DayWorking>${arbeitet ? ARBEITSZEITEN : ""}
+            <DayWorking>${arbeitet ? 1 : 0}</DayWorking>${arbeitet ? arbeitszeitenXml() : ""}
           </WeekDay>`;
   }).join("");
   const ausnahmen = alleTage ? [] : [
@@ -113,7 +114,7 @@ export function generateMsProjectXml(tasks: Task[], projectName: string, kalende
     const uid = i + 1;
     const gruppe = istGruppe(tasks, i);
     const meilenstein = !gruppe && !!t.meilenstein;
-    const dauerMin = meilenstein ? 0 : Math.round(dauerTage(t, kalender) * 480); // Arbeitszeit in Minuten (8-h-Tage)
+    const dauerMin = meilenstein ? 0 : Math.round(dauerTage(t, kalender) * MIN_PRO_ARBEITSTAG); // Arbeitszeit in Minuten
     const sz = `${minZuZeit(startZeitpunkt(t).min)}:00`, ez = `${minZuZeit(endZeitpunkt(t).min)}:00`;
     const notesLine = t.objektGuids.length > 0 ? `${GUID_MARKER}${t.objektGuids.join(",")}` : "";
     const links = vorgaengerListe(t).filter(v => uidById.has(v.id));
@@ -161,14 +162,14 @@ export function generateMsProjectXml(tasks: Task[], projectName: string, kalende
   <Name>${esc(projectName)}</Name>
   <Title>${esc(projectName)}</Title>
   <ScheduleFromStart>1</ScheduleFromStart>
-  <StartDate>${fmtDateTime(minStart || heuteIso, "08:00:00")}</StartDate>
-  <FinishDate>${fmtDateTime(maxEnd || heuteIso, "17:00:00")}</FinishDate>
-  <CurrentDate>${fmtDateTime(heuteIso, "08:00:00")}</CurrentDate>
+  <StartDate>${fmtDateTime(minStart || heuteIso, zeitXml(ARBEITSBEGINN_MIN))}</StartDate>
+  <FinishDate>${fmtDateTime(maxEnd || heuteIso, zeitXml(ARBEITSENDE_MIN))}</FinishDate>
+  <CurrentDate>${fmtDateTime(heuteIso, zeitXml(ARBEITSBEGINN_MIN))}</CurrentDate>
   <CalendarUID>1</CalendarUID>
-  <DefaultStartTime>08:00:00</DefaultStartTime>
-  <DefaultFinishTime>17:00:00</DefaultFinishTime>
-  <MinutesPerDay>480</MinutesPerDay>
-  <MinutesPerWeek>2400</MinutesPerWeek>
+  <DefaultStartTime>${zeitXml(ARBEITSBEGINN_MIN)}</DefaultStartTime>
+  <DefaultFinishTime>${zeitXml(ARBEITSENDE_MIN)}</DefaultFinishTime>
+  <MinutesPerDay>${MIN_PRO_ARBEITSTAG}</MinutesPerDay>
+  <MinutesPerWeek>${MIN_PRO_ARBEITSTAG * 5}</MinutesPerWeek>
   <DaysPerMonth>20</DaysPerMonth>${FELD_DEFINITIONEN}${kalenderXml(kalender)}
   <Tasks>
 ${taskXml}
@@ -197,6 +198,8 @@ export interface MsProjectImport {
 export function parseMsProjectXmlMitHinweisen(text: string): MsProjectImport {
   const doc = new DOMParser().parseFromString(text, "text/xml");
   const taskEls = [...doc.querySelectorAll("Tasks > Task")];
+  // Wartezeiten in Arbeitstagen beziehen sich auf die Arbeitszeit der Datei (MinutesPerDay, MS-Project-Standard 480)
+  const zehntelMinProArbeitstag = (Number(doc.querySelector("Project > MinutesPerDay")?.textContent) || 480) * 10;
 
   const g = (el: Element, tag: string) => el.querySelector(`:scope > ${tag}`)?.textContent?.trim() ?? "";
   // Wert eines benannten Felds (ExtendedAttribute mit FieldID), ältere Dateien der App schrieben <Text1>/<Text2> direkt
@@ -246,7 +249,7 @@ export function parseMsProjectXmlMitHinweisen(text: string): MsProjectImport {
       let lagTage: number;
       if (PROZENT_FORMATE.has(lagFormat)) { lagTage = 0; if (linkLag !== 0) lagInProzent++; }
       else if (VERSTRICHENE_FORMATE.has(lagFormat)) lagTage = linkLag / ZEHNTELMIN_PRO_KALENDERTAG;
-      else { lagTage = linkLag / ZEHNTELMIN_PRO_ARBEITSTAG; if (linkLag !== 0) lagInArbeitstagen++; }
+      else { lagTage = linkLag / zehntelMinProArbeitstag; if (linkLag !== 0) lagInArbeitstagen++; }
       if (links.length >= MAX_VORGAENGER) { zuVieleVorgaenger++; continue; }
       links.push({ uid: predUid, lag: Math.round(lagTage) });
     }

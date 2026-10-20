@@ -4,8 +4,10 @@ import { useState, useEffect, useRef } from "react";
 import type { SimProjekt } from "../types";
 import { istGruppe, nsKey } from "../types";
 import type { Gewerk, GewerkeKatalog, Rate, Stammdaten, AusschlussFilter } from "./stammdatenHelpers";
-import { LEERE_STAMMDATEN, GEWERKE_KATALOGE, mengenRelevanteSignatur, alleKuerzel, stammdatenAlsJson, parseStammdatenJson, stammdatenAlsCsv, parseStammdatenCsv, ausschlussFilterListe, aktiveFilterIds, einheitUmrechnungsfaktor, istRateKranpflichtig } from "./stammdatenHelpers";
+import { LEERE_STAMMDATEN, effektiveArbeitszeit, mitArbeitszeit, GEWERKE_KATALOGE, mengenRelevanteSignatur, alleKuerzel, stammdatenAlsJson, parseStammdatenJson, stammdatenAlsCsv, parseStammdatenCsv, ausschlussFilterListe, aktiveFilterIds, einheitUmrechnungsfaktor, istRateKranpflichtig } from "./stammdatenHelpers";
 import { StatTile } from "./cockpitCharts";
+import type { Arbeitszeit } from "./zeitHelpers";
+import { pruefeArbeitszeit, arbeitszeitStunden } from "./zeitHelpers";
 import type { ApiInstance } from "../hooks/useApi";
 import { ladeAttributListe, ladeObjektAttribute, attrItemsAusWerten, keyZuAttrItem, type AttrItem } from "./modelHelpers";
 import { parseFormel, FormelFehler } from "./formelHelpers";
@@ -439,10 +441,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
 
       {stammdaten.gewerke.length > 0 ? (<>
         <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontWeight: 600 }}>Arbeitszeit pro Tag (h):</span>
-            {numInput(stammdaten.arbeitszeitStdProTag, v => speichern({ ...stammdaten, arbeitszeitStdProTag: v ?? 8.5 }), 60)}
-          </div>
+          <ArbeitszeitEingabe wert={effektiveArbeitszeit(stammdaten)} readOnly={!!readOnly} onChange={az => speichern(mitArbeitszeit(stammdaten, az))} />
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontWeight: 600 }}>Umsatz CHF/Mannstunde:</span>
             {numInput(stammdaten.umsatzChfProMannstunde ?? 80, v => speichern({ ...stammdaten, umsatzChfProMannstunde: v ?? 80 }), 60)}
@@ -746,6 +745,35 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Arbeitszeit des Projekts (Beginn, Mittag von/bis, Ende) — gilt für Gantt-Uhrzeiten, Halbtage, Exporte und ergibt die Std./Tag
+ *  für Kalkulation und Auswertungen (siehe zeitHelpers.ts / mitArbeitszeit). Ungültige Kombinationen werden nicht gespeichert. */
+function ArbeitszeitEingabe({ wert, readOnly, onChange }: { wert: Arbeitszeit; readOnly: boolean; onChange: (az: Arbeitszeit) => void }) {
+  const [entwurf, setEntwurf] = useState(wert);
+  useEffect(() => { setEntwurf(wert); }, [wert.beginn, wert.mittagVon, wert.mittagBis, wert.ende]);
+  const fehler = pruefeArbeitszeit(entwurf);
+  function aendern(feld: keyof Arbeitszeit, v: string) {
+    const neu = { ...entwurf, [feld]: v };
+    setEntwurf(neu);
+    if (!pruefeArbeitszeit(neu)) onChange(neu);
+  }
+  const feld = (f: keyof Arbeitszeit, titel: string) => (
+    <input type="time" step={900} disabled={readOnly} value={entwurf[f]} title={titel} onChange={e => aendern(f, e.target.value)}
+      style={{ fontSize: 12, padding: "2px 4px", border: `1px solid ${fehler ? "#d9534f" : "#d4dce4"}`, fontFamily: "inherit" }} />
+  );
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}
+      title="Arbeitszeit des Projekts — gilt für Gantt (Uhrzeit/Halbtage), Exporte und ergibt die Std./Tag für Kalkulation, Personal, Kran und Ertrag">
+      <span style={{ fontWeight: 600 }}>Arbeitszeit:</span>
+      {feld("beginn", "Arbeitsbeginn")}–{feld("mittagVon", "Mittagspause von")}
+      <span style={{ color: "#888" }}>/</span>
+      {feld("mittagBis", "Mittagspause bis")}–{feld("ende", "Arbeitsende")}
+      <span style={{ color: fehler ? "#d9534f" : "#555" }}>
+        {fehler ?? `= ${String(Math.round(arbeitszeitStunden(entwurf) * 100) / 100).replace(".", ",")} h/Tag`}
+      </span>
     </div>
   );
 }

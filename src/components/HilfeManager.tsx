@@ -22,7 +22,7 @@ const THEMEN: Thema[] = [
       "Auto-Verknüpfung ordnet die Bauteile automatisch den Tasks zu; alternativ lassen sich Tasks aus IFC-Attributen erzeugen (nur eine der beiden Arten gleichzeitig).",
       "Nur die als \"Aktiv\" markierte Simulation wird in den anderen Tabs bearbeitet.",
       "⋮ der Simulationskarte: Umbenennen, Gantt-Vorlage, Export (Excel, CSV, XML, JSON, MS Project, IFC 4D), Zeiteinheit, Kalender / Feiertage / Ferien, Frühere Versionen, Projekt kopieren, Löschen und Info.",
-      "Zeiteinheit: Tage (Standard), Halbtage oder Uhrzeit (Arbeitszeit 08–17 Uhr) — bestimmt das Raster beim Ziehen und die Anzeige der Dauer. Gröber stellen rundet die Termine nach Rückfrage.",
+      "Zeiteinheit: Tage (Standard), Halbtage oder Uhrzeit (Arbeitszeit aus Tab Ressourcen) — bestimmt das Raster beim Ziehen und die Anzeige der Dauer. Gröber stellen rundet die Termine nach Rückfrage.",
       "Kalender: Wochenenden, Feiertage und Ferien sind arbeitsfrei. Tasks beginnen und enden nur an Arbeitstagen; die Dauer zählt Arbeitstage inklusive Start- und Endtag.",
       "IFC 4D: \"In Connect übernehmen\" ergänzt die Original-IFC um den Bauablauf, lädt sie als neue Version hoch und stellt die Simulation darauf um. Meldet Connect bei der Verarbeitung einen Fehler, wird die Version trotzdem geladen, sofern der Viewer sie öffnen kann.",
       "Info öffnet ein eigenes Fenster mit der Zusammenfassung der Simulation: Ersteller, letzte Änderung, Terminplan (Tasks, Zeitraum, Vorgänger, Zeiteinheit, Kalender), Bauteile & Modelle sowie Kalkulation.",
@@ -79,7 +79,7 @@ const THEMEN: Thema[] = [
     key: "ressourcen", gruppe: "erweitert", label: "Ressourcen",
     zusammenfassung: "Pflege der Stammdaten: Kategorien/Gewerke mit Kürzeln, Leistungswerten, Personenzahl und CHF-Ansätzen — Grundlage für Kalkulation, AVOR und Kosten.",
     punkte: [
-      "Arbeitszeit pro Tag und Umsatz CHF/Mannstunde gelten global für die gesamte Simulation.",
+      "Arbeitszeit (Beginn, Mittagspause, Ende) und Umsatz CHF/Mannstunde gelten global für die gesamte Simulation. Aus der Arbeitszeit ergeben sich die Std./Tag (z.B. 07:00–12:00 / 13:00–16:30 = 8,5 h) — sie gelten überall: Kalkulation, Gantt-Uhrzeiten und Halbtage, Personal, Kran, Ertrag sowie MS-Project- und IFC-Export. Halbtage zählen nach echten Stunden (Vormittag 5 h ≠ Nachmittag 3,5 h).",
       "Kategorien lassen sich aus vorgefertigten Katalogen laden oder frei anlegen und umbenennen.",
       "\"kranpflichtig\" markiert je Kürzel, ob dessen Mengen in die Kranauslastung (Tab AVOR) einfließen.",
       "Ein Kürzel darf innerhalb derselben Kategorie nur einmal vorkommen — bei Duplikaten zählt nur die erste Zeile.",

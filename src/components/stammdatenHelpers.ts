@@ -2,8 +2,8 @@
 // die Menge→Tage-Formel aus dem AVOR-Tool (Grundlage für Kalkulation/Ressourcen/Kosten-Tabs).
 import type { Task } from "../types";
 import { istGruppe } from "../types";
-import type { Zeiteinheit } from "./zeitHelpers";
-import { rundeAufEinheit } from "./zeitHelpers";
+import type { Zeiteinheit, Arbeitszeit } from "./zeitHelpers";
+import { rundeAufEinheit, arbeitszeitAusStunden, arbeitszeitStunden, pruefeArbeitszeit } from "./zeitHelpers";
 
 export interface Rate {
   kuerzel: string;
@@ -35,7 +35,10 @@ export interface AusschlussFilter { id: string; attribut: string; wert: string; 
  *  "Opening" ist der in der Praxis übliche IFC-Wert für Tür-/Fensteraussparungen. */
 export const STANDARD_AUSSCHLUSSFILTER: AusschlussFilter = { id: "standard", attribut: "Reference Object||Common Type", wert: "Opening" };
 export interface Stammdaten {
+  /** Std./Tag — ergibt sich aus der Arbeitszeit (siehe mitArbeitszeit), wird für Kalkulation/Auswertungen gelesen. */
   arbeitszeitStdProTag: number;
+  /** Arbeitszeit (Beginn, Mittag, Ende) für Gantt/Uhrzeiten und Std./Tag; fehlt bei alten Projekten → effektiveArbeitszeit(). */
+  arbeitszeit?: Arbeitszeit;
   umsatzChfProMannstunde?: number; // für Ertragsoptik (Tab AVOR), Default 80
   gewerke: Gewerk[];
   ausschlussFilter?: AusschlussFilter[];
@@ -43,6 +46,17 @@ export interface Stammdaten {
   oeffnungsFilter?: { attribut: string; wert: string };
 }
 export const LEERE_STAMMDATEN: Stammdaten = { arbeitszeitStdProTag: 8.5, gewerke: [] };
+
+/** Arbeitszeit eines Projekts: die eingegebene, sonst aus den bisherigen Std./Tag abgeleitet (8,5 h → 07:30–12:00 / 13:00–17:00). */
+export function effektiveArbeitszeit(s: Stammdaten | undefined): Arbeitszeit {
+  if (s?.arbeitszeit && !pruefeArbeitszeit(s.arbeitszeit)) return s.arbeitszeit;
+  return arbeitszeitAusStunden(s?.arbeitszeitStdProTag ?? LEERE_STAMMDATEN.arbeitszeitStdProTag);
+}
+
+/** Stammdaten mit neuer Arbeitszeit — Std./Tag wird daraus berechnet, damit beides nie auseinanderläuft. */
+export function mitArbeitszeit(s: Stammdaten, az: Arbeitszeit): Stammdaten {
+  return { ...s, arbeitszeit: az, arbeitszeitStdProTag: arbeitszeitStunden(az) };
+}
 
 /** Effektive Filterliste — eigene Filter falls vorhanden, sonst aus dem alten Einzelfeld migriert
  *  (siehe Stammdaten.oeffnungsFilter), sonst der Default. Nie leer, damit Aufrufer nicht extra
@@ -88,7 +102,12 @@ export function parseStammdatenJson(text: string): Stammdaten {
     throw new Error("Ungültiges Format — keine Stammdaten-Datei");
   }
   return {
-    arbeitszeitStdProTag: typeof raw.arbeitszeitStdProTag === "number" ? raw.arbeitszeitStdProTag : 8.5,
+    arbeitszeitStdProTag: raw.arbeitszeit && typeof raw.arbeitszeit === "object" && !pruefeArbeitszeit(raw.arbeitszeit)
+      ? arbeitszeitStunden(raw.arbeitszeit)
+      : typeof raw.arbeitszeitStdProTag === "number" ? raw.arbeitszeitStdProTag : 8.5,
+    arbeitszeit: raw.arbeitszeit && typeof raw.arbeitszeit === "object" && !pruefeArbeitszeit(raw.arbeitszeit)
+      ? { beginn: raw.arbeitszeit.beginn, mittagVon: raw.arbeitszeit.mittagVon, mittagBis: raw.arbeitszeit.mittagBis, ende: raw.arbeitszeit.ende }
+      : undefined,
     umsatzChfProMannstunde: typeof raw.umsatzChfProMannstunde === "number" ? raw.umsatzChfProMannstunde : undefined,
     gewerke: raw.gewerke,
     ausschlussFilter: Array.isArray(raw.ausschlussFilter)

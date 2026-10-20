@@ -3,7 +3,7 @@ import Schwebend from "./Schwebend";
 import type { Kalender } from "./kalenderHelpers";
 import { istArbeitstag } from "./kalenderHelpers";
 import type { Zeiteinheit } from "./zeitHelpers";
-import { ARBEITSBEGINN_MIN, ARBEITSENDE_MIN, MITTAG_VON_MIN, MITTAG_BIS_MIN, minZuZeit } from "./zeitHelpers";
+import { ARBEITSBEGINN_MIN, ARBEITSENDE_MIN, MITTAG_VON_MIN, MITTAG_BIS_MIN, minZuZeit, zeitOptionen as arbeitszeitOptionen } from "./zeitHelpers";
 
 interface Props {
   value: string;
@@ -22,13 +22,12 @@ interface Props {
   anzeigeZusatz?: string;
 }
 
-/** Wählbare Zeiten: Start zu Beginn einer Arbeitsstunde, Ende am Schluss (Arbeitszeit 08–12 / 13–17 Uhr) */
+/** Wählbare Zeiten aus der Arbeitszeit (Tab Ressourcen): Halbtage Vormittag/Nachmittag, sonst Beginn, volle Stunden, Mittag, Ende */
 function zeitOptionen(einheit: Zeiteinheit, art: "start" | "ende"): { min: number; label: string }[] {
   if (einheit === "halbtage") return art === "start"
     ? [{ min: ARBEITSBEGINN_MIN, label: "Vormittag" }, { min: MITTAG_BIS_MIN, label: "Nachmittag" }]
     : [{ min: MITTAG_VON_MIN, label: "Vormittag" }, { min: ARBEITSENDE_MIN, label: "Nachmittag" }];
-  const stunden = art === "start" ? [8, 9, 10, 11, 13, 14, 15, 16] : [9, 10, 11, 12, 14, 15, 16, 17];
-  return stunden.map(h => ({ min: h * 60, label: minZuZeit(h * 60) }));
+  return arbeitszeitOptionen(einheit, art).map(m => ({ min: m, label: minZuZeit(m) }));
 }
 /** Welche Option entspricht der aktuellen Zeit (Halbtage: VM/NM-Hälfte, Uhrzeit: angefangene Stunde) */
 function istZeitGewaehlt(einheit: Zeiteinheit, art: "start" | "ende", opt: number, min: number): boolean {
@@ -36,7 +35,9 @@ function istZeitGewaehlt(einheit: Zeiteinheit, art: "start" | "ende", opt: numbe
     const nm = art === "start" ? min >= MITTAG_BIS_MIN : min > MITTAG_VON_MIN;
     return nm === (art === "start" ? opt >= MITTAG_BIS_MIN : opt > MITTAG_VON_MIN);
   }
-  return art === "start" ? Math.floor(min / 60) * 60 === opt : Math.ceil(min / 60) * 60 === opt;
+  const optionen = arbeitszeitOptionen(einheit, art);
+  const gewaehlt = art === "start" ? [...optionen].reverse().find(o => o <= min) ?? optionen[0] : optionen.find(o => o >= min) ?? optionen[optionen.length - 1];
+  return gewaehlt === opt;
 }
 
 const TAGE = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];

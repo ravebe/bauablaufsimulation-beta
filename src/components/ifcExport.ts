@@ -21,13 +21,14 @@ import type { Task, TaskTyp, Kran } from "../types";
 import { TASK_TYP_LABEL, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, parseDateUniversal, vorgaengerListe } from "../types";
 import type { Kalender } from "./kalenderHelpers";
 import { arbeitstageZwischen, getKW, LEERER_KALENDER } from "./kalenderHelpers";
-import { dauerTage, startZeitpunkt, endZeitpunkt, minZuZeit } from "./zeitHelpers";
+import { dauerTage, startZeitpunkt, endZeitpunkt, minZuZeit, ARBEITSBEGINN_MIN, ARBEITSENDE_MIN, MIN_PRO_ARBEITSTAG } from "./zeitHelpers";
 
 export type IfcSchemaFamilie = "IFC4" | "IFC2X3";
 
 // Arbeitszeiten wie im MS-Project-Export (msProjectXml.ts): 08:00–17:00, 8 h Arbeit pro Tag
-const ARBEITSBEGINN = "08:00:00";
-const ARBEITSENDE = "17:00:00";
+// Arbeitszeit aus Tab Ressourcen (siehe zeitHelpers.ts) — beim Export gelesen, nicht beim Laden des Moduls
+const arbeitsbeginn = () => `${minZuZeit(ARBEITSBEGINN_MIN)}:00`;
+const arbeitsende = () => `${minZuZeit(ARBEITSENDE_MIN)}:00`;
 const ARBEITSSTUNDEN_PRO_TAG = 8;
 // eigener Name, damit es nicht mit einem Pset "Bauablauf" aus dem Original-Modell (z.B. Tekla: Etappe, Geschoss …) verwechselt wird
 const PSET_BAUTEIL = "Bauablauf_4D";
@@ -111,9 +112,9 @@ function isoDatum(s: string): string | null {
 
 /** ISO-8601-Dauer in Tagen (IfcDuration), negative Wartezeiten als "-P2D" */
 const isoDauerTage = (tage: number) => `${tage < 0 ? "-" : ""}P${Math.abs(tage)}D`;
-/** Arbeitszeit-Dauer als ISO-8601 (8-h-Tage): 2.5 → "P2DT4H", 0.125 → "P0DT1H" */
+/** Arbeitszeit-Dauer als ISO-8601 (Arbeitstage + Stunden der Arbeitszeit): bei 8 h 2.5 → "P2DT4H", 0.125 → "P0DT1H" */
 const isoDauerArbeitszeit = (tage: number) => {
-  const d = Math.floor(tage + 1e-9), min = Math.round((tage - d) * 8 * 60);
+  const d = Math.floor(tage + 1e-9), min = Math.round((tage - d) * MIN_PRO_ARBEITSTAG);
   return `P${d}D${min ? `T${Math.floor(min / 60) ? `${Math.floor(min / 60)}H` : ""}${min % 60 ? `${min % 60}M` : ""}` : ""}`;
 };
 
@@ -269,7 +270,7 @@ export function erzeuge4dIfc(e: IfcExportEingabe): IfcExportErgebnis {
     const d = gr ? gruppenDaten(tasks, i, kal) : { start: t.start, end: t.end };
     const start = isoDatum(d.start), ende = isoDatum(d.end);
     // Uhrzeiten (Zeiteinheit Halbtage/Uhrzeit), Gruppen ganze Tage; Dauer in Arbeitstagen (Halbtag 0.5, Stunde 0.125)
-    const sz = gr ? ARBEITSBEGINN : `${minZuZeit(startZeitpunkt(t).min)}:00`, ez = gr ? ARBEITSENDE : `${minZuZeit(endZeitpunkt(t).min)}:00`;
+    const sz = gr ? arbeitsbeginn() : `${minZuZeit(startZeitpunkt(t).min)}:00`, ez = gr ? arbeitsende() : `${minZuZeit(endZeitpunkt(t).min)}:00`;
     const tage = start && ende ? (gr ? arbeitstageZwischen(start, ende, kal) : dauerTage(t, kal)) : 0;
     return { start, ende, sz, ez, tage };
   });
@@ -316,7 +317,7 @@ export function erzeuge4dIfc(e: IfcExportEingabe): IfcExportErgebnis {
   // --- Arbeitsplan / Terminplan ---
   let scheduleId: number;
   if (ist4) {
-    const zeitArgs = `'${jetztIso}',$,$,$,$,'${projStart}T${ARBEITSBEGINN}','${projEnde}T${ARBEITSENDE}'`;
+    const zeitArgs = `'${jetztIso}',$,$,$,$,'${projStart}T${arbeitsbeginn()}','${projEnde}T${arbeitsende()}'`;
     scheduleId = w.add(`IFCWORKSCHEDULE('${scheduleGuid}',${oh},${label(e.simName)},$,$,$,${zeitArgs},.PLANNED.)`);
     const plan = w.add(`IFCWORKPLAN('${g("workplan")}',${oh},${label(e.simName)},${stepText("Bauablaufsimulation")},$,$,${zeitArgs},.PLANNED.)`);
     w.add(`IFCRELAGGREGATES('${g("rel-plan-schedule")}',${oh},$,$,${ref(plan)},(${ref(scheduleId)}))`);
@@ -324,7 +325,7 @@ export function erzeuge4dIfc(e: IfcExportEingabe): IfcExportErgebnis {
     else hinweise.push("Kein IfcProject gefunden — Arbeitsplan nicht am Projekt deklariert.");
   } else {
     const erstellt = kalenderDatum2x3(jetztIso.slice(0, 10));
-    const start = datumZeit2x3(projStart, ARBEITSBEGINN), ende = datumZeit2x3(projEnde, ARBEITSENDE);
+    const start = datumZeit2x3(projStart, arbeitsbeginn()), ende = datumZeit2x3(projEnde, arbeitsende());
     scheduleId = w.add(`IFCWORKSCHEDULE('${scheduleGuid}',${oh},${label(e.simName)},$,$,${stepText(e.simId.slice(0, 255))},${ref(erstellt)},$,$,$,$,${ref(start)},${ref(ende)},.PLANNED.,$)`);
   }
 
@@ -364,9 +365,9 @@ export function erzeuge4dIfc(e: IfcExportEingabe): IfcExportErgebnis {
     const oberste = tasks.map((_, i) => i).filter(i => elternIdx[i] === null).map(i => taskIds[i]);
     w.add(`IFCRELASSIGNSTOCONTROL('${g("rel-schedule-tasks")}',${oh},$,$,${refs(oberste)},$,${ref(scheduleId)})`);
 
-    // Kalender: Mo–Fr 08–17 Uhr, Feiertage + Ferien als Ausnahmen (bei ausgeschaltetem Schalter "arbeitsfreie Tage berücksichtigen": Mo–So, keine Ausnahmen)
+    // Kalender: Mo–Fr in der Arbeitszeit, Feiertage + Ferien als Ausnahmen (bei ausgeschaltetem Schalter "arbeitsfreie Tage berücksichtigen": Mo–So, keine Ausnahmen)
     const alleTage = kal.freieTageGelten === false;
-    const periode = w.add(`IFCTIMEPERIOD('${ARBEITSBEGINN}','${ARBEITSENDE}')`);
+    const periode = w.add(`IFCTIMEPERIOD('${arbeitsbeginn()}','${arbeitsende()}')`);
     const muster = w.add(`IFCRECURRENCEPATTERN(.WEEKLY.,$,(${alleTage ? "1,2,3,4,5,6,7" : "1,2,3,4,5"}),$,$,$,$,(${ref(periode)}))`);
     const arbeitszeit = w.add(`IFCWORKTIME(${stepText(alleTage ? "Arbeitstage Mo-So" : "Arbeitstage Mo-Fr")},$,$,${ref(muster)},$,$)`);
     const ausnahmen: number[] = [];

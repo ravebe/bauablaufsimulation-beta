@@ -10,7 +10,7 @@ import type { Stammdaten } from "./stammdatenHelpers";
 import { dauerBerechnetTask, gewerkeFuerKuerzel, hatKalkulationsWerte } from "./stammdatenHelpers";
 import type { Kalender } from "./kalenderHelpers";
 import type { Zeiteinheit, Zeitpunkt } from "./zeitHelpers";
-import { startZeitpunkt, endZeitpunkt, naechsteArbeitszeit, endeAusArbeitsMinuten, folgeStartZeitpunkt, vergleicheZeitpunkte, zeitFelder, MIN_PRO_ARBEITSTAG, schrittTage } from "./zeitHelpers";
+import { startZeitpunkt, endZeitpunkt, naechsteArbeitszeit, endeAusArbeitsMinuten, folgeStartZeitpunkt, vergleicheZeitpunkte, zeitFelder, MIN_PRO_ARBEITSTAG, schrittMinuten } from "./zeitHelpers";
 
 export interface ZeitplanBereitschaft {
   bereit: boolean;
@@ -85,7 +85,7 @@ export function berechneZeitplanUebernahme(tasks: Task[], stammdaten: Stammdaten
           })();
       // berechnete Dauer (Arbeitstage, auf die Zeiteinheit gerundet) → Ende in Arbeitszeit; Tasks laufen nur in der Arbeitszeit
       const dauer = dauerBerechnetTask(t, stammdaten, einheit);
-      result = { start, end: endeAusArbeitsMinuten(start, Math.max(dauer, schrittTage(einheit)) * MIN_PRO_ARBEITSTAG, kalender) };
+      result = { start, end: endeAusArbeitsMinuten(start, Math.max(dauer * MIN_PRO_ARBEITSTAG, schrittMinuten(einheit)), kalender) };
     }
 
     geloest.set(id, result);
