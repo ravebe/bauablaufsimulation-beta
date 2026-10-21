@@ -14,7 +14,17 @@ import type { ApiInstance } from "../hooks/useApi";
 import { TimeSeriesChart, KranBalkenChart, StatTile, CockpitAbschnitt, useEingeklappt, useChartZoom, useChartHoehe, ChartResizeHandle, FARBEN } from "./cockpitCharts";
 import type { Serie, KategorieSerie } from "./cockpitCharts";
 import KranPlanungManager from "./KranPlanungManager";
-import { fmtZahl } from "./zahlFormat";
+import { fmtZahl, fmtTageStunden } from "./zahlFormat";
+import PunkteMenu from "./PunkteMenu";
+import { personalbedarfAlsCsv, alsCsv, csvZahl, datumCh } from "./avorExportHelpers";
+
+function csvHerunterladen(inhalt: string, dateiname: string) {
+  const blob = new Blob([inhalt], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = dateiname; a.click();
+  URL.revokeObjectURL(url);
+}
 
 interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; projectId?: string | null; api?: ApiInstance | null; sharedNadelTag?: React.MutableRefObject<number>; }
 
@@ -155,10 +165,38 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
   const letzteErtragszeile = ertrag[ertrag.length - 1];
   const marge = letzteErtragszeile ? letzteErtragszeile.ertragKum - letzteErtragszeile.kostenKum : 0;
 
+  // Personen ↔ Personenstunden: 1 Person (Vollzeit) = Std./Tag aus Tab Ressourcen
+  const std = stammdaten.arbeitszeitStdProTag;
+  const personenAlsAufwand = (personen: number) => fmtTageStunden(personen * std, std);
+
+  // ⋮ → Export: jede Auswertung dieses Tabs als CSV (Excel)
+  const exporte = [
+    { label: "Personalbedarf je Tag und Leistungsposition", title: "Je Arbeitstag: Personen total, Personenstunden total, Personen je Gewerk und Stunden je Leistungsposition (Gewerk + Kürzel)",
+      onClick: () => csvHerunterladen(personalbedarfAlsCsv(tasks, stammdaten, kalender), `${sim!.name}_Personalbedarf.csv`) },
+    { label: `Kranstunden je Kran (${raster === "monat" ? "Monat" : "Woche"})`, title: "Bedarf und Kapazität je Kran und Zeitraum, wie in der Kranoptik",
+      onClick: () => csvHerunterladen(alsCsv([
+        ["Zeitraum", "Von", "Bis", ...kranstundenSerien.flatMap(k => [`${k.kranName} Bedarf [h]`, `${k.kranName} Kapazität [h]`, `${k.kranName} Personal [Pers.]`])],
+        ...kranBuckets.map((b, bi) => [b.label, datumCh(b.start), datumCh(b.end), ...kranstundenSerien.flatMap(k => {
+          const pers = personalBarSerien.find(ps => ps.key === k.kranId)?.werte[bi] ?? 0;
+          return [csvZahl(k.bedarf[bi]), csvZahl(k.kapazitaet[bi]), csvZahl(pers)];
+        })]),
+      ]), `${sim!.name}_Kranstunden.csv`) },
+    ...(aktivesGewerk ? [{ label: `Mengen je Tag (${aktivesGewerk.label}${aktiveRate ? ` ${aktiveRate.kuerzel}` : ""})`, title: "Durchschnittlich nötige Tagesleistung wie im Mengen-Filter (aktuelle Auswahl)",
+      onClick: () => csvHerunterladen(alsCsv([
+        ["Datum", `Menge [${aktivesGewerk.einheit}]`, ...(optimal != null ? [`Optimal ausgelastete Tagesleistung [${aktivesGewerk.einheit}]`] : [])],
+        ...mengen.map(m => [datumCh(m.tag), csvZahl(m.menge), ...(optimal != null ? [csvZahl(optimal)] : [])]),
+      ]), `${sim!.name}_Mengen_${aktivesGewerk.label}.csv`) }] : []),
+    { label: "Ertrag und Kosten (kumuliert)", title: "Ertrag (Personenstunden × Umsatz/Mannstunde), Kosten (Menge × CHF/Einheit) und Marge je Tag, kumuliert",
+      onClick: () => csvHerunterladen(alsCsv([
+        ["Datum", "Ertrag kumuliert [CHF]", "Kosten kumuliert [CHF]", "Marge kumuliert [CHF]"],
+        ...ertrag.map(e => [datumCh(e.tag), csvZahl(e.ertragKum), csvZahl(e.kostenKum), csvZahl(e.ertragKum - e.kostenKum)]),
+      ]), `${sim!.name}_Ertrag.csv`) },
+  ];
+
   return (
     <div style={{ padding: 14, fontSize: 12 }} ref={zoom.breitenRef}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 16, position: "sticky", top: 0, background: "#fff", zIndex: 3, paddingBottom: 4 }}>
-        <StatTile label="Peak Personalbedarf" title={"Höchste Personenzahl an einem Tag (Vollzeit-Äquivalent = Personenstunden des Tages ÷ Std./Tag aus Tab Ressourcen), summiert über alle laufenden Tasks.\nJe Task arbeiten die Gewerke nacheinander, jedes so lange wie in Tab Kalkulation berechnet (Menge × Leistungswert ÷ Kolonne ÷ Std./Tag).\nIst ein Task im Gantt länger/kürzer als berechnet, wird die Kolonne entsprechend kleiner/grösser: Personen = Kolonne × berechnete ÷ geplante Dauer.\nSo ergeben die Personen über den Task genau die kalkulierten Personenstunden."} wert={
+        <StatTile label="Peak Personalbedarf" sub={peakWert > 0 ? `Aufwand an diesem Tag: ${personenAlsAufwand(peakWert)}` : undefined} title={"Höchste Personenzahl an einem Tag (Vollzeit-Äquivalent = Personenstunden des Tages ÷ Std./Tag aus Tab Ressourcen), summiert über alle laufenden Tasks.\nJe Task arbeiten die Gewerke nacheinander, jedes so lange wie in Tab Kalkulation berechnet (Menge × Leistungswert ÷ Kolonne ÷ Std./Tag).\nIst ein Task im Gantt länger/kürzer als berechnet, wird die Kolonne entsprechend kleiner/grösser: Personen = Kolonne × berechnete ÷ geplante Dauer.\nSo ergeben die Personen über den Task genau die kalkulierten Personenstunden."} wert={
           <>{fmtZahl(peakWert)} Pers.{peakTagLabel && <span style={{ fontSize: 11, fontWeight: 400, color: FARBEN.textSekundaer, marginLeft: 6 }}>{peakTagLabel}</span>}</>
         } />
         {personalSollGesetzt && (
@@ -166,6 +204,9 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
         )}
         <StatTile label="Zeiträume über Kran-Kapazität" wert={String(zeitraeumeUeberKapazitaet)} status={zeitraeumeUeberKapazitaet > 0 ? "warning" : "good"} />
         <StatTile label="Marge (kumuliert)" wert={`${fmtChf(marge)} CHF`} status={marge >= 0 ? "good" : "critical"} />
+        <div style={{ marginLeft: "auto", alignSelf: "flex-start" }}>
+          <PunkteMenu title="Export der Auswertungen" abschnitte={[{ titel: "Export (CSV)", eintraege: exporte }]} />
+        </div>
       </div>
       {ausgewaehltesDatumIso && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, marginTop: -8, fontSize: 11, color: "var(--tc-text-3)" }}>
@@ -174,7 +215,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
       )}
 
       <CockpitAbschnitt titel="Personalauslastung" eingeklappt={!!eingeklappt["personal"]} onToggle={() => toggleEingeklappt("personal")}>
-        <TimeSeriesChart tage={personalSerien.tage} serien={personalSerien.serien} modus="flaeche-gestapelt" einheit="Pers. (Vollzeit-Äquivalent)"
+        <TimeSeriesChart tage={personalSerien.tage} serien={personalSerien.serien} modus="flaeche-gestapelt" einheit="Pers." zusatz={personenAlsAufwand}
           referenzlinie={personalSollGesetzt ? { label: "Personal (Soll)", werte: personalSoll } : undefined}
           formatWert={fmtZahl} kalender={kalender} hoehe={hoehePersonal}
           markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick}
@@ -275,7 +316,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
               Noch keinen Task einem Kran zugewiesen (Tab Kalkulation → Spalte "Kräne").
             </div>
           ) : (<>
-            <KranBalkenChart tage={personalSerien.tage} buckets={personalKranBuckets} serien={personalBarSerien} einheit="Personen"
+            <KranBalkenChart tage={personalSerien.tage} buckets={personalKranBuckets} serien={personalBarSerien} einheit="Pers."
               formatWert={fmtZahl} kalender={kalender} hoehe={hoeheKran}
               pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
             <ChartResizeHandle hoehe={hoeheKran} setHoehe={setHoeheKran} />

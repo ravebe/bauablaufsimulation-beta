@@ -97,6 +97,8 @@ const THEMEN: Thema[] = [
       "Über der Personalauslastung erscheint eine rote gestrichelte \"Personal (Soll)\"-Linie, sobald mindestens ein Task in Tab Kalkulation eine vorgesehene Personenzahl hat.",
       "Der Kapazitäts-Check prüft zusätzlich einen groben Personal-Richtwert je Kran (Ampel, Standard-Obergrenze 13 Personen, einstellbar).",
       "Die Ertragsoptik vergleicht den kumulierten Ertrag mit den kumulierten Kosten.",
+      "Im Tooltip der Personalauslastung steht hinter den Personen der Aufwand des Tages in Tagen und Stunden (1 Tag = Std./Tag aus Tab Ressourcen, z.B. 7.80 Pers. = 7 d 6.80 h; unter einem Tag nur Stunden).",
+      "⋮ oben rechts → Export (CSV): Personalbedarf je Tag (Personen total, Stunden total, Personen je Gewerk und Stunden je Leistungsposition), Kranstunden je Kran, Mengen je Tag (aktuelle Auswahl im Mengen-Filter) sowie Ertrag und Kosten.",
       "Alle Kran-Auswertungen sind Richtwerte zur Plausibilisierung, keine exakte Kalkulation.",
     ],
   },

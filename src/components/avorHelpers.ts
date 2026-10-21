@@ -124,6 +124,44 @@ export function kranstundenJeTagFuerTask(t: Task, stammdaten: Stammdaten, kalend
   return ergebnis;
 }
 
+/** Leistungsposition = Gewerk + Bauteil-Kürzel (eine Rate in Tab Ressourcen, z.B. "Schalung · WB Wandschalung"). */
+export interface Leistungsposition { key: string; gewerkKey: string; gewerk: string; kuerzel: string; bezeichnung: string }
+
+/** Personalbedarf je Arbeitstag, aufgeschlüsselt nach Leistungsposition (Personenstunden) — dieselbe Rechnung wie die
+ *  Personalauslastung (aufwandJeTagFuerTask), nur feiner gegliedert. Grundlage des Exports in Tab AVOR. Positionen in der
+ *  Reihenfolge von Tab Ressourcen, nur solche mit Aufwand. */
+export function personalbedarfJeLeistungsposition(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender): {
+  positionen: Leistungsposition[]; tage: { tag: string; stunden: Record<string, number> }[];
+} {
+  const jeTag = new Map<string, Record<string, number>>();
+  const benutzt = new Set<string>();
+  for (const t of tasks) {
+    for (const [iso, aufwand] of aufwandJeTagFuerTask(t, stammdaten, kalender)) {
+      const werte = jeTag.get(iso) ?? {};
+      for (const [gewerkKey, ph] of Object.entries(aufwand)) {
+        const key = `${gewerkKey}::${t.bauteilKuerzel}`;
+        werte[key] = (werte[key] ?? 0) + ph;
+        benutzt.add(key);
+      }
+      jeTag.set(iso, werte);
+    }
+  }
+  const positionen: Leistungsposition[] = [];
+  for (const g of stammdaten.gewerke) for (const r of g.raten) {
+    const key = `${g.key}::${r.kuerzel}`;
+    if (benutzt.has(key)) positionen.push({ key, gewerkKey: g.key, gewerk: g.label || g.key, kuerzel: r.kuerzel, bezeichnung: r.bezeichnung });
+  }
+  const zeitraum = projektzeitraum(tasks);
+  const tage: { tag: string; stunden: Record<string, number> }[] = [];
+  if (zeitraum) {
+    for (const cur = new Date(zeitraum.start.getTime()); cur.getTime() <= zeitraum.end.getTime(); cur.setDate(cur.getDate() + 1)) {
+      const iso = toIso(cur);
+      if (istArbeitstag(iso, kalender)) tage.push({ tag: iso, stunden: jeTag.get(iso) ?? {} });
+    }
+  }
+  return { positionen, tage };
+}
+
 /** Für jeden Tag im Projektzeitraum: Personen je Gewerk, summiert über alle laufenden Tasks (siehe
  *  personalJeTagFuerTask — Gewerke nacheinander, Personen aus dem kalkulierten Aufwand). */
 export function personalauslastung(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender): TagWert[] {

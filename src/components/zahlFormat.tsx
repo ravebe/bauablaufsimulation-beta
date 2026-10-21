@@ -18,6 +18,18 @@ export function fmtZahlMitVorzeichen(v: number): string {
   return v > 0 && s !== fmtZahl(0) ? `+${s}` : s;
 }
 
+/** Stunden als Arbeitstage + Stunden (1 Tag = Std./Tag aus Tab Ressourcen): 66.3 h bei 8.5 h/Tag → "7 d 6.80 h",
+ *  unter einem Tag nur Stunden ("1.65 h"), ganze Tage ohne Stunden ("2 d"). */
+export function fmtTageStunden(stunden: number, stdProTag: number): string {
+  if (!Number.isFinite(stunden) || stunden <= 0) return "0.00 h";
+  if (!(stdProTag > 0)) return `${fmtZahl(stunden)} h`;
+  const gerundet = Math.round(stunden * 100) / 100; // erst auf die Anzeige runden, damit nicht "0 d 8.50 h" entsteht
+  const tage = Math.floor(gerundet / stdProTag + 1e-9);
+  const rest = Math.round((gerundet - tage * stdProTag) * 100) / 100;
+  if (tage === 0) return `${fmtZahl(rest)} h`;
+  return rest > 0 ? `${tage} d ${fmtZahl(rest)} h` : `${tage} d`;
+}
+
 /** Eingabe von Zahlen ("27’121.02", "27121,02", "1 234.5") → Zahl; leer → null; ungültig → undefined. */
 export function parseZahl(text: string): number | null | undefined {
   const t = text.trim().replace(/['’\s]/g, "").replace(",", ".");
