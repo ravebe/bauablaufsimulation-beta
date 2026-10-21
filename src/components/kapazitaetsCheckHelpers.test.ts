@@ -33,12 +33,16 @@ describe("personenstundenProKranUndBucket", () => {
 });
 
 describe("personalRichtwertJeBucket — Personal-Ampel (13-Regel)", () => {
-  it("rundet auf ganze Personen, keine Nachkommastellen", () => {
-    // 40 Personenstunden / (8h × 5 Arbeitstage) = 1 Person
-    const rw = personalRichtwertJeBucket(40, 5, 8);
-    expect(rw.richtwert).toBe(1);
-    expect(Number.isInteger(rw.richtwert)).toBe(true);
+  it("genauer Wert ohne Rundung", () => {
+    // 40 Personenstunden / (8h × 5 Arbeitstage) = 1 Person; 50 / 40 = 1,25
+    expect(personalRichtwertJeBucket(40, 5, 8).richtwert).toBe(1);
+    const rw = personalRichtwertJeBucket(50, 5, 8);
+    expect(rw.richtwert).toBe(1.25);
     expect(rw.engpass).toBe(false);
+  });
+
+  it("knapp über dem Maximum ist bereits ein Engpass (13,1 > 13)", () => {
+    expect(personalRichtwertJeBucket(13.1 * 40, 5, 8).engpass).toBe(true);
   });
 
   it("Engpass, wenn der Richtwert über MAX_PERSONEN_PRO_KRAN liegt", () => {

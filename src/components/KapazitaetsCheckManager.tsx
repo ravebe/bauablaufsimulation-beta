@@ -13,13 +13,14 @@ import {
   MAX_PERSONEN_PRO_KRAN, personenstundenProKranUndBucket, personalRichtwertJeBucket,
 } from "./kapazitaetsCheckHelpers";
 
+import { fmtZahl } from "./zahlFormat";
 interface Props { sim: SimProjekt; updateSim: (s: SimProjekt) => void; readOnly?: boolean; }
 
 const LEERER_CHECK: KapazitaetsCheck = { modus: "gantt", phasen: [] };
 
-function fmt(n: number): string {
-  return n.toLocaleString("de-CH", { maximumFractionDigits: 0 });
-}
+// Berechnete Werte mit 2 Nachkommastellen (zahlFormat.tsx), Zählwerte (Tasks, Kräne) ganzzahlig
+const fmt = fmtZahl;
+const fmtAnzahl = (n: number) => n.toLocaleString("de-CH", { maximumFractionDigits: 0 });
 
 export function KapazitaetsCheckInhalt({ sim, updateSim, readOnly }: Props) {
   const kc = sim.kapazitaetsCheck ?? LEERER_CHECK;
@@ -200,18 +201,18 @@ export function KapazitaetsCheckInhalt({ sim, updateSim, readOnly }: Props) {
                     <div style={{ color: auswertung.deckung === "ok" ? "var(--tc-green-dark)" : "var(--tc-red)", fontWeight: 600 }}>
                       {auswertung.deckung === "ok"
                         ? "✓ Personal reicht"
-                        : `✗ Personal reicht nicht — es fehlen ca. ${auswertung.fehlendePersonen} Person${auswertung.fehlendePersonen === 1 ? "" : "en"}`}
+                        : `✗ Personal reicht nicht — es fehlen ${fmt(auswertung.fehlendePersonen)} Personen (Vollzeit-Äquivalent)`}
                     </div>
                     {kc.modus === "gantt" ? (
                       <div style={{ color: kranOk ? "var(--tc-green-dark)" : "var(--tc-red)", fontWeight: 600 }}>
                         {kranOk
-                          ? `✓ Kräne reichen (Spitzenbedarf ${fmt(kranSpitze)} gleichzeitig aktive kranpflichtige Tasks, ${fmt(phase.anzahlKraene)} Kräne eingetragen)`
-                          : `✗ Kräne reichen nicht — Spitzenbedarf ${fmt(kranSpitze)} gleichzeitig aktive kranpflichtige Tasks, nur ${fmt(phase.anzahlKraene)} Kräne eingetragen`}
+                          ? `✓ Kräne reichen (Spitzenbedarf ${fmtAnzahl(kranSpitze)} gleichzeitig aktive kranpflichtige Tasks, ${fmtAnzahl(phase.anzahlKraene)} Kräne eingetragen)`
+                          : `✗ Kräne reichen nicht — Spitzenbedarf ${fmtAnzahl(kranSpitze)} gleichzeitig aktive kranpflichtige Tasks, nur ${fmtAnzahl(phase.anzahlKraene)} Kräne eingetragen`}
                       </div>
                     ) : (
                       kranAnzahl > 0 && (
                         <div style={{ color: "var(--tc-text-3)" }}>
-                          ℹ {fmt(kranAnzahl)} kranpflichtige Task{kranAnzahl === 1 ? "" : "s"} in dieser Phase — echte Gleichzeitigkeit ohne Termine unbekannt.
+                          ℹ {fmtAnzahl(kranAnzahl)} kranpflichtige Task{kranAnzahl === 1 ? "" : "s"} in dieser Phase — echte Gleichzeitigkeit ohne Termine unbekannt.
                         </div>
                       )
                     )}
@@ -249,12 +250,12 @@ export function KapazitaetsCheckInhalt({ sim, updateSim, readOnly }: Props) {
                       const rw = personalRichtwertJeBucket(s.personenstunden[bi], s.arbeitstageVerfuegbar[bi], stammdaten.arbeitszeitStdProTag, maxPersonenDiesesKrans);
                       const titel = rw.kranNichtVerfuegbar
                         ? `${b.label}: Bedarf vorhanden, Kran aber nicht verfügbar`
-                        : `${b.label}: ~${rw.richtwert} Person${rw.richtwert === 1 ? "" : "en"}${rw.engpass ? " — über dem Maximum" : ""}`;
+                        : `${b.label}: ${fmt(rw.richtwert ?? 0)} Personen (Vollzeit-Äquivalent)${rw.engpass ? " — über dem Maximum" : ""}`;
                       return (
                         <div key={b.key} title={titel}
-                          style={{ minWidth: 30, textAlign: "center", fontSize: 9, padding: "3px 2px", fontWeight: rw.engpass ? 700 : 400,
+                          style={{ minWidth: 34, textAlign: "center", fontSize: 9, whiteSpace: "nowrap", padding: "3px 2px", fontWeight: rw.engpass ? 700 : 400,
                             background: rw.engpass ? "var(--tc-red)" : "#eef1f4", color: rw.engpass ? "#fff" : "var(--tc-text-3)" }}>
-                          {rw.richtwert ?? "–"}
+                          {rw.richtwert == null ? "–" : fmt(rw.richtwert)}
                         </div>
                       );
                     })}

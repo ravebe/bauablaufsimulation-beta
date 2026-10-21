@@ -3,6 +3,7 @@
 import type { Task } from "../types";
 import { istGruppe } from "../types";
 import type { Zeiteinheit, Arbeitszeit } from "./zeitHelpers";
+import { fmtZahl } from "./zahlFormat";
 import { rundeAufEinheit, arbeitszeitAusStunden, arbeitszeitStunden, pruefeArbeitszeit } from "./zeitHelpers";
 
 export interface Rate {
@@ -153,7 +154,7 @@ function mengeIstText(kuerzel: string, gewerkKey: string, einheit: string, tasks
     if (quelle === "fehler" || menge === undefined || menge === null) problem = true;
     else summe += menge;
   }
-  return `${summe.toLocaleString("de-CH", { maximumFractionDigits: 2 })} ${einheit}${problem ? " (unvollständig)" : ""}`.trim();
+  return `${fmtZahl(summe)} ${einheit}${problem ? " (unvollständig)" : ""}`.trim();
 }
 
 /** Stammdaten als CSV-Text (Semikolon-getrennt, UTF-8-BOM für Excel) — eine Zeile je Kürzel, plus

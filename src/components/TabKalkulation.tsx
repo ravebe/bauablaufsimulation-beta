@@ -11,7 +11,8 @@ import { kuerzelVorschlag } from "./bauteilkatalogHelpers";
 import { StatTile, CategoryBarChart, CockpitAbschnitt, useEingeklappt, FARBEN } from "./cockpitCharts";
 import { ladeObjektAttribute, guidsZuBatch, zeigeBauteileImModell } from "./modelHelpers";
 import { berechneAlleMengen } from "./mengenBerechnung";
-import { dauerTage, fmtDauer } from "./zeitHelpers";
+import { dauerTage } from "./zeitHelpers";
+import { fmtZahl, fmtZahlMitVorzeichen, ZahlFeld } from "./zahlFormat";
 import { berechneMenge, mengeStatus } from "./formelHelpers";
 import { kalkulationAlsCsv, parseKalkulationCsv, kalkulationAlsJson, parseKalkulationJson } from "./kalkulationExportHelpers";
 import Schwebend from "./Schwebend";
@@ -23,7 +24,8 @@ interface Props {
 }
 
 // Grid-Spalten der Tabelle — feste Breiten statt Flex, damit kein Inhalt nachfolgende Spalten
-// verschiebt. Verstellbar per Drag, siehe startResize. Alle Zellen vertikal in der Zeilenmitte
+// verschiebt. Die Breiten passen sich automatisch dem breitesten Inhalt an (siehe autoW), damit jeder Wert
+// lesbar ist; von Hand gezogene Breiten (startResize) gehen vor. Alle Zellen vertikal in der Zeilenmitte
 // (alignItems: "center").
 const ALLE_SPALTEN = ["nr", "auge", "task", "kuerzel", "mengen", "geplant", "berechnet", "differenz", "kraene", "personalSoll"] as const;
 type Spalte = typeof ALLE_SPALTEN[number];
@@ -31,10 +33,21 @@ const SPALTEN_LABEL: Record<Spalte, string> = {
   nr: "Nr.", task: "Task", kuerzel: "Kürzel", mengen: "Mengen", geplant: "Geplant", berechnet: "Berechnet",
   differenz: "Differenz", kraene: "Kräne", personalSoll: "Personal (Soll)", auge: "",
 };
-// Standardbreiten aus der gewünschten Ansicht (Screenshot 2026-10-08) übernommen. Von Hand gezogene Breiten
+// Mindestbreiten (Ansicht vom 2026-10-08) — breiter, sobald ein Inhalt mehr Platz braucht. Von Hand gezogene Breiten
 // gelten nur bis zum Neuladen der Seite (je Projekt) — bewusst nicht im localStorage.
 const DEFAULT_COL_W: Record<Spalte, number> = { nr: 30, task: 174, kuerzel: 64, mengen: 120, geplant: 76, berechnet: 88, differenz: 60, kraene: 40, personalSoll: 90, auge: 30 };
-const sitzungsColW = new Map<string, Record<Spalte, number>>();
+const sitzungsColW = new Map<string, Partial<Record<Spalte, number>>>();
+const MAX_AUTO_BREITE = 480; // sehr lange Tasknamen sprengen die Tabelle nicht (Rest per Ziehen)
+
+// Textbreite in px für die automatische Spaltenbreite (Canvas, Schrift der App)
+let messKontext: CanvasRenderingContext2D | null = null;
+function textBreite(text: string, px: number, fett = false): number {
+  if (!messKontext) messKontext = document.createElement("canvas").getContext("2d");
+  if (!messKontext) return Math.ceil(text.length * px * 0.6);
+  messKontext.font = `${fett ? "600 " : ""}${px}px ${getComputedStyle(document.body).fontFamily || "sans-serif"}`;
+  return Math.ceil(messKontext.measureText(text).width);
+}
+const dauerText = (tage: number) => `${fmtZahl(tage)} d`;
 
 // Spalten mit Sortier-/Filterfunktion im Header (Klick auf Titel = sortieren, ▾ = Filter-Popover).
 const SORTIERBARE_SPALTEN = ["nr", "task", "kuerzel", "geplant", "berechnet"] as const;
@@ -49,8 +62,8 @@ function spalteWert(z: Zeile, spalte: SortSpalte): string {
     case "nr": return z.nr;
     case "task": return z.t.name;
     case "kuerzel": return z.t.bauteilKuerzel || "–";
-    case "geplant": return fmtDauer(z.geplant, "stunden");
-    case "berechnet": return fmtDauer(z.berechnet, "stunden");
+    case "geplant": return dauerText(z.geplant);
+    case "berechnet": return dauerText(z.berechnet);
   }
 }
 
@@ -85,7 +98,6 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   const [angezeigtTaskId, setAngezeigtTaskId] = useState<string | null>(null);
   // Eingabetext des "Berechnet"-Felds während des Tippens: Leeren setzt die Übersteuerung zurück, würde das Feld aber sofort wieder
   // mit dem automatischen Wert füllen — so lässt sich löschen und neu schreiben (auch bei Mehrfachauswahl)
-  const [berechnetEntwurf, setBerechnetEntwurf] = useState<{ taskId: string; text: string } | null>(null);
   const [kraeneMenuOffenTaskId, setKraeneMenuOffenTaskId] = useState<string | null>(null);
   // Menüs mit Klick-Fänger (Spaltenfilter, Suche, Kräne) schliessen auch bei Klick ins 3D-Modell (Fenster verliert den Fokus)
   useEffect(() => {
@@ -167,8 +179,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   }
 
   const sitzungsKey = projectId ?? "";
-  const [manuellW, setManuellW] = useState<Record<Spalte, number> | null>(() => sitzungsColW.get(sitzungsKey) ?? null);
-  const colW = manuellW ?? DEFAULT_COL_W;
+  const [manuellW, setManuellW] = useState<Partial<Record<Spalte, number>>>(() => sitzungsColW.get(sitzungsKey) ?? {});
 
   // Baseline für den "Mengen veraltet"-Hinweis (siehe unten) einmalig setzen, falls noch keine
   // existiert (neues oder älteres Projekt ohne dieses Feld) — ohne Baseline gäbe es sonst sofort
@@ -181,9 +192,9 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
 
   const { eingeklappt, toggle: toggleEingeklappt } = useEingeklappt(projectId, "kalkulation");
 
-  function startResize(spalte: Spalte, e: React.MouseEvent) {
+  function startResize(spalte: Spalte, e: React.MouseEvent, aktuelleBreite: number) {
     e.preventDefault(); e.stopPropagation();
-    const sx = e.clientX, basis = colW, sw = colW[spalte];
+    const sx = e.clientX, basis = manuellW, sw = aktuelleBreite;
     const onMove = (ev: MouseEvent) => {
       const neu = { ...basis, [spalte]: Math.max(24, sw + ev.clientX - sx) };
       sitzungsColW.set(sitzungsKey, neu);
@@ -193,11 +204,6 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp);
   }
 
-  // Spalte Kräne wächst automatisch mit den zugewiesenen Kranchips (breitester Chip), damit sie nicht in die Spalte Personal (Soll) ragen
-  const zugewieseneKranIds = new Set((sim?.tasks ?? []).flatMap(t => t.kraene ?? []));
-  const kranChipBreite = Math.max(0, ...(sim?.kraene ?? []).filter(k => zugewieseneKranIds.has(k.id)).map(k => Math.ceil(k.name.length * 6.5) + 36));
-  const colWEff: Record<Spalte, number> = { ...colW, kraene: Math.max(colW.kraene, kranChipBreite) };
-  const gridTemplate = ALLE_SPALTEN.map(s => `${colWEff[s]}px`).join(" ");
 
   if (!sim) return <div style={{ padding: 14, fontSize: 12, color: "var(--tc-text-3)" }}>Kein aktives Projekt ausgewählt</div>;
 
@@ -466,6 +472,32 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   }
   const kuerzelKategorien = [...summeProKuerzel.keys()].sort();
 
+  // Automatische Spaltenbreiten: breitester Inhalt je Spalte (gemessen in der Schrift der App) + Zellabstand,
+  // mindestens die Standardbreite; von Hand gezogene Breiten gehen vor.
+  const PAD = 8; // paddingLeft jeder Zelle ab der 2. Spalte
+  const kopfBreite = (s: Spalte) => textBreite(SPALTEN_LABEL[s], 9, true) + 26 + (s === "task" ? 16 : 0) + PAD;
+  const maxText = (texte: string[], px = 12, fett = false) => Math.max(0, ...texte.map(t => textBreite(t, px, fett)));
+  const gewerkeJeZeile = zeilen.map(z => z.t.bauteilKuerzel ? gewerkeFuerKuerzel(stammdaten, z.t.bauteilKuerzel) : []);
+  const gewerkLabelBreite = Math.max(76, maxText(gewerkeJeZeile.flat().map(g => `▸ ${g.label} ⚠`)));
+  const mengenWertBreite = maxText(zeilen.flatMap((z, i) => gewerkeJeZeile[i].map(g => fmtZahl(z.t.mengen?.[g.key] ?? 0))), 12, true) + 14;
+  const zugewieseneKranIds = new Set(sim.tasks.flatMap(t => t.kraene ?? []));
+  const autoW: Record<Spalte, number> = {
+    nr: Math.max(textBreite(SPALTEN_LABEL.nr, 9, true) + 18, maxText(zeilen.map(z => nummern.get(z.t.id) ?? "")) + 6),
+    auge: DEFAULT_COL_W.auge,
+    task: Math.min(MAX_AUTO_BREITE, Math.max(kopfBreite("task"), maxText(zeilen.map(z => z.t.name)) + 6 + PAD)),
+    kuerzel: Math.max(kopfBreite("kuerzel"), maxText(kuerzelOptionen.map(o => o.label)) + 30 + PAD),
+    mengen: Math.max(kopfBreite("mengen"), gewerkLabelBreite + 8 + mengenWertBreite + 6 + PAD),
+    geplant: Math.max(kopfBreite("geplant"), maxText(zeilen.map(z => dauerText(z.geplant))) + 4 + PAD),
+    berechnet: Math.max(kopfBreite("berechnet"), maxText(zeilen.map(z => fmtZahl(z.berechnet)), 12, true) + 14 + 12 + PAD),
+    differenz: Math.max(kopfBreite("differenz"), maxText(zeilen.map(z => `${fmtZahlMitVorzeichen(z.differenz)} d`), 12, true) + 4 + PAD),
+    // Spalte Kräne wächst mit den zugewiesenen Kranchips (breitester Chip), damit sie nicht in die Spalte Personal (Soll) ragen
+    kraene: Math.max(kopfBreite("kraene"), maxText((sim.kraene ?? []).filter(k => zugewieseneKranIds.has(k.id)).map(k => k.name), 10, true) + 36 + PAD),
+    personalSoll: Math.max(kopfBreite("personalSoll"), maxText(zeilen.map(z => z.t.personalSoll != null ? fmtZahl(z.t.personalSoll) : "")) + 14 + PAD),
+  };
+  const colWEff = Object.fromEntries(
+    ALLE_SPALTEN.map(s => [s, manuellW[s] ?? Math.max(DEFAULT_COL_W[s], autoW[s])])) as Record<Spalte, number>;
+  const gridTemplate = ALLE_SPALTEN.map(s => `${colWEff[s]}px`).join(" ");
+
   // Eindeutige Werte einer sortier-/filterbaren Spalte — Basis sind alle anderen aktiven Filter
   // (nicht der eigenen Spalte), damit das Filter-Popover wie in Tabellenkalkulationen üblich nur
   // noch erreichbare Werte zeigt.
@@ -633,7 +665,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
           </>
         )}
         {idx < ALLE_SPALTEN.length - 1 && (
-          <div className="col-resize-handle" onMouseDown={e => startResize(spalte, e)}
+          <div className="col-resize-handle" onMouseDown={e => startResize(spalte, e, colWEff[spalte])}
             style={{ position: "absolute", top: -4, right: -3, width: 7, height: 18, cursor: "col-resize", zIndex: 2 }} />
         )}
       </div>
@@ -670,12 +702,12 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
                   <span
                     title={aufklappbar ? "Bauteil-Liste anzeigen" : undefined}
                     onClick={aufklappbar ? () => gewerkExpandToggle(`${z.t.id}::${g.key}`) : undefined}
-                    style={{ width: 76, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: aufklappbar ? "pointer" : "default", textDecoration: aufklappbar ? "underline dotted" : "none" }}>
+                    style={{ width: gewerkLabelBreite, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: aufklappbar ? "pointer" : "default", textDecoration: aufklappbar ? "underline dotted" : "none" }}>
                     {aufklappbar && (offen ? "▾ " : "▸ ")}{g.label}{quelle === "fehler" && " ⚠"}
                   </span>
-                  <input type="number" className="no-spinner" disabled={readOnly} value={z.t.mengen?.[g.key] ?? ""}
+                  <ZahlFeld disabled={readOnly} wert={z.t.mengen?.[g.key]}
                     title={info ? `${g.label} [${g.einheit}] — ${info}` : `${g.label} [${g.einheit}]`}
-                    onChange={e => mengeAendern(z.t, g.key, e.target.value === "" ? null : Number(e.target.value))}
+                    onWert={v => mengeAendern(z.t, g.key, v)}
                     onFocus={mengenBearbeitungStart} onBlur={mengenBearbeitungEnde} onKeyDown={mengenEnterCommit}
                     style={{ minWidth: 0, flex: 1, fontSize: 12, padding: "2px 4px", border: `1px solid ${quelle === "fehler" ? "var(--tc-red)" : "#d4dce4"}`, fontFamily: "inherit", color: farbe, fontWeight: quelle ? 600 : 400 }} />
                 </div>
@@ -686,27 +718,27 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
         );
       }
       case "geplant":
-        return <span style={{ fontSize: 12, color: "#888", paddingTop: 3 }}>{fmtDauer(z.geplant, sim?.zeiteinheit === "tage" || !sim?.zeiteinheit ? "tage" : sim.zeiteinheit)}</span>;
+        return <span style={{ fontSize: 12, color: "#888", paddingTop: 3, whiteSpace: "nowrap" }}>{dauerText(z.geplant)}</span>;
       case "berechnet": {
         const istManuell = z.t.berechneteDauerManuell != null;
         const farbe = z.abweichung ? "#d9622b" : istManuell ? "#333" : "var(--tc-blue)";
         return (
-          <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-            <input type="number" className="no-spinner" disabled={readOnly} value={berechnetEntwurf?.taskId === z.t.id ? berechnetEntwurf.text : z.berechnet}
+          <div style={{ display: "flex", alignItems: "center", gap: 2, paddingRight: 4 }}>
+            <ZahlFeld disabled={readOnly} wert={z.berechnet}
               title={
                 (z.abweichung ? "Deutliche Abweichung von der geplanten Dauer. " : "") +
                 (istManuell ? "Manuell übersteuert — leeren, um wieder automatisch aus den Mengen zu berechnen." : "Automatisch aus Mengen × Leistungswert berechnet — Wert eintragen, um sie manuell zu übersteuern.")
               }
-              onChange={e => { setBerechnetEntwurf({ taskId: z.t.id, text: e.target.value }); berechnetDauerAendern(z.t, e.target.value === "" ? null : Number(e.target.value)); }}
-              onFocus={mengenBearbeitungStart} onBlur={() => { setBerechnetEntwurf(null); mengenBearbeitungEnde(); }} onKeyDown={mengenEnterCommit}
-              style={{ width: 36, minWidth: 0, fontSize: 12, padding: "2px 4px", border: `1px solid ${z.abweichung ? "#d9622b" : "#d4dce4"}`, fontFamily: "inherit", color: farbe, fontWeight: 600 }} />
+              onWert={v => berechnetDauerAendern(z.t, v)}
+              onFocus={mengenBearbeitungStart} onBlur={mengenBearbeitungEnde} onKeyDown={mengenEnterCommit}
+              style={{ flex: 1, minWidth: 0, fontSize: 12, padding: "2px 4px", border: `1px solid ${z.abweichung ? "#d9622b" : "#d4dce4"}`, fontFamily: "inherit", color: farbe, fontWeight: 600 }} />
             <span style={{ fontSize: 12, color: farbe }}>d</span>
           </div>
         );
       }
       case "differenz": {
         const farbe = z.differenz > 0 ? "#d9622b" : z.differenz < 0 ? "#2e8b57" : "#888";
-        return <span style={{ fontSize: 12, fontWeight: 600, color: farbe, paddingTop: 3 }}>{z.differenz > 0 ? "+" : ""}{z.differenz}d</span>;
+        return <span style={{ fontSize: 12, fontWeight: 600, color: farbe, paddingTop: 3 }}>{fmtZahlMitVorzeichen(z.differenz)} d</span>;
       }
       case "kraene": {
         const kraeneListe = sim?.kraene ?? [];
@@ -750,11 +782,11 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
       }
       case "personalSoll":
         return (
-          <input type="number" className="no-spinner" disabled={readOnly} value={z.t.personalSoll ?? ""}
+          <ZahlFeld disabled={readOnly} wert={z.t.personalSoll}
             title="Vorgesehene Gesamt-Personenzahl für diesen Task (alle Kürzel zusammen) — unabhängig von den Kolonnengrössen je Kürzel in Tab Ressourcen. Ergibt die rote 'Personal (Soll)'-Referenzlinie in Tab AVOR unter Personalauslastung."
-            onChange={e => taskAendernBulk(z.t.id, { personalSoll: e.target.value === "" ? undefined : Number(e.target.value) })}
+            onWert={v => taskAendernBulk(z.t.id, { personalSoll: v ?? undefined })}
             onFocus={mengenBearbeitungStart} onBlur={mengenBearbeitungEnde} onKeyDown={mengenEnterCommit}
-            style={{ width: 50, fontSize: 12, padding: "2px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
+            style={{ width: "calc(100% - 4px)", fontSize: 12, padding: "2px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
         );
       case "auge": {
         const hatBauteile = z.t.objektGuids.length > 0;
@@ -778,10 +810,10 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     <div ref={wurzelRef} style={{ display: "flex", flexDirection: "column", height: "100%", fontSize: 12 }}>
       <div style={{ padding: "14px 14px 0", flexShrink: 0 }}>
         <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-          <StatTile label="Total Abweichung" wert={`${gesamtAbweichungTage > 0 ? "+" : ""}${gesamtAbweichungTage}d`} status={gesamtAbweichungTage !== 0 ? "warning" : "good"} sub="Berechnet − Geplant, alle Tasks" />
+          <StatTile label="Total Abweichung" wert={`${fmtZahlMitVorzeichen(gesamtAbweichungTage)} d`} status={gesamtAbweichungTage !== 0 ? "warning" : "good"} sub="Berechnet − Geplant, alle Tasks" />
           <StatTile label="Tasks mit Kürzel" wert={`${tasksMitKuerzel}/${zeilen.length}`} />
           <StatTile label="Tasks mit Abweichung" wert={String(anzahlAbweichung)} status={anzahlAbweichung > 0 ? "warning" : "good"} />
-          <StatTile label="Ø Abweichung" wert={`${durchschnAbweichungProzent.toFixed(0)}%`} />
+          <StatTile label="Ø Abweichung" wert={`${fmtZahl(durchschnAbweichungProzent)}%`} />
         </div>
         {kuerzelKategorien.length > 0 && (
           <CockpitAbschnitt titel="Geplant vs. berechnet je Kürzel" eingeklappt={!!eingeklappt["kuerzel-chart"]} onToggle={() => toggleEingeklappt("kuerzel-chart")}>
@@ -789,7 +821,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
               serien={[
                 { key: "geplant", label: "Geplant", color: FARBEN.kategorial[0], werte: kuerzelKategorien.map(k => summeProKuerzel.get(k)!.geplant) },
                 { key: "berechnet", label: "Berechnet", color: FARBEN.kategorial[1], werte: kuerzelKategorien.map(k => summeProKuerzel.get(k)!.berechnet) },
-              ]} formatWert={v => v.toFixed(0)} />
+              ]} formatWert={fmtZahl} />
           </CockpitAbschnitt>
         )}
 
@@ -1001,11 +1033,11 @@ function GewerkObjektListe({ t, gewerk, rate, api, stammdaten, readOnly, taskAen
                 <div title={o.grund} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: o.quelle === "fehler" ? "var(--tc-red)" : "var(--tc-text-2)" }}>
                   {name}{o.quelle === "fehler" && " ⚠"}
                 </div>
-                <input type="number" className="no-spinner" disabled={readOnly} value={o.wert ?? ""}
+                <ZahlFeld disabled={readOnly} wert={o.wert}
                   title={o.grund}
-                  onChange={e => overrideAendern(o.guid, e.target.value === "" ? null : Number(e.target.value))}
+                  onWert={v => overrideAendern(o.guid, v)}
                   onFocus={mengenBearbeitungStart} onBlur={mengenBearbeitungEnde} onKeyDown={mengenEnterCommit}
-                  style={{ width: 70, fontSize: 10, padding: "2px 4px", border: `1px solid ${o.quelle === "fehler" ? "var(--tc-red)" : "#d4dce4"}`, fontFamily: "inherit", color: farbe, fontWeight: o.quelle !== "auto" ? 600 : 400 }} />
+                  style={{ width: 84, fontSize: 10, padding: "2px 4px", border: `1px solid ${o.quelle === "fehler" ? "var(--tc-red)" : "#d4dce4"}`, fontFamily: "inherit", color: farbe, fontWeight: o.quelle !== "auto" ? 600 : 400 }} />
                 <div style={{ color: "var(--tc-text-3)" }}>{gewerk.einheit}</div>
               </Fragment>
             );

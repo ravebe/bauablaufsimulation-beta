@@ -12,9 +12,8 @@ import { StatTile, CategoryBarChart, TimeSeriesChart, CockpitAbschnitt, useEinge
 
 interface Props { sim: SimProjekt | null; projectId?: string | null; api?: ApiInstance | null; sharedNadelTag?: React.MutableRefObject<number>; }
 
-function fmtChf(n: number): string {
-  return n.toLocaleString("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
+import { fmtZahl } from "./zahlFormat";
+const fmtChf = fmtZahl;
 
 function heuteIsoUndDatum(): { iso: string; datum: Date } {
   const datum = new Date();
@@ -141,7 +140,7 @@ export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }
         <StatTile label="Kosten heute" wert={`${fmtChf(kostenHeute)} CHF`} sub={heute.toLocaleDateString("de-CH")} />
         <StatTile label="Tasks mit Kosten" wert={`${tasksMitKosten}/${gesamtTaskAnzahl}`} />
         {topEintrag && (
-          <StatTile label="Größte Kostenposition" wert={`${topEintrag[0]} · ${topAnteilProzent.toFixed(0)}%`} sub={topEintrag[1].bezeichnung} />
+          <StatTile label="Größte Kostenposition" wert={`${topEintrag[0]} · ${fmtZahl(topAnteilProzent)}%`} sub={topEintrag[1].bezeichnung} />
         )}
       </div>
 

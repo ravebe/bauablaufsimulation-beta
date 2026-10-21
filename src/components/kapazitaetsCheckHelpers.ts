@@ -93,7 +93,7 @@ export interface PhasenAuswertung {
   bedarfPersonenstunden: number;
   angebotPersonenstunden: number;
   deckung: "ok" | "fehlend";
-  fehlendePersonen: number; // 0 wenn deckung "ok"
+  fehlendePersonen: number; // 0 wenn deckung "ok" — genauer Wert (Vollzeit-Äquivalent), nicht aufgerundet
 }
 
 /** Vergleicht Bedarf (Personenstunden aus Menge×Leistungswert) gegen Angebot (Personen × Arbeitszeit
@@ -104,7 +104,7 @@ export function auswertungPhase(anzahlPersonen: number, bedarfPersonenstunden: n
   const deckung: "ok" | "fehlend" = angebotPersonenstunden >= bedarfPersonenstunden ? "ok" : "fehlend";
   const fehlendePersonen = deckung === "ok" || arbeitszeitStdProTag <= 0 || arbeitstage <= 0
     ? 0
-    : Math.ceil((bedarfPersonenstunden - angebotPersonenstunden) / (arbeitszeitStdProTag * arbeitstage));
+    : (bedarfPersonenstunden - angebotPersonenstunden) / (arbeitszeitStdProTag * arbeitstage);
   return { arbeitstage, bedarfPersonenstunden, angebotPersonenstunden, deckung, fehlendePersonen };
 }
 
@@ -166,6 +166,7 @@ export function personalRichtwertJeBucket(personenstunden: number, arbeitstageVe
   if (arbeitstageVerfuegbar <= 0 || arbeitszeitStdProTag <= 0) {
     return { richtwert: null, engpass: personenstunden > 0, kranNichtVerfuegbar: personenstunden > 0 };
   }
-  const richtwert = Math.round(personenstunden / (arbeitszeitStdProTag * arbeitstageVerfuegbar));
+  // ungerundet (Anzeige mit 2 Nachkommastellen, siehe zahlFormat.tsx) — die Ampel vergleicht den genauen Wert
+  const richtwert = personenstunden / (arbeitszeitStdProTag * arbeitstageVerfuegbar);
   return { richtwert, engpass: richtwert > maxPersonenProKran, kranNichtVerfuegbar: false };
 }

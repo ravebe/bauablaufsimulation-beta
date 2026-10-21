@@ -2,6 +2,7 @@
 // Tab AVOR und spätere Cockpits. Farben nach validierter Referenzpalette (dataviz-Skill, Light only
 // — die App hat aktuell keinen Dark-Mode).
 import { useState, useEffect, useRef } from "react";
+import { fmtZahl } from "./zahlFormat";
 import { nsKey } from "../types";
 import type { Kalender } from "./kalenderHelpers";
 import { istArbeitstag, getKW } from "./kalenderHelpers";
@@ -231,7 +232,7 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
   pxProTag: pxProTagProp, onPxProTagChange: onPxProTagChangeProp, scrollTag: scrollTagProp, onScrollChange: onScrollChangeProp }: TimeSeriesProps) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [outerRef, viewportW] = useMeasuredWidth<HTMLDivElement>(1000);
-  const fmt = formatWert ?? ((v: number) => v.toLocaleString("de-CH", { maximumFractionDigits: 1 }));
+  const fmt = formatWert ?? fmtZahl;
 
   const n = tage.length;
 
@@ -464,7 +465,7 @@ export function CategoryBarChart({ kategorien, serien, einheit = "", hoehe = 180
   const [ausgewaehlt, setAusgewaehlt] = useState<{ ki: number; si: number } | null>(null);
   const aktiv = hover ?? ausgewaehlt;
   const [containerRef, VBW] = useMeasuredWidth<HTMLDivElement>(1000);
-  const fmt = formatWert ?? ((v: number) => v.toLocaleString("de-CH", { maximumFractionDigits: 1 }));
+  const fmt = formatWert ?? fmtZahl;
 
   if (kategorien.length === 0 || serien.length === 0) {
     return <div style={{ fontSize: 11, color: FARBEN.textMuted, padding: 12 }}>Keine Daten</div>;
@@ -589,7 +590,7 @@ export function KranBalkenChart({ tage, buckets, serien, einheit = "", hoehe = 1
   pxProTag, onPxProTagChange, scrollTag, onScrollChange }: KranBalkenChartProps) {
   const [hover, setHover] = useState<{ bi: number; si: number } | null>(null);
   const [outerRef, viewportW] = useMeasuredWidth<HTMLDivElement>(1000);
-  const fmt = formatWert ?? ((v: number) => v.toLocaleString("de-CH", { maximumFractionDigits: 1 }));
+  const fmt = formatWert ?? fmtZahl;
   const n = tage.length;
 
   const { scrollRef, headerRef, zoomBy, onChartScroll } = useZeitachsenInteraktion(n, pxProTag, onPxProTagChange, scrollTag, onScrollChange);

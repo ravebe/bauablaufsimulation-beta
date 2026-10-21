@@ -14,12 +14,11 @@ import type { ApiInstance } from "../hooks/useApi";
 import { TimeSeriesChart, KranBalkenChart, StatTile, CockpitAbschnitt, useEingeklappt, useChartZoom, useChartHoehe, ChartResizeHandle, FARBEN } from "./cockpitCharts";
 import type { Serie, KategorieSerie } from "./cockpitCharts";
 import KranPlanungManager from "./KranPlanungManager";
+import { fmtZahl } from "./zahlFormat";
 
 interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; projectId?: string | null; api?: ApiInstance | null; sharedNadelTag?: React.MutableRefObject<number>; }
 
-function fmtChf(n: number): string {
-  return n.toLocaleString("de-CH", { maximumFractionDigits: 0 });
-}
+const fmtChf = fmtZahl;
 
 function gestapelteSerien(tagWerte: TagWert[], labelFuer: (k: string) => string): { tage: string[]; serien: Serie[] } {
   const tage = tagWerte.map(t => t.tag);
@@ -160,7 +159,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
     <div style={{ padding: 14, fontSize: 12 }} ref={zoom.breitenRef}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 16, position: "sticky", top: 0, background: "#fff", zIndex: 3, paddingBottom: 4 }}>
         <StatTile label="Peak Personalbedarf" title={"Höchste Personenzahl an einem Tag (Vollzeit-Äquivalent = Personenstunden des Tages ÷ Std./Tag aus Tab Ressourcen), summiert über alle laufenden Tasks.\nJe Task arbeiten die Gewerke nacheinander, jedes so lange wie in Tab Kalkulation berechnet (Menge × Leistungswert ÷ Kolonne ÷ Std./Tag).\nIst ein Task im Gantt länger/kürzer als berechnet, wird die Kolonne entsprechend kleiner/grösser: Personen = Kolonne × berechnete ÷ geplante Dauer.\nSo ergeben die Personen über den Task genau die kalkulierten Personenstunden."} wert={
-          <>{Math.round(peakWert)} Pers.{peakTagLabel && <span style={{ fontSize: 11, fontWeight: 400, color: FARBEN.textSekundaer, marginLeft: 6 }}>{peakTagLabel}</span>}</>
+          <>{fmtZahl(peakWert)} Pers.{peakTagLabel && <span style={{ fontSize: 11, fontWeight: 400, color: FARBEN.textSekundaer, marginLeft: 6 }}>{peakTagLabel}</span>}</>
         } />
         {personalSollGesetzt && (
           <StatTile label="Tage über Personal (Soll)" wert={String(tageUeberPersonalSoll)} status={tageUeberPersonalSoll > 0 ? "warning" : "good"} />
@@ -177,7 +176,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
       <CockpitAbschnitt titel="Personalauslastung" eingeklappt={!!eingeklappt["personal"]} onToggle={() => toggleEingeklappt("personal")}>
         <TimeSeriesChart tage={personalSerien.tage} serien={personalSerien.serien} modus="flaeche-gestapelt" einheit="Pers. (Vollzeit-Äquivalent)"
           referenzlinie={personalSollGesetzt ? { label: "Personal (Soll)", werte: personalSoll } : undefined}
-          formatWert={v => (Math.round(v * 10) / 10).toLocaleString("de-CH")} kalender={kalender} hoehe={hoehePersonal}
+          formatWert={fmtZahl} kalender={kalender} hoehe={hoehePersonal}
           markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick}
           pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
         <ChartResizeHandle hoehe={hoehePersonal} setHoehe={setHoehePersonal} />
@@ -203,7 +202,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
         <TimeSeriesChart tage={mengen.map(m => m.tag)} einheit={aktivesGewerk?.einheit ?? ""}
           serien={[{ key: "menge", label: `Durchschnittlich nötige Tagesleistung${aktiveRate ? ` (${aktiveRate.kuerzel})` : " (Total)"}`, color: FARBEN.kategorial[0], werte: mengen.map(m => m.menge) }]}
           referenzlinie={optimal != null ? { wert: optimal, label: "Optimal ausgelastete Tagesleistung" } : undefined}
-          modus="linie" formatWert={v => v.toLocaleString("de-CH", { maximumFractionDigits: 1 })}
+          modus="linie" formatWert={fmtZahl}
           kalender={kalender} hoehe={hoeheMengen}
           markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick}
           pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
@@ -266,7 +265,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
             </div>
           ) : (<>
             <KranBalkenChart tage={personalSerien.tage} buckets={kranBuckets} serien={kranBarSerien} einheit="h"
-              formatWert={v => String(Math.round(v))} kalender={kalender} hoehe={hoeheKran}
+              formatWert={fmtZahl} kalender={kalender} hoehe={hoeheKran}
               pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
             <ChartResizeHandle hoehe={hoeheKran} setHoehe={setHoeheKran} />
           </>)
@@ -277,7 +276,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
             </div>
           ) : (<>
             <KranBalkenChart tage={personalSerien.tage} buckets={personalKranBuckets} serien={personalBarSerien} einheit="Personen"
-              formatWert={v => String(Math.round(v))} kalender={kalender} hoehe={hoeheKran}
+              formatWert={fmtZahl} kalender={kalender} hoehe={hoeheKran}
               pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
             <ChartResizeHandle hoehe={hoeheKran} setHoehe={setHoeheKran} />
           </>)

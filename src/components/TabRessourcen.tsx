@@ -6,6 +6,7 @@ import { istGruppe, nsKey } from "../types";
 import type { Gewerk, GewerkeKatalog, Rate, Stammdaten, AusschlussFilter } from "./stammdatenHelpers";
 import { LEERE_STAMMDATEN, effektiveArbeitszeit, mitArbeitszeit, GEWERKE_KATALOGE, mengenRelevanteSignatur, alleKuerzel, stammdatenAlsJson, parseStammdatenJson, stammdatenAlsCsv, parseStammdatenCsv, ausschlussFilterListe, aktiveFilterIds, einheitUmrechnungsfaktor, istRateKranpflichtig } from "./stammdatenHelpers";
 import { StatTile } from "./cockpitCharts";
+import { fmtZahl } from "./zahlFormat";
 import type { Arbeitszeit } from "./zeitHelpers";
 import { pruefeArbeitszeit, arbeitszeitStunden } from "./zeitHelpers";
 import type { ApiInstance } from "../hooks/useApi";
@@ -498,7 +499,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                         ? "Mindestens ein Task in dieser Kategorie hat keine oder eine fehlerhafte Menge — siehe Tab Kalkulation"
                         : `${gewerkTaskAnzahl} Task${gewerkTaskAnzahl === 1 ? "" : "s"} mit Kürzel aus dieser Kategorie`
                     }>
-                    {gewerkSumme.toLocaleString("de-CH", { maximumFractionDigits: 2 })}
+                    {fmtZahl(gewerkSumme)}
                   </span>
                 )}
                 <span>(</span>
@@ -589,7 +590,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                       : mengeProblem ? "Mindestens ein Task mit diesem Kürzel hat für dieses Gewerk keine oder eine fehlerhafte Menge — siehe Tab Kalkulation"
                         : `${tasksMitKuerzel.length} Task${tasksMitKuerzel.length === 1 ? "" : "s"}`
                   }>
-                  {tasksMitKuerzel.length === 0 ? "–" : `${mengeSumme.toLocaleString("de-CH", { maximumFractionDigits: 2 })} ${gewerk.einheit}`}
+                  {tasksMitKuerzel.length === 0 ? "–" : `${fmtZahl(mengeSumme)} ${gewerk.einheit}`}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
                   {!readOnly && (
@@ -772,7 +773,7 @@ function ArbeitszeitEingabe({ wert, readOnly, onChange }: { wert: Arbeitszeit; r
       <span style={{ color: "#888" }}>/</span>
       {feld("mittagBis", "Mittagspause bis")}–{feld("ende", "Arbeitsende")}
       <span style={{ color: fehler ? "#d9534f" : "#555" }}>
-        {fehler ?? `= ${String(Math.round(arbeitszeitStunden(entwurf) * 100) / 100).replace(".", ",")} h/Tag`}
+        {fehler ?? `= ${fmtZahl(arbeitszeitStunden(entwurf))} h/Tag`}
       </span>
     </div>
   );
