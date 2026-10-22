@@ -479,9 +479,10 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
             <div style={{ padding: "16px 18px", fontSize: 12, color: "var(--tc-text-2)", lineHeight: 1.6 }}>
               Für jeden Task wird die in Tab Kalkulation berechnete Dauer als neuer Start-/Endtermin
               übernommen, entlang der bestehenden Vorgänger-Kette — bestehende Termine werden dabei
-              überschrieben. Das lässt sich nicht rückgängig machen.
+              überschrieben. Direkt danach lässt sich das mit „Rückgängig“ oben in der Kopfzeile zurücknehmen
+              (letzte 15 Schritte, solange die Seite offen ist — nach dem Neuladen nicht mehr).
               <div style={{ marginTop: 10, fontWeight: 600 }}>
-                Empfehlung: Zuerst das komplette Projekt kopieren (⋮-Menü der Simulation), dann die
+                Empfehlung bei grösseren Änderungen: Zuerst das Projekt kopieren (⋮-Menü der Simulation), dann die
                 Übernahme in der Kopie durchführen.
               </div>
             </div>
