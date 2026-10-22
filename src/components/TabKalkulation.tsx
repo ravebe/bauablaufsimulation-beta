@@ -914,6 +914,8 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
           bei 0 Treffern auf die Kopfzeile schrumpft und das Popup abschneidet. */}
       <div style={{ flex: 1, minHeight: (suchOffen || filterMenuOffen) ? 260 : 0, overflow: "auto", padding: "0 14px 14px" }}
         onClick={e => { if (e.target === e.currentTarget) setSelectedIds([]); }}>
+        {/* so breit wie alle Spalten zusammen (nicht nur der sichtbare Bereich) — sonst endet die Markierung/Trennlinie einer Zeile am Fensterrand */}
+        <div style={{ width: "max-content", minWidth: "100%" }} onClick={e => { if (e.target === e.currentTarget) setSelectedIds([]); }}>
         <div style={{ display: "grid", gridTemplateColumns: gridTemplate, fontSize: 9, color: "var(--tc-text-3)", fontWeight: 600, padding: "4px 0", position: "sticky", top: 0, background: "#fff", zIndex: 3 }}>
           {ALLE_SPALTEN.map((s, i) => renderHeaderZelle(s, i))}
         </div>
@@ -943,6 +945,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
             </Fragment>
           );
         })}
+        </div>
       </div>
     </div>
   );
