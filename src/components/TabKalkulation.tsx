@@ -50,12 +50,12 @@ function textBreite(text: string, px: number, fett = false): number {
 const dauerText = (tage: number) => `${fmtZahl(tage)} d`;
 
 // Spalten mit Sortier-/Filterfunktion im Header (Klick auf Titel = sortieren, ▾ = Filter-Popover).
-const SORTIERBARE_SPALTEN = ["nr", "task", "kuerzel", "geplant", "berechnet"] as const;
+const SORTIERBARE_SPALTEN = ["nr", "task", "kuerzel", "geplant", "berechnet", "differenz", "kraene", "personalSoll"] as const;
 type SortSpalte = typeof SORTIERBARE_SPALTEN[number];
 // Nr. und Task sind nur sortierbar — der Werte-Filter-Popover (Checkbox-Liste) ist dort nicht nötig.
-const FILTERBARE_SPALTEN: readonly SortSpalte[] = ["kuerzel", "geplant", "berechnet"];
+const FILTERBARE_SPALTEN: readonly SortSpalte[] = ["kuerzel", "geplant", "berechnet", "differenz", "kraene", "personalSoll"];
 
-type Zeile = { t: Task; nr: string; geplant: number; berechnet: number; differenz: number; abweichung: boolean };
+type Zeile = { t: Task; nr: string; geplant: number; berechnet: number; differenz: number; abweichung: boolean; kraeneText: string };
 
 function spalteWert(z: Zeile, spalte: SortSpalte): string {
   switch (spalte) {
@@ -64,7 +64,29 @@ function spalteWert(z: Zeile, spalte: SortSpalte): string {
     case "kuerzel": return z.t.bauteilKuerzel || "–";
     case "geplant": return dauerText(z.geplant);
     case "berechnet": return dauerText(z.berechnet);
+    case "differenz": return `${fmtZahlMitVorzeichen(z.differenz)} d`;
+    case "kraene": return z.kraeneText || "–";
+    case "personalSoll": return z.t.personalSoll != null ? fmtZahl(z.t.personalSoll) : "–";
   }
+}
+
+const ZULETZT = String.fromCharCode(0xffff); // sortiert nach allen Texten
+/** Sortierschlüssel einer Spalte — Zahlen numerisch (auch die Werteliste im Filter), Text alphabetisch; leere Werte ("–") zuletzt. */
+function sortSchluessel(z: Zeile, spalte: SortSpalte): number | string {
+  switch (spalte) {
+    case "nr": return Number(z.nr);
+    case "geplant": return z.geplant;
+    case "berechnet": return z.berechnet;
+    case "differenz": return z.differenz;
+    case "personalSoll": return z.t.personalSoll ?? Infinity;
+    case "kuerzel": return z.t.bauteilKuerzel || ZULETZT;
+    case "kraene": return z.kraeneText || ZULETZT;
+    case "task": return z.t.name;
+  }
+}
+function vergleiche(a: number | string, b: number | string): number {
+  if (typeof a === "number" && typeof b === "number") return a === b ? 0 : a < b ? -1 : 1;
+  return String(a).localeCompare(String(b), "de", { numeric: true });
 }
 
 export default function TabKalkulation({ sim, updateSim, readOnly, api, projectId = null, taskSort = "gantt" }: Props) {
@@ -423,7 +445,8 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     const geplant = dauerTage(t, kalender); // Arbeitstage (bei Halbtagen/Uhrzeit mit Nachkommastellen)
     const berechnet = dauerBerechnetTask(t, stammdaten, sim.zeiteinheit);
     const abweichung = berechnet > 0 && (berechnet > geplant * 1.5 || berechnet < geplant * 0.67);
-    return { t, nr: nummern.get(t.id) ?? "", geplant, berechnet, differenz: berechnet - geplant, abweichung };
+    const kraeneText = (t.kraene ?? []).map(id => sim.kraene?.find(k => k.id === id)?.name).filter(Boolean).join(", ");
+    return { t, nr: nummern.get(t.id) ?? "", geplant, berechnet, differenz: berechnet - geplant, abweichung, kraeneText };
   }).filter((z): z is Zeile => z !== null);
 
   // Basis-Reihenfolge folgt dem globalen Sortier-Menü in der Kopfzeile (wie Tab Bauteile/Tasks/Gantt) —
@@ -512,8 +535,9 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
       const erlaubt = spaltenFilter[s];
       if (erlaubt) basis = basis.filter(z => erlaubt.has(spalteWert(z, s)));
     }
-    const werte = new Set(basis.map(z => spalteWert(z, spalte)));
-    return [...werte].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    const schluessel = new Map<string, number | string>();
+    for (const z of basis) { const w = spalteWert(z, spalte); if (!schluessel.has(w)) schluessel.set(w, sortSchluessel(z, spalte)); }
+    return [...schluessel.keys()].sort((a, b) => vergleiche(schluessel.get(a)!, schluessel.get(b)!));
   }
 
   // Priorität für den Mengen-Sortmodus (0 = zuoberst), ausgelöst per Klick auf die Legende unter der
@@ -558,13 +582,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   }
   if (sortSpalte) {
     const richt = sortRichtung === "asc" ? 1 : -1;
-    zeilenGefiltert = [...zeilenGefiltert].sort((a, b) => {
-      if (sortSpalte === "nr") return (Number(a.nr) - Number(b.nr)) * richt;
-      if (sortSpalte === "geplant") return (a.geplant - b.geplant) * richt;
-      if (sortSpalte === "berechnet") return (a.berechnet - b.berechnet) * richt;
-      if (sortSpalte === "kuerzel") return (a.t.bauteilKuerzel ?? "").localeCompare(b.t.bauteilKuerzel ?? "") * richt;
-      return a.t.name.localeCompare(b.t.name) * richt;
-    });
+    zeilenGefiltert = [...zeilenGefiltert].sort((a, b) => vergleiche(sortSchluessel(a, sortSpalte), sortSchluessel(b, sortSpalte)) * richt);
   }
   if (mengenSortModus) {
     zeilenGefiltert = [...zeilenGefiltert].sort((a, b) => mengenPrioritaet(a) - mengenPrioritaet(b));
@@ -634,9 +652,14 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
           <>
             <div style={{ position: "fixed", inset: 0, zIndex: 90 }} onClick={() => setFilterMenuOffen(null)} />
             <Schwebend style={{ background: "#fff", border: "1px solid #d4dce4", boxShadow: "0 2px 8px rgba(0,0,0,.12)", minWidth: 140, maxHeight: 220, overflowY: "auto", fontSize: 11, padding: 4, fontWeight: 400 }}>
+              {/* Alles sichtbar → "Alle abwählen" (leerer Filter blendet alle aus); sobald etwas ausgeblendet ist → "Alle anzeigen" */}
               <div style={{ padding: "3px 6px", cursor: "pointer", color: "var(--tc-blue)", fontWeight: 600 }}
-                onClick={() => setSpaltenFilter(prev => { const n = { ...prev }; delete n[sortSpalteTyp]; return n; })}>
-                Alle anzeigen
+                onClick={() => setSpaltenFilter(prev => {
+                  const n = { ...prev };
+                  if (prev[sortSpalteTyp]) delete n[sortSpalteTyp]; else n[sortSpalteTyp] = new Set<string>();
+                  return n;
+                })}>
+                {spaltenFilter[sortSpalteTyp] ? "Alle anzeigen" : "Alle abwählen"}
               </div>
               {alleWerte.map(w => {
                 const erlaubt = spaltenFilter[sortSpalteTyp];
