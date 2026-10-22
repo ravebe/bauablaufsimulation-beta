@@ -31,7 +31,7 @@ const NEUE_RATE: Rate = { kuerzel: "", bezeichnung: "", leistungswertHProEinheit
 // dieser Zeile, sondern im aufklappbaren Formel-Bereich, siehe weiter unten.
 const RATEN_SPALTEN = ["kuerzel", "bezeichnung", "lw", "personen", "chf"] as const;
 type RatenSpalte = typeof RATEN_SPALTEN[number];
-const RATEN_SPALTEN_LABEL: Record<RatenSpalte, string> = { kuerzel: "Kürzel", bezeichnung: "Bezeichnung", lw: "LW [h/Einh.]", personen: "Kolonne [Pers.]", chf: "CHF/Einh." };
+const RATEN_SPALTEN_LABEL: Record<RatenSpalte, string> = { kuerzel: "Kürzel", bezeichnung: "Bezeichnung", lw: "LW [h/Einh.]", personen: "Kolonne [Pers.]", chf: "Einheitspreis [CHF/Einh.]" };
 const RATEN_COL_DEFAULT: Record<RatenSpalte, number> = { kuerzel: 60, bezeichnung: 220, lw: 80, personen: 60, chf: 70 };
 const AKTION_BREITE = 32; // ƒx-Button
 const KRAN_BREITE = 40; // kranpflichtig-Checkbox je Kürzel
@@ -395,7 +395,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     } finally { setMengenLaeuft(false); }
   }
 
-  // ⋮-Menü (Export, Import, Kategorie hinzufügen) — einmal je Tab, rechts auf Höhe "Umsatz CHF/Mannstunde"
+  // ⋮-Menü (Export, Import, Kategorie hinzufügen) — einmal je Tab, rechts auf Höhe "Lohnansatz [CHF/h]"
   const ressourcenMenu = (
     <PunkteMenu title="Mengen berechnen, Export, Import, Kategorie hinzufügen" abschnitte={[
       ...(!readOnly && api ? [{ titel: "Aktionen", eintraege: [
@@ -444,7 +444,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
         <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
           <ArbeitszeitEingabe wert={effektiveArbeitszeit(stammdaten)} readOnly={!!readOnly} onChange={az => speichern(mitArbeitszeit(stammdaten, az))} />
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontWeight: 600 }}>Umsatz CHF/Mannstunde:</span>
+            <span style={{ fontWeight: 600 }} title="Lohnkosten je Personenstunde — Lohnkosten = Menge × Leistungswert × Lohnansatz (Tab Kosten, Ertragsoptik in Tab AVOR)">Lohnansatz [CHF/h]:</span>
             {numInput(stammdaten.umsatzChfProMannstunde ?? 80, v => speichern({ ...stammdaten, umsatzChfProMannstunde: v ?? 80 }), 60)}
           </div>
           <div style={{ marginLeft: "auto" }}>{ressourcenMenu}</div>

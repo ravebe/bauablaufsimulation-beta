@@ -263,16 +263,17 @@ export function optimaleTagesleistung(rate: Rate, arbeitszeitStdProTag: number):
   return (1 / rate.leistungswertHProEinheit) * rate.anzahlPersonen * arbeitszeitStdProTag;
 }
 
-/** Kumulierte Ertrags-/Kostenkurve über die Zeit (Ertragsoptik). */
+/** Kumulierte Ertrags-/Kostenkurve über die Zeit (Ertragsoptik):
+ *  - Ertrag = Menge × Einheitspreis (Rate.chfProEinheit, Tab Ressourcen "Einheitspreis [CHF/Einh.]")
+ *  - Kosten = Personenstunden (Menge × Leistungswert) × Lohnansatz (Stammdaten.umsatzChfProMannstunde, "Lohnansatz [CHF/h]")
+ *  Beides fällt je Gewerk im selben Verhältnis an wie sein Aufwand (Gewerke je Task nacheinander); ein Gewerk ohne
+ *  Leistungswert (kein Aufwand) verteilt seinen Ertrag gleichmässig über die Arbeitszeit des Tasks. */
 export function ertragsoptik(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender): { tag: string; ertragKum: number; kostenKum: number }[] {
   const zeitraum = projektzeitraum(tasks);
   if (!zeitraum) return [];
-  const umsatz = stammdaten.umsatzChfProMannstunde ?? 80;
+  const lohnansatz = stammdaten.umsatzChfProMannstunde ?? 80;
   const ergebnis: { tag: string; ertragKum: number; kostenKum: number }[] = [];
   let ertragKum = 0, kostenKum = 0;
-  // Je Task der Aufwand je Tag (aufwandJeTagFuerTask): Ertrag = Personenstunden × Umsatz/Mannstunde;
-  // Kosten eines Gewerks (Menge × CHF/Einheit) fallen im selben Verhältnis an wie sein Aufwand — ohne
-  // Leistungswert (kein Aufwand) gleichmässig über die Arbeitszeit des Tasks.
   const aufwandJeTask = new Map(tasks.map(t => [t.id, aufwandJeTagFuerTask(t, stammdaten, kalender)]));
   const aufwandGesamtJeTask = new Map([...aufwandJeTask].map(([id, jeTag]) => {
     const summe: Record<string, number> = {};
@@ -292,11 +293,11 @@ export function ertragsoptik(tasks: Task[], stammdaten: Stammdaten, kalender: Ka
           const menge = t.mengen![gewerk.key];
           if (!menge) continue;
           const ph = aufwandTag[gewerk.key] ?? 0;
-          ertragKum += ph * umsatz;
+          kostenKum += ph * lohnansatz;
           const rate = rateFuer(gewerk, t.bauteilKuerzel!);
           if (!rate?.chfProEinheit) continue;
           const gesamt = aufwandGesamtJeTask.get(t.id)?.[gewerk.key] ?? 0;
-          kostenKum += menge * rate.chfProEinheit * (gesamt > 0 ? ph / gesamt : anteil / dauerTage(t, kalender));
+          ertragKum += menge * rate.chfProEinheit * (gesamt > 0 ? ph / gesamt : anteil / dauerTage(t, kalender));
         }
       }
     }

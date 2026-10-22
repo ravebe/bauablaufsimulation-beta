@@ -381,17 +381,24 @@ export function dauerBerechnetTask(task: Task, stammdaten: Stammdaten, einheit: 
   return rundeDauer(roh, einheit);
 }
 
-/** Kosten eines Tasks in CHF: Summe Menge × CHF/Einheit über alle Gewerke mit hinterlegter Menge. */
-export function kostenTask(task: Task, stammdaten: Stammdaten): number {
-  if (!task.bauteilKuerzel || !task.mengen) return 0;
-  let summe = 0;
+/** Ertrag und Lohnkosten eines Tasks je Gewerk (nur Gewerke mit Menge):
+ *  - Ertrag = Menge × Einheitspreis (Rate.chfProEinheit, Tab Ressourcen "Einheitspreis [CHF/Einh.]")
+ *  - Lohnkosten = Menge × Leistungswert (Personenstunden) × Lohnansatz (Stammdaten.umsatzChfProMannstunde, "Lohnansatz [CHF/h]", Standard 80) */
+export function ertragUndLohnJeGewerk(task: Task, stammdaten: Stammdaten): Map<string, { ertrag: number; lohnkosten: number }> {
+  const ergebnis = new Map<string, { ertrag: number; lohnkosten: number }>();
+  if (!task.bauteilKuerzel || !task.mengen) return ergebnis;
+  const lohnansatz = stammdaten.umsatzChfProMannstunde ?? 80;
   for (const gewerk of stammdaten.gewerke) {
     const menge = task.mengen[gewerk.key];
     if (!menge) continue;
     const rate = rateFuerKuerzel(gewerk, task.bauteilKuerzel);
-    if (rate?.chfProEinheit) summe += menge * rate.chfProEinheit;
+    if (!rate) continue;
+    ergebnis.set(gewerk.key, {
+      ertrag: rate.chfProEinheit ? menge * rate.chfProEinheit : 0,
+      lohnkosten: rate.leistungswertHProEinheit ? menge * rate.leistungswertHProEinheit * lohnansatz : 0,
+    });
   }
-  return summe;
+  return ergebnis;
 }
 
 /** Alle im Stammdaten-Satz vorkommenden Bauteil-Kürzel, eindeutig und sortiert (für Dropdowns). */

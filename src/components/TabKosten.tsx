@@ -1,11 +1,15 @@
-// TabKosten.tsx — Kosten-Auswertung aus den Mengen×Stammdaten-Raten je Task, aggregiert nach
+// TabKosten.tsx — Ertrag, Lohnkosten und Marge aus den Mengen × Stammdaten-Raten je Task, gruppiert nach Gewerk und
 // Bauteil-Kürzel. Rein lesend, keine Eingabe (Mengen/Kürzel werden im Tab Kalkulation gepflegt).
+//  - Ertrag     = Menge × Einheitspreis (Tab Ressourcen "Einheitspreis [CHF/Einh.]")
+//  - Lohnkosten = Menge × Leistungswert × Lohnansatz (Tab Ressourcen "Lohnansatz [CHF/h]")
+//  - Marge      = Ertrag − Lohnkosten
+// Siehe ertragUndLohnJeGewerk() in stammdatenHelpers.ts und ertragsoptik() in avorHelpers.ts (Verlauf über die Zeit).
 import { useState } from "react";
 import type { SimProjekt } from "../types";
 import { istGruppe, parseDateUniversal } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { LEERER_KALENDER } from "./kalenderHelpers";
-import { LEERE_STAMMDATEN, kostenTask } from "./stammdatenHelpers";
+import { LEERE_STAMMDATEN, ertragUndLohnJeGewerk } from "./stammdatenHelpers";
 import { ertragsoptik } from "./avorHelpers";
 import { dreiDZustandAufTagSetzen, tagVonDatum } from "./dreiDHeuteHelper";
 import { StatTile, CategoryBarChart, TimeSeriesChart, CockpitAbschnitt, useEingeklappt, FARBEN } from "./cockpitCharts";
@@ -16,6 +20,10 @@ import { fmtZahlFix2 } from "./zahlFormat";
 // Tab Kosten: Beträge und Prozente immer mit genau 2 Nachkommastellen
 const fmtChf = fmtZahlFix2;
 
+type Summe = { ertrag: number; lohnkosten: number };
+const LEER: Summe = { ertrag: 0, lohnkosten: 0 };
+const plus = (a: Summe, b: Summe): Summe => ({ ertrag: a.ertrag + b.ertrag, lohnkosten: a.lohnkosten + b.lohnkosten });
+
 function heuteIsoUndDatum(): { iso: string; datum: Date } {
   const datum = new Date();
   datum.setHours(0, 0, 0, 0);
@@ -25,10 +33,10 @@ function heuteIsoUndDatum(): { iso: string; datum: Date } {
 
 export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }: Props) {
   const { eingeklappt, toggle: toggleEingeklappt } = useEingeklappt(projectId, "kosten");
-  // null = Stammdaten-Reihenfolge (wie Tab Ressourcen), sonst höchste/niedrigste Summe zuoberst —
+  // null = Stammdaten-Reihenfolge (wie Tab Ressourcen), sonst höchster/niedrigster Ertrag zuoberst —
   // sortiert sowohl die Gewerk-Gruppen (nach Gesamtsumme) als auch die Kürzel-Zeilen darin.
   const [kostenSortRichtung, setKostenSortRichtung] = useState<"desc" | "asc" | null>(null);
-  // Klick ins Kosten-kumuliert-Diagramm setzt eine Tages-Markierung und springt — wie in Tab AVOR —
+  // Klick ins kumulierte Diagramm setzt eine Tages-Markierung und springt — wie in Tab AVOR —
   // im 3D-Modell auf diesen Tag. Ohne Auswahl markiert das Diagramm weiterhin "Heute".
   const [ausgewaehlterTag, setAusgewaehlterTag] = useState<number | null>(null);
   const [klickErgebnis, setKlickErgebnis] = useState<string | null>(null);
@@ -37,63 +45,41 @@ export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }
 
   const stammdaten = sim.stammdaten ?? LEERE_STAMMDATEN;
   const kalender = sim.kalender ?? LEERER_KALENDER;
-  const proKuerzel = new Map<string, { summe: number; anzahl: number; bezeichnung: string }>();
-  const kostenProGewerk = new Map<string, number>();
-  let gesamt = 0, tasksMitKosten = 0, gesamtTaskAnzahl = 0;
 
+  // Summen je Gewerk und je (Gewerk, Kürzel) — anzahl = Tasks mit Menge in diesem Gewerk
+  const jeGewerk = new Map<string, Summe>();
+  const jeGewerkKuerzel = new Map<string, Summe & { anzahl: number }>();
+  let gesamt: Summe = LEER;
   sim.tasks.forEach((t, i) => {
-    if (t.isGroup || istGruppe(sim.tasks, i)) return;
-    gesamtTaskAnzahl += 1;
-    if (!t.bauteilKuerzel || !t.mengen) return;
-    const kosten = kostenTask(t, stammdaten);
-    if (kosten <= 0) return;
-    gesamt += kosten;
-    tasksMitKosten += 1;
-    const bezeichnung = stammdaten.gewerke.flatMap(g => g.raten).find(r => r.kuerzel === t.bauteilKuerzel)?.bezeichnung ?? t.bauteilKuerzel;
-    const eintrag = proKuerzel.get(t.bauteilKuerzel) ?? { summe: 0, anzahl: 0, bezeichnung };
-    eintrag.summe += kosten;
-    eintrag.anzahl += 1;
-    proKuerzel.set(t.bauteilKuerzel, eintrag);
-    for (const gewerk of stammdaten.gewerke) {
-      const menge = t.mengen[gewerk.key];
-      if (!menge) continue;
-      const rate = gewerk.raten.find(r => r.kuerzel === t.bauteilKuerzel);
-      if (rate?.chfProEinheit) kostenProGewerk.set(gewerk.key, (kostenProGewerk.get(gewerk.key) ?? 0) + menge * rate.chfProEinheit);
+    if (t.isGroup || istGruppe(sim.tasks, i) || !t.bauteilKuerzel) return;
+    for (const [gewerkKey, w] of ertragUndLohnJeGewerk(t, stammdaten)) {
+      gesamt = plus(gesamt, w);
+      jeGewerk.set(gewerkKey, plus(jeGewerk.get(gewerkKey) ?? LEER, w));
+      const key = `${gewerkKey}::${t.bauteilKuerzel}`;
+      const bisher = jeGewerkKuerzel.get(key) ?? { ...LEER, anzahl: 0 };
+      jeGewerkKuerzel.set(key, { ...plus(bisher, w), anzahl: bisher.anzahl + 1 });
     }
   });
+  const marge = gesamt.ertrag - gesamt.lohnkosten;
+  const margeProzent = gesamt.ertrag > 0 ? (marge / gesamt.ertrag) * 100 : 0;
+  const lohnansatz = stammdaten.umsatzChfProMannstunde ?? 80;
 
-  const zeilen = [...proKuerzel.entries()].sort((a, b) => b[1].summe - a[1].summe);
-  const gewerkeMitKosten = [...kostenProGewerk.entries()].sort((a, b) => b[1] - a[1]);
+  const gewerkeMitWerten = stammdaten.gewerke.filter(g => { const s = jeGewerk.get(g.key); return s && (s.ertrag > 0 || s.lohnkosten > 0); });
   const ertrag = ertragsoptik(sim.tasks, stammdaten, kalender);
-  const topEintrag = zeilen[0];
-  const topAnteilProzent = topEintrag && gesamt > 0 ? (topEintrag[1].summe / gesamt) * 100 : 0;
 
-  // Kosten je (Gewerk, Kürzel) für die gruppierte Liste unten — wie Tab Ressourcen: jede Kategorie mit
-  // Titel + Gesamtsumme, darunter JEDES dort konfigurierte Kürzel mit Bezeichnung, auch wenn dessen
-  // Summe (noch) 0 ist. Ein Kürzel, das in mehreren Gewerken eine Rate hat (z.B. "WB" in Schalung UND
-  // Beton), erscheint dadurch bewusst mehrfach — je Gewerk mit dem dortigen Teilbetrag.
-  function kostenProGewerkKuerzel(gewerkKey: string, kuerzel: string, chfProEinheit: number | null): { summe: number; anzahl: number } {
-    let summe = 0, anzahl = 0;
-    sim!.tasks.forEach((t, i) => {
-      if (t.isGroup || istGruppe(sim!.tasks, i) || t.bauteilKuerzel !== kuerzel) return;
-      const menge = t.mengen?.[gewerkKey];
-      if (!menge) return;
-      anzahl++;
-      if (chfProEinheit) summe += menge * chfProEinheit;
-    });
-    return { summe, anzahl };
-  }
-
+  // Gruppierte Liste unten — wie Tab Ressourcen: jede Kategorie mit Titel + Summen, darunter JEDES dort konfigurierte
+  // Kürzel, auch wenn (noch) keine Menge erfasst ist. Ein Kürzel mit Raten in mehreren Gewerken (z.B. "WB" in Schalung
+  // UND Beton) erscheint bewusst mehrfach — je Gewerk mit dem dortigen Teilbetrag.
   const gewerkeGruppiert = stammdaten.gewerke.filter(g => g.raten.length > 0).map(g => ({
     g,
-    gewerkSumme: kostenProGewerk.get(g.key) ?? 0,
-    raten: g.raten.map(r => ({ r, ...kostenProGewerkKuerzel(g.key, r.kuerzel, r.chfProEinheit) })),
+    summe: jeGewerk.get(g.key) ?? LEER,
+    raten: g.raten.map(r => ({ r, ...(jeGewerkKuerzel.get(`${g.key}::${r.kuerzel}`) ?? { ...LEER, anzahl: 0 }) })),
   }));
   const gewerkeAnzeige = !kostenSortRichtung ? gewerkeGruppiert : (() => {
     const richt = kostenSortRichtung === "desc" ? -1 : 1;
     return [...gewerkeGruppiert]
-      .map(e => ({ ...e, raten: [...e.raten].sort((a, b) => (a.summe - b.summe) * richt) }))
-      .sort((a, b) => (a.gewerkSumme - b.gewerkSumme) * richt);
+      .map(e => ({ ...e, raten: [...e.raten].sort((a, b) => (a.ertrag - b.ertrag) * richt) }))
+      .sort((a, b) => (a.summe.ertrag - b.summe.ertrag) * richt);
   })();
 
   // "Heute"-Bezug: Position im kumulierten Verlauf + 3D-Baufortschritt von heute.
@@ -101,7 +87,8 @@ export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }
   const heuteIdxRoh = ertrag.findIndex(e => e.tag === heuteIso);
   const vorProjektstart = ertrag.length > 0 && heuteIso < ertrag[0].tag;
   const heuteIdx = heuteIdxRoh >= 0 ? heuteIdxRoh : (vorProjektstart ? -1 : ertrag.length - 1);
-  const kostenHeute = heuteIdx >= 0 ? ertrag[heuteIdx].kostenKum : 0;
+  const ertragHeute = heuteIdx >= 0 ? ertrag[heuteIdx].ertragKum : 0;
+  const lohnHeute = heuteIdx >= 0 ? ertrag[heuteIdx].kostenKum : 0;
 
   const allStarts = sim.tasks.map(t => parseDateUniversal(t.start)).filter((d): d is Date => !!d);
   const minDate = allStarts.length > 0 ? new Date(Math.min(...allStarts.map(d => d.getTime()))) : null;
@@ -112,7 +99,7 @@ export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }
     ? (parseDateUniversal(ausgewaehltesDatumIso)?.toLocaleDateString("de-CH") ?? ausgewaehltesDatumIso)
     : "Heute";
 
-  // Klick ins Kosten-kumuliert-Diagramm: Markierung setzen, "geteilte Nadel" (siehe App.tsx) für
+  // Klick ins kumulierte Diagramm: Markierung setzen, "geteilte Nadel" (siehe App.tsx) für
   // andere Tabs synchron halten und — falls ein Modell verbunden ist — den 3D-Zustand auf diesen Tag
   // springen, genau wie onChartTagKlick in Tab AVOR.
   async function onChartTagKlick(iso: string, idx: number) {
@@ -129,20 +116,22 @@ export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }
   if (stammdaten.gewerke.length === 0) {
     return (
       <div style={{ padding: 14, fontSize: 12, color: "var(--tc-text-3)" }}>
-        Noch keine Kosten — im Tab Ressourcen zuerst Kategorien/Kürzel mit CHF/Einheit anlegen, dann in Tab Kalkulation Bauteil-Kürzel und Mengen erfassen.
+        Noch keine Werte — im Tab Ressourcen zuerst Kategorien/Kürzel mit Einheitspreis und Leistungswert anlegen, dann in Tab Kalkulation Bauteil-Kürzel und Mengen erfassen.
       </div>
     );
   }
 
+  const spalte = (breite: number): React.CSSProperties => ({ width: breite, textAlign: "right", flexShrink: 0 });
+  const margeFarbe = (m: number) => m < 0 ? "var(--tc-red)" : undefined;
+
   return (
     <div style={{ padding: 14, fontSize: 12 }}>
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        <StatTile label="Gesamtkosten" wert={`${fmtChf(gesamt)} CHF`} />
-        <StatTile label="Kosten heute" wert={`${fmtChf(kostenHeute)} CHF`} sub={heute.toLocaleDateString("de-CH")} />
-        <StatTile label="Tasks mit Kosten" wert={`${tasksMitKosten}/${gesamtTaskAnzahl}`} />
-        {topEintrag && (
-          <StatTile label="Größte Kostenposition" wert={`${topEintrag[0]} · ${fmtZahlFix2(topAnteilProzent)}%`} sub={topEintrag[1].bezeichnung} />
-        )}
+        <StatTile label="Ertrag" wert={`${fmtChf(gesamt.ertrag)} CHF`} sub="Menge × Einheitspreis" />
+        <StatTile label="Lohnkosten" wert={`${fmtChf(gesamt.lohnkosten)} CHF`} sub={`Personenstunden × ${fmtChf(lohnansatz)} CHF/h`} />
+        <StatTile label="Marge" wert={`${fmtChf(marge)} CHF`} sub={`${fmtZahlFix2(margeProzent)} % vom Ertrag`} status={marge >= 0 ? "good" : "critical"} />
+        <StatTile label="Stand heute" wert={`${fmtChf(ertragHeute - lohnHeute)} CHF`}
+          sub={`${heute.toLocaleDateString("de-CH")} · Ertrag ${fmtChf(ertragHeute)} − Lohn ${fmtChf(lohnHeute)}`} />
       </div>
 
       {ausgewaehltesDatumIso && (
@@ -151,45 +140,57 @@ export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }
         </div>
       )}
 
-      {gewerkeMitKosten.length > 0 && (
-        <CockpitAbschnitt titel="Kosten je Gewerk" eingeklappt={!!eingeklappt["gewerk"]} onToggle={() => toggleEingeklappt("gewerk")}>
+      {gewerkeMitWerten.length > 0 && (
+        <CockpitAbschnitt titel="Ertrag und Lohnkosten je Gewerk" eingeklappt={!!eingeklappt["gewerk"]} onToggle={() => toggleEingeklappt("gewerk")}>
           <CategoryBarChart einheit="CHF" formatWert={fmtChf}
-            kategorien={gewerkeMitKosten.map(([key]) => stammdaten.gewerke.find(g => g.key === key)?.label ?? key)}
-            serien={[{ key: "kosten", label: "Kosten", color: FARBEN.kategorial[0], werte: gewerkeMitKosten.map(([, v]) => v) }]} />
+            kategorien={gewerkeMitWerten.map(g => g.label || g.key)}
+            serien={[
+              { key: "ertrag", label: "Ertrag", color: FARBEN.kategorial[0], werte: gewerkeMitWerten.map(g => jeGewerk.get(g.key)!.ertrag) },
+              { key: "lohn", label: "Lohnkosten", color: FARBEN.kategorial[1], werte: gewerkeMitWerten.map(g => jeGewerk.get(g.key)!.lohnkosten) },
+            ]} />
         </CockpitAbschnitt>
       )}
 
       {ertrag.length > 0 && (
-        <CockpitAbschnitt titel="Kosten kumuliert" eingeklappt={!!eingeklappt["kumuliert"]} onToggle={() => toggleEingeklappt("kumuliert")}>
+        <CockpitAbschnitt titel="Ertrag und Lohnkosten kumuliert" eingeklappt={!!eingeklappt["kumuliert"]} onToggle={() => toggleEingeklappt("kumuliert")}>
           <TimeSeriesChart tage={ertrag.map(e => e.tag)} einheit="CHF" formatWert={fmtChf} modus="linie"
             markerIdx={aktiverMarkerIdx} markerLabel={aktivesMarkerLabel} onTagKlick={onChartTagKlick}
-            serien={[{ key: "kosten", label: "Kosten (kumuliert)", color: FARBEN.kategorial[0], werte: ertrag.map(e => e.kostenKum) }]} />
+            serien={[
+              { key: "ertrag", label: "Ertrag (kumuliert)", color: FARBEN.kategorial[0], werte: ertrag.map(e => e.ertragKum) },
+              { key: "lohn", label: "Lohnkosten (kumuliert)", color: FARBEN.kategorial[1], werte: ertrag.map(e => e.kostenKum) },
+            ]} />
         </CockpitAbschnitt>
       )}
 
       <div style={{ display: "flex", gap: 6, fontSize: 9, color: "var(--tc-text-3)", padding: "4px 0", fontWeight: 600, position: "sticky", top: 0, background: "#fff", zIndex: 3 }}>
-        <span style={{ width: 60 }}>Kürzel</span>
-        <span style={{ flex: 1 }}>Bezeichnung</span>
-        <span style={{ width: 100, textAlign: "right", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3, cursor: "pointer", userSelect: "none" }}
+        <span style={{ width: 60, flexShrink: 0 }}>Kürzel</span>
+        <span style={{ flex: 1, minWidth: 0 }}>Bezeichnung</span>
+        <span style={{ ...spalte(100), display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3, cursor: "pointer", userSelect: "none" }}
           onClick={() => setKostenSortRichtung(r => r === "desc" ? "asc" : r === "asc" ? null : "desc")}
-          title="Nach Summe sortieren (höchste zuoberst)">
-          Summe CHF
+          title="Nach Ertrag sortieren (höchster zuoberst)">
+          Ertrag CHF
           {kostenSortRichtung && <span style={{ fontSize: 8 }}>{kostenSortRichtung === "desc" ? "▼" : "▲"}</span>}
         </span>
+        <span style={spalte(100)}>Lohnkosten CHF</span>
+        <span style={spalte(100)}>Marge CHF</span>
       </div>
-      {gewerkeAnzeige.map(({ g, gewerkSumme, raten }) => (
+      {gewerkeAnzeige.map(({ g, summe, raten }) => (
         <div key={g.key} style={{ marginBottom: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 0 3px", fontWeight: 700, fontSize: 12, borderBottom: "1px solid var(--tc-border)" }}>
-            <span>{g.label || "(ohne Namen)"}</span>
-            <span>{fmtChf(gewerkSumme)} CHF</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 0 3px", fontWeight: 700, fontSize: 12, borderBottom: "1px solid var(--tc-border)" }}>
+            <span style={{ flex: 1, minWidth: 0 }}>{g.label || "(ohne Namen)"}</span>
+            <span style={spalte(100)}>{fmtChf(summe.ertrag)}</span>
+            <span style={spalte(100)}>{fmtChf(summe.lohnkosten)}</span>
+            <span style={{ ...spalte(100), color: margeFarbe(summe.ertrag - summe.lohnkosten) }}>{fmtChf(summe.ertrag - summe.lohnkosten)}</span>
           </div>
-          {raten.map(({ r, summe, anzahl }) => {
+          {raten.map(({ r, ertrag: e, lohnkosten: l, anzahl }) => {
             const leer = anzahl === 0;
             return (
               <div key={r.kuerzel} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 0", borderBottom: "1px solid var(--tc-border-light)", color: leer ? "#aaa" : undefined }}>
-                <span style={{ width: 60, fontWeight: 600 }}>{r.kuerzel}</span>
-                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.bezeichnung}</span>
-                <span style={{ width: 100, textAlign: "right" }}>{fmtChf(summe)}</span>
+                <span style={{ width: 60, flexShrink: 0, fontWeight: 600 }}>{r.kuerzel}</span>
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.bezeichnung}</span>
+                <span style={spalte(100)}>{fmtChf(e)}</span>
+                <span style={spalte(100)}>{fmtChf(l)}</span>
+                <span style={{ ...spalte(100), color: leer ? undefined : margeFarbe(e - l) }}>{fmtChf(e - l)}</span>
               </div>
             );
           })}
@@ -197,7 +198,9 @@ export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }
       ))}
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 0 0", fontWeight: 700 }}>
         <span style={{ flex: 1, textAlign: "right" }}>Gesamt</span>
-        <span style={{ width: 100, textAlign: "right" }}>{fmtChf(gesamt)}</span>
+        <span style={spalte(100)}>{fmtChf(gesamt.ertrag)}</span>
+        <span style={spalte(100)}>{fmtChf(gesamt.lohnkosten)}</span>
+        <span style={{ ...spalte(100), color: margeFarbe(marge) }}>{fmtChf(marge)}</span>
       </div>
     </div>
   );

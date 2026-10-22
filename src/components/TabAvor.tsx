@@ -186,9 +186,9 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
         ["Datum", `Menge [${aktivesGewerk.einheit}]`, ...(optimal != null ? [`Optimal ausgelastete Tagesleistung [${aktivesGewerk.einheit}]`] : [])],
         ...mengen.map(m => [datumCh(m.tag), csvZahl(m.menge), ...(optimal != null ? [csvZahl(optimal)] : [])]),
       ]), `${sim!.name}_Mengen_${aktivesGewerk.label}.csv`) }] : []),
-    { label: "Ertrag und Kosten (kumuliert)", title: "Ertrag (Personenstunden × Umsatz/Mannstunde), Kosten (Menge × CHF/Einheit) und Marge je Tag, kumuliert",
+    { label: "Ertrag und Lohnkosten (kumuliert)", title: "Ertrag (Menge × Einheitspreis), Lohnkosten (Personenstunden × Lohnansatz) und Marge je Tag, kumuliert",
       onClick: () => csvHerunterladen(alsCsv([
-        ["Datum", "Ertrag kumuliert [CHF]", "Kosten kumuliert [CHF]", "Marge kumuliert [CHF]"],
+        ["Datum", "Ertrag kumuliert [CHF]", "Lohnkosten kumuliert [CHF]", "Marge kumuliert [CHF]"],
         ...ertrag.map(e => [datumCh(e.tag), csvZahl(e.ertragKum), csvZahl(e.kostenKum), csvZahl(e.ertragKum - e.kostenKum)]),
       ]), `${sim!.name}_Ertrag.csv`) },
   ];
@@ -255,7 +255,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
         <TimeSeriesChart tage={ertrag.map(e => e.tag)} einheit="CHF" formatWert={fmtChf} modus="linie"
           serien={[
             { key: "ertrag", label: "Ertrag (kumuliert)", color: FARBEN.kategorial[0], werte: ertrag.map(e => e.ertragKum) },
-            { key: "kosten", label: "Kosten (kumuliert)", color: FARBEN.kategorial[1], werte: ertrag.map(e => e.kostenKum) },
+            { key: "kosten", label: "Lohnkosten (kumuliert)", color: FARBEN.kategorial[1], werte: ertrag.map(e => e.kostenKum) },
           ]} kalender={kalender} hoehe={hoeheErtrag}
           markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick}
           pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />

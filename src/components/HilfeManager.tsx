@@ -77,9 +77,10 @@ const THEMEN: Thema[] = [
   },
   {
     key: "ressourcen", gruppe: "erweitert", label: "Ressourcen",
-    zusammenfassung: "Pflege der Stammdaten: Kategorien/Gewerke mit Kürzeln, Leistungswerten, Personenzahl und CHF-Ansätzen — Grundlage für Kalkulation, AVOR und Kosten.",
+    zusammenfassung: "Pflege der Stammdaten: Kategorien/Gewerke mit Kürzeln, Leistungswerten, Kolonne, Einheitspreisen und Lohnansatz — Grundlage für Kalkulation, AVOR und Kosten.",
     punkte: [
-      "Arbeitszeit (Beginn, Mittagspause, Ende) und Umsatz CHF/Mannstunde gelten global für die gesamte Simulation. Aus der Arbeitszeit ergeben sich die Std./Tag (z.B. 07:00–12:00 / 13:00–16:30 = 8,5 h) — sie gelten überall: Kalkulation, Gantt-Uhrzeiten und Halbtage, Personal, Kran, Ertrag sowie MS-Project- und IFC-Export. Halbtage zählen nach echten Stunden (Vormittag 5 h ≠ Nachmittag 3,5 h).",
+      "Arbeitszeit (Beginn, Mittagspause, Ende) und Lohnansatz [CHF/h] gelten global für die gesamte Simulation. Aus der Arbeitszeit ergeben sich die Std./Tag (z.B. 07:00–12:00 / 13:00–16:30 = 8,5 h) — sie gelten überall: Kalkulation, Gantt-Uhrzeiten und Halbtage, Personal, Kran, Ertrag sowie MS-Project- und IFC-Export. Halbtage zählen nach echten Stunden (Vormittag 5 h ≠ Nachmittag 3,5 h).",
+      "Einheitspreis [CHF/Einh.] je Kürzel = Ertrag (Preis an den Bauherrn je Einheit, z.B. Wandschalung 46.47 CHF/m²). Lohnansatz [CHF/h] = Lohnkosten je Personenstunde. Daraus in Tab Kosten und AVOR: Ertrag = Menge × Einheitspreis, Lohnkosten = Menge × Leistungswert × Lohnansatz, Marge = Ertrag − Lohnkosten.",
       "Kategorien lassen sich aus vorgefertigten Katalogen laden oder frei anlegen und umbenennen.",
       "\"kranpflichtig\" markiert je Kürzel, ob dessen Mengen in die Kranauslastung (Tab AVOR) einfließen.",
       "Ein Kürzel darf innerhalb derselben Kategorie nur einmal vorkommen — bei Duplikaten zählt nur die erste Zeile.",
@@ -91,23 +92,23 @@ const THEMEN: Thema[] = [
     punkte: [
       "Setzt Stammdaten (Ressourcen) sowie erfasste Mengen/Kürzel (Kalkulation) voraus, sonst bleibt die Ansicht leer.",
       "Über \"Kran-Verfügbarkeit\" Kräne anlegen und ihren Einsatzzeitraum (von/bis) festlegen — Grundlage für Kranoptik und Kapazitäts-Check.",
-      "Grundlage aller Auswertungen ist der Aufwand je Task: Menge × Leistungswert (Personenstunden). Daraus folgen Personal (÷ Std./Tag), Ertrag (× Umsatz/Mannstunde), Kranstunden (Aufwand der kranpflichtigen Gewerke ÷ Kolonne — eine Stütze mit 6 Personenstunden und 3er-Kolonne belegt den Kran 2 h, nicht den ganzen Tag) und der zeitliche Verlauf der Kosten (Menge × CHF/Einheit, verteilt wie der Aufwand).",
+      "Grundlage aller Auswertungen ist der Aufwand je Task: Menge × Leistungswert (Personenstunden). Daraus folgen Personal (÷ Std./Tag), Lohnkosten (× Lohnansatz), Kranstunden (Aufwand der kranpflichtigen Gewerke ÷ Kolonne — eine Stütze mit 6 Personenstunden und 3er-Kolonne belegt den Kran 2 h, nicht den ganzen Tag) und der zeitliche Verlauf des Ertrags (Menge × Einheitspreis, verteilt wie der Aufwand).",
       "Die Kranoptik zeigt je Kran die geplanten Kranstunden gegen die verfügbare Kapazität, wahlweise je Monat oder Woche; Balken über der Kapazität sind rot markiert (Engpass). Erscheint erst, wenn Kräne angelegt und Tasks in Tab Kalkulation zugewiesen sind.",
       "Personalauslastung und Peak: Je Task arbeiten die Gewerke nacheinander (Reihenfolge wie in Tab Ressourcen), jedes so lange wie in Tab Kalkulation berechnet. Ist ein Task im Gantt länger oder kürzer als berechnet, wird die Kolonne entsprechend kleiner oder grösser (Personen = Kolonne × berechnete ÷ geplante Dauer) — die Personenstunden je Task entsprechen so immer genau Menge × Leistungswert. Gewerke ohne Leistungswert zählen nicht mit.",
       "Über der Personalauslastung erscheint eine rote gestrichelte \"Personal (Soll)\"-Linie, sobald mindestens ein Task in Tab Kalkulation eine vorgesehene Personenzahl hat.",
       "Der Kapazitäts-Check (Kranplanung) prüft je Kran, ob das eingetragene Personal den Aufwand der zugeordneten Tasks schafft und ob die Kranstunden in die Verfügbarkeit des Krans passen; dazu ein Personal-Richtwert je Kran und Zeitraum (Ampel, Standard-Obergrenze 13 Personen, einstellbar).",
-      "Die Ertragsoptik vergleicht den kumulierten Ertrag mit den kumulierten Kosten.",
+      "Die Ertragsoptik vergleicht den kumulierten Ertrag (Menge × Einheitspreis) mit den kumulierten Lohnkosten (Personenstunden × Lohnansatz); Marge = Ertrag − Lohnkosten.",
       "Im Tooltip der Personalauslastung steht hinter den Personen der Aufwand des Tages in Tagen und Stunden (1 Tag = Std./Tag aus Tab Ressourcen, z.B. 7.8 Pers. = 7 d 6.8 h; unter einem Tag nur Stunden).",
-      "⋮ oben rechts → Export (CSV): Personalbedarf je Tag (Personen total, Stunden total, Personen je Gewerk und Stunden je Leistungsposition), Kranstunden je Kran, Mengen je Tag (aktuelle Auswahl im Mengen-Filter) sowie Ertrag und Kosten.",
+      "⋮ oben rechts → Export (CSV): Personalbedarf je Tag (Personen total, Stunden total, Personen je Gewerk und Stunden je Leistungsposition), Kranstunden je Kran, Mengen je Tag (aktuelle Auswahl im Mengen-Filter) sowie Ertrag, Lohnkosten und Marge.",
       "Alle Kran-Auswertungen sind Richtwerte zur Plausibilisierung, keine exakte Kalkulation.",
     ],
   },
   {
     key: "kosten", gruppe: "erweitert", label: "Kosten",
-    zusammenfassung: "Rein lesende Kostenauswertung aus Mengen × Stammdaten-Raten je Task, aggregiert nach Bauteil-Kürzel.",
+    zusammenfassung: "Rein lesende Auswertung von Ertrag (Menge × Einheitspreis), Lohnkosten (Personenstunden × Lohnansatz) und Marge je Gewerk und Kürzel.",
     punkte: [
       "Keine Eingabe in diesem Tab — Mengen/Kürzel werden in Kalkulation, Ansätze in Ressourcen gepflegt.",
-      "Zeigt die Kostenverteilung über die Zeit und nach Kategorie.",
+      "Zeigt Ertrag und Lohnkosten je Gewerk und kumuliert über die Zeit; die Tabelle unten je Kürzel mit Marge (negativ rot).",
     ],
   },
 ];
