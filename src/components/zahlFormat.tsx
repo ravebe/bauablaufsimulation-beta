@@ -1,15 +1,26 @@
-// zahlFormat.tsx — einheitliche Anzeige von Zahlen in der ganzen App: berechnete/angezeigte Werte immer mit genau
-// 2 Nachkommastellen (de-CH, Tausender mit ’). Nur Anzeige — gerechnet und gespeichert wird weiterhin mit dem vollen Wert.
+// zahlFormat.tsx — einheitliche Anzeige von Zahlen in der App: höchstens 2 Nachkommastellen, nur wenn vorhanden (18 → "18",
+// 0.5 → "0.5", 27121.016 → "27’121.02"; de-CH, Tausender mit ’). Tab Kosten zeigt Beträge immer mit genau 2 Stellen
+// (fmtZahlFix2). Nur Anzeige — gerechnet und gespeichert wird weiterhin mit dem vollen Wert.
 // Ganze Zählwerte (Anzahl Tasks, Kräne, KW …) werden bewusst nicht hiermit formatiert.
 import { useState } from "react";
 
-const FORMAT_2 = new Intl.NumberFormat("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const FORMAT_BIS_2 = new Intl.NumberFormat("de-CH", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const FORMAT_FIX_2 = new Intl.NumberFormat("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-/** Zahl mit genau 2 Nachkommastellen, z.B. 27121.016 → "27’121.02", -0.001 → "0.00". */
-export function fmtZahl(v: number | null | undefined): string {
+function formatiere(f: Intl.NumberFormat, v: number | null | undefined): string {
   if (v == null || !Number.isFinite(v)) return "–";
-  const s = FORMAT_2.format(v);
-  return /^-0[.,]00$/.test(s) ? s.slice(1) : s;
+  const s = f.format(v);
+  return /^-0([.,]0+)?$/.test(s) ? s.slice(1) : s; // kein "-0" bei winzigen negativen Werten
+}
+
+/** Zahl mit höchstens 2 Nachkommastellen, nur wenn vorhanden: 18 → "18", 0.5 → "0.5", 27121.016 → "27’121.02". */
+export function fmtZahl(v: number | null | undefined): string {
+  return formatiere(FORMAT_BIS_2, v);
+}
+
+/** Zahl mit genau 2 Nachkommastellen (Beträge in Tab Kosten): 18 → "18.00". */
+export function fmtZahlFix2(v: number | null | undefined): string {
+  return formatiere(FORMAT_FIX_2, v);
 }
 
 /** Wie fmtZahl, mit Vorzeichen "+" bei positiven Werten (Abweichungen/Differenzen). */
@@ -18,10 +29,10 @@ export function fmtZahlMitVorzeichen(v: number): string {
   return v > 0 && s !== fmtZahl(0) ? `+${s}` : s;
 }
 
-/** Stunden als Arbeitstage + Stunden (1 Tag = Std./Tag aus Tab Ressourcen): 66.3 h bei 8.5 h/Tag → "7 d 6.80 h",
+/** Stunden als Arbeitstage + Stunden (1 Tag = Std./Tag aus Tab Ressourcen): 66.3 h bei 8.5 h/Tag → "7 d 6.8 h",
  *  unter einem Tag nur Stunden ("1.65 h"), ganze Tage ohne Stunden ("2 d"). */
 export function fmtTageStunden(stunden: number, stdProTag: number): string {
-  if (!Number.isFinite(stunden) || stunden <= 0) return "0.00 h";
+  if (!Number.isFinite(stunden) || stunden <= 0) return "0 h";
   if (!(stdProTag > 0)) return `${fmtZahl(stunden)} h`;
   const gerundet = Math.round(stunden * 100) / 100; // erst auf die Anzeige runden, damit nicht "0 d 8.50 h" entsteht
   const tage = Math.floor(gerundet / stdProTag + 1e-9);

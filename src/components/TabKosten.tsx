@@ -12,8 +12,9 @@ import { StatTile, CategoryBarChart, TimeSeriesChart, CockpitAbschnitt, useEinge
 
 interface Props { sim: SimProjekt | null; projectId?: string | null; api?: ApiInstance | null; sharedNadelTag?: React.MutableRefObject<number>; }
 
-import { fmtZahl } from "./zahlFormat";
-const fmtChf = fmtZahl;
+import { fmtZahlFix2 } from "./zahlFormat";
+// Tab Kosten: Beträge und Prozente immer mit genau 2 Nachkommastellen
+const fmtChf = fmtZahlFix2;
 
 function heuteIsoUndDatum(): { iso: string; datum: Date } {
   const datum = new Date();
@@ -140,7 +141,7 @@ export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }
         <StatTile label="Kosten heute" wert={`${fmtChf(kostenHeute)} CHF`} sub={heute.toLocaleDateString("de-CH")} />
         <StatTile label="Tasks mit Kosten" wert={`${tasksMitKosten}/${gesamtTaskAnzahl}`} />
         {topEintrag && (
-          <StatTile label="Größte Kostenposition" wert={`${topEintrag[0]} · ${fmtZahl(topAnteilProzent)}%`} sub={topEintrag[1].bezeichnung} />
+          <StatTile label="Größte Kostenposition" wert={`${topEintrag[0]} · ${fmtZahlFix2(topAnteilProzent)}%`} sub={topEintrag[1].bezeichnung} />
         )}
       </div>
 
@@ -169,7 +170,6 @@ export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }
       <div style={{ display: "flex", gap: 6, fontSize: 9, color: "var(--tc-text-3)", padding: "4px 0", fontWeight: 600, position: "sticky", top: 0, background: "#fff", zIndex: 3 }}>
         <span style={{ width: 60 }}>Kürzel</span>
         <span style={{ flex: 1 }}>Bezeichnung</span>
-        <span style={{ width: 50, textAlign: "right" }}>Tasks</span>
         <span style={{ width: 100, textAlign: "right", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3, cursor: "pointer", userSelect: "none" }}
           onClick={() => setKostenSortRichtung(r => r === "desc" ? "asc" : r === "asc" ? null : "desc")}
           title="Nach Summe sortieren (höchste zuoberst)">
@@ -189,7 +189,6 @@ export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }
               <div key={r.kuerzel} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 0", borderBottom: "1px solid var(--tc-border-light)", color: leer ? "#aaa" : undefined }}>
                 <span style={{ width: 60, fontWeight: 600 }}>{r.kuerzel}</span>
                 <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.bezeichnung}</span>
-                <span style={{ width: 50, textAlign: "right", color: leer ? "#aaa" : "#888" }}>{anzahl}</span>
                 <span style={{ width: 100, textAlign: "right" }}>{fmtChf(summe)}</span>
               </div>
             );

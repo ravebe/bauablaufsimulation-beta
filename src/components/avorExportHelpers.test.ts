@@ -13,9 +13,9 @@ const task = (id: string, start: string, end: string, p: Partial<Task> = {}): Ta
 describe("Personen als Tage + Stunden", () => {
   it("unter einem Tag nur Stunden, sonst Tage + Reststunden", () => {
     expect(fmtTageStunden(1.65, 8.5)).toBe("1.65 h");
-    expect(fmtTageStunden(7.8 * 8.5, 8.5)).toBe("7 d 6.80 h");
+    expect(fmtTageStunden(7.8 * 8.5, 8.5)).toBe("7 d 6.8 h");
     expect(fmtTageStunden(17, 8.5)).toBe("2 d");
-    expect(fmtTageStunden(0, 8.5)).toBe("0.00 h");
+    expect(fmtTageStunden(0, 8.5)).toBe("0 h");
   });
 });
 
