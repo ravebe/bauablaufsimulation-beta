@@ -104,6 +104,12 @@ export function berechneZeitplanUebernahme(tasks: Task[], stammdaten: Stammdaten
  *  etwas ändern würde — steuert, ob der Button "Berechnete Dauer übernehmen" hervorgehoben wird
  *  oder (bei bereits übernommenem Stand) neutral/grau bleibt. */
 export function zeitplanHatAenderungen(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender, einheit: Zeiteinheit = "tage"): boolean {
+  return zeitplanAbweichendeTasks(tasks, stammdaten, kalender, einheit).length > 0;
+}
+
+/** Tasks, deren Start/Ende sich mit berechneZeitplanUebernahme() ändern würden (eigene Dauer abweichend oder über die
+ *  Vorgänger-Kette verschoben) — Grundlage des Hinweises "n Tasks weichen ab" in Tab Bauteile und Tab Kalkulation. */
+export function zeitplanAbweichendeTasks(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender, einheit: Zeiteinheit = "tage"): Task[] {
   const neu = berechneZeitplanUebernahme(tasks, stammdaten, kalender, einheit);
-  return neu.some((t, i) => t.start !== tasks[i].start || t.end !== tasks[i].end || t.startZeit !== tasks[i].startZeit || t.endZeit !== tasks[i].endZeit);
+  return tasks.filter((t, i) => neu[i].start !== t.start || neu[i].end !== t.end || neu[i].startZeit !== t.startZeit || neu[i].endZeit !== t.endZeit);
 }

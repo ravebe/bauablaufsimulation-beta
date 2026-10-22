@@ -16,6 +16,7 @@ import { fmtZahl, fmtZahlMitVorzeichen, ZahlFeld } from "./zahlFormat";
 import { berechneMenge, mengeStatus } from "./formelHelpers";
 import { kalkulationAlsCsv, parseKalkulationCsv, kalkulationAlsJson, parseKalkulationJson } from "./kalkulationExportHelpers";
 import Schwebend from "./Schwebend";
+import { zeitplanAbweichendeTasks } from "./zeitplanUebernahmeHelpers";
 import PunkteMenu from "./PunkteMenu";
 
 interface Props {
@@ -494,6 +495,8 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     summeProKuerzel.set(z.t.bauteilKuerzel, e);
   }
   const kuerzelKategorien = [...summeProKuerzel.keys()].sort();
+  // Hinweis: so viele Tasks hätten mit "Berechnete Dauer übernehmen" (Tab Bauteile) andere Termine im Gantt
+  const anzahlZeitplanAbweichend = zeitplanAbweichendeTasks(sim.tasks, stammdaten, kalender, sim.zeiteinheit).length;
 
   // Automatische Spaltenbreiten: breitester Inhalt je Spalte (gemessen in der Schrift der App) + Zellabstand,
   // mindestens die Standardbreite; von Hand gezogene Breiten gehen vor.
@@ -881,6 +884,12 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
             <span style={{ display: "inline-block", width: 7, height: 7, background: "#fff", border: "1px solid #999", verticalAlign: "middle" }} /> Leere Felder
           </span>
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
+            {anzahlZeitplanAbweichend > 0 && (
+              <span title={`Die Termine im Gantt entsprechen bei ${anzahlZeitplanAbweichend} Task(s) nicht der berechneten Dauer. Sie bleiben, bis du in Tab Bauteile → Werkzeuge → "Berechnete Dauer übernehmen" klickst.`}
+                style={{ fontSize: 11, color: "#d9622b", whiteSpace: "nowrap", cursor: "help" }}>
+                {anzahlZeitplanAbweichend} Task{anzahlZeitplanAbweichend === 1 ? " weicht" : "s weichen"} vom Gantt ab
+              </span>
+            )}
             {!readOnly && api && mengenVeraltet && (
               <span title="Formeln/Ausschlussfilter in Tab Ressourcen wurden seit der letzten Berechnung geändert — Mengen sind veraltet (⋮ → Mengen aus Bauteilen berechnen)"
                 style={{ fontSize: 11, color: "#d9622b" }}>⚠</span>

@@ -9,7 +9,7 @@ import { getEchteBauteile, clearEchteBauteileCache } from "./modelHelpers";
 import { useClickOutside } from "../hooks/useClickOutside";
 import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
 import { LEERER_KALENDER, ersterArbeitstagAb } from "./kalenderHelpers";
-import { pruefeZeitplanBereitschaft, berechneZeitplanUebernahme, zeitplanHatAenderungen } from "./zeitplanUebernahmeHelpers";
+import { pruefeZeitplanBereitschaft, berechneZeitplanUebernahme, zeitplanAbweichendeTasks } from "./zeitplanUebernahmeHelpers";
 import TabTasks from "./TabTasks";
 import { UnbenutzteZeilen, UnbenutzteDetail } from "./UnbenutzteBauteile";
 import { unbenutzteListen } from "./ausschlussHelpers";
@@ -268,9 +268,12 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   // siehe zeitplanUebernahmeHelpers.ts. Erst möglich, wenn Tab Kalkulation fehlerfrei ist (keine roten
   // Mengen-Felder).
   const zeitplanStatus = aktiveSim ? pruefeZeitplanBereitschaft(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN) : null;
-  const zeitplanAenderungen = aktiveSim && zeitplanStatus?.bereit
-    ? zeitplanHatAenderungen(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN, aktiveSim.kalender ?? LEERER_KALENDER, aktiveSim.zeiteinheit)
-    : false;
+  // Hinweis statt Automatik: Termine im Gantt bleiben, bis "Berechnete Dauer übernehmen" geklickt wird — wie viele Tasks
+  // davon betroffen wären, zeigt der Zähler am Werkzeug-Knopf und die Liste im Menü.
+  const abweichendeTasks = aktiveSim && zeitplanStatus?.bereit
+    ? zeitplanAbweichendeTasks(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN, aktiveSim.kalender ?? LEERER_KALENDER, aktiveSim.zeiteinheit)
+    : [];
+  const zeitplanAenderungen = abweichendeTasks.length > 0;
   function zeitplanButtonKlick() {
     if (!zeitplanStatus?.bereit) { setZeitplanHinweisOffen(o => !o); return; }
     setZeitplanBestaetigenOffen(true);
@@ -360,8 +363,13 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
           )}
           {!readOnly && aktiveSim && (
             <div ref={werkzeugRef} style={{ position: "relative", display: "inline-flex" }}>
-              <button className="tc-btn-secondary" style={{ fontSize: 12, padding: "2px 6px" }}
-                title="Werkzeuge" onClick={() => { setWerkzeugOffen(o => !o); setZeitplanHinweisOffen(false); }}>
+              <button className="tc-btn-secondary" style={{ fontSize: 12, padding: "2px 6px", position: "relative" }}
+                title={zeitplanAenderungen ? `Werkzeuge — ${abweichendeTasks.length} Task${abweichendeTasks.length === 1 ? "" : "s"} weichen von der berechneten Dauer ab` : "Werkzeuge"}
+                onClick={() => { setWerkzeugOffen(o => !o); setZeitplanHinweisOffen(false); }}>
+                {zeitplanAenderungen && (
+                  <span style={{ position: "absolute", top: -6, right: -8, minWidth: 14, height: 14, padding: "0 3px", borderRadius: 7, background: "#d9622b", color: "#fff",
+                    fontSize: 9, fontWeight: 700, lineHeight: "14px", textAlign: "center", pointerEvents: "none" }}>{abweichendeTasks.length}</span>
+                )}
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
                 </svg>
@@ -404,6 +412,16 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                             : zeitplanAenderungen ? "Überträgt die in Tab Kalkulation berechnete Dauer als neue Start-/Endtermine auf den Bauablauf."
                               : "Bauablauf entspricht bereits der berechneten Dauer — nichts zu übernehmen."}
                         </div>
+                        {zeitplanAenderungen && (
+                          <div style={{ fontSize: 10, color: "#d9622b", marginTop: 4 }}>
+                            <div style={{ fontWeight: 600 }}>
+                              {abweichendeTasks.length} Task{abweichendeTasks.length === 1 ? " weicht" : "s weichen"} ab (Termine würden sich ändern):
+                            </div>
+                            <div style={{ color: "var(--tc-text-3)", marginTop: 2, maxWidth: 320, whiteSpace: "normal" }}>
+                              {abweichendeTasks.slice(0, 8).map(t => t.name).join(", ")}{abweichendeTasks.length > 8 ? ` … und ${abweichendeTasks.length - 8} weitere` : ""}
+                            </div>
+                          </div>
+                        )}
                       </button>
                       {zeitplanHinweisOffen && !zeitplanStatus.bereit && (
                         <div style={{ padding: "8px 14px 10px", fontSize: 11, borderTop: "0.5px solid #eef1f4" }}>
