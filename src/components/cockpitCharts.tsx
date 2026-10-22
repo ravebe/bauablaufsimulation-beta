@@ -213,6 +213,8 @@ interface TimeSeriesProps {
   formatWert?: (v: number) => string;
   /** Zusatz in Klammern hinter jedem Wert im Tooltip, z.B. Personen → "(7 d 6.80 h)" */
   zusatz?: (v: number) => string;
+  /** Im Tooltip zuoberst (fett, schwarz) die Summe aller Serien — z.B. Personen total bei gestapelten Flächen */
+  totalZeile?: boolean;
   markerIdx?: number | null; // Index in tage[] für eine dauerhafte Markierung (z.B. "Heute")
   markerLabel?: string;
   /** Klick ins Diagramm meldet den getroffenen Tag zurück (z.B. um das 3D-Modell auf dieses Datum zu
@@ -230,7 +232,7 @@ interface TimeSeriesProps {
 
 const ML = 44, MR = 8, MT = 16, MB = 20;
 
-export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = "", hoehe = 180, formatWert, zusatz, markerIdx, markerLabel = "Heute", onTagKlick, kalender,
+export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = "", hoehe = 180, formatWert, zusatz, totalZeile, markerIdx, markerLabel = "Heute", onTagKlick, kalender,
   pxProTag: pxProTagProp, onPxProTagChange: onPxProTagChangeProp, scrollTag: scrollTagProp, onScrollChange: onScrollChangeProp }: TimeSeriesProps) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [outerRef, viewportW] = useMeasuredWidth<HTMLDivElement>(1000);
@@ -379,6 +381,14 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
             boxShadow: "0 2px 6px rgba(0,0,0,.12)", padding: "5px 8px", fontSize: 10, whiteSpace: "nowrap", pointerEvents: "none", zIndex: 5,
           }}>
             <div style={{ fontWeight: 600, color: FARBEN.textPrimaer, marginBottom: 2 }}>{tage[hoverIdx]}</div>
+            {totalZeile && (() => {
+              const total = serien.reduce((sum, s) => sum + (s.werte[hoverIdx] ?? 0), 0);
+              return (
+                <div style={{ fontWeight: 700, color: "#000", marginBottom: 2 }}>
+                  Total: {fmt(total)} {einheit}{zusatz ? ` (${zusatz(total)})` : ""}
+                </div>
+              );
+            })()}
             {serien.map(s => (
               <div key={s.key} style={{ color: FARBEN.textSekundaer }}>
                 <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: 2, background: s.color, marginRight: 4 }} />

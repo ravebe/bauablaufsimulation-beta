@@ -215,7 +215,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
       )}
 
       <CockpitAbschnitt titel="Personalauslastung" eingeklappt={!!eingeklappt["personal"]} onToggle={() => toggleEingeklappt("personal")}>
-        <TimeSeriesChart tage={personalSerien.tage} serien={personalSerien.serien} modus="flaeche-gestapelt" einheit="Pers." zusatz={personenAlsAufwand}
+        <TimeSeriesChart tage={personalSerien.tage} serien={personalSerien.serien} modus="flaeche-gestapelt" einheit="Pers." zusatz={personenAlsAufwand} totalZeile
           referenzlinie={personalSollGesetzt ? { label: "Personal (Soll)", werte: personalSoll } : undefined}
           formatWert={fmtZahl} kalender={kalender} hoehe={hoehePersonal}
           markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick}
