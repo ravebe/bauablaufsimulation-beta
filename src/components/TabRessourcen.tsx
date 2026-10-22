@@ -31,7 +31,7 @@ const NEUE_RATE: Rate = { kuerzel: "", bezeichnung: "", leistungswertHProEinheit
 // dieser Zeile, sondern im aufklappbaren Formel-Bereich, siehe weiter unten.
 const RATEN_SPALTEN = ["kuerzel", "bezeichnung", "lw", "personen", "chf"] as const;
 type RatenSpalte = typeof RATEN_SPALTEN[number];
-const RATEN_SPALTEN_LABEL: Record<RatenSpalte, string> = { kuerzel: "Kürzel", bezeichnung: "Bezeichnung", lw: "LW [h/Einh.]", personen: "Personen", chf: "CHF/Einh." };
+const RATEN_SPALTEN_LABEL: Record<RatenSpalte, string> = { kuerzel: "Kürzel", bezeichnung: "Bezeichnung", lw: "LW [h/Einh.]", personen: "Kolonne [Pers.]", chf: "CHF/Einh." };
 const RATEN_COL_DEFAULT: Record<RatenSpalte, number> = { kuerzel: 60, bezeichnung: 220, lw: 80, personen: 60, chf: 70 };
 const AKTION_BREITE = 32; // ƒx-Button
 const KRAN_BREITE = 40; // kranpflichtig-Checkbox je Kürzel
@@ -517,7 +517,8 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
             </div>
             <div style={{ display: "grid", gridTemplateColumns: ratenGridTemplate, columnGap: 6, fontSize: 9, color: "var(--tc-text-3)", padding: "0 0 3px", fontWeight: 600 }}>
               {RATEN_SPALTEN.map((s, i) => (
-                <div key={s} style={{ position: "relative", textAlign: "left", paddingLeft: i > 0 ? 8 : 0, overflow: "hidden", whiteSpace: "nowrap" }}>
+                <div key={s} title={s === "personen" ? "Personen einer Kolonne für diese Leistungsposition — ergibt mit dem Leistungswert die berechnete Dauer (Aufwand ÷ Kolonne ÷ Std./Tag). Nicht dasselbe wie Personal (Soll) je Task in Tab Kalkulation." : undefined}
+                  style={{ position: "relative", textAlign: "left", paddingLeft: i > 0 ? 8 : 0, overflow: "hidden", whiteSpace: "nowrap" }}>
                   {RATEN_SPALTEN_LABEL[s]}
                   <div className="col-resize-handle" onMouseDown={e => startResize(s, e)}
                     style={{ position: "absolute", top: -4, right: -3, width: 7, height: 18, cursor: "col-resize", zIndex: 2 }} />

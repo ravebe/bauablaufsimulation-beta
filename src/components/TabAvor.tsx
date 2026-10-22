@@ -202,7 +202,8 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
         {personalSollGesetzt && (
           <StatTile label="Tage über Personal (Soll)" wert={String(tageUeberPersonalSoll)} status={tageUeberPersonalSoll > 0 ? "warning" : "good"} />
         )}
-        <StatTile label="Zeiträume über Kran-Kapazität" wert={String(zeitraeumeUeberKapazitaet)} status={zeitraeumeUeberKapazitaet > 0 ? "warning" : "good"} />
+        <StatTile label={`${raster === "monat" ? "Monate" : "Wochen"} über Kran-Kapazität`}
+          title={`Anzahl ${raster === "monat" ? "Monate" : "Wochen"}, in denen bei mindestens einem Kran der Kranstunden-Bedarf über der verfügbaren Kranzeit liegt (Umschalter Monat/Woche in der Kranoptik)`} wert={String(zeitraeumeUeberKapazitaet)} status={zeitraeumeUeberKapazitaet > 0 ? "warning" : "good"} />
         <StatTile label="Marge (kumuliert)" wert={`${fmtChf(marge)} CHF`} status={marge >= 0 ? "good" : "critical"} />
         <div style={{ marginLeft: "auto", alignSelf: "flex-start" }}>
           <PunkteMenu title="Export der Auswertungen" abschnitte={[{ titel: "Export (CSV)", eintraege: exporte }]} />
@@ -272,11 +273,11 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
             <span style={{ width: 1, alignSelf: "stretch", background: "var(--tc-border)" }} />
             {(["stunden", "personal"] as const).map(m => (
               <button key={m} onClick={() => setKranMetrik(m)}
-                title={m === "stunden" ? "Kranstunden-Bedarf vs. Verfügbarkeit" : "Ungefährer Personalbedarf je Kran vs. dessen Max. Personen"}
+                title={m === "stunden" ? "Kranstunden-Bedarf vs. Verfügbarkeit" : "Durchschnittliche Personen pro Arbeitstag je Kran und Monat/Woche (kranpflichtige Gewerke) vs. dessen Max. Personen — nicht mit den Tageswerten der Personalauslastung vergleichbar"}
                 style={{ fontSize: 11, fontWeight: 600, padding: "3px 8px", cursor: "pointer",
                   border: `1px solid ${kranMetrik === m ? "var(--tc-blue)" : "var(--tc-border)"}`,
                   background: kranMetrik === m ? "var(--tc-blue-bg)" : "#fff", color: kranMetrik === m ? "var(--tc-blue)" : "var(--tc-text-2)" }}>
-                {m === "stunden" ? "Kranstunden" : "Personal"}
+                {m === "stunden" ? "Kranstunden" : "Personal (Ø pro Tag)"}
               </button>
             ))}
             <span style={{ width: 1, alignSelf: "stretch", background: "var(--tc-border)" }} />
@@ -316,7 +317,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
               Noch keinen Task einem Kran zugewiesen (Tab Kalkulation → Spalte "Kräne").
             </div>
           ) : (<>
-            <KranBalkenChart tage={personalSerien.tage} buckets={personalKranBuckets} serien={personalBarSerien} einheit="Pers."
+            <KranBalkenChart tage={personalSerien.tage} buckets={personalKranBuckets} serien={personalBarSerien} einheit="Pers. (Ø pro Arbeitstag)"
               formatWert={fmtZahl} kalender={kalender} hoehe={hoeheKran}
               pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
             <ChartResizeHandle hoehe={hoeheKran} setHoehe={setHoeheKran} />

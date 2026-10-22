@@ -380,7 +380,7 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
             maxWidth: Math.max(160, viewportW - 8), background: "#fff", border: `1px solid ${FARBEN.gridline}`,
             boxShadow: "0 2px 6px rgba(0,0,0,.12)", padding: "5px 8px", fontSize: 10, whiteSpace: "nowrap", pointerEvents: "none", zIndex: 5,
           }}>
-            <div style={{ fontWeight: 600, color: FARBEN.textPrimaer, marginBottom: 2 }}>{tage[hoverIdx]}</div>
+            <div style={{ fontWeight: 600, color: FARBEN.textPrimaer, marginBottom: 2 }}>{tage[hoverIdx].split("-").reverse().join(".")}</div>
             {totalZeile && (() => {
               const total = serien.reduce((sum, s) => sum + (s.werte[hoverIdx] ?? 0), 0);
               return (

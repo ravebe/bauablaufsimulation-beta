@@ -752,7 +752,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
           <div style={{ display: "flex", alignItems: "center", gap: 2, paddingRight: 4 }}>
             <ZahlFeld disabled={readOnly} wert={z.berechnet}
               title={
-                (z.abweichung ? "Deutliche Abweichung von der geplanten Dauer. " : "") +
+                (z.abweichung ? "Deutliche Abweichung: Berechnet ist mehr als 150 % oder weniger als 67 % der geplanten Dauer. " : "") +
                 (istManuell ? "Manuell übersteuert — leeren, um wieder automatisch aus den Mengen zu berechnen." : "Automatisch aus Mengen × Leistungswert berechnet — Wert eintragen, um sie manuell zu übersteuern.")
               }
               onWert={v => berechnetDauerAendern(z.t, v)}
@@ -838,7 +838,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
         <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
           <StatTile label="Total Abweichung" wert={`${fmtZahlMitVorzeichen(gesamtAbweichungTage)} d`} status={gesamtAbweichungTage !== 0 ? "warning" : "good"} sub="Berechnet − Geplant, alle Tasks" />
           <StatTile label="Tasks mit Kürzel" wert={`${tasksMitKuerzel}/${zeilen.length}`} />
-          <StatTile label="Tasks mit Abweichung" wert={String(anzahlAbweichung)} status={anzahlAbweichung > 0 ? "warning" : "good"} />
+          <StatTile label="Tasks mit Abweichung" sub="Berechnet > 150 % oder < 67 % von Geplant" wert={String(anzahlAbweichung)} status={anzahlAbweichung > 0 ? "warning" : "good"} />
           <StatTile label="Ø Abweichung" wert={`${fmtZahl(durchschnAbweichungProzent)}%`} />
         </div>
         {kuerzelKategorien.length > 0 && (
