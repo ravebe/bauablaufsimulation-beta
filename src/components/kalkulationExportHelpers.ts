@@ -8,7 +8,8 @@ import { istGruppe } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { csvZelle, parseCsvZeilen } from "./stammdatenHelpers";
 
-const CSV_SPALTEN_FIX = ["Nr", "Task", "Kürzel", "Kranbereich", "Kraene", "Personal (Soll)"];
+// "Kranbereich" wird nicht mehr exportiert (Kran-Auswertungen nutzen nur "Kraene"); ältere CSVs mit dieser Spalte lassen sich weiter importieren
+const CSV_SPALTEN_FIX = ["Nr", "Task", "Kürzel", "Kraene", "Personal (Soll)"];
 
 /** Kraene-Zelle aus den zugewiesenen Kran-IDs eines Tasks bauen ("Kran 1+Kran 2") — Reihenfolge wie
  *  in Task.kraene gespeichert. Unbekannte IDs (z.B. zwischenzeitlich gelöschter Kran) werden ausgelassen. */
@@ -35,7 +36,7 @@ export function kalkulationAlsCsv(tasks: Task[], stammdaten: Stammdaten, kraene:
   const zeilen: string[][] = [[...CSV_SPALTEN_FIX, ...stammdaten.gewerke.map(g => g.label || g.key)]];
   nichtGruppenTasks(tasks).forEach((t, i) => {
     zeilen.push([
-      String(i + 1), t.name, t.bauteilKuerzel ?? "", t.kranbereich ?? "", kraeneAlsText(t.kraene, kraene), t.personalSoll != null ? String(t.personalSoll) : "",
+      String(i + 1), t.name, t.bauteilKuerzel ?? "", kraeneAlsText(t.kraene, kraene), t.personalSoll != null ? String(t.personalSoll) : "",
       ...stammdaten.gewerke.map(g => t.mengen?.[g.key] != null ? String(t.mengen[g.key]) : ""),
     ]);
   });

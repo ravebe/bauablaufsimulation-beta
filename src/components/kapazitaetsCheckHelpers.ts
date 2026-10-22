@@ -1,91 +1,56 @@
 // kapazitaetsCheckHelpers.ts — Bedarfs-/Angebots-Berechnung für den Kapazitäts-Check (Tab AVOR,
-// KapazitaetsCheckManager.tsx). Phasen werden über das freie Textfeld Task.kranbereich gebildet
-// (dieselbe Gruppierung wie in kranauslastung() aus avorHelpers.ts).
+// KapazitaetsCheckManager.tsx), je Kran — dieselbe Zuordnung wie Kranoptik und Kran-Personal (Spalte "Kräne" in Tab
+// Kalkulation, Task.kraene). Ein Task mit mehreren Kränen zählt bei jedem anteilig (kranAnteil, 0.5/0.33 …).
 //
 // Kernidee: menge × leistungswertHProEinheit sind bereits Personenstunden — siehe dauerGewerk() in
-// stammdatenHelpers.ts, wo genau diese Grösse durch (arbeitszeitStdProTag × rate.anzahlPersonen)
-// geteilt wird, um eine Dauer in Tagen zu erhalten. Hier wird dieselbe Personenstunden-Grösse über
-// alle Tasks eines Kranbereichs aufsummiert und stattdessen gegen ein frei eingegebenes
-// Personal-Budget der Phase gestellt (statt gegen rate.anzahlPersonen).
+// stammdatenHelpers.ts. Hier wird diese Grösse über alle Tasks eines Krans aufsummiert und gegen ein frei
+// eingegebenes Personal-Budget gestellt; die Kranstunden (Aufwand kranpflichtiger Gewerke ÷ Kolonne, siehe
+// kranstundenJeTagFuerTask) gegen die verfügbaren Kranstunden.
 import type { Task, Kran, Zeitraster } from "../types";
 import { parseDateUniversal } from "../types";
 import type { Kalender } from "./kalenderHelpers";
 import { dauerTage, startZeitpunkt, endZeitpunkt, vergleicheZeitpunkte } from "./zeitHelpers";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { rateFuerKuerzel, istMengeKranpflichtig } from "./stammdatenHelpers";
-import { kranauslastung, aufwandJeTagFuerTask } from "./avorHelpers";
+import { aufwandJeTagFuerTask, kranstundenJeTagFuerTask } from "./avorHelpers";
 import type { ZeitrasterBucket } from "./kranHelpers";
 import { zeitrasterBuckets, kranVerfuegbareArbeitstage, kranAnteil } from "./kranHelpers";
 
-/** Kranbereich-Schlüssel eines Tasks — leeres/fehlendes Feld landet im "unbekannt"-Sammeltopf,
- *  analog zu kranauslastung() in avorHelpers.ts. */
-export function kranbereichVonTask(t: Task): string {
-  return t.kranbereich?.trim() || "unbekannt";
+type Zeitraum = { start: string; end: string; startZeit?: string; endZeit?: string };
+
+export interface KranKapazitaet {
+  taskAnzahl: number;
+  zeitraum: Zeitraum | null;    // frühester Start / spätestes Ende der Tasks dieses Krans
+  arbeitstage: number;          // Arbeitstage dieses Zeitraums (inkl. halber Tage/Stunden)
+  personenstunden: number;      // Bedarf: Σ Menge × Leistungswert (alle Gewerke) × Kran-Anteil
+  kranstunden: number;          // Bedarf: Σ Kranstunden (kranpflichtige Gewerke) × Kran-Anteil
+  kranVerfuegbarTage: number;   // Arbeitstage im Zeitraum, an denen der Kran laut Verfügbarkeit steht
 }
 
-/** Personenstunden-Bedarf je Kranbereich: Σ menge × leistungswertHProEinheit über alle Gewerke mit
- *  hinterlegter Menge, für alle nicht-Gruppen-Tasks mit Bauteil-Kürzel. */
-export function personenstundenBedarfProKranbereich(tasks: Task[], stammdaten: Stammdaten): Map<string, number> {
-  const ergebnis = new Map<string, number>();
+/** Bedarf und Zeitraum eines Krans aus den ihm zugeordneten Tasks (Task.kraene). */
+export function kapazitaetJeKran(tasks: Task[], kran: Kran, stammdaten: Stammdaten, kalender: Kalender): KranKapazitaet {
+  let taskAnzahl = 0, personenstunden = 0, kranstunden = 0;
+  let zeitraum: Zeitraum | null = null;
   for (const t of tasks) {
-    if (t.isGroup || !t.bauteilKuerzel || !t.mengen) continue;
-    const bereich = kranbereichVonTask(t);
-    let summe = ergebnis.get(bereich) ?? 0;
+    if (t.isGroup || !t.kraene?.includes(kran.id) || !t.bauteilKuerzel || !t.mengen) continue;
+    const anteil = kranAnteil(t.kraene.length);
+    taskAnzahl++;
     for (const gewerk of stammdaten.gewerke) {
       const menge = t.mengen[gewerk.key];
-      if (!menge) continue;
-      const rate = rateFuerKuerzel(gewerk, t.bauteilKuerzel);
-      if (!rate?.leistungswertHProEinheit) continue;
-      summe += menge * rate.leistungswertHProEinheit;
+      const rate = menge ? rateFuerKuerzel(gewerk, t.bauteilKuerzel) : undefined;
+      if (menge && rate?.leistungswertHProEinheit) personenstunden += menge * rate.leistungswertHProEinheit * anteil;
     }
-    ergebnis.set(bereich, summe);
+    for (const h of kranstundenJeTagFuerTask(t, stammdaten, kalender).values()) kranstunden += h * anteil;
+    if (!parseDateUniversal(t.start) || !parseDateUniversal(t.end)) continue;
+    if (!zeitraum) { zeitraum = { start: t.start, end: t.end, startZeit: t.startZeit, endZeit: t.endZeit }; continue; }
+    if (vergleicheZeitpunkte(startZeitpunkt(t), startZeitpunkt(zeitraum)) < 0) { zeitraum.start = t.start; zeitraum.startZeit = t.startZeit; }
+    if (vergleicheZeitpunkte(endZeitpunkt(t), endZeitpunkt(zeitraum)) > 0) { zeitraum.end = t.end; zeitraum.endZeit = t.endZeit; }
   }
-  return ergebnis;
-}
-
-/** Zeitraum (min Start / max Ende) je Kranbereich — Grundlage für die Arbeitstage-Anzahl im
- *  Gantt-Modus (echte Termine statt frei eingegebener Sandbox-Dauer). */
-export function zeitraumProKranbereich(tasks: Task[]): Map<string, { start: string; end: string; startZeit?: string; endZeit?: string }> {
-  const ergebnis = new Map<string, { start: string; end: string; startZeit?: string; endZeit?: string }>();
-  for (const t of tasks) {
-    if (t.isGroup || !t.bauteilKuerzel || !t.mengen) continue;
-    const s = parseDateUniversal(t.start), e = parseDateUniversal(t.end);
-    if (!s || !e) continue;
-    const bereich = kranbereichVonTask(t);
-    const bestehend = ergebnis.get(bereich);
-    if (!bestehend) { ergebnis.set(bereich, { start: t.start, end: t.end, startZeit: t.startZeit, endZeit: t.endZeit }); continue; }
-    // frühester Start / spätestes Ende inkl. Uhrzeit (Zeiteinheit Halbtage/Uhrzeit)
-    if (vergleicheZeitpunkte(startZeitpunkt(t), startZeitpunkt(bestehend)) < 0) { bestehend.start = t.start; bestehend.startZeit = t.startZeit; }
-    if (vergleicheZeitpunkte(endZeitpunkt(t), endZeitpunkt(bestehend)) > 0) { bestehend.end = t.end; bestehend.endZeit = t.endZeit; }
-  }
-  return ergebnis;
-}
-
-/** Kran-Spitzenbedarf je Kranbereich im Gantt-Modus: höchste Anzahl gleichzeitig aktiver
- *  kranpflichtiger Tasks an einem Tag (Tages-Maximum aus der bestehenden kranauslastung()). */
-export function kranSpitzenbedarfProKranbereich(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender): Map<string, number> {
-  const tagWerte = kranauslastung(tasks, stammdaten, kalender);
-  const ergebnis = new Map<string, number>();
-  for (const tw of tagWerte) {
-    for (const [bereich, wert] of Object.entries(tw.werte)) {
-      ergebnis.set(bereich, Math.max(ergebnis.get(bereich) ?? 0, wert));
-    }
-  }
-  return ergebnis;
-}
-
-/** Sandbox-Fallback ohne Termine: reine Anzahl kranpflichtiger Tasks je Kranbereich, ohne Aussage
- *  über tatsächliche Gleichzeitigkeit (die gibt es ohne Termine nicht). */
-export function kranpflichtigeTaskAnzahlProKranbereich(tasks: Task[], stammdaten: Stammdaten): Map<string, number> {
-  const ergebnis = new Map<string, number>();
-  for (const t of tasks) {
-    if (t.isGroup || !t.bauteilKuerzel || !t.mengen) continue;
-    const hatKranGewerk = Object.keys(t.mengen).some(k => t.mengen![k] > 0 && istMengeKranpflichtig(stammdaten, k, t.bauteilKuerzel));
-    if (!hatKranGewerk) continue;
-    const bereich = kranbereichVonTask(t);
-    ergebnis.set(bereich, (ergebnis.get(bereich) ?? 0) + 1);
-  }
-  return ergebnis;
+  return {
+    taskAnzahl, zeitraum, personenstunden, kranstunden,
+    arbeitstage: zeitraum ? dauerTage(zeitraum, kalender) : 0,
+    kranVerfuegbarTage: zeitraum ? kranVerfuegbareArbeitstage(kran, zeitraum, kalender) : 0,
+  };
 }
 
 export interface PhasenAuswertung {
@@ -97,8 +62,8 @@ export interface PhasenAuswertung {
 }
 
 /** Vergleicht Bedarf (Personenstunden aus Menge×Leistungswert) gegen Angebot (Personen × Arbeitszeit
- *  × Arbeitstage) einer Phase. arbeitstage kommt je nach Modus entweder aus dem echten Kranbereich-
- *  Zeitraum (arbeitstageZwischen) oder aus der frei eingegebenen Sandbox-Dauer. */
+ *  × Arbeitstage) eines Krans. arbeitstage kommt je nach Modus entweder aus dem echten Zeitraum seiner Tasks
+ *  (kapazitaetJeKran) oder aus der frei eingegebenen Sandbox-Dauer. */
 export function auswertungPhase(anzahlPersonen: number, bedarfPersonenstunden: number, arbeitszeitStdProTag: number, arbeitstage: number): PhasenAuswertung {
   const angebotPersonenstunden = anzahlPersonen * arbeitszeitStdProTag * arbeitstage;
   const deckung: "ok" | "fehlend" = angebotPersonenstunden >= bedarfPersonenstunden ? "ok" : "fehlend";
@@ -108,15 +73,9 @@ export function auswertungPhase(anzahlPersonen: number, bedarfPersonenstunden: n
   return { arbeitstage, bedarfPersonenstunden, angebotPersonenstunden, deckung, fehlendePersonen };
 }
 
-/** Arbeitstage einer Phase im Gantt-Modus aus ihrem echten Kranbereich-Zeitraum. */
-export function arbeitstageGanttModus(bereich: string, zeitraeume: Map<string, { start: string; end: string; startZeit?: string; endZeit?: string }>, kalender: Kalender): number {
-  const z = zeitraeume.get(bereich);
-  return z ? dauerTage(z, kalender) : 0; // Arbeitstage inkl. halber Tage/Stunden
-}
 
 // === Kran-Personal-Bilanz (grob, siehe kranHelpers.ts für die analoge Kranstunden-Bilanz in der
-// Kranoptik) — nutzt ausschliesslich die strukturierte Kran-Zuordnung (Task.kraene) statt des freien
-// Kranbereich-Texts, damit hier kein zweites Kran-Datenmodell entsteht. Immer anhand der echten
+// Kranoptik) — nutzt die Kran-Zuordnung (Task.kraene) wie der übrige Kapazitäts-Check. Immer anhand der echten
 // Task-Termine (kein Sandbox-Äquivalent — Kran-Zuweisung/Verfügbarkeit sind inhärent terminbasiert). */
 export const MAX_PERSONEN_PRO_KRAN = 13;
 

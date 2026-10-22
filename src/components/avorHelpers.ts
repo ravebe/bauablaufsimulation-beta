@@ -6,7 +6,7 @@ import type { Kalender } from "./kalenderHelpers";
 import { istArbeitstag } from "./kalenderHelpers";
 import { arbeitsAnteilAmTag, dauerTage } from "./zeitHelpers";
 import type { Stammdaten, Gewerk, Rate } from "./stammdatenHelpers";
-import { istMengeKranpflichtig, hatKranpflichtigeRaten } from "./stammdatenHelpers";
+import { istMengeKranpflichtig } from "./stammdatenHelpers";
 
 export interface TagWert { tag: string; werte: Record<string, number> }
 
@@ -205,34 +205,6 @@ export function personalSollProTag(tasks: Task[], kalender: Kalender): number[] 
       }
     }
     ergebnis.push(summe);
-    cur.setDate(cur.getDate() + 1);
-  }
-  return ergebnis;
-}
-
-/**
- * Kranauslastung: Anzahl gleichzeitig laufender kranpflichtiger Tasks je Kranbereich (Proxy-Metrik
- * — keine echte Kranphysik/-kapazität, sondern "wie viele Tasks wollen an dem Tag denselben Kran").
- */
-export function kranauslastung(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender): TagWert[] {
-  const zeitraum = projektzeitraum(tasks);
-  if (!zeitraum) return [];
-  const gibtEsKranpflichtige = hatKranpflichtigeRaten(stammdaten);
-  const ergebnis: TagWert[] = [];
-  const cur = new Date(zeitraum.start.getTime());
-  while (cur.getTime() <= zeitraum.end.getTime()) {
-    const iso = toIso(cur);
-    const werte: Record<string, number> = {};
-    if (istArbeitstag(iso, kalender) && gibtEsKranpflichtige) {
-      for (const t of tasks) {
-        if (!laeuftAn(t, iso)) continue;
-        const hatKranGewerk = Object.keys(t.mengen!).some(k => t.mengen![k] > 0 && istMengeKranpflichtig(stammdaten, k, t.bauteilKuerzel));
-        if (!hatKranGewerk) continue;
-        const bereich = t.kranbereich?.trim() || "unbekannt";
-        werte[bereich] = (werte[bereich] ?? 0) + arbeitsAnteilAmTag(t, iso, kalender);
-      }
-    }
-    ergebnis.push({ tag: iso, werte });
     cur.setDate(cur.getDate() + 1);
   }
   return ergebnis;

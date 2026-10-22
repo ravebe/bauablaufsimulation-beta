@@ -1,15 +1,13 @@
 // KapazitaetsCheckManager.tsx — zweiter Tab im Dialog "Kranplanung" (siehe KranPlanungManager) in Tab
-// AVOR: prüft pro Bauphase (= Kranbereich, siehe Task.kranbereich), ob ein frei eingegebenes Personal-/
-// Kran-Budget den aus Menge × Leistungswert ermittelten Bedarf deckt. Zwei Modi: "gantt" nutzt die
-// echten Task-Termine je Kranbereich, "sandbox" eine unabhängig eingegebene Zieldauer je Phase — z.B.
-// um vor der Grobterminierung zu testen, ob eine Personal-/Kranstrategie überhaupt aufgehen kann.
-import { useState } from "react";
+// AVOR: prüft je Kran (Spalte "Kräne" in Tab Kalkulation — dieselbe Zuordnung wie Kranoptik und Kran-Personal), ob ein
+// frei eingegebenes Personal-Budget den aus Menge × Leistungswert ermittelten Bedarf deckt und ob die Kranstunden in die
+// Verfügbarkeit des Krans passen. Zwei Modi: "gantt" nutzt die echten Termine der Tasks des Krans, "sandbox" eine
+// unabhängig eingegebene Zieldauer je Kran — z.B. um vor der Grobterminierung zu testen, ob eine Strategie aufgehen kann.
 import type { SimProjekt, KapazitaetsCheck, KapazitaetsPhase, Zeitraster } from "../types";
 import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import {
-  personenstundenBedarfProKranbereich, zeitraumProKranbereich, kranSpitzenbedarfProKranbereich,
-  kranpflichtigeTaskAnzahlProKranbereich, auswertungPhase, arbeitstageGanttModus,
+  kapazitaetJeKran, auswertungPhase,
   MAX_PERSONEN_PRO_KRAN, personenstundenProKranUndBucket, personalRichtwertJeBucket,
 } from "./kapazitaetsCheckHelpers";
 
@@ -18,45 +16,30 @@ interface Props { sim: SimProjekt; updateSim: (s: SimProjekt) => void; readOnly?
 
 const LEERER_CHECK: KapazitaetsCheck = { modus: "gantt", phasen: [] };
 
-// Berechnete Werte mit 2 Nachkommastellen (zahlFormat.tsx), Zählwerte (Tasks, Kräne) ganzzahlig
 const fmt = fmtZahl;
-const fmtAnzahl = (n: number) => n.toLocaleString("de-CH", { maximumFractionDigits: 0 });
+const datumCh = (iso: string) => { const [j, m, t] = iso.split("-"); return `${t}.${m}.${j}`; };
 
 export function KapazitaetsCheckInhalt({ sim, updateSim, readOnly }: Props) {
   const kc = sim.kapazitaetsCheck ?? LEERER_CHECK;
   const stammdaten = sim.stammdaten ?? LEERE_STAMMDATEN;
   const kalender = sim.kalender ?? LEERER_KALENDER;
-  const [neuerBereichIdx, setNeuerBereichIdx] = useState<number | null>(null);
+  const std = stammdaten.arbeitszeitStdProTag;
 
   function speichern(neu: KapazitaetsCheck) {
     updateSim({ ...sim, kapazitaetsCheck: neu });
   }
 
-  function phaseAendern(idx: number, patch: Partial<KapazitaetsPhase>) {
-    speichern({ ...kc, phasen: kc.phasen.map((p, i) => i === idx ? { ...p, ...patch } : p) });
+  // Eingaben je Kran (Personal-Budget, Sandbox-Dauer) — als "Phase" mit kranId gespeichert, beim ersten Ändern angelegt
+  function eingabeVonKran(kranId: string): KapazitaetsPhase | undefined {
+    return kc.phasen.find(p => p.kranId === kranId);
   }
-
-  function phaseHinzufuegen() {
-    const neu: KapazitaetsPhase = {
-      id: crypto.randomUUID(), kranbereich: "", anzahlPersonen: 0, anzahlKraene: 1,
-      dauerTageSandbox: kc.modus === "sandbox" ? 10 : undefined,
-    };
-    speichern({ ...kc, phasen: [...kc.phasen, neu] });
+  function eingabeAendern(kranId: string, patch: Partial<KapazitaetsPhase>) {
+    const bestehend = eingabeVonKran(kranId);
+    const phasen = bestehend
+      ? kc.phasen.map(p => p.kranId === kranId ? { ...p, ...patch } : p)
+      : [...kc.phasen, { id: crypto.randomUUID(), kranId, anzahlPersonen: 0, ...patch }];
+    speichern({ ...kc, phasen });
   }
-
-  function phaseEntfernen(idx: number) {
-    speichern({ ...kc, phasen: kc.phasen.filter((_, i) => i !== idx) });
-  }
-
-  const bereichOptionen = [...new Set(sim.tasks.map(t => t.kranbereich?.trim()).filter((b): b is string => !!b))].sort();
-  // Phasen, deren Kranbereich in Tab Kalkulation umbenannt/entfernt wurde (kein Task nutzt ihn mehr) —
-  // bleiben sonst als "toter" Eintrag stehen, siehe Aufräum-Hinweis unten.
-  // (die Phase, deren Name gerade getippt wird, zählt nicht — sonst blitzt der Hinweis bei jedem Buchstaben auf)
-  const verwaisteIdx = new Set(kc.phasen.map((p, i) => (i !== neuerBereichIdx && p.kranbereich !== "" && !bereichOptionen.includes(p.kranbereich)) ? i : -1).filter(i => i >= 0));
-  const bedarfMap = personenstundenBedarfProKranbereich(sim.tasks, stammdaten);
-  const zeitraeume = zeitraumProKranbereich(sim.tasks);
-  const kranSpitzenMap = kranSpitzenbedarfProKranbereich(sim.tasks, stammdaten, kalender);
-  const kranAnzahlMap = kranpflichtigeTaskAnzahlProKranbereich(sim.tasks, stammdaten);
 
   const kraene = sim.kraene ?? [];
   const kranById = new Map(kraene.map(k => [k.id, k]));
@@ -64,27 +47,14 @@ export function KapazitaetsCheckInhalt({ sim, updateSim, readOnly }: Props) {
   const { buckets: personalBuckets, serien: personalSerien } = personenstundenProKranUndBucket(sim.tasks, kraene, stammdaten, kalender, raster);
   const kranHatPersonalBedarf = personalSerien.some(s => s.personenstunden.some(v => v > 0));
 
-  const summeSandboxDauer = kc.phasen.reduce((s, p) => s + (p.dauerTageSandbox ?? 0), 0);
-  const gesamtDauerAbweichend = kc.modus === "sandbox" && !!kc.gesamtDauerTageSandbox && kc.phasen.length > 0
-    && summeSandboxDauer !== kc.gesamtDauerTageSandbox;
-
   return (
         <div style={{ padding: "14px 18px" }}>
           <div style={{ fontSize: 11, color: "var(--tc-text-2)", lineHeight: 1.5, marginBottom: 12 }}>
-            Prüft je Bauphase (= Kranbereich, siehe Feld "Kranbereich" in Tab Kalkulation), ob Personal und
-            Kräne reichen, um das mit Menge × Leistungswert hinterlegte Arbeitsvolumen in der verfügbaren
-            Zeit zu schaffen — entweder anhand der echten Gantt-Termine oder als unabhängiges Testszenario.
+            Prüft je Kran (Zuordnung in Tab Kalkulation, Spalte "Kräne"), ob das eingetragene Personal das mit
+            Menge × Leistungswert hinterlegte Arbeitsvolumen in der verfügbaren Zeit schafft und ob die Kranstunden in die
+            Verfügbarkeit des Krans passen — anhand der echten Gantt-Termine oder als unabhängiges Testszenario.
+            Tasks mit mehreren Kränen zählen bei jedem Kran anteilig.
           </div>
-
-          {verwaisteIdx.size > 0 && !readOnly && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, padding: "6px 10px", background: "#fff6e5", border: "1px solid #f0c975", fontSize: 11, color: "#8a5a00" }}>
-              <span>⚠ {verwaisteIdx.size} Phase{verwaisteIdx.size === 1 ? "" : "n"} {verwaisteIdx.size === 1 ? "hat" : "haben"} keine Tasks: Kein Task trägt den eingetragenen Kranbereich (Name falsch geschrieben, Kranbereich bei den Tasks geändert/gelöscht oder noch keinem Task zugewiesen). Solche Phasen rechnen mit 0 Bedarf. {bereichOptionen.length === 0 ? "Aktuell hat überhaupt kein Task einen Kranbereich." : `Vorhanden: ${bereichOptionen.join(", ")}.`}</span>
-              <button className="tc-btn-ghost" style={{ fontSize: 11, padding: "2px 8px", marginLeft: "auto", whiteSpace: "nowrap" }}
-                onClick={() => speichern({ ...kc, phasen: kc.phasen.filter((_, i) => !verwaisteIdx.has(i)) })}>
-                Phase{verwaisteIdx.size === 1 ? "" : "n"} ohne Tasks entfernen
-              </button>
-            </div>
-          )}
 
           <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
             <button disabled={readOnly} onClick={() => speichern({ ...kc, modus: "gantt" })}
@@ -101,132 +71,79 @@ export function KapazitaetsCheckInhalt({ sim, updateSim, readOnly }: Props) {
             </button>
           </div>
 
-          {kc.modus === "sandbox" && (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14, fontSize: 11 }}>
-              <span style={{ fontWeight: 600, color: "var(--tc-text-2)" }}>Gewünschte Gesamtdauer (Arbeitstage):</span>
-              <input type="number" className="no-spinner" disabled={readOnly} value={kc.gesamtDauerTageSandbox ?? ""} placeholder="—"
-                onChange={e => speichern({ ...kc, gesamtDauerTageSandbox: e.target.value === "" ? undefined : Number(e.target.value) })}
-                style={{ width: 70, fontSize: 11, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
-              {gesamtDauerAbweichend && (
-                <span style={{ color: "var(--tc-red)" }}>
-                  Summe der Phasendauern ({fmt(summeSandboxDauer)}d) weicht von der Gesamtdauer ab
-                </span>
-              )}
+          {kraene.length === 0 && (
+            <div style={{ fontSize: 11, color: "var(--tc-text-3)", marginBottom: 8 }}>
+              Noch keine Kräne angelegt — im Tab "Kräne &amp; Verfügbarkeit" anlegen und in Tab Kalkulation den Tasks zuordnen.
             </div>
           )}
 
-          {kc.phasen.length === 0 && (
-            <div style={{ fontSize: 11, color: "var(--tc-text-3)", marginBottom: 8 }}>Noch keine Phasen eingetragen</div>
-          )}
-
-          {kc.phasen.map((phase, idx) => {
-            const bedarf = bedarfMap.get(phase.kranbereich) ?? 0;
-            const arbeitstage = kc.modus === "gantt"
-              ? arbeitstageGanttModus(phase.kranbereich, zeitraeume, kalender)
-              : (phase.dauerTageSandbox ?? 0);
-            const auswertung = auswertungPhase(phase.anzahlPersonen, bedarf, stammdaten.arbeitszeitStdProTag, arbeitstage);
-            const keineTasks = bedarf === 0 && arbeitstage === 0;
-            const zeitraum = zeitraeume.get(phase.kranbereich);
-            const kranSpitze = kranSpitzenMap.get(phase.kranbereich) ?? 0;
-            const kranAnzahl = kranAnzahlMap.get(phase.kranbereich) ?? 0;
-            const kranOk = kc.modus === "gantt" ? kranSpitze <= phase.anzahlKraene : true;
+          {kraene.map(kran => {
+            const eingabe = eingabeVonKran(kran.id);
+            const personen = eingabe?.anzahlPersonen ?? 0;
+            const k = kapazitaetJeKran(sim.tasks, kran, stammdaten, kalender);
+            const arbeitstage = kc.modus === "gantt" ? k.arbeitstage : (eingabe?.dauerTageSandbox ?? 0);
+            const auswertung = auswertungPhase(personen, k.personenstunden, std, arbeitstage);
+            // Kran: Gantt = Arbeitstage, an denen der Kran im Zeitraum verfügbar ist; Sandbox = eingegebene Dauer
+            const kranKapazitaet = (kc.modus === "gantt" ? k.kranVerfuegbarTage : arbeitstage) * std;
+            const kranOk = k.kranstunden <= kranKapazitaet + 1e-9;
 
             return (
-              <div key={phase.id} style={{ border: "1px solid var(--tc-border-light)", marginBottom: 10, padding: "10px 12px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-                  {neuerBereichIdx === idx || (phase.kranbereich !== "" && !bereichOptionen.includes(phase.kranbereich)) ? (
-                    <input type="text" disabled={readOnly} placeholder="Kranbereich / Phasenname" value={phase.kranbereich}
-                      onChange={e => phaseAendern(idx, { kranbereich: e.target.value })}
-                      onBlur={() => setNeuerBereichIdx(null)}
-                      style={{ width: 160, fontSize: 12, fontWeight: 600, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
-                  ) : (
-                    <select disabled={readOnly} value={phase.kranbereich}
-                      onChange={e => e.target.value === "__neu__" ? setNeuerBereichIdx(idx) : phaseAendern(idx, { kranbereich: e.target.value })}
-                      style={{ width: 160, fontSize: 12, fontWeight: 600, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }}>
-                      <option value="">– Kranbereich wählen –</option>
-                      {bereichOptionen.map(b => <option key={b} value={b}>{b}</option>)}
-                      <option value="__neu__">+ neuer Kranbereich…</option>
-                    </select>
-                  )}
-
-                  {verwaisteIdx.has(idx) && neuerBereichIdx !== idx && (
-                    <span style={{ fontSize: 10, color: "#8a5a00", fontWeight: 600 }} title="Kein Task trägt diesen Kranbereich — die Phase hat deshalb keinen Bedarf und keine Termine">
-                      ⚠ keine Tasks
-                    </span>
-                  )}
-
-                  <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--tc-text-2)" }}>
-                    Personen
-                    <input type="number" className="no-spinner" disabled={readOnly} value={phase.anzahlPersonen || ""} placeholder="0"
-                      onChange={e => phaseAendern(idx, { anzahlPersonen: e.target.value === "" ? 0 : Number(e.target.value) })}
+              <div key={kran.id} style={{ border: "1px solid var(--tc-border-light)", marginBottom: 10, padding: "10px 12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "var(--tc-text)", minWidth: 80 }}>{kran.name}</span>
+                  <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--tc-text-2)" }}
+                    title="Vorgesehenes Personal für die Tasks dieses Krans (Personen pro Tag)">
+                    Personal
+                    <input type="number" className="no-spinner" disabled={readOnly} value={personen || ""} placeholder="0"
+                      onChange={e => eingabeAendern(kran.id, { anzahlPersonen: e.target.value === "" ? 0 : Number(e.target.value) })}
                       style={{ width: 55, fontSize: 12, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
+                    Pers.
                   </label>
-
-                  <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--tc-text-2)" }}>
-                    Kräne
-                    <input type="number" className="no-spinner" disabled={readOnly} value={phase.anzahlKraene || ""} placeholder="0"
-                      onChange={e => phaseAendern(idx, { anzahlKraene: e.target.value === "" ? 0 : Number(e.target.value) })}
-                      style={{ width: 45, fontSize: 12, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
-                  </label>
-
                   {kc.modus === "sandbox" && (
                     <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--tc-text-2)" }}>
-                      Dauer (Tage)
-                      <input type="number" className="no-spinner" disabled={readOnly} value={phase.dauerTageSandbox ?? ""} placeholder="0"
-                        onChange={e => phaseAendern(idx, { dauerTageSandbox: e.target.value === "" ? undefined : Number(e.target.value) })}
+                      Dauer
+                      <input type="number" className="no-spinner" disabled={readOnly} value={eingabe?.dauerTageSandbox ?? ""} placeholder="0"
+                        onChange={e => eingabeAendern(kran.id, { dauerTageSandbox: e.target.value === "" ? undefined : Number(e.target.value) })}
                         style={{ width: 55, fontSize: 12, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
+                      Arbeitstage
                     </label>
                   )}
-
-                  {!readOnly && (
-                    <button className="tc-btn-ghost" style={{ fontSize: 11, padding: "2px 6px", marginLeft: "auto" }} onClick={() => phaseEntfernen(idx)}>
-                      Entfernen
-                    </button>
-                  )}
+                  <span style={{ fontSize: 10, color: "var(--tc-text-3)", marginLeft: "auto" }}>{k.taskAnzahl} Task{k.taskAnzahl === 1 ? "" : "s"}</span>
                 </div>
 
-                {!phase.kranbereich ? (
-                  <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>Kranbereich wählen, um Bedarf/Angebot zu sehen.</div>
-                ) : keineTasks ? (
+                {k.taskAnzahl === 0 ? (
+                  <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>Diesem Kran sind noch keine Tasks mit Mengen zugeordnet (Tab Kalkulation, Spalte "Kräne").</div>
+                ) : arbeitstage === 0 ? (
                   <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
-                    Keine Tasks mit diesem Kranbereich {kc.modus === "gantt" ? "oder keine Dauer eingetragen" : "— trage eine Dauer ein, um den Bedarf zu prüfen"}.
+                    {kc.modus === "gantt" ? "Die Tasks dieses Krans haben keine Termine." : "Dauer eintragen, um Bedarf und Angebot zu vergleichen."}
                   </div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
                     <div style={{ display: "flex", gap: 14, flexWrap: "wrap", color: "var(--tc-text-2)" }}>
-                      <span>Arbeitstage: <strong>{fmt(arbeitstage)}</strong>{kc.modus === "gantt" && zeitraum ? ` (${zeitraum.start} – ${zeitraum.end})` : ""}</span>
-                      <span>Bedarf: <strong>{fmt(auswertung.bedarfPersonenstunden)} Pstd.</strong></span>
+                      <span>Arbeitstage: <strong>{fmt(arbeitstage)}</strong>{kc.modus === "gantt" && k.zeitraum ? ` (${datumCh(k.zeitraum.start)} – ${datumCh(k.zeitraum.end)})` : ""}</span>
+                      <span>Personal-Bedarf: <strong>{fmt(auswertung.bedarfPersonenstunden)} Pstd.</strong></span>
                       <span>Angebot: <strong>{fmt(auswertung.angebotPersonenstunden)} Pstd.</strong></span>
                     </div>
                     <div style={{ color: auswertung.deckung === "ok" ? "var(--tc-green-dark)" : "var(--tc-red)", fontWeight: 600 }}>
-                      {auswertung.deckung === "ok"
-                        ? "✓ Personal reicht"
-                        : `✗ Personal reicht nicht — es fehlen ${fmt(auswertung.fehlendePersonen)} Personen (Vollzeit-Äquivalent)`}
+                      {personen === 0
+                        ? <span style={{ color: "var(--tc-text-3)", fontWeight: 400 }}>Personal eintragen, um die Deckung zu prüfen (nötig im Schnitt: {fmt(auswertung.bedarfPersonenstunden / (std * arbeitstage))} Pers.)</span>
+                        : auswertung.deckung === "ok"
+                          ? "✓ Personal reicht"
+                          : `✗ Personal reicht nicht — es fehlen ${fmt(auswertung.fehlendePersonen)} Personen (Vollzeit-Äquivalent)`}
                     </div>
-                    {kc.modus === "gantt" ? (
-                      <div style={{ color: kranOk ? "var(--tc-green-dark)" : "var(--tc-red)", fontWeight: 600 }}>
-                        {kranOk
-                          ? `✓ Kräne reichen (Spitzenbedarf ${fmtAnzahl(kranSpitze)} gleichzeitig aktive kranpflichtige Tasks, ${fmtAnzahl(phase.anzahlKraene)} Kräne eingetragen)`
-                          : `✗ Kräne reichen nicht — Spitzenbedarf ${fmtAnzahl(kranSpitze)} gleichzeitig aktive kranpflichtige Tasks, nur ${fmtAnzahl(phase.anzahlKraene)} Kräne eingetragen`}
-                      </div>
-                    ) : (
-                      kranAnzahl > 0 && (
-                        <div style={{ color: "var(--tc-text-3)" }}>
-                          ℹ {fmtAnzahl(kranAnzahl)} kranpflichtige Task{kranAnzahl === 1 ? "" : "s"} in dieser Phase — echte Gleichzeitigkeit ohne Termine unbekannt.
-                        </div>
-                      )
-                    )}
+                    <div style={{ color: kranOk ? "var(--tc-green-dark)" : "var(--tc-red)", fontWeight: 600 }}>
+                      {kranOk
+                        ? `✓ Kran reicht — ${fmt(k.kranstunden)} h Bedarf, ${fmt(kranKapazitaet)} h verfügbar`
+                        : `✗ Kran reicht nicht — ${fmt(k.kranstunden)} h Bedarf, nur ${fmt(kranKapazitaet)} h verfügbar`}
+                      {kc.modus === "gantt" && k.kranVerfuegbarTage < arbeitstage - 1e-9 && (
+                        <span style={{ fontWeight: 400, color: "var(--tc-text-3)" }}> (Kran nur an {fmt(k.kranVerfuegbarTage)} von {fmt(arbeitstage)} Arbeitstagen verfügbar)</span>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
             );
           })}
-
-          {!readOnly && (
-            <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px", marginTop: 4 }} onClick={phaseHinzufuegen}>
-              + Phase hinzufügen
-            </button>
-          )}
 
           {kraene.length > 0 && (
             <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--tc-border-light)" }}>
@@ -234,7 +151,7 @@ export function KapazitaetsCheckInhalt({ sim, updateSim, readOnly }: Props) {
               <div style={{ fontSize: 11, color: "var(--tc-text-2)", lineHeight: 1.5, marginBottom: 10 }}>
                 Richtwert aus Personenstunden (Menge × Leistungswert kranpflichtiger Gewerke) je Kran und Zeitraum
                 gegen die Kran-Verfügbarkeit — Ampel zur Plausibilisierung, keine exakte Personalrechnung. Nutzt
-                ausschliesslich die Kran-Zuweisung in Tab Kalkulation, nicht das Feld "Kranbereich" oben. Die
+                die Kran-Zuweisung in Tab Kalkulation (Spalte "Kräne"), wie die Prüfung oben. Die
                 Obergrenze je Kran ("Max. Personen") wird im Tab "Kräne & Verfügbarkeit" festgelegt.
               </div>
               {!kranHatPersonalBedarf ? (

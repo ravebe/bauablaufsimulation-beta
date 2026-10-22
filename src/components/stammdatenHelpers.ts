@@ -343,7 +343,7 @@ export function istRateKranpflichtig(rate: Rate | undefined, gewerk: Gewerk): bo
 }
 
 /** Ob für den angegebenen Mengen-Schlüssel (Gewerk) und das Bauteil-Kürzel eines Tasks die Rate
- *  kranpflichtig ist — Basis für die Kranauslastung, siehe kranauslastung() in avorHelpers.ts. */
+ *  kranpflichtig ist — Basis für Kranstunden und Kran-Personal, siehe kranstundenJeTagFuerTask() in avorHelpers.ts. */
 export function istMengeKranpflichtig(stammdaten: Stammdaten, gewerkKey: string, kuerzel: string | undefined): boolean {
   if (!kuerzel) return false;
   const gewerk = stammdaten.gewerke.find(g => g.key === gewerkKey);

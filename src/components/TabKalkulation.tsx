@@ -345,7 +345,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   async function kalkulationImportierenJson(file: File) {
     setImportFehler(null); setImportErgebnis(null);
     try {
-      if (!confirm("Kürzel/Kranbereich/Kräne/Mengen der passenden Tasks werden vollständig durch den Inhalt der Datei ersetzt. Fortfahren?")) return;
+      if (!confirm("Kürzel/Kräne/Personal (Soll)/Mengen der passenden Tasks werden vollständig durch den Inhalt der Datei ersetzt. Fortfahren?")) return;
       const erg = parseKalkulationJson(await file.text(), sim!.tasks, sim!.kraene ?? []);
       updateSim({ ...sim!, tasks: erg.tasks });
       setImportErgebnis(`${erg.aktualisiert} Task${erg.aktualisiert === 1 ? "" : "s"} aktualisiert${erg.nichtGefunden > 0 ? ` · ${erg.nichtGefunden} Einträge ohne passenden Task ignoriert` : ""}`);
@@ -905,8 +905,8 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
                   title: "Löscht nur manuell eingegebene Mengen (schwarze Werte) — automatisch berechnete Mengen (blau) und die 'Berechnet'-Übersteuerung bleiben erhalten" },
               ] }] : []),
               { titel: "Export", eintraege: [
-                { label: "CSV", onClick: kalkulationExportierenCsv, title: "Kürzel/Kranbereich/Mengen je Task als CSV — in Excel bearbeitbar, Reimport ordnet über den Tasknamen zu" },
-                { label: "JSON", onClick: kalkulationExportierenJson, title: "Kürzel/Kranbereich/Mengen je Task als JSON — für einen exakten Restore über die Task-ID (z.B. vor einem Bulk-Vorgang)" },
+                { label: "CSV", onClick: kalkulationExportierenCsv, title: "Kürzel/Kräne/Personal (Soll)/Mengen je Task als CSV — in Excel bearbeitbar, Reimport ordnet über den Tasknamen zu" },
+                { label: "JSON", onClick: kalkulationExportierenJson, title: "Kürzel/Kräne/Personal (Soll)/Mengen je Task als JSON — für einen exakten Restore über die Task-ID (z.B. vor einem Bulk-Vorgang)" },
               ] },
               ...(!readOnly ? [{ titel: "Import", eintraege: [
                 { label: "CSV", onClick: () => importCsvInputRef.current?.click(), title: "Aus einer zuvor exportierten (in Excel bearbeiteten) CSV-Datei importieren — Zuordnung über den Tasknamen" },

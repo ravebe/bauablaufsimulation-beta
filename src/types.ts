@@ -82,18 +82,22 @@ export interface Kran {
   maxPersonen?: number; // Obergrenze für die Personal-Ampel dieses Krans im Kapazitäts-Check, fehlt = 13 (siehe kapazitaetsCheckHelpers.ts)
 }
 
-// Kapazitäts-Check (Tab AVOR): Personal-/Kran-Budget je Bauphase (= Kranbereich, siehe Task.kranbereich)
-// gegen den aus Menge × Leistungswert ermittelten Bedarf prüfen, siehe kapazitaetsCheckHelpers.ts.
+// Kapazitäts-Check (Tab AVOR): Personal-Budget je Kran (Spalte "Kräne" in Tab Kalkulation) gegen den aus Menge × Leistungswert
+// ermittelten Bedarf prüfen, dazu Kranstunden-Bedarf gegen die Verfügbarkeit des Krans — siehe kapazitaetsCheckHelpers.ts.
 export interface KapazitaetsPhase {
   id: string;
-  kranbereich: string;       // matcht Task.kranbereich (getrimmt); "" = "unbekannt"-Sammeltopf
+  kranId?: string;           // Kran, für den dieses Personal-Budget gilt
   anzahlPersonen: number;
-  anzahlKraene: number;
-  dauerTageSandbox?: number; // nur im Sandbox-Modus: Ziel-Dauer dieser Phase in Arbeitstagen
+  dauerTageSandbox?: number; // nur im Sandbox-Modus: Ziel-Dauer in Arbeitstagen
+  /** @deprecated früher Gruppierung über den Freitext Task.kranbereich — wird nicht mehr ausgewertet */
+  kranbereich?: string;
+  /** @deprecated früher frei eingegebene Kran-Anzahl je Bauphase — ersetzt durch die Kranstunden je Kran */
+  anzahlKraene?: number;
 }
 export interface KapazitaetsCheck {
   modus: "gantt" | "sandbox";
-  gesamtDauerTageSandbox?: number; // nur Sandbox: gewünschte Gesamtdauer, für Plausibilitäts-Hinweis
+  /** @deprecated Summe sequentieller Phasen — passt nicht zu parallel arbeitenden Kränen, wird nicht mehr ausgewertet */
+  gesamtDauerTageSandbox?: number;
   phasen: KapazitaetsPhase[];
 }
 

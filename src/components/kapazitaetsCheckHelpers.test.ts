@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { Task, Kran } from "../types";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import type { Stammdaten } from "./stammdatenHelpers";
-import { personenstundenProKranUndBucket, personalRichtwertJeBucket, MAX_PERSONEN_PRO_KRAN } from "./kapazitaetsCheckHelpers";
+import { personenstundenProKranUndBucket, personalRichtwertJeBucket, MAX_PERSONEN_PRO_KRAN, kapazitaetJeKran, auswertungPhase } from "./kapazitaetsCheckHelpers";
 
 const stammdaten: Stammdaten = {
   arbeitszeitStdProTag: 8,
@@ -71,5 +71,27 @@ describe("personalRichtwertJeBucket — Personal-Ampel (13-Regel)", () => {
     const rw = personalRichtwertJeBucket(0, 0, 8);
     expect(rw.richtwert).toBeNull();
     expect(rw.engpass).toBe(false);
+  });
+});
+
+describe("Kapazitäts-Check je Kran (Spalte Kräne)", () => {
+  it("Bedarf, Zeitraum und Kranstunden aus den zugeordneten Tasks, bei 2 Kränen je zur Hälfte", () => {
+    const k = kapazitaetJeKran([task], k1, stammdaten, LEERER_KALENDER);
+    expect(k.taskAnzahl).toBe(1);
+    expect(k.arbeitstage).toBe(5);
+    expect(k.personenstunden).toBeCloseTo(40);       // 80 Pstd. × 0.5
+    expect(k.kranstunden).toBeCloseTo(80 / 3 * 0.5); // Aufwand ÷ Kolonne (3), halber Anteil
+    expect(k.kranVerfuegbarTage).toBe(5);
+    // 1 Person × 8 h × 5 Tage = 40 Pstd. Angebot → reicht genau
+    expect(auswertungPhase(1, k.personenstunden, 8, k.arbeitstage).deckung).toBe("ok");
+  });
+  it("Kran nur teilweise verfügbar → weniger verfügbare Tage", () => {
+    const kTeil: Kran = { id: "k1", name: "Kran 1", verfuegbarVon: "2026-01-07" };
+    expect(kapazitaetJeKran([task], kTeil, stammdaten, LEERER_KALENDER).kranVerfuegbarTage).toBe(3);
+  });
+  it("Kran ohne zugeordnete Tasks", () => {
+    const k = kapazitaetJeKran([task], { id: "k9", name: "Kran 9" }, stammdaten, LEERER_KALENDER);
+    expect(k.taskAnzahl).toBe(0);
+    expect(k.zeitraum).toBeNull();
   });
 });
