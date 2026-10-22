@@ -52,6 +52,23 @@ describe("AVOR-Auswertungen mit halben Tagen", () => {
   });
 });
 
+describe("Mengen-Filter verteilt wie der Aufwand", () => {
+  const stammdaten: Stammdaten = {
+    ...LEERE_STAMMDATEN, arbeitszeitStdProTag: 8,
+    gewerke: [
+      { key: "sch", label: "Schalung", einheit: "m2", raten: [{ kuerzel: "W", bezeichnung: "Wand", leistungswertHProEinheit: 1, anzahlPersonen: 4, chfProEinheit: null }] },
+      { key: "bet", label: "Beton", einheit: "m3", raten: [{ kuerzel: "W", bezeichnung: "Wand", leistungswertHProEinheit: 2, anzahlPersonen: 4, chfProEinheit: null }] },
+    ],
+  } as Stammdaten;
+  it("Beton erscheint erst am Tag, an dem betoniert wird (wie in der Personalauslastung)", () => {
+    // Schalung 32 h = 1 Tag, Beton 16 m³ × 2 h = 32 h = 1 Tag → Mo Schalung, Di Beton
+    const t = task("W", "2026-11-09", "2026-11-10", { bauteilKuerzel: "W", mengen: { sch: 32, bet: 16 } });
+    expect(mengenProTag([t], "bet", KAL, undefined, stammdaten).map(r => r.menge)).toEqual([0, 16]);
+    expect(mengenProTag([t], "sch", KAL, undefined, stammdaten).map(r => r.menge)).toEqual([32, 0]);
+    expect(mengenProTag([t], "bet", KAL).map(r => r.menge)).toEqual([8, 8]); // ohne Stammdaten gleichmässig
+  });
+});
+
 describe("Personalauslastung: Gewerke nacheinander, Personen aus dem Aufwand", () => {
   // Wand: Schalung 4 Pers. 3 Tage (96 h), Bewehrung 3 Pers. 1 Tag (24 h), Beton 3 Pers. 1 Tag (24 h) → berechnet 5 Tage
   const stammdaten: Stammdaten = {

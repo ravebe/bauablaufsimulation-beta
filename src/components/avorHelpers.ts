@@ -238,12 +238,28 @@ export function kranauslastung(tasks: Task[], stammdaten: Stammdaten, kalender: 
   return ergebnis;
 }
 
-/** Menge/Tag für ein Gewerk ("durchschnittlich nötige Tagesleistung"), gleichmässig über die
- *  Arbeitstage jedes Tasks verteilt. Mit kuerzel eingeschränkt auf Tasks dieses Bauteil-Kürzels
- *  (z.B. "BPL"), analog den kürzelweisen Filterblättern im AVOR-Excel-Tool. */
-export function mengenProTag(tasks: Task[], gewerkKey: string, kalender: Kalender, kuerzel?: string): { tag: string; menge: number }[] {
+/** Menge/Tag für ein Gewerk ("durchschnittlich nötige Tagesleistung"). Mit stammdaten verteilt wie der Aufwand
+ *  (aufwandJeTagFuerTask — Gewerke je Task nacheinander, also z.B. Beton erst am Ende), damit Mengen-Filter und
+ *  Personalauslastung dieselben Tage zeigen; ohne Leistungswert (kein Aufwand) bzw. ohne stammdaten gleichmässig über die
+ *  Arbeitstage des Tasks. Mit kuerzel eingeschränkt auf Tasks dieses Bauteil-Kürzels (z.B. "BPL"), analog den kürzelweisen
+ *  Filterblättern im AVOR-Excel-Tool. */
+export function mengenProTag(tasks: Task[], gewerkKey: string, kalender: Kalender, kuerzel?: string, stammdaten?: Stammdaten): { tag: string; menge: number }[] {
   const zeitraum = projektzeitraum(tasks);
   if (!zeitraum) return [];
+  // je Task: Anteil des Gewerk-Aufwands je Tag (Summe 1) — nur wenn es Aufwand gibt
+  const anteilJeTask = new Map<string, Map<string, number>>();
+  if (stammdaten) {
+    for (const t of tasks) {
+      if (t.isGroup || !t.mengen?.[gewerkKey] || (kuerzel && t.bauteilKuerzel !== kuerzel)) continue;
+      const proTag = new Map<string, number>();
+      let summe = 0;
+      for (const [iso, aufwand] of aufwandJeTagFuerTask(t, stammdaten, kalender)) {
+        const ph = aufwand[gewerkKey] ?? 0;
+        if (ph > 0) { proTag.set(iso, ph); summe += ph; }
+      }
+      if (summe > 0) { for (const [iso, ph] of proTag) proTag.set(iso, ph / summe); anteilJeTask.set(t.id, proTag); }
+    }
+  }
   const ergebnis: { tag: string; menge: number }[] = [];
   const cur = new Date(zeitraum.start.getTime());
   while (cur.getTime() <= zeitraum.end.getTime()) {
@@ -255,7 +271,8 @@ export function mengenProTag(tasks: Task[], gewerkKey: string, kalender: Kalende
         if (kuerzel && t.bauteilKuerzel !== kuerzel) continue;
         const m = t.mengen?.[gewerkKey];
         if (!m || iso < t.start || iso > t.end) continue;
-        menge += m * arbeitsAnteilAmTag(t, iso, kalender) / dauerTage(t, kalender);
+        const anteile = anteilJeTask.get(t.id);
+        menge += anteile ? m * (anteile.get(iso) ?? 0) : m * arbeitsAnteilAmTag(t, iso, kalender) / dauerTage(t, kalender);
       }
     }
     ergebnis.push({ tag: iso, menge });
