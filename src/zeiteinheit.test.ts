@@ -93,6 +93,15 @@ describe("Zeiteinheit umstellen und Import", () => {
     expect(rundeDauer(2.3, "stunden")).toBe(2.375);
     expect(rundeAufEinheit(0.2, "stunden")).toBe(0.25);
   });
+  it("Kalkulation: keine Mindestdauer von 2 Tagen mehr — mindestens ein Schritt der Zeiteinheit, 0 nur ohne Aufwand", () => {
+    expect(rundeDauer(0.96, "tage")).toBe(1);
+    expect(rundeDauer(0.03, "tage")).toBe(1);
+    expect(rundeDauer(1.2, "tage")).toBe(2);
+    expect(rundeDauer(0.03, "halbtage")).toBe(0.5);
+    expect(rundeDauer(0.71, "halbtage")).toBe(1);
+    expect(rundeDauer(0.03, "stunden")).toBe(0.125); // 1 Stunde bei 8 h/Tag (Standard-Arbeitszeit der Tests)
+    expect(rundeDauer(0, "tage")).toBe(0);
+  });
   it("Export: Uhrzeit hinter dem Datum, MS Project mit Uhrzeiten und Dauer in Stunden", () => {
     const tasks = [task("A", "2026-11-09", "2026-11-10", { startZeit: "13:00", endZeit: "12:00" })];
     const z = exportZeilen(tasks, KAL);

@@ -322,12 +322,13 @@ export function dauerGewerk(menge: number, rate: Rate | undefined, arbeitszeitSt
   return (menge * rate.leistungswertHProEinheit) / (arbeitszeitStdProTag * rate.anzahlPersonen);
 }
 
-/** Rundungsregel aus AVOR-Spec: >2 Tage aufrunden, <0.01 vernachlässigbar (0), sonst Mindestdauer 2. */
+/** Berechnete Dauer auf die Zeiteinheit der Simulation aufrunden (Tage: ganze Tage, Halbtage: halbe Tage, Uhrzeit: ganze
+ *  Stunden der Arbeitszeit) — mindestens ein Schritt, sobald es Aufwand gibt (1 Tag / ½ Tag / 1 Stunde), 0 nur ohne Aufwand.
+ *  Betrifft nur die Dauer der Tasks (Spalte Berechnet, Zeitplan übernehmen → Gantt in Tab Bauteile/Abspielen). Personal, Kran,
+ *  Ertrag und Kosten rechnen mit dem ungerundeten Aufwand (Menge × Leistungswert bzw. Menge × CHF/Einheit). */
 export function rundeDauer(rohTage: number, einheit: Zeiteinheit = "tage"): number {
-  // aufgerundet auf die Zeiteinheit der Simulation: ganze Tage, halbe Tage oder Stunden
-  if (rohTage > 2) return rundeAufEinheit(rohTage, einheit);
-  if (rohTage < 0.01) return 0;
-  return 2;
+  if (!(rohTage > 0)) return 0;
+  return rundeAufEinheit(rohTage, einheit);
 }
 
 export function rateFuerKuerzel(gewerk: Gewerk, kuerzel: string): Rate | undefined {
