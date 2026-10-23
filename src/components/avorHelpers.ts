@@ -106,6 +106,29 @@ export function personalJeTagFuerTask(t: Task, stammdaten: Stammdaten, kalender:
   return ergebnis;
 }
 
+/** Eingeplante Kolonnen je Tag und Gewerk, über alle Tasks: kolonnen = Anzahl Tasks, in denen das Gewerk an dem
+ *  Tag arbeitet (laut aufwandJeTagFuerTask), personen = Summe ihrer Kolonnengrössen (Personen aus Tab Ressourcen).
+ *  Für den Tooltip der Personalauslastung: Personenstunden ÷ personen = wie lange diese Leute im Schnitt am
+ *  Gewerk arbeiten. */
+export function kolonnenJeTag(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender): Map<string, Record<string, { kolonnen: number; personen: number }>> {
+  const ergebnis = new Map<string, Record<string, { kolonnen: number; personen: number }>>();
+  for (const t of tasks) {
+    for (const [iso, aufwand] of aufwandJeTagFuerTask(t, stammdaten, kalender)) {
+      const werte = ergebnis.get(iso) ?? {};
+      for (const [k, ph] of Object.entries(aufwand)) {
+        if (!(ph > 1e-9)) continue;
+        const gewerk = stammdaten.gewerke.find(g => g.key === k);
+        const kolonne = gewerk ? rateFuer(gewerk, t.bauteilKuerzel!)?.anzahlPersonen ?? 0 : 0;
+        if (!kolonne) continue;
+        const w = werte[k] ?? { kolonnen: 0, personen: 0 };
+        werte[k] = { kolonnen: w.kolonnen + 1, personen: w.personen + kolonne };
+      }
+      ergebnis.set(iso, werte);
+    }
+  }
+  return ergebnis;
+}
+
 /** Kranstunden je Tag für einen Task: Aufwand der kranpflichtigen Gewerke ÷ Kolonne — also die Zeit, in
  *  der die Kolonne laut Leistungswert am Bauteil arbeitet (z.B. Stütze 6 Personenstunden ÷ 3 Personen =
  *  2 Kranstunden), verteilt wie der Aufwand (aufwandJeTagFuerTask). Nicht kranpflichtige Gewerke zählen nicht. */

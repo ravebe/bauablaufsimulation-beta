@@ -211,8 +211,10 @@ interface TimeSeriesProps {
   einheit?: string;
   hoehe?: number;
   formatWert?: (v: number) => string;
-  /** Zusatz in Klammern hinter jedem Wert im Tooltip, z.B. Personen → "(7 d 6.80 h)" */
+  /** Zusatz hinter jedem Wert im Tooltip (mit " · " angehängt), z.B. Personen → "86 h" */
   zusatz?: (v: number) => string;
+  /** Wie zusatz, aber je Serie und Tag (hat Vorrang für die Serien-Zeilen) — z.B. Kolonnen je Gewerk */
+  zusatzSerie?: (serieKey: string, idx: number, wert: number) => string;
   /** Im Tooltip zuoberst (fett, schwarz) die Summe aller Serien — z.B. Personen total bei gestapelten Flächen */
   totalZeile?: boolean;
   markerIdx?: number | null; // Index in tage[] für eine dauerhafte Markierung (z.B. "Heute")
@@ -232,7 +234,7 @@ interface TimeSeriesProps {
 
 const ML = 44, MR = 8, MT = 16, MB = 20;
 
-export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = "", hoehe = 180, formatWert, zusatz, totalZeile, markerIdx, markerLabel = "Heute", onTagKlick, kalender,
+export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = "", hoehe = 180, formatWert, zusatz, zusatzSerie, totalZeile, markerIdx, markerLabel = "Heute", onTagKlick, kalender,
   pxProTag: pxProTagProp, onPxProTagChange: onPxProTagChangeProp, scrollTag: scrollTagProp, onScrollChange: onScrollChangeProp }: TimeSeriesProps) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [outerRef, viewportW] = useMeasuredWidth<HTMLDivElement>(1000);
@@ -385,21 +387,21 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
               const total = serien.reduce((sum, s) => sum + (s.werte[hoverIdx] ?? 0), 0);
               return (
                 <div style={{ fontWeight: 700, color: "#000", marginBottom: 2 }}>
-                  Total: {fmt(total)} {einheit}{zusatz ? ` (${zusatz(total)})` : ""}
+                  Total: {fmt(total)} {einheit}{zusatz ? ` · ${zusatz(total)}` : ""}
                 </div>
               );
             })()}
             {serien.map(s => (
               <div key={s.key} style={{ color: FARBEN.textSekundaer }}>
                 <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: 2, background: s.color, marginRight: 4 }} />
-                {s.label}: {fmt(s.werte[hoverIdx] ?? 0)} {einheit}{zusatz ? ` (${zusatz(s.werte[hoverIdx] ?? 0)})` : ""}
+                {s.label}: {fmt(s.werte[hoverIdx] ?? 0)} {einheit}{zusatzSerie ? ` · ${zusatzSerie(s.key, hoverIdx, s.werte[hoverIdx] ?? 0)}` : zusatz ? ` · ${zusatz(s.werte[hoverIdx] ?? 0)}` : ""}
               </div>
             ))}
             {referenzlinie && (referenzlinie.werte ? referenzlinie.werte[hoverIdx] != null : referenzlinie.wert != null) && (
               <div style={{ color: FARBEN.status.critical }}>
                 <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: 2, background: FARBEN.status.critical, marginRight: 4 }} />
                 {referenzlinie.label}: {fmt(referenzlinie.werte ? referenzlinie.werte[hoverIdx] ?? 0 : referenzlinie.wert!)} {einheit}
-                {zusatz ? ` (${zusatz(referenzlinie.werte ? referenzlinie.werte[hoverIdx] ?? 0 : referenzlinie.wert!)})` : ""}
+                {zusatz ? ` · ${zusatz(referenzlinie.werte ? referenzlinie.werte[hoverIdx] ?? 0 : referenzlinie.wert!)}` : ""}
               </div>
             )}
           </div>

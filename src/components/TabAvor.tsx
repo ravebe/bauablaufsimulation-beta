@@ -5,7 +5,7 @@ import type { SimProjekt, Zeitraster } from "../types";
 import { parseDateUniversal } from "../types";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import { LEERE_STAMMDATEN, hatKranpflichtigeRaten } from "./stammdatenHelpers";
-import { personalauslastung, personalSollProTag, mengenProTag, ertragsoptik, optimaleTagesleistung } from "./avorHelpers";
+import { personalauslastung, kolonnenJeTag, personalSollProTag, mengenProTag, ertragsoptik, optimaleTagesleistung } from "./avorHelpers";
 import type { TagWert } from "./avorHelpers";
 import { kranstundenProKranUndBucket } from "./kranHelpers";
 import { personenstundenProKranUndBucket, personalRichtwertJeBucket, MAX_PERSONEN_PRO_KRAN } from "./kapazitaetsCheckHelpers";
@@ -14,7 +14,7 @@ import type { ApiInstance } from "../hooks/useApi";
 import { TimeSeriesChart, KranBalkenChart, StatTile, CockpitAbschnitt, useEingeklappt, useChartZoom, useChartHoehe, ChartResizeHandle, FARBEN } from "./cockpitCharts";
 import type { Serie, KategorieSerie } from "./cockpitCharts";
 import KranPlanungManager from "./KranPlanungManager";
-import { fmtZahl, fmtTageStunden } from "./zahlFormat";
+import { fmtZahl } from "./zahlFormat";
 import PunkteMenu from "./PunkteMenu";
 import { personalbedarfAlsCsv, alsCsv, csvZahl, datumCh } from "./avorExportHelpers";
 
@@ -167,7 +167,16 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
 
   // Personen ↔ Personenstunden: 1 Person (Vollzeit) = Std./Tag aus Tab Ressourcen
   const std = stammdaten.arbeitszeitStdProTag;
-  const personenAlsAufwand = (personen: number) => fmtTageStunden(personen * std, std);
+  const personenAlsAufwand = (personen: number) => `${fmtZahl(personen * std)} h`;
+  // Tooltip je Gewerk: Arbeitszeit des Tages (Personenstunden), eingeplante Kolonnen (Köpfe laut Tab Ressourcen)
+  // und wie lange diese im Schnitt daran arbeiten — siehe kolonnenJeTag
+  const kolonnen = kolonnenJeTag(tasks, stammdaten, kalender);
+  const personalZusatz = (key: string, idx: number, personen: number) => {
+    const stunden = personen * std;
+    const k = kolonnen.get(personalSerien.tage[idx])?.[key];
+    if (!k || stunden <= 0) return `${fmtZahl(stunden)} h`;
+    return `${fmtZahl(stunden)} h · ${k.kolonnen} Kolonne${k.kolonnen === 1 ? "" : "n"} (${fmtZahl(k.personen)} Pers.) · Ø ${fmtZahl(stunden / k.personen)} h`;
+  };
 
   // ⋮ → Export: jede Auswertung dieses Tabs als CSV (Excel)
   const exporte = [
@@ -216,7 +225,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
       )}
 
       <CockpitAbschnitt titel="Personalauslastung" eingeklappt={!!eingeklappt["personal"]} onToggle={() => toggleEingeklappt("personal")}>
-        <TimeSeriesChart tage={personalSerien.tage} serien={personalSerien.serien} modus="flaeche-gestapelt" einheit="Pers." zusatz={personenAlsAufwand} totalZeile
+        <TimeSeriesChart tage={personalSerien.tage} serien={personalSerien.serien} modus="flaeche-gestapelt" einheit="Pers." zusatz={personenAlsAufwand} zusatzSerie={personalZusatz} totalZeile
           referenzlinie={personalSollGesetzt ? { label: "Personal (Soll)", werte: personalSoll } : undefined}
           formatWert={fmtZahl} kalender={kalender} hoehe={hoehePersonal}
           markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick}
