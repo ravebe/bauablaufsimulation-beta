@@ -168,15 +168,15 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
   // Personen ↔ Personenstunden: 1 Person (Vollzeit) = Std./Tag aus Tab Ressourcen
   const std = stammdaten.arbeitszeitStdProTag;
   const personenAlsAufwand = (personen: number) => `${fmtZahl(personen * std)} h`;
-  // Tooltip je Gewerk: Arbeitszeit des Tages (Personenstunden), eingeplante Kolonnen (Köpfe laut Tab Ressourcen)
-  // und wie lange diese im Schnitt daran arbeiten — siehe kolonnenJeTag
+  // Tooltip: Arbeitszeit des Tages (Personenstunden) und wie lange die eingeplanten Kolonnen (Köpfe laut Tab
+  // Ressourcen, siehe kolonnenJeTag) im Schnitt daran arbeiten — je Gewerk und im Total über alle Gewerke
   const kolonnen = kolonnenJeTag(tasks, stammdaten, kalender);
-  const personalZusatz = (key: string, idx: number, personen: number) => {
-    const stunden = personen * std;
-    const k = kolonnen.get(personalSerien.tage[idx])?.[key];
-    if (!k || stunden <= 0) return `${fmtZahl(stunden)} h`;
-    return `${fmtZahl(stunden)} h · ${k.kolonnen} Kolonne${k.kolonnen === 1 ? "" : "n"} (${fmtZahl(k.personen)} Pers.) · Ø ${fmtZahl(stunden / k.personen)} h`;
-  };
+  const mitSchnitt = (stunden: number, koepfe: number) =>
+    koepfe > 0 && stunden > 0 ? `${fmtZahl(stunden)} h · Ø ${fmtZahl(stunden / koepfe)} h` : `${fmtZahl(stunden)} h`;
+  const personalZusatz = (key: string, idx: number, personen: number) =>
+    mitSchnitt(personen * std, kolonnen.get(personalSerien.tage[idx])?.[key]?.personen ?? 0);
+  const personalZusatzTotal = (idx: number, personen: number) =>
+    mitSchnitt(personen * std, Object.values(kolonnen.get(personalSerien.tage[idx]) ?? {}).reduce((s, k) => s + k.personen, 0));
 
   // ⋮ → Export: jede Auswertung dieses Tabs als CSV (Excel)
   const exporte = [
@@ -225,7 +225,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
       )}
 
       <CockpitAbschnitt titel="Personalauslastung" eingeklappt={!!eingeklappt["personal"]} onToggle={() => toggleEingeklappt("personal")}>
-        <TimeSeriesChart tage={personalSerien.tage} serien={personalSerien.serien} modus="flaeche-gestapelt" einheit="Pers." zusatz={personenAlsAufwand} zusatzSerie={personalZusatz} totalZeile
+        <TimeSeriesChart tage={personalSerien.tage} serien={personalSerien.serien} modus="flaeche-gestapelt" einheit="Pers." zusatz={personenAlsAufwand} zusatzSerie={personalZusatz} zusatzTotal={personalZusatzTotal} totalZeile
           referenzlinie={personalSollGesetzt ? { label: "Personal (Soll)", werte: personalSoll } : undefined}
           formatWert={fmtZahl} kalender={kalender} hoehe={hoehePersonal}
           markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick}

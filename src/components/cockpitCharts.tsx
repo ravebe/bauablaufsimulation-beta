@@ -215,6 +215,8 @@ interface TimeSeriesProps {
   zusatz?: (v: number) => string;
   /** Wie zusatz, aber je Serie und Tag (hat Vorrang für die Serien-Zeilen) — z.B. Kolonnen je Gewerk */
   zusatzSerie?: (serieKey: string, idx: number, wert: number) => string;
+  /** Wie zusatz, aber für die Total-Zeile mit Tag-Index (hat Vorrang) */
+  zusatzTotal?: (idx: number, total: number) => string;
   /** Im Tooltip zuoberst (fett, schwarz) die Summe aller Serien — z.B. Personen total bei gestapelten Flächen */
   totalZeile?: boolean;
   markerIdx?: number | null; // Index in tage[] für eine dauerhafte Markierung (z.B. "Heute")
@@ -234,7 +236,7 @@ interface TimeSeriesProps {
 
 const ML = 44, MR = 8, MT = 16, MB = 20;
 
-export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = "", hoehe = 180, formatWert, zusatz, zusatzSerie, totalZeile, markerIdx, markerLabel = "Heute", onTagKlick, kalender,
+export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = "", hoehe = 180, formatWert, zusatz, zusatzSerie, zusatzTotal, totalZeile, markerIdx, markerLabel = "Heute", onTagKlick, kalender,
   pxProTag: pxProTagProp, onPxProTagChange: onPxProTagChangeProp, scrollTag: scrollTagProp, onScrollChange: onScrollChangeProp }: TimeSeriesProps) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [outerRef, viewportW] = useMeasuredWidth<HTMLDivElement>(1000);
@@ -387,7 +389,7 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
               const total = serien.reduce((sum, s) => sum + (s.werte[hoverIdx] ?? 0), 0);
               return (
                 <div style={{ fontWeight: 700, color: "#000", marginBottom: 2 }}>
-                  Total: {fmt(total)} {einheit}{zusatz ? ` · ${zusatz(total)}` : ""}
+                  Total: {fmt(total)} {einheit}{zusatzTotal ? ` · ${zusatzTotal(hoverIdx, total)}` : zusatz ? ` · ${zusatz(total)}` : ""}
                 </div>
               );
             })()}
