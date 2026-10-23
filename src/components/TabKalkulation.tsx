@@ -836,10 +836,10 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     <div ref={wurzelRef} style={{ display: "flex", flexDirection: "column", height: "100%", fontSize: 12 }}>
       <div style={{ padding: "14px 14px 0", flexShrink: 0 }}>
         <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-          <StatTile label="Total Abweichung" wert={`${fmtZahlMitVorzeichen(gesamtAbweichungTage)} d`} status={gesamtAbweichungTage !== 0 ? "warning" : "good"} sub="Berechnet − Geplant, alle Tasks" />
-          <StatTile label="Tasks mit Kürzel" wert={`${tasksMitKuerzel}/${zeilen.length}`} />
-          <StatTile label="Tasks mit Abweichung" sub="Berechnet > 150 % oder < 67 % von Geplant" wert={String(anzahlAbweichung)} status={anzahlAbweichung > 0 ? "warning" : "good"} />
-          <StatTile label="Ø Abweichung" wert={`${fmtZahl(durchschnAbweichungProzent)}%`} />
+          <StatTile label="Total Abweichung" title={"Summe der Differenzen Berechnet − Geplant (in Tagen) über alle Tasks mit Kürzel.\nPositiv: laut Mengen und Leistungswerten braucht es insgesamt mehr Zeit als im Gantt geplant, negativ: weniger."} wert={`${fmtZahlMitVorzeichen(gesamtAbweichungTage)} d`} status={gesamtAbweichungTage !== 0 ? "warning" : "good"} sub="Berechnet − Geplant, alle Tasks" />
+          <StatTile label="Tasks mit Kürzel" title={"Tasks mit zugeordnetem Bauteil-Kürzel / alle Tasks der Tabelle.\nNur Tasks mit Kürzel bekommen Mengen, eine berechnete Dauer und fliessen in Personal, Kosten und Kranauslastung ein."} wert={`${tasksMitKuerzel}/${zeilen.length}`} />
+          <StatTile label="Tasks mit Abweichung" title={"Anzahl Tasks, deren berechnete Dauer mehr als 150 % oder weniger als 67 % der geplanten Dauer beträgt (Spalte Differenz).\nTipp: Legende \"Fehler / fehlende Attribute\" anklicken, um diese Tasks zuoberst zu sortieren."} sub="Berechnet > 150 % oder < 67 % von Geplant" wert={String(anzahlAbweichung)} status={anzahlAbweichung > 0 ? "warning" : "good"} />
+          <StatTile label="Ø Abweichung" title={"Durchschnittliche prozentuale Abweichung |Berechnet − Geplant| ÷ Geplant über alle Tasks mit Kürzel und geplanter Dauer (ohne Vorzeichen — zu lange und zu kurze Tasks heben sich nicht auf)."} wert={`${fmtZahl(durchschnAbweichungProzent)}%`} />
         </div>
         {kuerzelKategorien.length > 0 && (
           <CockpitAbschnitt titel="Geplant vs. berechnet je Kürzel" eingeklappt={!!eingeklappt["kuerzel-chart"]} onToggle={() => toggleEingeklappt("kuerzel-chart")}>

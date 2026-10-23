@@ -200,11 +200,11 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
           <>{fmtZahl(peakWert)} Pers.{peakTagLabel && <span style={{ fontSize: 11, fontWeight: 400, color: FARBEN.textSekundaer, marginLeft: 6 }}>{peakTagLabel}</span>}</>
         } />
         {personalSollGesetzt && (
-          <StatTile label="Tage über Personal (Soll)" wert={String(tageUeberPersonalSoll)} status={tageUeberPersonalSoll > 0 ? "warning" : "good"} />
+          <StatTile label="Tage über Personal (Soll)" title={"Anzahl Arbeitstage, an denen der berechnete Personalbedarf (Summe aller Gewerke, wie im Diagramm Personalauslastung) höher ist als Personal (Soll).\nPersonal (Soll) = Summe der in Tab Kalkulation erfassten Personal (Soll) aller an diesem Tag laufenden Tasks; Tage ohne Soll zählen nicht."} wert={String(tageUeberPersonalSoll)} status={tageUeberPersonalSoll > 0 ? "warning" : "good"} />
         )}
         <StatTile label={`${raster === "monat" ? "Monate" : "Wochen"} über Kran-Kapazität`}
           title={`Anzahl ${raster === "monat" ? "Monate" : "Wochen"}, in denen bei mindestens einem Kran der Kranstunden-Bedarf über der verfügbaren Kranzeit liegt (Umschalter Monat/Woche in der Kranoptik)`} wert={String(zeitraeumeUeberKapazitaet)} status={zeitraeumeUeberKapazitaet > 0 ? "warning" : "good"} />
-        <StatTile label="Marge (kumuliert)" wert={`${fmtChf(marge)} CHF`} status={marge >= 0 ? "good" : "critical"} />
+        <StatTile label="Marge (kumuliert)" title={"Ertrag minus Lohnkosten über das ganze Projekt (Endwert der Ertragsoptik).\nErtrag = Menge × Einheitspreis (CHF/Einh. aus Tab Ressourcen), Lohnkosten = Personenstunden × Umsatz CHF/Mannstunde (Tab Ressourcen)."} wert={`${fmtChf(marge)} CHF`} status={marge >= 0 ? "good" : "critical"} />
         <div style={{ marginLeft: "auto", alignSelf: "flex-start" }}>
           <PunkteMenu title="Export der Auswertungen" abschnitte={[{ titel: "Export (CSV)", eintraege: exporte }]} />
         </div>

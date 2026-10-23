@@ -434,9 +434,9 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
 
       {stammdaten.gewerke.length > 0 && (
         <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-          <StatTile label="Elemente ohne Leistungswert" wert={String(kuerzelOhneLw.length)} status={kuerzelOhneLw.length > 0 ? "warning" : "good"} />
-          <StatTile label="Elemente ohne Stammdaten" wert={String(kuerzelOhneRate.length)} status={kuerzelOhneRate.length > 0 ? "warning" : "good"} />
-          <StatTile label="Unbenutzte Elemente" wert={String(kuerzelUnbenutzt.length)} />
+          <StatTile label="Elemente ohne Leistungswert" title={"Kürzel in den Stammdaten, bei denen kein Leistungswert (LW h/Einh.) eingetragen ist — für sie gibt es keine berechnete Dauer, kein Personal und keine Lohnkosten. Welche es sind, steht unter den Kacheln."} wert={String(kuerzelOhneLw.length)} status={kuerzelOhneLw.length > 0 ? "warning" : "good"} />
+          <StatTile label="Elemente ohne Stammdaten" title={"Kürzel, die in Tasks (Tab Kalkulation) verwendet werden, aber in keiner Kategorie hier angelegt sind — diese Tasks lassen sich nicht berechnen. Welche es sind, steht unter den Kacheln."} wert={String(kuerzelOhneRate.length)} status={kuerzelOhneRate.length > 0 ? "warning" : "good"} />
+          <StatTile label="Unbenutzte Elemente" title={"Kürzel, die hier angelegt sind, aber in keinem Task der aktiven Simulation vorkommen — kein Fehler, nur ein Hinweis (z.B. Vorlage-Kürzel)."} wert={String(kuerzelUnbenutzt.length)} />
         </div>
       )}
 

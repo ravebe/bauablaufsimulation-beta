@@ -127,10 +127,10 @@ export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }
   return (
     <div style={{ padding: 14, fontSize: 12 }}>
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        <StatTile label="Ertrag" wert={`${fmtChf(gesamt.ertrag)} CHF`} sub="Menge × Einheitspreis" />
-        <StatTile label="Lohnkosten" wert={`${fmtChf(gesamt.lohnkosten)} CHF`} sub={`Personenstunden × ${fmtChf(lohnansatz)} CHF/h`} />
-        <StatTile label="Marge" wert={`${fmtChf(marge)} CHF`} sub={`${fmtZahlFix2(margeProzent)} % vom Ertrag`} status={marge >= 0 ? "good" : "critical"} />
-        <StatTile label="Stand heute" wert={`${fmtChf(ertragHeute - lohnHeute)} CHF`}
+        <StatTile label="Ertrag" title={"Summe über alle Tasks und Gewerke: Menge × Einheitspreis (CHF/Einh. aus Tab Ressourcen)."} wert={`${fmtChf(gesamt.ertrag)} CHF`} sub="Menge × Einheitspreis" />
+        <StatTile label="Lohnkosten" title={"Summe über alle Tasks und Gewerke: Personenstunden (Menge × Leistungswert) × Umsatz CHF/Mannstunde aus Tab Ressourcen."} wert={`${fmtChf(gesamt.lohnkosten)} CHF`} sub={`Personenstunden × ${fmtChf(lohnansatz)} CHF/h`} />
+        <StatTile label="Marge" title={"Ertrag minus Lohnkosten über das ganze Projekt, in Prozent vom Ertrag."} wert={`${fmtChf(marge)} CHF`} sub={`${fmtZahlFix2(margeProzent)} % vom Ertrag`} status={marge >= 0 ? "good" : "critical"} />
+        <StatTile label="Stand heute" title={"Marge der bis heute (laut Gantt) ausgeführten Arbeiten: kumulierter Ertrag minus kumulierte Lohnkosten bis zum heutigen Tag."} wert={`${fmtChf(ertragHeute - lohnHeute)} CHF`}
           sub={`${heute.toLocaleDateString("de-CH")} · Ertrag ${fmtChf(ertragHeute)} − Lohn ${fmtChf(lohnHeute)}`} />
       </div>
 
