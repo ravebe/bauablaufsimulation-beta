@@ -10,6 +10,7 @@ import { useClickOutside } from "../hooks/useClickOutside";
 import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
 import { LEERER_KALENDER, ersterArbeitstagAb } from "./kalenderHelpers";
 import { pruefeZeitplanBereitschaft, berechneZeitplanUebernahme, zeitplanAbweichendeTasks } from "./zeitplanUebernahmeHelpers";
+import { optimiereAuslastung } from "./auslastungOptimieren";
 import TabTasks from "./TabTasks";
 import { UnbenutzteZeilen, UnbenutzteDetail } from "./UnbenutzteBauteile";
 import { unbenutzteListen } from "./ausschlussHelpers";
@@ -62,6 +63,8 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   const [werkzeugOffen, setWerkzeugOffen] = useState(false);
   const [zeitplanHinweisOffen, setZeitplanHinweisOffen] = useState(false);
   const [zeitplanBestaetigenOffen, setZeitplanBestaetigenOffen] = useState(false);
+  // "Auslastung optimieren": Vorschau der neuen Termine, erst nach Bestätigung übernommen
+  const [auslastungVorschau, setAuslastungVorschau] = useState<Task[] | null>(null);
   const [neuInputOffen, setNeuInputOffen] = useState(false);
   const [neuTaskInput, setNeuTaskInput] = useState("");
   const [neuTyp, setNeuTyp] = useState<"task" | "gruppe">("task");
@@ -278,6 +281,18 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
     if (!zeitplanStatus?.bereit) { setZeitplanHinweisOffen(o => !o); return; }
     setZeitplanBestaetigenOffen(true);
   }
+  // "Auslastung optimieren" — jede Kolonne (Leistungsposition aus Tab Ressourcen) arbeitet voll und nie an zwei Tasks
+  // gleichzeitig; parallele Tasks derselben Position laufen nacheinander, siehe auslastungOptimieren.ts
+  function auslastungVorschauOeffnen() {
+    if (!aktiveSim || !zeitplanStatus?.bereit) { setZeitplanHinweisOffen(o => !o); return; }
+    setAuslastungVorschau(optimiereAuslastung(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN, aktiveSim.kalender ?? LEERER_KALENDER, aktiveSim.zeiteinheit));
+  }
+  function auslastungUebernehmen() {
+    if (!aktiveSim || !auslastungVorschau) return;
+    updateSim({ ...aktiveSim, tasks: auslastungVorschau });
+    setAuslastungVorschau(null);
+  }
+
   function zeitplanUebernehmen() {
     if (!aktiveSim) return;
     const stammdaten = aktiveSim.stammdaten ?? LEERE_STAMMDATEN;
@@ -423,6 +438,16 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                           </div>
                         )}
                       </button>
+                      <button
+                        style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", borderTop: "0.5px solid #eef1f4", textAlign: "left", cursor: "pointer" }}
+                        onClick={() => { auslastungVorschauOeffnen(); if (zeitplanStatus.bereit) setWerkzeugOffen(false); }}>
+                        <div style={{ fontSize: 11, fontWeight: 500, color: zeitplanStatus.bereit ? "var(--tc-text)" : "#9aa5b0" }}>Auslastung optimieren</div>
+                        <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 2, whiteSpace: "normal", maxWidth: 320 }}>
+                          {zeitplanStatus.bereit
+                            ? "Jeder Task bekommt seine berechnete Dauer; jede Kolonne aus Tab Ressourcen arbeitet voll und nie an zwei Tasks gleichzeitig — Tasks mit derselben Leistungsposition laufen nacheinander. Vorgänger und Wartetage bleiben massgebend. Mit Vorschau."
+                            : "Klicken für Details, was dafür noch fehlt."}
+                        </div>
+                      </button>
                       {zeitplanHinweisOffen && !zeitplanStatus.bereit && (
                         <div style={{ padding: "8px 14px 10px", fontSize: 11, borderTop: "0.5px solid #eef1f4" }}>
                           <div style={{ fontWeight: 600, marginBottom: 6 }}>Noch nicht möglich — es fehlt:</div>
@@ -467,6 +492,46 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
         ]} />
         </div>
       </div>
+
+      {auslastungVorschau && aktiveSim && (() => {
+        const vorher = aktiveSim.tasks, nachher = auslastungVorschau;
+        const geaendert = nachher.filter((t, i) => t.start !== vorher[i].start || t.end !== vorher[i].end || t.startZeit !== vorher[i].startZeit || t.endZeit !== vorher[i].endZeit);
+        const ende = (ts: Task[]) => ts.reduce((m, t) => (!t.isGroup && t.end && t.end > m ? t.end : m), "");
+        const datum = (iso: string) => iso ? iso.split("-").reverse().join(".") : "–";
+        const endeVorher = ende(vorher), endeNachher = ende(nachher);
+        const tageDiff = endeVorher && endeNachher ? Math.round((new Date(endeNachher).getTime() - new Date(endeVorher).getTime()) / 86400000) : 0;
+        return (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setAuslastungVorschau(null)}>
+          <div style={{ background: "#fff", borderRadius: 8, overflow: "hidden", width: 460, maxWidth: "92vw", boxShadow: "0 8px 30px rgba(0,0,0,.25)", fontFamily: "var(--tc-font)" }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--tc-border-light)", fontSize: 16, fontWeight: 700, color: "var(--tc-text)" }}>
+              Auslastung optimieren
+            </div>
+            <div style={{ padding: "16px 18px", fontSize: 12, color: "var(--tc-text-2)", lineHeight: 1.6 }}>
+              Jeder Task bekommt seine berechnete Dauer (Tab Kalkulation). Jede Kolonne aus Tab Ressourcen (Leistungsposition,
+              z.B. Schalung · WB) arbeitet voll und nie an zwei Tasks gleichzeitig — Tasks mit derselben Leistungsposition laufen
+              nacheinander, die Gewerke innerhalb eines Tasks nacheinander. Vorgänger und Wartetage bleiben massgebend; Tasks ohne
+              Vorgänger beginnen frühestens an ihrem bisherigen Start. Tasks ohne Mengen, Gruppen und Meilensteine bleiben unverändert.
+              <div style={{ marginTop: 10, padding: "8px 10px", background: "#f5f9ff", border: "1px solid #dbeafe" }}>
+                {geaendert.length === 0 ? "Der Bauablauf ist bereits optimal ausgelastet — nichts zu ändern." : (<>
+                  <div><strong>{geaendert.length}</strong> Task{geaendert.length === 1 ? "" : "s"} erhalten neue Termine.</div>
+                  <div>Bauende: {datum(endeVorher)} → <strong>{datum(endeNachher)}</strong>
+                    {tageDiff !== 0 && <span style={{ color: tageDiff > 0 ? "#d9622b" : "#2e8b57" }}> ({tageDiff > 0 ? "+" : ""}{tageDiff} Kalendertage)</span>}</div>
+                </>)}
+              </div>
+              <div style={{ marginTop: 10 }}>
+                Danach lässt sich das mit „Rückgängig“ oben in der Kopfzeile zurücknehmen (letzte 15 Schritte, bis zum Neuladen).
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 6, padding: "0 18px 18px" }}>
+              <button className="tc-btn-primary" style={{ flex: 1 }} disabled={geaendert.length === 0} onClick={auslastungUebernehmen}>Übernehmen</button>
+              <button className="tc-btn-secondary" onClick={() => setAuslastungVorschau(null)}>Abbrechen</button>
+            </div>
+          </div>
+        </div>
+        );
+      })()}
 
       {zeitplanBestaetigenOffen && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}
