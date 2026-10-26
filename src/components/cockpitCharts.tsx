@@ -208,6 +208,8 @@ interface TimeSeriesProps {
   /** Konstante Schwelle (wert) ODER Tageswerte über die Zeit (werte, gleiche Länge wie tage) — z.B.
    *  eine fixe Kranauslastungs-Kapazität vs. eine tagesabhängige "Personal (Soll)"-Linie. */
   referenzlinie?: { label: string; wert?: number; werte?: number[] };
+  /** Zusätzliche gestrichelte Tageslinien mit eigener Farbe (z.B. "Perfekte Auslastung") — in Legende und Tooltip */
+  weitereLinien?: { key: string; label: string; werte: number[]; farbe: string }[];
   einheit?: string;
   hoehe?: number;
   formatWert?: (v: number) => string;
@@ -236,7 +238,7 @@ interface TimeSeriesProps {
 
 const ML = 44, MR = 8, MT = 16, MB = 20;
 
-export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = "", hoehe = 180, formatWert, zusatz, zusatzSerie, zusatzTotal, totalZeile, markerIdx, markerLabel = "Heute", onTagKlick, kalender,
+export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = "", hoehe = 180, formatWert, zusatz, zusatzSerie, zusatzTotal, totalZeile, weitereLinien = [], markerIdx, markerLabel = "Heute", onTagKlick, kalender,
   pxProTag: pxProTagProp, onPxProTagChange: onPxProTagChangeProp, scrollTag: scrollTagProp, onScrollChange: onScrollChangeProp }: TimeSeriesProps) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [outerRef, viewportW] = useMeasuredWidth<HTMLDivElement>(1000);
@@ -269,6 +271,7 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
   }
 
   let maxY = referenzlinie ? (referenzlinie.werte ? Math.max(0, ...referenzlinie.werte) : referenzlinie.wert ?? 0) : 0;
+  for (const l of weitereLinien) maxY = Math.max(maxY, ...l.werte);
   if (modus === "flaeche-gestapelt") {
     for (let i = 0; i < n; i++) {
       let summe = 0;
@@ -310,7 +313,7 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
 
   const ticks = berechneZeitachsenTicks(tage, pxProTag, kalender);
 
-  const zeigeLegende = serien.length >= 2 || !!referenzlinie?.werte;
+  const zeigeLegende = serien.length >= 2 || !!referenzlinie?.werte || weitereLinien.length > 0;
 
   return (
     <div ref={outerRef} style={{ position: "relative" }}>
@@ -328,6 +331,12 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
               {referenzlinie.label}
             </span>
           )}
+          {weitereLinien.map(l => (
+            <span key={l.key} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ width: 10, height: 0, borderTop: `2px dashed ${l.farbe}`, display: "inline-block" }} />
+              {l.label}
+            </span>
+          ))}
         </div>
       )}
       <div style={{ position: "relative" }}>
@@ -349,6 +358,10 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
               <path fill="none" stroke={FARBEN.status.critical} strokeWidth={1.5} strokeDasharray="4 3" strokeLinecap="round" strokeLinejoin="round"
                 d={referenzlinie.werte.map((w, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(w ?? 0)}`).join(" ")} />
             )}
+            {weitereLinien.map(l => (
+              <path key={l.key} fill="none" stroke={l.farbe} strokeWidth={1.5} strokeDasharray="4 3" strokeLinecap="round" strokeLinejoin="round"
+                d={l.werte.map((w, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(w ?? 0)}`).join(" ")} />
+            ))}
             {referenzlinie?.wert != null && (<>
               <line x1={ML} y1={y(referenzlinie.wert)} x2={VBW - MR} y2={y(referenzlinie.wert)}
                 stroke={FARBEN.status.critical} strokeWidth={1} strokeDasharray="4 3" />
@@ -397,6 +410,12 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
               <div key={s.key} style={{ color: FARBEN.textSekundaer }}>
                 <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: 2, background: s.color, marginRight: 4 }} />
                 {s.label}: {fmt(s.werte[hoverIdx] ?? 0)} {einheit}{zusatzSerie ? ` · ${zusatzSerie(s.key, hoverIdx, s.werte[hoverIdx] ?? 0)}` : zusatz ? ` · ${zusatz(s.werte[hoverIdx] ?? 0)}` : ""}
+              </div>
+            ))}
+            {weitereLinien.map(l => (
+              <div key={l.key} style={{ color: l.farbe }}>
+                <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: 2, background: l.farbe, marginRight: 4 }} />
+                {l.label}: {fmt(l.werte[hoverIdx] ?? 0)} {einheit}
               </div>
             ))}
             {referenzlinie && (referenzlinie.werte ? referenzlinie.werte[hoverIdx] != null : referenzlinie.wert != null) && (

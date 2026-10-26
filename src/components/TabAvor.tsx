@@ -168,15 +168,22 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
   // Personen ↔ Personenstunden: 1 Person (Vollzeit) = Std./Tag aus Tab Ressourcen
   const std = stammdaten.arbeitszeitStdProTag;
   const personenAlsAufwand = (personen: number) => `${fmtZahl(personen * std)} h`;
-  // Tooltip: Arbeitszeit des Tages (Personenstunden) und wie lange die eingeplanten Kolonnen (Köpfe laut Tab
-  // Ressourcen, siehe kolonnenJeTag) im Schnitt daran arbeiten — je Gewerk und im Total über alle Gewerke
+  // Tooltip: Arbeit des Tages (Personenstunden) und wie lange das eingeplante Personal (Kolonnen aus Tab Ressourcen, je
+  // Leistungsposition nur einmal, siehe kolonnenJeTag) dafür braucht — mit Auslastung gegenüber der vollen Arbeitszeit
   const kolonnen = kolonnenJeTag(tasks, stammdaten, kalender);
-  const mitSchnitt = (stunden: number, koepfe: number) =>
-    koepfe > 0 && stunden > 0 ? `${fmtZahl(stunden)} h · Ø ${fmtZahl(stunden / koepfe)} h` : `${fmtZahl(stunden)} h`;
+  const geplantesPersonal = (idx: number) => Object.values(kolonnen.get(personalSerien.tage[idx]) ?? {}).reduce((s, k) => s + k.personen, 0);
+  const mitArbeitszeit = (stunden: number, koepfe: number) => {
+    if (!(stunden > 0)) return "0 h";
+    if (!(koepfe > 0)) return `${fmtZahl(stunden)} h Arbeit`;
+    const dauer = stunden / koepfe;
+    return `${fmtZahl(stunden)} h Arbeit · mit ${fmtZahl(koepfe)} Pers.: ${fmtZahl(dauer)} h (${fmtZahl(std > 0 ? dauer / std * 100 : 0)} %)`;
+  };
   const personalZusatz = (key: string, idx: number, personen: number) =>
-    mitSchnitt(personen * std, kolonnen.get(personalSerien.tage[idx])?.[key]?.personen ?? 0);
-  const personalZusatzTotal = (idx: number, personen: number) =>
-    mitSchnitt(personen * std, Object.values(kolonnen.get(personalSerien.tage[idx]) ?? {}).reduce((s, k) => s + k.personen, 0));
+    mitArbeitszeit(personen * std, kolonnen.get(personalSerien.tage[idx])?.[key]?.personen ?? 0);
+  const personalZusatzTotal = (idx: number, personen: number) => mitArbeitszeit(personen * std, geplantesPersonal(idx));
+  // Linie "Perfekte Auslastung": eingeplantes Personal des Tages — arbeitet es die volle Arbeitszeit, deckt es genau den
+  // Bedarf; liegt die Fläche darüber, ist es überlastet, darunter nicht ausgelastet
+  const perfekteAuslastung = personalSerien.tage.map((_, i) => geplantesPersonal(i));
 
   // ⋮ → Export: jede Auswertung dieses Tabs als CSV (Excel)
   const exporte = [
@@ -227,6 +234,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
       <CockpitAbschnitt titel="Personalauslastung" eingeklappt={!!eingeklappt["personal"]} onToggle={() => toggleEingeklappt("personal")}>
         <TimeSeriesChart tage={personalSerien.tage} serien={personalSerien.serien} modus="flaeche-gestapelt" einheit="Pers." zusatz={personenAlsAufwand} zusatzSerie={personalZusatz} zusatzTotal={personalZusatzTotal} totalZeile
           referenzlinie={personalSollGesetzt ? { label: "Personal (Soll)", werte: personalSoll } : undefined}
+          weitereLinien={[{ key: "perfekt", label: "Perfekte Auslastung (Kolonnen)", werte: perfekteAuslastung, farbe: FARBEN.status.good }]}
           formatWert={fmtZahl} kalender={kalender} hoehe={hoehePersonal}
           markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick}
           pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />

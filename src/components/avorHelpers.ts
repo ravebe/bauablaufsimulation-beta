@@ -106,25 +106,33 @@ export function personalJeTagFuerTask(t: Task, stammdaten: Stammdaten, kalender:
   return ergebnis;
 }
 
-/** Eingeplante Kolonnen je Tag und Gewerk, über alle Tasks: kolonnen = Anzahl Tasks, in denen das Gewerk an dem
- *  Tag arbeitet (laut aufwandJeTagFuerTask), personen = Summe ihrer Kolonnengrössen (Personen aus Tab Ressourcen).
- *  Für den Tooltip der Personalauslastung: Personenstunden ÷ personen = wie lange diese Leute im Schnitt am
- *  Gewerk arbeiten. */
+/** Eingeplantes Personal je Tag und Gewerk = Kolonnen aus Tab Ressourcen. Jede Leistungsposition (Gewerk + Kürzel) zählt
+ *  an einem Tag nur einmal, auch wenn mehrere Tasks mit ihr parallel laufen — es ist dieselbe Kolonne (z.B. drei Wände WB
+ *  am selben Tag → einmal die 6 Personen der Wandschalung, nicht 18). Verschiedene Leistungspositionen eines Gewerks
+ *  (z.B. Wand- und Deckenschalung) addieren sich. kolonnen = Anzahl verschiedener Leistungspositionen, personen = Summe
+ *  ihrer Kolonnengrössen. Grundlage für Arbeitszeit/Auslastung im Tooltip und die Linie "Perfekte Auslastung". */
 export function kolonnenJeTag(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender): Map<string, Record<string, { kolonnen: number; personen: number }>> {
-  const ergebnis = new Map<string, Record<string, { kolonnen: number; personen: number }>>();
+  const positionenJeTag = new Map<string, Map<string, Map<string, number>>>(); // Tag → Gewerk → Kürzel → Kolonne
   for (const t of tasks) {
     for (const [iso, aufwand] of aufwandJeTagFuerTask(t, stammdaten, kalender)) {
-      const werte = ergebnis.get(iso) ?? {};
+      const jeGewerk = positionenJeTag.get(iso) ?? new Map<string, Map<string, number>>();
       for (const [k, ph] of Object.entries(aufwand)) {
         if (!(ph > 1e-9)) continue;
         const gewerk = stammdaten.gewerke.find(g => g.key === k);
         const kolonne = gewerk ? rateFuer(gewerk, t.bauteilKuerzel!)?.anzahlPersonen ?? 0 : 0;
         if (!kolonne) continue;
-        const w = werte[k] ?? { kolonnen: 0, personen: 0 };
-        werte[k] = { kolonnen: w.kolonnen + 1, personen: w.personen + kolonne };
+        const jeKuerzel = jeGewerk.get(k) ?? new Map<string, number>();
+        jeKuerzel.set(t.bauteilKuerzel!, kolonne);
+        jeGewerk.set(k, jeKuerzel);
       }
-      ergebnis.set(iso, werte);
+      positionenJeTag.set(iso, jeGewerk);
     }
+  }
+  const ergebnis = new Map<string, Record<string, { kolonnen: number; personen: number }>>();
+  for (const [iso, jeGewerk] of positionenJeTag) {
+    const werte: Record<string, { kolonnen: number; personen: number }> = {};
+    for (const [k, jeKuerzel] of jeGewerk) werte[k] = { kolonnen: jeKuerzel.size, personen: [...jeKuerzel.values()].reduce((s, v) => s + v, 0) };
+    ergebnis.set(iso, werte);
   }
   return ergebnis;
 }

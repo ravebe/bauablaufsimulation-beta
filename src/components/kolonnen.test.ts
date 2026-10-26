@@ -16,6 +16,12 @@ const stammdaten = {
 } as Stammdaten;
 
 describe("kolonnenJeTag (Tooltip Personalauslastung)", () => {
+  it("dieselbe Leistungsposition in parallelen Tasks zählt nur einmal", () => {
+    const a = task("A", "2026-11-09", "2026-11-09", { bauteilKuerzel: "W", mengen: { sch: 32 } });
+    const b = task("B", "2026-11-09", "2026-11-09", { bauteilKuerzel: "W", mengen: { sch: 16 } });
+    const c = task("C", "2026-11-09", "2026-11-09", { bauteilKuerzel: "W", mengen: { sch: 8 } });
+    expect(kolonnenJeTag([a, b, c], stammdaten, KAL).get("2026-11-09")?.sch).toEqual({ kolonnen: 1, personen: 4 });
+  });
   it("zählt je Tag und Gewerk die laufenden Kolonnen und ihre Köpfe über alle Tasks", () => {
     // Mo 9.11.: Wand (4 Pers., 32 h → 1 Tag) und Decke (6 Pers., 48 h → 1 Tag) parallel
     const a = task("A", "2026-11-09", "2026-11-09", { bauteilKuerzel: "W", mengen: { sch: 32 } });
