@@ -91,6 +91,33 @@ export function kranVerfuegbareArbeitstage(kran: Kran, bucket: { start: string; 
   return arbeitstageInBereich(start, end, kalender);
 }
 
+/** Richtwert max. Personen eines Krans (alle Unternehmer an kranpflichtigen Kürzeln zusammen), Standard 13. */
+export const STANDARD_MAX_PERSONEN_PRO_KRAN = 13;
+export function kranMaxPersonen(kran: Kran): number {
+  return kran.maxPersonen != null && kran.maxPersonen > 0 ? kran.maxPersonen : STANDARD_MAX_PERSONEN_PRO_KRAN;
+}
+
+/** Personal je Unternehmer unter dem Kran an diesem Tag (Tab Ressourcen → Kräne & Personal) — leer, wenn der Kran nicht
+ *  verfügbar ist. Mehrere Zeilen desselben Unternehmers, die sich überschneiden, addieren sich. */
+export function kranPersonalAmTag(kran: Kran, iso: string): Map<string, number> {
+  const jeUnternehmer = new Map<string, number>();
+  if (!istKranVerfuegbarAn(kran, iso)) return jeUnternehmer;
+  for (const p of kran.personal ?? []) {
+    const name = p.unternehmer.trim();
+    if (!name || !(p.personen > 0)) continue;
+    if ((p.von && iso < p.von) || (p.bis && iso > p.bis)) continue;
+    jeUnternehmer.set(name, (jeUnternehmer.get(name) ?? 0) + p.personen);
+  }
+  return jeUnternehmer;
+}
+
+/** Eingeplantes Personal unter dem Kran an diesem Tag: Summe der Unternehmer, höchstens Max. Personen des Krans. */
+export function kranPersonalTotalAmTag(kran: Kran, iso: string): number {
+  let summe = 0;
+  for (const v of kranPersonalAmTag(kran, iso).values()) summe += v;
+  return Math.min(summe, kranMaxPersonen(kran));
+}
+
 /** Neuen Kran mit fortlaufendem Namen ("Kran 1", "Kran 2", …) anlegen. */
 export function neuerKran(bestehende: Kran[]): Kran {
   let n = bestehende.length + 1;

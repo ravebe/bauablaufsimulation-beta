@@ -79,7 +79,18 @@ export interface Kran {
   name: string;
   verfuegbarVon?: string; // YYYY-MM-DD
   verfuegbarBis?: string; // YYYY-MM-DD
-  maxPersonen?: number; // Obergrenze für die Personal-Ampel dieses Krans im Kapazitäts-Check, fehlt = 13 (siehe kapazitaetsCheckHelpers.ts)
+  maxPersonen?: number; // Richtwert max. Personen, die dieser Kran gleichzeitig versorgt (alle Unternehmer, nur kranpflichtige Kürzel), fehlt = 13
+  personal?: KranPersonal[]; // Personal unter dem Kran je Zeitraum und Unternehmer (Tab Ressourcen → Kräne & Personal)
+}
+
+/** Personal eines Unternehmers unter einem Kran in einem Zeitraum — ein Pool von Allroundern: verstärkt jede Leistungsposition
+ *  dieses Unternehmers (Rate.unternehmer) an Tasks dieses Krans. von/bis leer = ganze Verfügbarkeit des Krans. */
+export interface KranPersonal {
+  id: string;
+  unternehmer: string;
+  personen: number;
+  von?: string; // YYYY-MM-DD
+  bis?: string; // YYYY-MM-DD
 }
 
 // Kapazitäts-Check (Tab AVOR): Personal-Budget je Kran (Spalte "Kräne" in Tab Kalkulation) gegen den aus Menge × Leistungswert

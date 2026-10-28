@@ -17,6 +17,13 @@ export interface Rate {
   /** @deprecated durch ausschlussFilterIds ersetzt — nur noch zum Migrieren alter Projekte gelesen, siehe aktiveFilterIds(). */
   oeffnungenAusschliessen?: boolean;
   kranpflichtig?: boolean; // steuert, ob Tasks mit diesem Kürzel in die Kranauslastung (Tab AVOR) einfliessen — siehe istRateKranpflichtig()
+  /** Unternehmer, der diese Leistungsposition ausführt — Personal desselben Unternehmers unter einem Kran ist ein gemeinsamer
+   *  Pool (Allrounder), siehe Kran.personal und auslastungOptimieren.ts */
+  unternehmer?: string;
+  /** Arbeitsschritt im Ablauf je Kürzel: "1" = Schritt 1; "1/3" = je zur Hälfte in Schritt 1 und 3; "1:60/3:40" = 60 % in Schritt 1,
+   *  40 % in Schritt 3 (z.B. Wandschalung 1. Seite → Bewehrung → 2. Seite). Gleiche Schritte laufen gleichzeitig. Leer = Position der
+   *  Kategorie in Tab Ressourcen — siehe phasenFuerTask() */
+  schritt?: string;
 }
 export interface Gewerk {
   key: string;
@@ -120,7 +127,7 @@ export function parseStammdatenJson(text: string): Stammdaten {
   };
 }
 
-const CSV_HEADER = ["Gewerk-Schlüssel", "Gewerk", "Einheit", "Kranpflichtig", "Kürzel", "Bezeichnung", "LW [h/Einheit]", "Personen", "CHF/Einheit", "Formel", "Ausschlussfilter", "Menge Ist"];
+const CSV_HEADER = ["Gewerk-Schlüssel", "Gewerk", "Einheit", "Kranpflichtig", "Kürzel", "Bezeichnung", "LW [h/Einheit]", "Personen", "CHF/Einheit", "Formel", "Ausschlussfilter", "Menge Ist", "Unternehmer", "Schritt"];
 
 /** Lesbare Zusammenfassung der für eine Rate aktiven Ausschlussfilter ("Common Type=Opening" o.ä.),
  *  mehrere durch Komma getrennt. Nur zur Information beim CSV-Export, wird beim Reimport ignoriert
@@ -167,7 +174,7 @@ export function stammdatenAlsCsv(s: Stammdaten, tasks: Task[]): string {
   const zeilen: string[][] = [CSV_HEADER];
   for (const g of s.gewerke) {
     if (g.raten.length === 0) {
-      zeilen.push([g.key, g.label, g.einheit, g.kranpflichtig ? "ja" : "nein", "", "", "", "", "", "", "", ""]);
+      zeilen.push([g.key, g.label, g.einheit, g.kranpflichtig ? "ja" : "nein", "", "", "", "", "", "", "", "", "", ""]);
       continue;
     }
     for (const r of g.raten) {
@@ -180,6 +187,8 @@ export function stammdatenAlsCsv(s: Stammdaten, tasks: Task[]): string {
         r.formel ?? "",
         ausschlussFilterText(r, alleFilter),
         mengeIstText(r.kuerzel, g.key, g.einheit, tasks),
+        r.unternehmer ?? "",
+        r.schritt ?? "",
       ]);
     }
   }
@@ -227,7 +236,7 @@ export function parseStammdatenCsv(text: string, bestehende: Stammdaten): Stammd
   const idx = (name: string) => header.findIndex(h => h.trim().toLowerCase() === name.toLowerCase());
   const iKey = idx("Gewerk-Schlüssel"), iLabel = idx("Gewerk"), iEinheit = idx("Einheit"), iKran = idx("Kranpflichtig"),
     iKuerzel = idx("Kürzel"), iBez = idx("Bezeichnung"), iLw = idx("LW [h/Einheit]"), iPers = idx("Personen"),
-    iChf = idx("CHF/Einheit"), iFormel = idx("Formel");
+    iChf = idx("CHF/Einheit"), iFormel = idx("Formel"), iUnternehmer = idx("Unternehmer"), iSchritt = idx("Schritt");
   if (iLabel === -1 || iKuerzel === -1) throw new Error('Ungültiges CSV-Format — Spalten "Gewerk" und "Kürzel" erwartet');
 
   const parseNum = (s: string): number | null => {
@@ -262,6 +271,8 @@ export function parseStammdatenCsv(text: string, bestehende: Stammdaten): Stammd
     }
     const kuerzel = (z[iKuerzel] ?? "").trim();
     if (!kuerzel) continue;
+    const bisher = bestehendeRaten.get(`${key} ${kuerzel}`);
+    const text = (i: number) => (i !== -1 ? (z[i] ?? "").trim() : undefined);
     gewerk.raten.push({
       kuerzel,
       bezeichnung: (z[iBez] ?? "").trim(),
@@ -269,7 +280,11 @@ export function parseStammdatenCsv(text: string, bestehende: Stammdaten): Stammd
       anzahlPersonen: (iPers !== -1 ? parseNum(z[iPers] ?? "") : null) ?? 1,
       chfProEinheit: iChf !== -1 ? parseNum(z[iChf] ?? "") : null,
       formel: iFormel !== -1 && (z[iFormel] ?? "").trim() ? z[iFormel].trim() : undefined,
-      ausschlussFilterIds: bestehendeRaten.get(`${key} ${kuerzel}`)?.ausschlussFilterIds,
+      ausschlussFilterIds: bisher?.ausschlussFilterIds,
+      kranpflichtig: bisher?.kranpflichtig,
+      // ältere CSV ohne diese Spalten: bisherigen Wert behalten
+      unternehmer: (text(iUnternehmer) ?? bisher?.unternehmer) || undefined,
+      schritt: (text(iSchritt) ?? bisher?.schritt) || undefined,
     });
   }
   if (gewerkeMap.size === 0) throw new Error("Keine gültigen Zeilen in der CSV-Datei gefunden");
@@ -329,6 +344,41 @@ export function dauerGewerk(menge: number, rate: Rate | undefined, arbeitszeitSt
 export function rundeDauer(rohTage: number, einheit: Zeiteinheit = "tage"): number {
   if (!(rohTage > 0)) return 0;
   return rundeAufEinheit(rohTage, einheit);
+}
+
+/** Ein Teil einer Leistungsposition im Arbeitsablauf: in Schritt `schritt` wird der Anteil `anteil` (0–1) ihres Aufwands geleistet. */
+export interface SchrittAnteil { schritt: number; anteil: number }
+
+/** Parst Rate.schritt: "2" → Schritt 2; "1/3" → je 50 % in Schritt 1 und 3; "1:60/3:40" → 60 % / 40 %. Teile ohne % teilen sich
+ *  den Rest gleichmässig. Leer → [] (Standard verwenden), ungültig → null. */
+export function parseSchritt(text: string | undefined): SchrittAnteil[] | null {
+  const t = (text ?? "").trim();
+  if (!t) return [];
+  const teile = t.split("/").map(s => s.trim());
+  const roh: { schritt: number; prozent: number | null }[] = [];
+  for (const teil of teile) {
+    const m = /^(\d+)\s*(?::\s*(\d+(?:[.,]\d+)?)\s*%?)?$/.exec(teil);
+    if (!m) return null;
+    const schritt = Number(m[1]);
+    if (!(schritt >= 1)) return null;
+    roh.push({ schritt, prozent: m[2] != null ? Number(m[2].replace(",", ".")) : null });
+  }
+  const fix = roh.reduce((s, r) => s + (r.prozent ?? 0), 0);
+  const offen = roh.filter(r => r.prozent == null).length;
+  if (fix > 100 + 1e-9 || (offen === 0 && Math.abs(fix - 100) > 1e-6)) return null;
+  const rest = offen > 0 ? (100 - fix) / offen : 0;
+  if (offen > 0 && !(rest > 0)) return null;
+  const ergebnis = new Map<number, number>();
+  for (const r of roh) ergebnis.set(r.schritt, (ergebnis.get(r.schritt) ?? 0) + (r.prozent ?? rest) / 100);
+  return [...ergebnis.entries()].map(([schritt, anteil]) => ({ schritt, anteil })).sort((a, b) => a.schritt - b.schritt);
+}
+
+/** Schritte einer Rate im Arbeitsablauf ihres Kürzels — ohne (gültige) Eingabe die Position ihrer Kategorie in Tab Ressourcen
+ *  (1. Kategorie = Schritt 1 …), also wie bisher: Gewerke in der Reihenfolge der Kategorien nacheinander. */
+export function schritteFuerRate(stammdaten: Stammdaten, gewerkKey: string, rate: Rate | undefined): SchrittAnteil[] {
+  const geparst = parseSchritt(rate?.schritt);
+  if (geparst && geparst.length > 0) return geparst;
+  return [{ schritt: stammdaten.gewerke.findIndex(g => g.key === gewerkKey) + 1, anteil: 1 }];
 }
 
 export function rateFuerKuerzel(gewerk: Gewerk, kuerzel: string): Rate | undefined {

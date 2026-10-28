@@ -5,7 +5,9 @@ import type { SimProjekt } from "../types";
 import { istGruppe, nsKey } from "../types";
 import type { Gewerk, GewerkeKatalog, Rate, Stammdaten, AusschlussFilter } from "./stammdatenHelpers";
 import { LEERE_STAMMDATEN, effektiveArbeitszeit, mitArbeitszeit, GEWERKE_KATALOGE, mengenRelevanteSignatur, alleKuerzel, stammdatenAlsJson, parseStammdatenJson, stammdatenAlsCsv, parseStammdatenCsv, ausschlussFilterListe, aktiveFilterIds, einheitUmrechnungsfaktor, istRateKranpflichtig } from "./stammdatenHelpers";
-import { StatTile } from "./cockpitCharts";
+import { StatTile, CockpitAbschnitt, useEingeklappt } from "./cockpitCharts";
+import KranPersonalEditor from "./KranPersonalEditor";
+import ArbeitsablaufEditor from "./ArbeitsablaufEditor";
 import { fmtZahl } from "./zahlFormat";
 import type { Arbeitszeit } from "./zeitHelpers";
 import { pruefeArbeitszeit, arbeitszeitStunden } from "./zeitHelpers";
@@ -29,10 +31,11 @@ const NEUE_RATE: Rate = { kuerzel: "", bezeichnung: "", leistungswertHProEinheit
 // aus Tab Kalkulation) und "entfernen" (×, ganz am Zeilenende) sind fix, nicht per Drag verstellbar.
 // Die Ausschlussfilter (welche Bauteile bei der Mengenermittlung ignoriert werden) sitzen nicht in
 // dieser Zeile, sondern im aufklappbaren Formel-Bereich, siehe weiter unten.
-const RATEN_SPALTEN = ["kuerzel", "bezeichnung", "lw", "personen", "chf"] as const;
+const RATEN_SPALTEN = ["kuerzel", "bezeichnung", "lw", "personen", "unternehmer", "chf"] as const;
 type RatenSpalte = typeof RATEN_SPALTEN[number];
-const RATEN_SPALTEN_LABEL: Record<RatenSpalte, string> = { kuerzel: "Kürzel", bezeichnung: "Bezeichnung", lw: "LW [h/Einh.]", personen: "Kolonne [Pers.]", chf: "Einheitspreis [CHF/Einh.]" };
-const RATEN_COL_DEFAULT: Record<RatenSpalte, number> = { kuerzel: 60, bezeichnung: 220, lw: 80, personen: 60, chf: 70 };
+const RATEN_SPALTEN_LABEL: Record<RatenSpalte, string> = { kuerzel: "Kürzel", bezeichnung: "Bezeichnung", lw: "LW [h/Einh.]", personen: "Kolonne [Pers.]", unternehmer: "Unternehmer", chf: "Einheitspreis [CHF/Einh.]" };
+const RATEN_COL_DEFAULT: Record<RatenSpalte, number> = { kuerzel: 60, bezeichnung: 220, lw: 80, personen: 60, unternehmer: 120, chf: 70 };
+const UNTERNEHMER_LISTE_ID = "tc-unternehmer-liste";
 const AKTION_BREITE = 32; // ƒx-Button
 const KRAN_BREITE = 40; // kranpflichtig-Checkbox je Kürzel
 const TOTAL_BREITE = 110; // Mengen-Summe je Kürzel, rot bei fehlenden/fehlerhaften Mengen (siehe Tab Kalkulation)
@@ -66,6 +69,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   const oeffnungPickerRef = useRef<HTMLDivElement>(null);
   const einheitFocusRef = useRef<Record<number, string>>({});
   const lsRatenColwKey = nsKey(LS_RATEN_COLW, projectId);
+  const { eingeklappt, toggle: toggleEingeklappt } = useEingeklappt(projectId, "ressourcen");
   const [ratenColW, setRatenColW] = useState<Record<RatenSpalte, number>>(() => {
     try {
       const raw = localStorage.getItem(lsRatenColwKey);
@@ -355,6 +359,9 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
 
   // Cockpit: Kürzel ohne Leistungswert, Kreuzcheck Stammdaten ↔ tatsächlich verwendete Kürzel
   const alleRaten = stammdaten.gewerke.flatMap(g => g.raten);
+  // Unternehmer als Vorschlag (Datalist) für die Spalte Unternehmer und das Kran-Personal
+  const unternehmerDerRaten = [...new Set(alleRaten.map(r => r.unternehmer?.trim() ?? "").filter(Boolean))].sort();
+  const alleUnternehmer = [...new Set([...unternehmerDerRaten, ...(sim.kraene ?? []).flatMap(k => (k.personal ?? []).map(p => p.unternehmer.trim())).filter(Boolean)])].sort();
   const kuerzelOhneLw = alleRaten.filter(r => r.leistungswertHProEinheit === null).map(r => r.kuerzel);
   const kuerzelInStammdaten = new Set(alleKuerzel(stammdaten));
   const kuerzelInTasks = new Set(
@@ -517,7 +524,8 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
             </div>
             <div style={{ display: "grid", gridTemplateColumns: ratenGridTemplate, columnGap: 6, fontSize: 9, color: "var(--tc-text-3)", padding: "0 0 3px", fontWeight: 600 }}>
               {RATEN_SPALTEN.map((s, i) => (
-                <div key={s} title={s === "personen" ? "Personen einer Kolonne für diese Leistungsposition — ergibt mit dem Leistungswert die berechnete Dauer (Aufwand ÷ Kolonne ÷ Std./Tag). Nicht dasselbe wie Personal (Soll) je Task in Tab Kalkulation." : undefined}
+                <div key={s} title={s === "personen" ? "Personen einer Kolonne für diese Leistungsposition (Mindestbesetzung) — ergibt mit dem Leistungswert die berechnete Dauer (Aufwand ÷ Kolonne ÷ Std./Tag). Beim Optimieren verstärken freie Leute desselben Unternehmers unter dem Kran die Kolonne."
+                  : s === "unternehmer" ? "Unternehmer, der diese Leistungsposition ausführt — sein Personal unter einem Kran (Kräne & Personal, unten) ist ein Pool von Allroundern für alle seine Positionen" : undefined}
                   style={{ position: "relative", textAlign: "left", paddingLeft: i > 0 ? 8 : 0, overflow: "hidden", whiteSpace: "nowrap" }}>
                   {RATEN_SPALTEN_LABEL[s]}
                   <div className="col-resize-handle" onMouseDown={e => startResize(s, e)}
@@ -567,6 +575,9 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                   style={{ width: "100%", minWidth: 0, fontSize: 12, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
                 {numInput(r.leistungswertHProEinheit, v => rateAendern(gi, ri, { leistungswertHProEinheit: v }))}
                 {numInput(r.anzahlPersonen, v => rateAendern(gi, ri, { anzahlPersonen: v ?? 1 }))}
+                <input disabled={readOnly} list={UNTERNEHMER_LISTE_ID} value={r.unternehmer ?? ""} placeholder="—"
+                  onChange={e => rateAendern(gi, ri, { unternehmer: e.target.value.trim() ? e.target.value : undefined })}
+                  style={{ width: "100%", minWidth: 0, fontSize: 12, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
                 {numInput(r.chfProEinheit, v => rateAendern(gi, ri, { chfProEinheit: v }))}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
                   {(!readOnly || r.formel) && (
@@ -745,6 +756,24 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
             disabled={!neueKategorieName.trim()} onClick={eigeneKategorieErstellen}>
             + Eigene Kategorie erstellen
           </button>
+        </div>
+      )}
+
+      <datalist id={UNTERNEHMER_LISTE_ID}>{alleUnternehmer.map(u => <option key={u} value={u} />)}</datalist>
+      {stammdaten.gewerke.length > 0 && (
+        <div style={{ marginTop: 22 }}>
+          <CockpitAbschnitt titel="Arbeitsablauf je Kürzel" eingeklappt={!!eingeklappt["ablauf"]} onToggle={() => toggleEingeklappt("ablauf")}>
+            <ArbeitsablaufEditor stammdaten={stammdaten} readOnly={readOnly}
+              onRateAendern={(gewerkKey, kuerzel, patch) => {
+                const gi = stammdaten.gewerke.findIndex(g => g.key === gewerkKey);
+                const ri = gi >= 0 ? stammdaten.gewerke[gi].raten.findIndex(r => r.kuerzel === kuerzel) : -1;
+                if (ri >= 0) rateAendern(gi, ri, patch);
+              }} />
+          </CockpitAbschnitt>
+          <CockpitAbschnitt titel="Kräne & Personal" eingeklappt={!!eingeklappt["kraene"]} onToggle={() => toggleEingeklappt("kraene")}>
+            <KranPersonalEditor sim={sim} updateSim={updateSim} readOnly={readOnly} unternehmerListeId={UNTERNEHMER_LISTE_ID}
+              bekannteUnternehmer={unternehmerDerRaten} />
+          </CockpitAbschnitt>
         </div>
       )}
     </div>
