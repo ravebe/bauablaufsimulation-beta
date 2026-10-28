@@ -319,7 +319,10 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
     for (const s of serien) for (const i of sicht) maxY = Math.max(maxY, s.werte[i] ?? 0);
   }
   if (maxY <= 0) maxY = 1;
-  const y = (v: number) => MT + innerH - (v / maxY) * innerH;
+  // Linien dürfen negativ werden (z.B. Marge kumuliert in Tab Kosten) — dann reicht die y-Achse unter 0
+  let minY = 0;
+  if (modus === "linie") for (const s of serien) for (const i of sicht) minY = Math.min(minY, s.werte[i] ?? 0);
+  const y = (v: number) => MT + innerH - ((v - minY) / (maxY - minY)) * innerH;
 
   function onMove(e: React.MouseEvent<SVGSVGElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -387,7 +390,11 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
             <line x1={ML} y1={MT} x2={ML} y2={hoehe - MB} stroke={FARBEN.achse} strokeWidth={1} />
             <line x1={ML} y1={hoehe - MB} x2={VBW - MR} y2={hoehe - MB} stroke={FARBEN.achse} strokeWidth={1} />
             <text x={ML - 4} y={y(maxY) + 3} textAnchor="end" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>{fmt(maxY)}</text>
-            <text x={ML - 4} y={hoehe - MB} textAnchor="end" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>0</text>
+            <text x={ML - 4} y={hoehe - MB} textAnchor="end" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>{minY < 0 ? fmt(minY) : "0"}</text>
+            {minY < 0 && (<>
+              <line x1={ML} y1={y(0)} x2={VBW - MR} y2={y(0)} stroke={FARBEN.achse} strokeWidth={1} />
+              <text x={ML - 4} y={y(0) + 3} textAnchor="end" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>0</text>
+            </>)}
             {/* Monats-Linien durchgehend dicker als sonstige Hilfslinien, damit der Monatswechsel auffällt */}
             {ticks.wochenLinien.map((wx, i) => (
               <line key={`wl${i}`} x1={wx} y1={MT} x2={wx} y2={hoehe - MB} stroke={WOCHEN_LINIE} strokeWidth={0.8} />

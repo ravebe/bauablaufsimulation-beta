@@ -97,11 +97,11 @@ const THEMEN: Thema[] = [
       "Personalauslastung und Peak: Je Task arbeiten die Gewerke nacheinander (Reihenfolge wie in Tab Ressourcen), jedes so lange wie in Tab Kalkulation berechnet. Ist ein Task im Gantt länger oder kürzer als berechnet, wird die Kolonne entsprechend kleiner oder grösser (Personen = Kolonne × berechnete ÷ geplante Dauer) — die Personenstunden je Task entsprechen so immer genau Menge × Leistungswert. Gewerke ohne Leistungswert zählen nicht mit.",
       "Über der Personalauslastung erscheint eine rote gestrichelte \"Personal (Soll)\"-Linie, sobald mindestens ein Task in Tab Kalkulation eine vorgesehene Personenzahl hat.",
       "Der Kapazitäts-Check (Kranplanung) prüft je Kran, ob das eingetragene Personal den Aufwand der zugeordneten Tasks schafft und ob die Kranstunden in die Verfügbarkeit des Krans passen; dazu ein Personal-Richtwert je Kran und Zeitraum (Ampel, Standard-Obergrenze 13 Personen, einstellbar).",
-      "Die Ertragsoptik vergleicht den kumulierten Ertrag (Menge × Einheitspreis) mit den kumulierten Lohnkosten (Personenstunden × Lohnansatz); Marge = Ertrag − Lohnkosten.",
+      "Die Ertragsoptik vergleicht den kumulierten Ertrag (Menge × Einheitspreis) mit den kumulierten Lohnkosten (Personenstunden × Lohnansatz); die Marge steht in Tab Kosten.",
       "Im Tooltip der Personalauslastung steht je Gewerk und im Total die Arbeit des Tages (Personenstunden) und wie lange das eingeplante Personal dafür braucht, mit Auslastung — z.B. \"11.9 h Arbeit · mit 4 Pers.: 2.98 h (35 %)\". Eingeplantes Personal = Kolonnen aus Tab Ressourcen; jede Leistungsposition zählt pro Tag nur einmal, auch wenn mehrere Tasks mit ihr parallel laufen.",
       "Die grüne gestrichelte Linie \"Perfekte Auslastung\" zeigt das eingeplante Personal je Tag: Liegt die Fläche darüber, ist das Personal überlastet, darunter nicht voll ausgelastet.",
       "⋮ oben rechts → Ansicht: \"Wochenenden ausblenden/einblenden\" gilt für alle Diagramme des Tabs. Standardmässig sind arbeitsfreie Samstage und Sonntage ausgeblendet; die Wochen trennt dann eine feine graue Linie (feiner als die Monatslinie). Feiertage bleiben grau hinterlegt.",
-      "⋮ oben rechts → Export (CSV): Personalbedarf je Tag (Personen total, Stunden total, Personen je Gewerk und Stunden je Leistungsposition), Kranstunden je Kran, Mengen je Tag (aktuelle Auswahl im Mengen-Filter) sowie Ertrag, Lohnkosten und Marge.",
+      "⋮ oben rechts → Export (CSV): Personalbedarf je Tag (Personen total, Stunden total, Personen je Gewerk und Stunden je Leistungsposition), Kranstunden je Kran, Mengen je Tag (aktuelle Auswahl im Mengen-Filter) sowie Ertrag und Lohnkosten.",
       "Alle Kran-Auswertungen sind Richtwerte zur Plausibilisierung, keine exakte Kalkulation.",
     ],
   },
@@ -110,7 +110,7 @@ const THEMEN: Thema[] = [
     zusammenfassung: "Rein lesende Auswertung von Ertrag (Menge × Einheitspreis), Lohnkosten (Personenstunden × Lohnansatz) und Marge je Gewerk und Kürzel.",
     punkte: [
       "Keine Eingabe in diesem Tab — Mengen/Kürzel werden in Kalkulation, Ansätze in Ressourcen gepflegt.",
-      "Zeigt Ertrag und Lohnkosten je Gewerk und kumuliert über die Zeit; die Tabelle unten je Kürzel mit Marge (negativ rot).",
+      "Zeigt Ertrag und Lohnkosten je Gewerk sowie Ertrag, Lohnkosten und Marge kumuliert über die Zeit (Marge = Ertrag − Lohnkosten, kann anfangs negativ sein); die Tabelle unten je Kürzel mit Marge (negativ rot).",
     ],
   },
 ];

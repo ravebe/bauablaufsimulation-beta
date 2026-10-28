@@ -152,12 +152,13 @@ export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }
       )}
 
       {ertrag.length > 0 && (
-        <CockpitAbschnitt titel="Ertrag und Lohnkosten kumuliert" eingeklappt={!!eingeklappt["kumuliert"]} onToggle={() => toggleEingeklappt("kumuliert")}>
+        <CockpitAbschnitt titel="Ertrag, Lohnkosten und Marge kumuliert" eingeklappt={!!eingeklappt["kumuliert"]} onToggle={() => toggleEingeklappt("kumuliert")}>
           <TimeSeriesChart tage={ertrag.map(e => e.tag)} einheit="CHF" formatWert={fmtChf} modus="linie"
             markerIdx={aktiverMarkerIdx} markerLabel={aktivesMarkerLabel} onTagKlick={onChartTagKlick}
             serien={[
               { key: "ertrag", label: "Ertrag (kumuliert)", color: FARBEN.kategorial[0], werte: ertrag.map(e => e.ertragKum) },
               { key: "lohn", label: "Lohnkosten (kumuliert)", color: FARBEN.kategorial[1], werte: ertrag.map(e => e.kostenKum) },
+              { key: "marge", label: "Marge (kumuliert)", color: FARBEN.kategorial[2], werte: ertrag.map(e => e.ertragKum - e.kostenKum) },
             ]} />
         </CockpitAbschnitt>
       )}

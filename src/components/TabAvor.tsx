@@ -168,8 +168,6 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
     const soll = personalSoll[i] ?? 0;
     return soll > 0 && Object.values(tw.werte).reduce((s, v) => s + v, 0) > soll;
   }).length;
-  const letzteErtragszeile = ertrag[ertrag.length - 1];
-  const marge = letzteErtragszeile ? letzteErtragszeile.ertragKum - letzteErtragszeile.kostenKum : 0;
 
   // Personen ↔ Personenstunden: 1 Person (Vollzeit) = Std./Tag aus Tab Ressourcen
   const std = stammdaten.arbeitszeitStdProTag;
@@ -208,10 +206,10 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
         ["Datum", `Menge [${aktivesGewerk.einheit}]`, ...(optimal != null ? [`Optimal ausgelastete Tagesleistung [${aktivesGewerk.einheit}]`] : [])],
         ...mengen.map(m => [datumCh(m.tag), csvZahl(m.menge), ...(optimal != null ? [csvZahl(optimal)] : [])]),
       ]), `${sim!.name}_Mengen_${aktivesGewerk.label}.csv`) }] : []),
-    { label: "Ertrag und Lohnkosten (kumuliert)", title: "Ertrag (Menge × Einheitspreis), Lohnkosten (Personenstunden × Lohnansatz) und Marge je Tag, kumuliert",
+    { label: "Ertrag und Lohnkosten (kumuliert)", title: "Ertrag (Menge × Einheitspreis), Lohnkosten (Personenstunden × Lohnansatz) je Tag, kumuliert",
       onClick: () => csvHerunterladen(alsCsv([
-        ["Datum", "Ertrag kumuliert [CHF]", "Lohnkosten kumuliert [CHF]", "Marge kumuliert [CHF]"],
-        ...ertrag.map(e => [datumCh(e.tag), csvZahl(e.ertragKum), csvZahl(e.kostenKum), csvZahl(e.ertragKum - e.kostenKum)]),
+        ["Datum", "Ertrag kumuliert [CHF]", "Lohnkosten kumuliert [CHF]"],
+        ...ertrag.map(e => [datumCh(e.tag), csvZahl(e.ertragKum), csvZahl(e.kostenKum)]),
       ]), `${sim!.name}_Ertrag.csv`) },
   ];
 
@@ -226,7 +224,6 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
         )}
         <StatTile label={`${raster === "monat" ? "Monate" : "Wochen"} über Kran-Kapazität`}
           title={`Anzahl ${raster === "monat" ? "Monate" : "Wochen"}, in denen bei mindestens einem Kran der Kranstunden-Bedarf über der verfügbaren Kranzeit liegt (Umschalter Monat/Woche in der Kranoptik)`} wert={String(zeitraeumeUeberKapazitaet)} status={zeitraeumeUeberKapazitaet > 0 ? "warning" : "good"} />
-        <StatTile label="Marge (kumuliert)" title={"Ertrag minus Lohnkosten über das ganze Projekt (Endwert der Ertragsoptik).\nErtrag = Menge × Einheitspreis (CHF/Einh. aus Tab Ressourcen), Lohnkosten = Personenstunden × Umsatz CHF/Mannstunde (Tab Ressourcen)."} wert={`${fmtChf(marge)} CHF`} status={marge >= 0 ? "good" : "critical"} />
         <div style={{ marginLeft: "auto", alignSelf: "flex-start" }}>
           <PunkteMenu title="Ansicht und Export der Auswertungen" abschnitte={[
             { titel: "Ansicht", eintraege: [{
