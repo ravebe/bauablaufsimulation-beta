@@ -381,6 +381,34 @@ export function schritteFuerRate(stammdaten: Stammdaten, gewerkKey: string, rate
   return [{ schritt: stammdaten.gewerke.findIndex(g => g.key === gewerkKey) + 1, anteil: 1 }];
 }
 
+/** Eine Phase eines Tasks: (Teil-)Aufwand einer Leistungsposition in einem Schritt. tage = Personenstunden ÷ (Kolonne × Std./Tag). */
+export interface TaskPhase { gewerkKey: string; position: string; unternehmer: string; kranpflichtig: boolean; personenstunden: number; kolonne: number; tage: number }
+/** Ein Schritt des Arbeitsablaufs: seine Phasen laufen gleichzeitig, der Schritt dauert so lange wie die längste (tage). */
+export interface TaskSchritt { schritt: number; phasen: TaskPhase[]; tage: number }
+
+/** Arbeitsablauf eines Tasks nach Arbeitsablauf je Kürzel (Rate.schritt): Schritte nacheinander, Phasen eines Schritts gleichzeitig.
+ *  Nur Gewerke mit Menge, Leistungswert und Kolonne. Gemeinsame Grundlage für berechnete Dauer, Personal je Tag und Optimierung. */
+export function schritteFuerTask(task: Task, stammdaten: Stammdaten): TaskSchritt[] {
+  const std = stammdaten.arbeitszeitStdProTag;
+  if (!task.bauteilKuerzel || !task.mengen || !std) return [];
+  const jeSchritt = new Map<number, TaskPhase[]>();
+  for (const gewerk of stammdaten.gewerke) {
+    const menge = task.mengen[gewerk.key];
+    const rate = rateFuerKuerzel(gewerk, task.bauteilKuerzel);
+    if (!menge || !rate?.leistungswertHProEinheit || !rate.anzahlPersonen) continue;
+    const personenstunden = menge * rate.leistungswertHProEinheit;
+    for (const s of schritteFuerRate(stammdaten, gewerk.key, rate)) {
+      const ph = personenstunden * s.anteil;
+      const liste = jeSchritt.get(s.schritt) ?? [];
+      liste.push({ gewerkKey: gewerk.key, position: `${gewerk.key}::${task.bauteilKuerzel}`, unternehmer: rate.unternehmer?.trim() ?? "",
+        kranpflichtig: istRateKranpflichtig(rate, gewerk), personenstunden: ph, kolonne: rate.anzahlPersonen, tage: ph / (rate.anzahlPersonen * std) });
+      jeSchritt.set(s.schritt, liste);
+    }
+  }
+  return [...jeSchritt.entries()].sort((a, b) => a[0] - b[0])
+    .map(([schritt, phasen]) => ({ schritt, phasen, tage: Math.max(...phasen.map(p => p.tage)) }));
+}
+
 export function rateFuerKuerzel(gewerk: Gewerk, kuerzel: string): Rate | undefined {
   return gewerk.raten.find(r => r.kuerzel === kuerzel);
 }
@@ -418,17 +446,10 @@ export function hatKalkulationsWerte(task: Task, stammdaten: Stammdaten): boolea
 }
 
 /** Berechnete Dauer eines Tasks: manuelle Übersteuerung (Task.berechneteDauerManuell, siehe Tab
- *  Kalkulation), sonst Summe über alle Gewerke mit hinterlegter Menge, gerundet. */
+ *  Kalkulation), sonst Summe der Schritte des Arbeitsablaufs (je Schritt die längste Phase, siehe schritteFuerTask), gerundet. */
 export function dauerBerechnetTask(task: Task, stammdaten: Stammdaten, einheit: Zeiteinheit = "tage"): number {
   if (task.berechneteDauerManuell != null) return task.berechneteDauerManuell;
-  if (!task.bauteilKuerzel || !task.mengen) return 0;
-  let roh = 0;
-  for (const gewerk of stammdaten.gewerke) {
-    const menge = task.mengen[gewerk.key];
-    if (!menge) continue;
-    roh += dauerGewerk(menge, rateFuerKuerzel(gewerk, task.bauteilKuerzel), stammdaten.arbeitszeitStdProTag);
-  }
-  return rundeDauer(roh, einheit);
+  return rundeDauer(schritteFuerTask(task, stammdaten).reduce((s, x) => s + x.tage, 0), einheit);
 }
 
 /** Ertrag und Lohnkosten eines Tasks je Gewerk (nur Gewerke mit Menge):

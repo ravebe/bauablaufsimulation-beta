@@ -12,7 +12,7 @@
 import type { Task } from "../types";
 import { istGruppe, vorgaengerListe } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
-import { dauerBerechnetTask, hatKalkulationsWerte, rateFuerKuerzel } from "./stammdatenHelpers";
+import { dauerBerechnetTask, hatKalkulationsWerte, schritteFuerTask } from "./stammdatenHelpers";
 import type { Kalender } from "./kalenderHelpers";
 import type { Zeiteinheit, Zeitpunkt } from "./zeitHelpers";
 import {
@@ -20,22 +20,22 @@ import {
   vergleicheZeitpunkte, zeitFelder, rasteUhrzeit, MIN_PRO_ARBEITSTAG, ARBEITSBEGINN_MIN, schrittMinuten,
 } from "./zeitHelpers";
 
-interface Phase { position: string; minuten: number }
+interface Phase { position: string; von: number; minuten: number }
 
-/** Phasen eines Tasks (je Gewerk mit Aufwand), gestreckt auf die berechnete Dauer des Tasks (in Arbeitsminuten). */
+/** Phasen eines Tasks nach Arbeitsablauf je Kürzel (Schritte nacheinander, Phasen eines Schritts gleichzeitig), gestreckt auf
+ *  die berechnete Dauer des Tasks — von/minuten in Arbeitsminuten ab Task-Start. */
 function phasenVon(t: Task, stammdaten: Stammdaten, einheit: Zeiteinheit): { phasen: Phase[]; dauer: number } {
-  const std = stammdaten.arbeitszeitStdProTag;
-  const roh: { position: string; tage: number }[] = [];
-  for (const gewerk of stammdaten.gewerke) {
-    const menge = t.mengen?.[gewerk.key];
-    const rate = menge && t.bauteilKuerzel ? rateFuerKuerzel(gewerk, t.bauteilKuerzel) : undefined;
-    if (!menge || !rate?.leistungswertHProEinheit || !rate.anzahlPersonen || !std) continue;
-    roh.push({ position: `${gewerk.key}::${t.bauteilKuerzel}`, tage: menge * rate.leistungswertHProEinheit / (rate.anzahlPersonen * std) });
-  }
+  const schritte = schritteFuerTask(t, stammdaten);
   const dauer = Math.max(dauerBerechnetTask(t, stammdaten, einheit) * MIN_PRO_ARBEITSTAG, schrittMinuten(einheit));
-  const summe = roh.reduce((s, p) => s + p.tage, 0);
+  const summe = schritte.reduce((s, x) => s + x.tage, 0);
   // ohne Leistungswerte (z.B. nur manuell übersteuerte Dauer): keine Kolonne belegt
-  const phasen = summe > 0 ? roh.map(p => ({ position: p.position, minuten: dauer * p.tage / summe })) : [];
+  if (!(summe > 0)) return { phasen: [], dauer };
+  const phasen: Phase[] = [];
+  let von = 0;
+  for (const s of schritte) {
+    for (const p of s.phasen) phasen.push({ position: p.position, von, minuten: dauer * p.tage / summe });
+    von += dauer * s.tage / summe;
+  }
   return { phasen, dauer };
 }
 
@@ -95,24 +95,20 @@ export function optimiereAuslastung(tasks: Task[], stammdaten: Stammdaten, kalen
     const { phasen, dauer } = phasenVon(t, stammdaten, einheit);
     for (let runde = 0; runde < 100000; runde++) {
       let konflikt = 0;
-      let o = 0;
       for (const ph of phasen) {
-        const von = s + o, bis = von + ph.minuten;
+        const von = s + ph.von, bis = von + ph.minuten;
         for (const [a, b] of belegt.get(ph.position) ?? []) {
           if (a < bis - 1e-6 && b > von + 1e-6) { konflikt = Math.max(konflikt, b - von); }
         }
         if (konflikt > 0) break;
-        o += ph.minuten;
       }
       if (konflikt <= 0) break;
       s = aufRaster(s + konflikt);
     }
-    let o = 0;
     for (const ph of phasen) {
       const liste = belegt.get(ph.position) ?? [];
-      liste.push([s + o, s + o + ph.minuten]);
+      liste.push([s + ph.von, s + ph.von + ph.minuten]);
       belegt.set(ph.position, liste);
-      o += ph.minuten;
     }
 
     const start = startAus(s);
