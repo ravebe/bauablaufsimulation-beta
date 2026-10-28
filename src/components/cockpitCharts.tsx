@@ -11,6 +11,7 @@ const MIN_PX_TAG = 0.3, MAX_PX_TAG = 40;
 const MONAT_KURZ = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
 const WE_BG = "#f2f3f5"; // Wochenende/Feiertag-Hintergrund, wie im Gantt
 const HEAD_H = 30; // Höhe der Datums-Kopfzeile (Monat/Jahr + KW bzw. Tageszahlen), wie im GanttChart
+const WOCHEN_LINIE = "#cfd6dd"; // Wochentrennung bei ausgeblendeten Wochenenden — feiner als die Monatslinie (#aab4bd, 1.4)
 
 /** Kleine Zoom-Bedienung (Lupe +/−), unten rechts über einem Zeitachsen-Diagramm platziert —
  *  gemeinsam genutzt von TimeSeriesChart und GanttChart. right/bottom sind bewusst größer als der
@@ -99,20 +100,39 @@ function useZeitachsenInteraktion(n: number, pxProTag: number, onPxProTagChange:
   return { scrollRef, headerRef, zoomBy, onChartScroll };
 }
 
+/** Sichtbare Tage einer Tagesreihe: idx = Original-Indizes der angezeigten Tage, posAb[i] = Anzahl
+ *  sichtbarer Tage vor Original-Index i (Länge n+1) — x-Position von Tag i ist ML + posAb[i] × pxProTag.
+ *  Mit ohneWochenenden fallen Sa/So weg (nur wenn sie laut Kalender arbeitsfrei sind, damit keine
+ *  Wochenend-Arbeit verschwindet); ohne sind beide Indizes identisch. */
+interface ZeitachsenPositionen { idx: number[]; posAb: number[] }
+function zeitachsenPositionen(tage: string[], ohneWochenenden: boolean, kalender?: Kalender): ZeitachsenPositionen {
+  const idx: number[] = [], posAb: number[] = [];
+  for (let i = 0; i < tage.length; i++) {
+    posAb.push(idx.length);
+    const dow = parseIsoLocal(tage[i]).getDay();
+    const wochenende = (dow === 0 || dow === 6) && (!kalender || !istArbeitstag(tage[i], kalender));
+    if (!ohneWochenenden || !wochenende) idx.push(i);
+  }
+  posAb.push(idx.length);
+  if (idx.length === 0 && tage.length > 0) return zeitachsenPositionen(tage, false, kalender);
+  return { idx, posAb };
+}
+
 interface ZeitachsenTicks {
   monatTicks: { x: number; label: string }[];
   monatTicksAnzeige: { x: number; label: string }[];
   wochenTicksAnzeige: { x: number; label: string }[];
   tagTicksAnzeige: { x: number; label: string }[];
   weekendBands: { x: number; w: number }[];
+  /** Trennlinien zwischen den Wochen — nur bei ausgeblendeten Wochenenden (sonst trennen die Wochenend-Bänder) */
+  wochenLinien: number[];
   zeigeTage: boolean;
 }
 
 /** Monats-/Wochen-/Tages-Ticks + Wochenend-Bänder einer Tagesreihe — gemeinsam genutzt von
  *  TimeSeriesChart und KranBalkenChart, damit beide exakt dieselbe Kopfzeile/Gitternetzlinien zeigen. */
-function berechneZeitachsenTicks(tage: string[], pxProTag: number, kalender?: Kalender): ZeitachsenTicks {
-  const n = tage.length;
-  const x = (i: number) => ML + i * pxProTag;
+function berechneZeitachsenTicks(tage: string[], pxProTag: number, pos: ZeitachsenPositionen, ohneWochenenden: boolean, kalender?: Kalender): ZeitachsenTicks {
+  const x = (p: number) => ML + p * pxProTag;
   const startDate = parseIsoLocal(tage[0]);
   const zeigeWochen = pxProTag >= 1.5;
   const zeigeTage = pxProTag >= 10;
@@ -120,14 +140,22 @@ function berechneZeitachsenTicks(tage: string[], pxProTag: number, kalender?: Ka
   const wochenTicks: { x: number; label: string }[] = [];
   const tagTicks: { x: number; label: string }[] = [];
   const weekendBands: { x: number; w: number }[] = [];
-  for (let i = 0; i < n; i++) {
+  const wochenLinien: number[] = [];
+  const montag = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate() - (d.getDay() + 6) % 7).getTime();
+  let vorher: Date | null = null;
+  pos.idx.forEach((i, p) => {
     const d = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate() + i);
-    if (i === 0 || d.getDate() === 1) monatTicks.push({ x: x(i), label: `${MONAT_KURZ[d.getMonth()]} ${String(d.getFullYear()).slice(2)}` });
-    if (zeigeWochen && d.getDay() === 1) wochenTicks.push({ x: x(i), label: `KW ${getKW(d)}` });
-    if (zeigeTage) tagTicks.push({ x: x(i), label: String(d.getDate()) });
+    // Wechsel gegenüber dem vorherigen sichtbaren Tag (bei ausgeblendeten Wochenenden fehlen Sa/So, ggf. auch der Monatserste)
+    const neuerMonat = !vorher || d.getMonth() !== vorher.getMonth();
+    const neueWoche = vorher ? montag(d) !== montag(vorher) : d.getDay() === 1;
+    if (neuerMonat) monatTicks.push({ x: x(p), label: `${MONAT_KURZ[d.getMonth()]} ${String(d.getFullYear()).slice(2)}` });
+    if (zeigeWochen && neueWoche) wochenTicks.push({ x: x(p), label: `KW ${getKW(d)}` });
+    if (ohneWochenenden && vorher && neueWoche) wochenLinien.push(x(p));
+    if (zeigeTage) tagTicks.push({ x: x(p), label: String(d.getDate()) });
     const frei = kalender ? !istArbeitstag(tage[i], kalender) : (d.getDay() === 0 || d.getDay() === 6);
-    if (frei) weekendBands.push({ x: x(i), w: pxProTag });
-  }
+    if (frei) weekendBands.push({ x: x(p), w: pxProTag });
+    vorher = d;
+  });
   // Zu eng stehende Achsenticks weglassen statt überlappenden Text zu zeichnen — sonst laufen sich
   // bei einem langen Projektzeitraum und geringem Zoom die Monatslabels ineinander.
   const entzerrt = (ticks: { x: number; label: string }[], mindestabstand: number) => {
@@ -142,6 +170,7 @@ function berechneZeitachsenTicks(tage: string[], pxProTag: number, kalender?: Ka
     wochenTicksAnzeige: entzerrt(wochenTicks, 32),
     tagTicksAnzeige: entzerrt(tagTicks, 14),
     weekendBands,
+    wochenLinien,
     zeigeTage,
   };
 }
@@ -153,6 +182,9 @@ function ZeitachsenKopf({ headerRef, VBW, ticks, pxProTag }: { headerRef: React.
   return (
     <div ref={headerRef} style={{ overflow: "hidden", background: "#f5f7f9", borderBottom: `1px solid ${FARBEN.gridline}` }}>
       <svg width={VBW} height={HEAD_H} style={{ display: "block" }}>
+        {ticks.wochenLinien.map((wx, i) => (
+          <line key={`hwl${i}`} x1={wx} y1={16} x2={wx} y2={HEAD_H} stroke={WOCHEN_LINIE} strokeWidth={0.8} />
+        ))}
         {ticks.monatTicks.map((t, i) => (
           <line key={`hml${i}`} x1={t.x} y1={0} x2={t.x} y2={HEAD_H} stroke="#aab4bd" strokeWidth={1.4} />
         ))}
@@ -227,6 +259,8 @@ interface TimeSeriesProps {
    *  setzen und markerIdx/markerLabel entsprechend nachzuführen) — siehe Tab AVOR. */
   onTagKlick?: (tag: string, index: number) => void;
   kalender?: Kalender; // für Wochenend-/Feiertag-Schattierung; ohne wird nur Sa/So schattiert
+  /** Arbeitsfreie Sa/So aus der Zeitachse entfernen — Wochen dann durch eine feine graue Linie getrennt (Tab AVOR ⋮) */
+  ohneWochenenden?: boolean;
   /** Gemeinsamer Zoom-/Scroll-Zustand mehrerer Charts auf derselben Zeitachse (siehe Tab AVOR) —
    *  Mausrad zoomt zum Cursor wie im Gantt, Achse wechselt Monate → Wochen → Tage. Ohne diese Props
    *  verwaltet der Chart Zoom/Scroll selbst (Einzeldiagramm, initial auf Containerbreite eingepasst). */
@@ -238,33 +272,36 @@ interface TimeSeriesProps {
 
 const ML = 44, MR = 8, MT = 16, MB = 20;
 
-export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = "", hoehe = 180, formatWert, zusatz, zusatzSerie, zusatzTotal, totalZeile, weitereLinien = [], markerIdx, markerLabel = "Heute", onTagKlick, kalender,
+export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = "", hoehe = 180, formatWert, zusatz, zusatzSerie, zusatzTotal, totalZeile, weitereLinien = [], markerIdx, markerLabel = "Heute", onTagKlick, kalender, ohneWochenenden = false,
   pxProTag: pxProTagProp, onPxProTagChange: onPxProTagChangeProp, scrollTag: scrollTagProp, onScrollChange: onScrollChangeProp }: TimeSeriesProps) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [outerRef, viewportW] = useMeasuredWidth<HTMLDivElement>(1000);
   const fmt = formatWert ?? fmtZahl;
 
   const n = tage.length;
+  const pos = zeitachsenPositionen(tage, ohneWochenenden, kalender);
+  const sicht = pos.idx;
+  const m = sicht.length;
 
   // Unkontrollierter Fallback: eigener Zoom/Scroll, initial auf Containerbreite eingepasst (wie Gantt)
   const [localPx, setLocalPx] = useState(0);
   const [localScroll, setLocalScroll] = useState(0);
   const localInitDone = useRef(false);
   useEffect(() => {
-    if (pxProTagProp !== undefined || localInitDone.current || viewportW === 0 || n === 0) return;
+    if (pxProTagProp !== undefined || localInitDone.current || viewportW === 0 || m === 0) return;
     localInitDone.current = true;
-    setLocalPx(Math.max(MIN_PX_TAG, Math.min(10, viewportW / n)));
-  }, [pxProTagProp, viewportW, n]);
+    setLocalPx(Math.max(MIN_PX_TAG, Math.min(10, viewportW / m)));
+  }, [pxProTagProp, viewportW, m]);
   const pxProTag = pxProTagProp ?? (localPx || 6);
   const onPxProTagChange = onPxProTagChangeProp ?? setLocalPx;
   const scrollTag = scrollTagProp ?? localScroll;
   const onScrollChange = onScrollChangeProp ?? setLocalScroll;
 
-  const VBW = Math.max(n * pxProTag, viewportW);
+  const VBW = Math.max(m * pxProTag, viewportW);
   const innerH = hoehe - MT - MB;
-  const x = (i: number) => ML + i * pxProTag;
+  const x = (i: number) => ML + pos.posAb[i] * pxProTag; // i = Original-Index in tage[]
 
-  const { scrollRef, headerRef, zoomBy, onChartScroll } = useZeitachsenInteraktion(n, pxProTag, onPxProTagChange, scrollTag, onScrollChange);
+  const { scrollRef, headerRef, zoomBy, onChartScroll } = useZeitachsenInteraktion(m, pxProTag, onPxProTagChange, scrollTag, onScrollChange);
 
   if (n === 0 || serien.length === 0) {
     return <div style={{ fontSize: 11, color: FARBEN.textMuted, padding: 12 }}>Keine Daten</div>;
@@ -273,13 +310,13 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
   let maxY = referenzlinie ? (referenzlinie.werte ? Math.max(0, ...referenzlinie.werte) : referenzlinie.wert ?? 0) : 0;
   for (const l of weitereLinien) maxY = Math.max(maxY, ...l.werte);
   if (modus === "flaeche-gestapelt") {
-    for (let i = 0; i < n; i++) {
+    for (const i of sicht) {
       let summe = 0;
       for (const s of serien) summe += s.werte[i] ?? 0;
       maxY = Math.max(maxY, summe);
     }
   } else {
-    for (const s of serien) for (const w of s.werte) maxY = Math.max(maxY, w ?? 0);
+    for (const s of serien) for (const i of sicht) maxY = Math.max(maxY, s.werte[i] ?? 0);
   }
   if (maxY <= 0) maxY = 1;
   const y = (v: number) => MT + innerH - (v / maxY) * innerH;
@@ -287,31 +324,32 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
   function onMove(e: React.MouseEvent<SVGSVGElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
-    const idx = Math.round((mouseX - ML) / pxProTag);
-    setHoverIdx(Math.max(0, Math.min(n - 1, idx)));
+    const p = Math.round((mouseX - ML) / pxProTag);
+    setHoverIdx(sicht[Math.max(0, Math.min(m - 1, p))]);
   }
 
   function onKlick(e: React.MouseEvent<SVGSVGElement>) {
     if (!onTagKlick) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
-    const idx = Math.max(0, Math.min(n - 1, Math.round((mouseX - ML) / pxProTag)));
+    const idx = sicht[Math.max(0, Math.min(m - 1, Math.round((mouseX - ML) / pxProTag)))];
     onTagKlick(tage[idx], idx);
   }
 
   const stackedPaths: { d: string; color: string; key: string }[] = [];
   if (modus === "flaeche-gestapelt") {
-    let kumBase = new Array(n).fill(0);
+    let kumBase: number[] = new Array(m).fill(0);
     for (const s of serien) {
-      const oben = kumBase.map((b, i) => b + (s.werte[i] ?? 0));
-      const oberePunkte = oben.map((v, i) => `${x(i)},${y(v)}`).join(" L ");
-      const unterePunkte = [...kumBase].reverse().map((v, i) => `${x(n - 1 - i)},${y(v)}`).join(" L ");
+      const oben = kumBase.map((b, p) => b + (s.werte[sicht[p]] ?? 0));
+      const oberePunkte = oben.map((v, p) => `${x(sicht[p])},${y(v)}`).join(" L ");
+      const unterePunkte = [...kumBase].reverse().map((v, j) => `${x(sicht[m - 1 - j])},${y(v)}`).join(" L ");
       stackedPaths.push({ d: `M ${oberePunkte} L ${unterePunkte} Z`, color: s.color, key: s.key });
       kumBase = oben;
     }
   }
 
-  const ticks = berechneZeitachsenTicks(tage, pxProTag, kalender);
+  const ticks = berechneZeitachsenTicks(tage, pxProTag, pos, ohneWochenenden, kalender);
+  const linienPfad = (werte: number[]) => sicht.map((i, p) => `${p === 0 ? "M" : "L"} ${x(i)} ${y(werte[i] ?? 0)}`).join(" ");
 
   const zeigeLegende = serien.length >= 2 || !!referenzlinie?.werte || weitereLinien.length > 0;
 
@@ -351,16 +389,19 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
             <text x={ML - 4} y={y(maxY) + 3} textAnchor="end" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>{fmt(maxY)}</text>
             <text x={ML - 4} y={hoehe - MB} textAnchor="end" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>0</text>
             {/* Monats-Linien durchgehend dicker als sonstige Hilfslinien, damit der Monatswechsel auffällt */}
+            {ticks.wochenLinien.map((wx, i) => (
+              <line key={`wl${i}`} x1={wx} y1={MT} x2={wx} y2={hoehe - MB} stroke={WOCHEN_LINIE} strokeWidth={0.8} />
+            ))}
             {ticks.monatTicks.map((t, i) => (
               <line key={`ml${i}`} x1={t.x} y1={MT} x2={t.x} y2={hoehe - MB} stroke="#aab4bd" strokeWidth={1.4} />
             ))}
             {referenzlinie?.werte && (
               <path fill="none" stroke={FARBEN.status.critical} strokeWidth={1.5} strokeDasharray="4 3" strokeLinecap="round" strokeLinejoin="round"
-                d={referenzlinie.werte.map((w, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(w ?? 0)}`).join(" ")} />
+                d={linienPfad(referenzlinie.werte)} />
             )}
             {weitereLinien.map(l => (
               <path key={l.key} fill="none" stroke={l.farbe} strokeWidth={1.5} strokeDasharray="4 3" strokeLinecap="round" strokeLinejoin="round"
-                d={l.werte.map((w, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(w ?? 0)}`).join(" ")} />
+                d={linienPfad(l.werte)} />
             ))}
             {referenzlinie?.wert != null && (<>
               <line x1={ML} y1={y(referenzlinie.wert)} x2={VBW - MR} y2={y(referenzlinie.wert)}
@@ -374,7 +415,7 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
             ))}
             {modus === "linie" && serien.map(s => (
               <path key={s.key} fill="none" stroke={s.color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
-                d={s.werte.map((w, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(w ?? 0)}`).join(" ")} />
+                d={linienPfad(s.werte)} />
             ))}
             {hoverIdx !== null && (
               <line x1={x(hoverIdx)} y1={MT} x2={x(hoverIdx)} y2={hoehe - MB} stroke={FARBEN.achse} strokeWidth={1} strokeDasharray="2 2" />
@@ -615,6 +656,8 @@ interface KranBalkenChartProps {
   hoehe?: number;
   formatWert?: (v: number) => string;
   kalender?: Kalender;
+  /** Wie bei TimeSeriesChart: arbeitsfreie Sa/So aus der Zeitachse entfernen */
+  ohneWochenenden?: boolean;
   /** Gemeinsamer Zoom-/Scroll-Zustand mit den übrigen Zeitachsen-Diagrammen dieses Tabs (siehe
    *  TimeSeriesChart) — Pflichtprops, da dieser Chart nur im Verbund mit anderen sinnvoll ist. */
   pxProTag: number;
@@ -628,22 +671,23 @@ interface KranBalkenChartProps {
  *  dadurch exakt gemeinsam auf dieses und alle anderen Diagramme desselben Tabs aus (siehe Kranoptik in
  *  Tab AVOR, geteilter Zustand über useChartZoom). Balken über der optionalen Kapazitätslinie (kap)
  *  werden rot (Engpass) eingefärbt, wie in CategoryBarChart. */
-export function KranBalkenChart({ tage, buckets, serien, einheit = "", hoehe = 180, formatWert, kalender,
+export function KranBalkenChart({ tage, buckets, serien, einheit = "", hoehe = 180, formatWert, kalender, ohneWochenenden = false,
   pxProTag, onPxProTagChange, scrollTag, onScrollChange }: KranBalkenChartProps) {
   const [hover, setHover] = useState<{ bi: number; si: number } | null>(null);
   const [outerRef, viewportW] = useMeasuredWidth<HTMLDivElement>(1000);
   const fmt = formatWert ?? fmtZahl;
   const n = tage.length;
+  const pos = zeitachsenPositionen(tage, ohneWochenenden, kalender);
 
-  const { scrollRef, headerRef, zoomBy, onChartScroll } = useZeitachsenInteraktion(n, pxProTag, onPxProTagChange, scrollTag, onScrollChange);
+  const { scrollRef, headerRef, zoomBy, onChartScroll } = useZeitachsenInteraktion(pos.idx.length, pxProTag, onPxProTagChange, scrollTag, onScrollChange);
 
   if (n === 0 || buckets.length === 0 || serien.length === 0) {
     return <div style={{ fontSize: 11, color: FARBEN.textMuted, padding: 12 }}>Keine Daten</div>;
   }
 
-  const VBW = Math.max(n * pxProTag, viewportW);
+  const VBW = Math.max(pos.idx.length * pxProTag, viewportW);
   const innerH = hoehe - MT - MB;
-  const x = (i: number) => ML + i * pxProTag;
+  const x = (i: number) => ML + pos.posAb[i] * pxProTag; // i = Original-Tagesindex (0..n), ausgeblendete Tage haben keine Breite
   const startDate = parseIsoLocal(tage[0]);
   // Bucket-Tagesindex relativ zum Diagramm-Starttag — auf [0, n-1] geklemmt, falls ein Bucket (z.B.
   // der erste Monat/die erste Woche) über den Projektzeitraum hinausragt (siehe zeitrasterBuckets()).
@@ -660,7 +704,7 @@ export function KranBalkenChart({ tage, buckets, serien, einheit = "", hoehe = 1
   if (maxY <= 0) maxY = 1;
   const y = (v: number) => MT + innerH - (v / maxY) * innerH;
 
-  const ticks = berechneZeitachsenTicks(tage, pxProTag, kalender);
+  const ticks = berechneZeitachsenTicks(tage, pxProTag, pos, ohneWochenenden, kalender);
   const zeigeLegende = serien.length >= 2;
 
   return (
@@ -684,6 +728,9 @@ export function KranBalkenChart({ tage, buckets, serien, einheit = "", hoehe = 1
             <line x1={ML} y1={hoehe - MB} x2={VBW - MR} y2={hoehe - MB} stroke={FARBEN.achse} strokeWidth={1} />
             <text x={ML - 4} y={y(maxY) + 3} textAnchor="end" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>{fmt(maxY)}</text>
             <text x={ML - 4} y={hoehe - MB} textAnchor="end" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>0</text>
+            {ticks.wochenLinien.map((wx, i) => (
+              <line key={`wl${i}`} x1={wx} y1={MT} x2={wx} y2={hoehe - MB} stroke={WOCHEN_LINIE} strokeWidth={0.8} />
+            ))}
             {ticks.monatTicks.map((t, i) => (
               <line key={`ml${i}`} x1={t.x} y1={MT} x2={t.x} y2={hoehe - MB} stroke="#aab4bd" strokeWidth={1.4} />
             ))}

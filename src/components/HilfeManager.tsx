@@ -100,6 +100,7 @@ const THEMEN: Thema[] = [
       "Die Ertragsoptik vergleicht den kumulierten Ertrag (Menge × Einheitspreis) mit den kumulierten Lohnkosten (Personenstunden × Lohnansatz); Marge = Ertrag − Lohnkosten.",
       "Im Tooltip der Personalauslastung steht je Gewerk und im Total die Arbeit des Tages (Personenstunden) und wie lange das eingeplante Personal dafür braucht, mit Auslastung — z.B. \"11.9 h Arbeit · mit 4 Pers.: 2.98 h (35 %)\". Eingeplantes Personal = Kolonnen aus Tab Ressourcen; jede Leistungsposition zählt pro Tag nur einmal, auch wenn mehrere Tasks mit ihr parallel laufen.",
       "Die grüne gestrichelte Linie \"Perfekte Auslastung\" zeigt das eingeplante Personal je Tag: Liegt die Fläche darüber, ist das Personal überlastet, darunter nicht voll ausgelastet.",
+      "⋮ oben rechts → Ansicht: \"Wochenenden ausblenden/einblenden\" gilt für alle Diagramme des Tabs. Standardmässig sind arbeitsfreie Samstage und Sonntage ausgeblendet; die Wochen trennt dann eine feine graue Linie (feiner als die Monatslinie). Feiertage bleiben grau hinterlegt.",
       "⋮ oben rechts → Export (CSV): Personalbedarf je Tag (Personen total, Stunden total, Personen je Gewerk und Stunden je Leistungsposition), Kranstunden je Kran, Mengen je Tag (aktuelle Auswahl im Mengen-Filter) sowie Ertrag, Lohnkosten und Marge.",
       "Alle Kran-Auswertungen sind Richtwerte zur Plausibilisierung, keine exakte Kalkulation.",
     ],

@@ -1,8 +1,8 @@
 // TabAvor.tsx — Cockpit mit Personal-/Kranauslastung, Mengen-Filter und Ertragsoptik, abgeleitet
 // aus den in Tab Kalkulation erfassten Mengen/Kürzeln/WBS-Feldern und den Stammdaten aus Ressourcen.
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { SimProjekt, Zeitraster } from "../types";
-import { parseDateUniversal } from "../types";
+import { parseDateUniversal, nsKey } from "../types";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import { LEERE_STAMMDATEN, hatKranpflichtigeRaten } from "./stammdatenHelpers";
 import { personalauslastung, kolonnenJeTag, personalSollProTag, mengenProTag, ertragsoptik, optimaleTagesleistung } from "./avorHelpers";
@@ -54,6 +54,12 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
   const [kranPlanungOffen, setKranPlanungOffen] = useState(false);
   const [kranMetrik, setKranMetrik] = useState<"stunden" | "personal">("stunden");
   const { eingeklappt, toggle: toggleEingeklappt } = useEingeklappt(projectId, "avor");
+  // ⋮ → Ansicht: arbeitsfreie Wochenenden in allen Diagrammen ausblenden (Standard), projektbezogen gemerkt
+  const weKey = nsKey("4d-cockpit-ohne-we-avor", projectId ?? null);
+  const [ohneWochenenden, setOhneWochenenden] = useState(() => {
+    try { return localStorage.getItem(weKey) !== "0"; } catch { return true; }
+  });
+  useEffect(() => { try { localStorage.setItem(weKey, ohneWochenenden ? "1" : "0"); } catch { /* ignore */ } }, [ohneWochenenden, weKey]);
 
   // Klick in eines der Diagramme setzt eine gemeinsame Datums-Markierung (Index, da alle Tagesreihen
   // dieses Tabs denselben Projektzeitraum abdecken) und springt im 3D-Modell auf diesen Tag — siehe
@@ -222,7 +228,13 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
           title={`Anzahl ${raster === "monat" ? "Monate" : "Wochen"}, in denen bei mindestens einem Kran der Kranstunden-Bedarf über der verfügbaren Kranzeit liegt (Umschalter Monat/Woche in der Kranoptik)`} wert={String(zeitraeumeUeberKapazitaet)} status={zeitraeumeUeberKapazitaet > 0 ? "warning" : "good"} />
         <StatTile label="Marge (kumuliert)" title={"Ertrag minus Lohnkosten über das ganze Projekt (Endwert der Ertragsoptik).\nErtrag = Menge × Einheitspreis (CHF/Einh. aus Tab Ressourcen), Lohnkosten = Personenstunden × Umsatz CHF/Mannstunde (Tab Ressourcen)."} wert={`${fmtChf(marge)} CHF`} status={marge >= 0 ? "good" : "critical"} />
         <div style={{ marginLeft: "auto", alignSelf: "flex-start" }}>
-          <PunkteMenu title="Export der Auswertungen" abschnitte={[{ titel: "Export (CSV)", eintraege: exporte }]} />
+          <PunkteMenu title="Ansicht und Export der Auswertungen" abschnitte={[
+            { titel: "Ansicht", eintraege: [{
+              label: ohneWochenenden ? "Wochenenden einblenden" : "Wochenenden ausblenden",
+              title: "Arbeitsfreie Samstage/Sonntage in allen Diagrammen dieses Tabs aus der Zeitachse entfernen — die Wochen trennt dann eine feine graue Linie",
+              onClick: () => setOhneWochenenden(v => !v) }] },
+            { titel: "Export (CSV)", eintraege: exporte },
+          ]} />
         </div>
       </div>
       {ausgewaehltesDatumIso && (
@@ -235,7 +247,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
         <TimeSeriesChart tage={personalSerien.tage} serien={personalSerien.serien} modus="flaeche-gestapelt" einheit="Pers." zusatz={personenAlsAufwand} zusatzSerie={personalZusatz} zusatzTotal={personalZusatzTotal} totalZeile
           referenzlinie={personalSollGesetzt ? { label: "Personal (Soll)", werte: personalSoll } : undefined}
           weitereLinien={[{ key: "perfekt", label: "Perfekte Auslastung (Kolonnen)", werte: perfekteAuslastung, farbe: FARBEN.status.good }]}
-          formatWert={fmtZahl} kalender={kalender} hoehe={hoehePersonal}
+          formatWert={fmtZahl} kalender={kalender} ohneWochenenden={ohneWochenenden} hoehe={hoehePersonal}
           markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick}
           pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
         <ChartResizeHandle hoehe={hoehePersonal} setHoehe={setHoehePersonal} />
@@ -262,7 +274,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
           serien={[{ key: "menge", label: `Durchschnittlich nötige Tagesleistung${aktiveRate ? ` (${aktiveRate.kuerzel})` : " (Total)"}`, color: FARBEN.kategorial[0], werte: mengen.map(m => m.menge) }]}
           referenzlinie={optimal != null ? { wert: optimal, label: "Optimal ausgelastete Tagesleistung" } : undefined}
           modus="linie" formatWert={fmtZahl}
-          kalender={kalender} hoehe={hoeheMengen}
+          kalender={kalender} ohneWochenenden={ohneWochenenden} hoehe={hoeheMengen}
           markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick}
           pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
         <ChartResizeHandle hoehe={hoeheMengen} setHoehe={setHoeheMengen} />
@@ -273,7 +285,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
           serien={[
             { key: "ertrag", label: "Ertrag (kumuliert)", color: FARBEN.kategorial[0], werte: ertrag.map(e => e.ertragKum) },
             { key: "kosten", label: "Lohnkosten (kumuliert)", color: FARBEN.kategorial[1], werte: ertrag.map(e => e.kostenKum) },
-          ]} kalender={kalender} hoehe={hoeheErtrag}
+          ]} kalender={kalender} ohneWochenenden={ohneWochenenden} hoehe={hoeheErtrag}
           markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick}
           pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
         <ChartResizeHandle hoehe={hoeheErtrag} setHoehe={setHoeheErtrag} />
@@ -324,7 +336,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
             </div>
           ) : (<>
             <KranBalkenChart tage={personalSerien.tage} buckets={kranBuckets} serien={kranBarSerien} einheit="h"
-              formatWert={fmtZahl} kalender={kalender} hoehe={hoeheKran}
+              formatWert={fmtZahl} kalender={kalender} ohneWochenenden={ohneWochenenden} hoehe={hoeheKran}
               pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
             <ChartResizeHandle hoehe={hoeheKran} setHoehe={setHoeheKran} />
           </>)
@@ -335,7 +347,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
             </div>
           ) : (<>
             <KranBalkenChart tage={personalSerien.tage} buckets={personalKranBuckets} serien={personalBarSerien} einheit="Pers. (Ø pro Arbeitstag)"
-              formatWert={fmtZahl} kalender={kalender} hoehe={hoeheKran}
+              formatWert={fmtZahl} kalender={kalender} ohneWochenenden={ohneWochenenden} hoehe={hoeheKran}
               pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
             <ChartResizeHandle hoehe={hoeheKran} setHoehe={setHoeheKran} />
           </>)
