@@ -137,6 +137,38 @@ export function kolonnenJeTag(tasks: Task[], stammdaten: Stammdaten, kalender: K
   return ergebnis;
 }
 
+/** Belegte Zeit je Tag [h] — wie lange der Arbeitstag mit dem eingeplanten Personal dauert (Total-Zeile der
+ *  Personalauslastung). Innerhalb eines Tasks laufen die Gewerke nacheinander (Schalung → Bewehrung → Beton), also
+ *  Summe ihrer Dauern (Arbeit ÷ Kolonne); verschiedene Tasks laufen parallel, also das Maximum. Arbeitet dieselbe
+ *  Kolonne (Leistungsposition) an mehreren Tasks, braucht sie die Summe — der Tag dauert mindestens so lange. */
+export function tagesdauerJeTag(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender): Map<string, number> {
+  const kettenJeTag = new Map<string, number>(); // längste Task-Kette des Tages
+  const kolonneJeTag = new Map<string, Map<string, number>>(); // Tag → Leistungsposition → Stunden der Kolonne
+  for (const t of tasks) {
+    for (const [iso, aufwand] of aufwandJeTagFuerTask(t, stammdaten, kalender)) {
+      let kette = 0;
+      for (const [k, ph] of Object.entries(aufwand)) {
+        if (!(ph > 1e-9)) continue;
+        const gewerk = stammdaten.gewerke.find(g => g.key === k);
+        const kolonne = gewerk ? rateFuer(gewerk, t.bauteilKuerzel!)?.anzahlPersonen ?? 0 : 0;
+        if (!kolonne) continue;
+        kette += ph / kolonne;
+        const jePosition = kolonneJeTag.get(iso) ?? new Map<string, number>();
+        const pos = `${k}|${t.bauteilKuerzel}`;
+        jePosition.set(pos, (jePosition.get(pos) ?? 0) + ph / kolonne);
+        kolonneJeTag.set(iso, jePosition);
+      }
+      kettenJeTag.set(iso, Math.max(kettenJeTag.get(iso) ?? 0, kette));
+    }
+  }
+  const ergebnis = new Map<string, number>();
+  for (const [iso, kette] of kettenJeTag) {
+    const kolonneMax = Math.max(0, ...(kolonneJeTag.get(iso)?.values() ?? []));
+    ergebnis.set(iso, Math.max(kette, kolonneMax));
+  }
+  return ergebnis;
+}
+
 /** Kranstunden je Tag für einen Task: Aufwand der kranpflichtigen Gewerke ÷ Kolonne — also die Zeit, in
  *  der die Kolonne laut Leistungswert am Bauteil arbeitet (z.B. Stütze 6 Personenstunden ÷ 3 Personen =
  *  2 Kranstunden), verteilt wie der Aufwand (aufwandJeTagFuerTask). Nicht kranpflichtige Gewerke zählen nicht. */

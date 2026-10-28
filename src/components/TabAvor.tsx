@@ -5,7 +5,7 @@ import type { SimProjekt, Zeitraster } from "../types";
 import { parseDateUniversal, nsKey } from "../types";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import { LEERE_STAMMDATEN, hatKranpflichtigeRaten } from "./stammdatenHelpers";
-import { personalauslastung, kolonnenJeTag, personalSollProTag, mengenProTag, optimaleTagesleistung } from "./avorHelpers";
+import { personalauslastung, kolonnenJeTag, tagesdauerJeTag, personalSollProTag, mengenProTag, optimaleTagesleistung } from "./avorHelpers";
 import type { TagWert } from "./avorHelpers";
 import { kranstundenProKranUndBucket } from "./kranHelpers";
 import { personenstundenProKranUndBucket, personalRichtwertJeBucket, MAX_PERSONEN_PRO_KRAN } from "./kapazitaetsCheckHelpers";
@@ -173,7 +173,13 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
   const geplantesPersonal = (idx: number) => Object.values(kolonnen.get(personalSerien.tage[idx]) ?? {}).reduce((s, k) => s + k.personen, 0);
   const eingeplant = (z: DetailZeile, idx: number) =>
     z.art === "total" ? geplantesPersonal(idx) : z.art === "serie" ? kolonnen.get(personalSerien.tage[idx])?.[z.key]?.personen ?? 0 : 0;
-  const dauer = (z: DetailZeile, idx: number) => { const k = eingeplant(z, idx); return k > 0 && z.wert > 0 ? z.wert * std / k : null; };
+  // Total: Gewerke eines Tasks nacheinander (Summe), verschiedene Tasks parallel (Maximum) — siehe tagesdauerJeTag;
+  // Gewerk-Zeilen: Arbeit des Gewerks ÷ seine eingeplanten Kolonnen
+  const tagesdauer = tagesdauerJeTag(tasks, stammdaten, kalender);
+  const dauer = (z: DetailZeile, idx: number) => {
+    if (z.art === "total") { const d = tagesdauer.get(personalSerien.tage[idx]) ?? 0; return d > 0 ? d : null; }
+    const k = eingeplant(z, idx); return k > 0 && z.wert > 0 ? z.wert * std / k : null;
+  };
   const personalSpalten: DetailSpalte[] = [
     { titel: "Personen",
       erklaerung: `Personalbedarf des Tages als Vollzeit-Äquivalent = Personenstunden des Tages ÷ ${fmtZahl(std)} h/Tag (Tab Ressourcen).\nPersonenstunden je Task = Menge × Leistungswert, verteilt über die Tage, an denen das Gewerk im Task arbeitet.\nTotal = Summe aller Gewerke. Perfekte Auslastung = eingeplantes Personal (Kolonnen). Personal (Soll) = Summe Personal (Soll) aller laufenden Tasks (Tab Kalkulation).`,
@@ -185,10 +191,10 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
       erklaerung: "Eingeplantes Personal = Kolonnengrösse (Personen) der an diesem Tag aktiven Leistungspositionen aus Tab Ressourcen.\nJede Leistungsposition zählt pro Tag nur einmal, auch wenn mehrere Tasks mit ihr parallel laufen.\nTotal = Summe über alle Gewerke (= Linie Perfekte Auslastung).",
       wert: (z, i) => z.art === "total" || z.art === "serie" ? fmtZahl(eingeplant(z, i)) : "" },
     { titel: "Dauer [h]",
-      erklaerung: "Wie lange das eingeplante Personal für die Arbeit des Tages braucht = Arbeit [h] ÷ Eingeplant [Pers.].",
+      erklaerung: "Wie lange das eingeplante Personal für die Arbeit des Tages braucht.\nGewerk: Arbeit [h] ÷ Eingeplant [Pers.].\nTotal: Innerhalb eines Tasks laufen die Gewerke nacheinander (Schalung → Bewehrung → Beton) → Summe ihrer Dauern (Arbeit ÷ Kolonne); verschiedene Tasks laufen parallel → die längste Task-Kette zählt. Arbeitet dieselbe Kolonne an mehreren Tasks, zählt mindestens ihre Summe.",
       wert: (z, i) => { const d = dauer(z, i); return d != null ? fmtZahl(d) : ""; } },
     { titel: "Auslastung",
-      erklaerung: `Auslastung des eingeplanten Personals = Dauer [h] ÷ ${fmtZahl(std)} h/Tag (Tab Ressourcen).\nUnter 100 % = noch Kapazität frei, über 100 % = die Kolonne schafft die Arbeit nicht in der normalen Arbeitszeit.`,
+      erklaerung: `Wie stark der Arbeitstag belegt ist = Dauer [h] ÷ ${fmtZahl(std)} h/Tag (Tab Ressourcen).\nGewerk: Auslastung seiner Kolonne. Total: wie lange der Tag mit dem eingeplanten Personal dauert.\nUnter 100 % = noch Zeit frei, über 100 % = die Arbeit ist in der normalen Arbeitszeit nicht zu schaffen.`,
       wert: (z, i) => { const d = dauer(z, i); return d != null && std > 0 ? `${fmtZahl(d / std * 100)} %` : ""; } },
   ];
   const mengenSpalten: DetailSpalte[] = [
