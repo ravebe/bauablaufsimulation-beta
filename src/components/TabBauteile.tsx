@@ -11,6 +11,8 @@ import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
 import { LEERER_KALENDER, ersterArbeitstagAb } from "./kalenderHelpers";
 import { pruefeZeitplanBereitschaft, berechneZeitplanUebernahme, zeitplanAbweichendeTasks } from "./zeitplanUebernahmeHelpers";
 import { optimiereAuslastung } from "./auslastungOptimieren";
+import { hatKranPersonal, durchschnittlicheAuslastung } from "./kranHelpers";
+import { fmtZahl } from "./zahlFormat";
 import TabTasks from "./TabTasks";
 import { UnbenutzteZeilen, UnbenutzteDetail } from "./UnbenutzteBauteile";
 import { unbenutzteListen } from "./ausschlussHelpers";
@@ -281,11 +283,13 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
     if (!zeitplanStatus?.bereit) { setZeitplanHinweisOffen(o => !o); return; }
     setZeitplanBestaetigenOffen(true);
   }
-  // "Auslastung optimieren" — jede Kolonne (Leistungsposition aus Tab Ressourcen) arbeitet voll und nie an zwei Tasks
-  // gleichzeitig; parallele Tasks derselben Position laufen nacheinander, siehe auslastungOptimieren.ts
+  // "Auslastung optimieren" — mit Kranpersonal (Tab Ressourcen → Kräne & Personal) arbeitet das Personal unter jedem Kran möglichst
+  // voll (Pools je Unternehmer, siehe auslastungOptimierenKran.ts), sonst arbeitet jede Kolonne voll und nie an zwei Tasks gleichzeitig
+  // (auslastungOptimieren.ts)
+  const mitKranPersonal = hatKranPersonal(aktiveSim?.kraene ?? []);
   function auslastungVorschauOeffnen() {
     if (!aktiveSim || !zeitplanStatus?.bereit) { setZeitplanHinweisOffen(o => !o); return; }
-    setAuslastungVorschau(optimiereAuslastung(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN, aktiveSim.kalender ?? LEERER_KALENDER, aktiveSim.zeiteinheit));
+    setAuslastungVorschau(optimiereAuslastung(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN, aktiveSim.kalender ?? LEERER_KALENDER, aktiveSim.zeiteinheit, aktiveSim.kraene ?? []));
   }
   function auslastungUebernehmen() {
     if (!aktiveSim || !auslastungVorschau) return;
@@ -444,7 +448,9 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                         <div style={{ fontSize: 11, fontWeight: 500, color: zeitplanStatus.bereit ? "var(--tc-text)" : "#9aa5b0" }}>Auslastung optimieren</div>
                         <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 2, whiteSpace: "normal", maxWidth: 320 }}>
                           {zeitplanStatus.bereit
-                            ? "Jeder Task bekommt seine berechnete Dauer; jede Kolonne aus Tab Ressourcen arbeitet voll und nie an zwei Tasks gleichzeitig — Tasks mit derselben Leistungsposition laufen nacheinander. Vorgänger und Wartetage bleiben massgebend. Mit Vorschau."
+                            ? (mitKranPersonal
+                              ? "Plant die Tasks so, dass das Personal unter jedem Kran (Tab Ressourcen → Kräne & Personal) möglichst voll arbeitet — Leute desselben Unternehmers als Allrounder, höchstens Max. Personen je Kran. Arbeitsablauf je Kürzel, Vorgänger und Wartetage bleiben massgebend. Mit Vorschau."
+                              : "Jeder Task bekommt seine berechnete Dauer; jede Kolonne aus Tab Ressourcen arbeitet voll und nie an zwei Tasks gleichzeitig — Tasks mit derselben Leistungsposition laufen nacheinander. Vorgänger und Wartetage bleiben massgebend. Mit Vorschau.")
                             : "Klicken für Details, was dafür noch fehlt."}
                         </div>
                       </button>
@@ -500,6 +506,9 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
         const datum = (iso: string) => iso ? iso.split("-").reverse().join(".") : "–";
         const endeVorher = ende(vorher), endeNachher = ende(nachher);
         const tageDiff = endeVorher && endeNachher ? Math.round((new Date(endeNachher).getTime() - new Date(endeVorher).getTime()) / 86400000) : 0;
+        const sd = aktiveSim.stammdaten ?? LEERE_STAMMDATEN, kal = aktiveSim.kalender ?? LEERER_KALENDER, kr = aktiveSim.kraene ?? [];
+        const auslastungVorher = durchschnittlicheAuslastung(vorher, kr, sd, kal), auslastungNachher = durchschnittlicheAuslastung(nachher, kr, sd, kal);
+        const prozent = (v: number | null) => v == null ? "–" : `${fmtZahl(v * 100)} %`;
         return (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}
           onClick={() => setAuslastungVorschau(null)}>
@@ -509,15 +518,28 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
               Auslastung optimieren
             </div>
             <div style={{ padding: "16px 18px", fontSize: 12, color: "var(--tc-text-2)", lineHeight: 1.6 }}>
-              Jeder Task bekommt seine berechnete Dauer (Tab Kalkulation). Jede Kolonne aus Tab Ressourcen (Leistungsposition,
-              z.B. Schalung · WB) arbeitet voll und nie an zwei Tasks gleichzeitig — Tasks mit derselben Leistungsposition laufen
-              nacheinander, die Gewerke innerhalb eines Tasks nacheinander. Vorgänger und Wartetage bleiben massgebend; Tasks ohne
-              Vorgänger beginnen frühestens an ihrem bisherigen Start. Tasks ohne Mengen, Gruppen und Meilensteine bleiben unverändert.
+              {mitKranPersonal ? (<>
+                Das Personal unter jedem Kran (Tab Ressourcen → Kräne & Personal) arbeitet möglichst voll: Leute desselben Unternehmers
+                sind Allrounder und besetzen jede seiner kranpflichtigen Leistungspositionen, freie Leute verstärken laufende Arbeiten
+                (höchstens doppelte Kolonne) — so werden Tasks kürzer und mehr laufen parallel. Je Kran höchstens Max. Personen.
+                Andere Positionen arbeiten mit ihrer Kolonne, nie an zwei Tasks gleichzeitig. Arbeitsablauf je Kürzel, Vorgänger und
+                Wartetage bleiben massgebend; Tasks ohne Vorgänger beginnen frühestens an ihrem bisherigen Start. Tasks ohne Mengen,
+                Gruppen und Meilensteine bleiben unverändert.
+              </>) : (<>
+                Jeder Task bekommt seine berechnete Dauer (Tab Kalkulation). Jede Kolonne aus Tab Ressourcen (Leistungsposition,
+                z.B. Schalung · WB) arbeitet voll und nie an zwei Tasks gleichzeitig — Tasks mit derselben Leistungsposition laufen
+                nacheinander, die Schritte innerhalb eines Tasks nach dem Arbeitsablauf je Kürzel. Vorgänger und Wartetage bleiben
+                massgebend; Tasks ohne Vorgänger beginnen frühestens an ihrem bisherigen Start. Tasks ohne Mengen, Gruppen und
+                Meilensteine bleiben unverändert. Mit Personal unter den Kränen (Tab Ressourcen → Kräne & Personal) wird stattdessen
+                auf das Kranpersonal optimiert.
+              </>)}
               <div style={{ marginTop: 10, padding: "8px 10px", background: "#f5f9ff", border: "1px solid #dbeafe" }}>
                 {geaendert.length === 0 ? "Der Bauablauf ist bereits optimal ausgelastet — nichts zu ändern." : (<>
                   <div><strong>{geaendert.length}</strong> Task{geaendert.length === 1 ? "" : "s"} erhalten neue Termine.</div>
                   <div>Bauende: {datum(endeVorher)} → <strong>{datum(endeNachher)}</strong>
                     {tageDiff !== 0 && <span style={{ color: tageDiff > 0 ? "#d9622b" : "#2e8b57" }}> ({tageDiff > 0 ? "+" : ""}{tageDiff} Kalendertage)</span>}</div>
+                  <div title="Arbeit aller Tage ÷ (eingeplantes Personal × Std./Tag) — eingeplant wie die Linie Perfekte Auslastung in Tab AVOR (Kranpersonal + Kolonnen ohne Kran)">
+                    Ø Auslastung Personal: {prozent(auslastungVorher)} → <strong>{prozent(auslastungNachher)}</strong></div>
                 </>)}
               </div>
               <div style={{ marginTop: 10 }}>

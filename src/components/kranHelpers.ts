@@ -6,7 +6,7 @@ import type { Task, Kran, Zeitraster } from "../types";
 import { parseDateUniversal } from "../types";
 import type { Kalender } from "./kalenderHelpers";
 import { istArbeitstag, getKW } from "./kalenderHelpers";
-import { projektzeitraum, kranstundenJeTagFuerTask, aufwandJeTagUndPhaseFuerTask } from "./avorHelpers";
+import { projektzeitraum, kranstundenJeTagFuerTask, aufwandJeTagUndPhaseFuerTask, personalauslastung } from "./avorHelpers";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { istMengeKranpflichtig } from "./stammdatenHelpers";
 
@@ -214,4 +214,19 @@ export function eingeplantesPersonalJeTag(tasks: Task[], kraene: Kran[], stammda
 /** true, sobald bei irgendeinem Kran Personal erfasst ist. */
 export function hatKranPersonal(kraene: Kran[]): boolean {
   return kraene.some(k => (k.personal ?? []).some(p => p.unternehmer.trim() && p.personen > 0));
+}
+
+/** Ø Auslastung des eingeplanten Personals über das ganze Bauprogramm (Vorschau "Auslastung optimieren"): Arbeit aller Tage
+ *  (Personenstunden) ÷ (eingeplantes Personal × Std./Tag), nur Arbeitstage mit eingeplantem Personal. null ohne Personal. */
+export function durchschnittlicheAuslastung(tasks: Task[], kraene: Kran[], stammdaten: Stammdaten, kalender: Kalender): number | null {
+  const personal = personalauslastung(tasks, stammdaten, kalender);
+  const eingeplant = eingeplantesPersonalJeTag(tasks, kraene, stammdaten, kalender, personal.map(p => p.tag));
+  let arbeit = 0, kapazitaet = 0;
+  for (const tw of personal) {
+    const e = eingeplant.get(tw.tag)?.total ?? 0;
+    if (!(e > 0)) continue;
+    arbeit += Object.values(tw.werte).reduce((s, v) => s + v, 0);
+    kapazitaet += e;
+  }
+  return kapazitaet > 0 ? arbeit / kapazitaet : null;
 }

@@ -9,7 +9,7 @@
 //    an ihrem bisherigen Start. Reihenfolge bei Konkurrenz um dieselbe Kolonne: bisheriger Start, dann Gantt-Reihenfolge.
 //  - Tasks ohne Kalkulationswerte, Gruppen und Meilensteine bleiben unverändert.
 // Gerechnet wird auf einer Achse in Arbeitsminuten ab dem frühesten Arbeitstag, gerastert auf die Zeiteinheit der Simulation.
-import type { Task } from "../types";
+import type { Task, Kran } from "../types";
 import { istGruppe, vorgaengerListe } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { dauerBerechnetTask, hatKalkulationsWerte, schritteFuerTask } from "./stammdatenHelpers";
@@ -19,6 +19,8 @@ import {
   startZeitpunkt, endZeitpunkt, naechsteArbeitszeit, endeAusArbeitsMinuten, folgeStartZeitpunkt, arbeitsMinutenZwischen,
   vergleicheZeitpunkte, zeitFelder, rasteUhrzeit, MIN_PRO_ARBEITSTAG, ARBEITSBEGINN_MIN, schrittMinuten,
 } from "./zeitHelpers";
+import { hatKranPersonal } from "./kranHelpers";
+import { optimiereMitKranpersonal } from "./auslastungOptimierenKran";
 
 interface Phase { position: string; von: number; minuten: number }
 
@@ -39,8 +41,10 @@ function phasenVon(t: Task, stammdaten: Stammdaten, einheit: Zeiteinheit): { pha
   return { phasen, dauer };
 }
 
-/** Neue Termine aller Tasks nach "Auslastung optimieren" (gleiche Reihenfolge wie tasks). */
-export function optimiereAuslastung(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender, einheit: Zeiteinheit = "tage"): Task[] {
+/** Neue Termine aller Tasks nach "Auslastung optimieren" (gleiche Reihenfolge wie tasks). Ist in Tab Ressourcen Personal unter
+ *  den Kränen erfasst, plant optimiereMitKranpersonal (Pools je Kran und Unternehmer), sonst diese Kolonnen-Variante. */
+export function optimiereAuslastung(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender, einheit: Zeiteinheit = "tage", kraene: Kran[] = []): Task[] {
+  if (hatKranPersonal(kraene)) return optimiereMitKranpersonal(tasks, stammdaten, kalender, einheit, kraene);
   const echte = tasks.map((t, i) => ({ t, i })).filter(({ t, i }) => !t.isGroup && !istGruppe(tasks, i) && !!t.start && !!t.end);
   if (echte.length === 0) return tasks;
   const byId = new Map(tasks.map(t => [t.id, t]));
@@ -123,7 +127,7 @@ export function optimiereAuslastung(tasks: Task[], stammdaten: Stammdaten, kalen
 }
 
 /** Tasks, deren Termine sich mit optimiereAuslastung() ändern würden. */
-export function auslastungAbweichendeTasks(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender, einheit: Zeiteinheit = "tage"): Task[] {
-  const neu = optimiereAuslastung(tasks, stammdaten, kalender, einheit);
+export function auslastungAbweichendeTasks(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender, einheit: Zeiteinheit = "tage", kraene: Kran[] = []): Task[] {
+  const neu = optimiereAuslastung(tasks, stammdaten, kalender, einheit, kraene);
   return tasks.filter((t, i) => neu[i].start !== t.start || neu[i].end !== t.end || neu[i].startZeit !== t.startZeit || neu[i].endZeit !== t.endZeit);
 }
