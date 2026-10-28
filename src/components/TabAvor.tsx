@@ -5,15 +5,14 @@ import type { SimProjekt, Zeitraster } from "../types";
 import { parseDateUniversal, nsKey } from "../types";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import { LEERE_STAMMDATEN, hatKranpflichtigeRaten } from "./stammdatenHelpers";
-import { personalauslastung, kolonnenJeTag, tagesdauerJeTag, personalSollProTag, mengenProTag, optimaleTagesleistung } from "./avorHelpers";
+import { personalauslastung, kolonnenJeTag, tagesdauerJeTag, mengenProTag, optimaleTagesleistung } from "./avorHelpers";
 import type { TagWert } from "./avorHelpers";
-import { kranstundenProKranUndBucket } from "./kranHelpers";
-import { personenstundenProKranUndBucket, personalRichtwertJeBucket, MAX_PERSONEN_PRO_KRAN } from "./kapazitaetsCheckHelpers";
+import { kranstundenProKranUndBucket, kranMaxPersonen, eingeplantesPersonalJeTag, hatKranPersonal } from "./kranHelpers";
+import { personenstundenProKranUndBucket, personalRichtwertJeBucket } from "./kapazitaetsCheckHelpers";
 import { dreiDZustandAufTagSetzen, tagVonDatum } from "./dreiDHeuteHelper";
 import type { ApiInstance } from "../hooks/useApi";
 import { TimeSeriesChart, KranBalkenChart, StatTile, CockpitAbschnitt, useEingeklappt, useChartZoom, useChartHoehe, ChartResizeHandle, FARBEN } from "./cockpitCharts";
 import type { Serie, KategorieSerie, DetailSpalte, DetailZeile } from "./cockpitCharts";
-import KranPlanungManager from "./KranPlanungManager";
 import { fmtZahl } from "./zahlFormat";
 import PunkteMenu from "./PunkteMenu";
 import { personalbedarfAlsCsv, alsCsv, csvZahl, datumCh } from "./avorExportHelpers";
@@ -49,7 +48,6 @@ function gestapelteSerien(tagWerte: TagWert[], labelFuer: (k: string) => string)
 export default function TabAvor({ sim, updateSim, readOnly, projectId = null, api, sharedNadelTag }: Props) {
   const [mengenGewerkKey, setMengenGewerkKey] = useState<string>("beton");
   const [mengenKuerzel, setMengenKuerzel] = useState<string>(""); // "" = Total (alle Kürzel dieses Gewerks summiert), Default
-  const [kranPlanungOffen, setKranPlanungOffen] = useState(false);
   const [kranMetrik, setKranMetrik] = useState<"stunden" | "personal">("stunden");
   const { eingeklappt, toggle: toggleEingeklappt } = useEingeklappt(projectId, "avor");
   // ⋮ → Ansicht: arbeitsfreie Wochenenden in allen Diagrammen ausblenden (Standard), projektbezogen gemerkt
@@ -74,8 +72,6 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
 
   const personal = personalauslastung(tasks, stammdaten, kalender);
   const personalSerien = gestapelteSerien(personal, k => stammdaten.gewerke.find(g => g.key === k)?.label ?? k);
-  const personalSoll = personalSollProTag(tasks, kalender);
-  const personalSollGesetzt = personalSoll.some(v => v > 0);
 
   const kraene = sim?.kraene ?? [];
   const kranById = new Map(kraene.map(k => [k.id, k]));
@@ -94,7 +90,8 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
   // Richtwert je Kran und Zeitraster-Bucket, Kapazitätslinie = dessen fixer Max-Personen-Wert (anders
   // als bei Kranstunden nicht zeitraum-abhängig, da Max. Personen eine statische Kran-Eigenschaft ist).
   const personalBarSerien: KategorieSerie[] = personalKranSerien.map((s, i) => {
-    const maxPersonenDiesesKrans = kranById.get(s.kranId)?.maxPersonen ?? MAX_PERSONEN_PRO_KRAN;
+    const kran = kranById.get(s.kranId);
+    const maxPersonenDiesesKrans = kran ? kranMaxPersonen(kran) : 13;
     return {
       key: s.kranId, label: s.kranName, color: FARBEN.kategorial[i % FARBEN.kategorial.length],
       werte: personalKranBuckets.map((_, bi) => personalRichtwertJeBucket(s.personenstunden[bi], s.arbeitstageVerfuegbar[bi], stammdaten.arbeitszeitStdProTag, maxPersonenDiesesKrans).richtwert ?? 0),
@@ -159,39 +156,41 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
   }
   const peakTagLabel = peakTag !== "–" ? (parseDateUniversal(peakTag)?.toLocaleDateString("de-CH") ?? peakTag) : null;
   const zeitraeumeUeberKapazitaet = kranBuckets.filter((_, bi) => kranstundenSerien.some(s => s.bedarf[bi] > s.kapazitaet[bi])).length;
-  const tageUeberPersonalSoll = personal.filter((tw, i) => {
-    const soll = personalSoll[i] ?? 0;
-    return soll > 0 && Object.values(tw.werte).reduce((s, v) => s + v, 0) > soll;
-  }).length;
 
   // Personen ↔ Personenstunden: 1 Person (Vollzeit) = Std./Tag aus Tab Ressourcen
   const std = stammdaten.arbeitszeitStdProTag;
   // Tagesangaben (fest über dem Diagramm nach Klick): Arbeit des Tages (Personenstunden) und wie lange das eingeplante
-  // Personal (Kolonnen aus Tab Ressourcen, je Leistungsposition nur einmal, siehe kolonnenJeTag) dafür braucht — mit
-  // Auslastung gegenüber der vollen Arbeitszeit
+  // Personal dafür braucht — mit Auslastung gegenüber der vollen Arbeitszeit. Eingeplant: Total = Kranpersonal (Tab
+  // Ressourcen → Kräne & Personal) + Kolonnen ohne Kran-Pool (eingeplantesPersonalJeTag); je Gewerk die Kolonnen seiner
+  // aktiven Leistungspositionen (Mindestbesetzung, kolonnenJeTag)
+  const mitKranPersonal = hatKranPersonal(kraene);
   const kolonnen = kolonnenJeTag(tasks, stammdaten, kalender);
-  const geplantesPersonal = (idx: number) => Object.values(kolonnen.get(personalSerien.tage[idx]) ?? {}).reduce((s, k) => s + k.personen, 0);
+  const eingeplantJeTag = eingeplantesPersonalJeTag(tasks, kraene, stammdaten, kalender, personalSerien.tage);
+  const geplantesPersonal = (idx: number) => eingeplantJeTag.get(personalSerien.tage[idx])?.total ?? 0;
   const eingeplant = (z: DetailZeile, idx: number) =>
     z.art === "total" ? geplantesPersonal(idx) : z.art === "serie" ? kolonnen.get(personalSerien.tage[idx])?.[z.key]?.personen ?? 0 : 0;
-  // Total: Gewerke eines Tasks nacheinander (Summe), verschiedene Tasks parallel (Maximum) — siehe tagesdauerJeTag;
-  // Gewerk-Zeilen: Arbeit des Gewerks ÷ seine eingeplanten Kolonnen
+  // Total ohne Kranpersonal: Schritte eines Tasks nacheinander (Summe), verschiedene Tasks parallel (Maximum) — siehe
+  // tagesdauerJeTag. Mit Kranpersonal sind die Leute desselben Unternehmers Allrounder (Pool) → Arbeit ÷ eingeplantes Personal.
+  // Gewerk-Zeilen: Arbeit des Gewerks ÷ seine Kolonnen
   const tagesdauer = tagesdauerJeTag(tasks, stammdaten, kalender);
   const dauer = (z: DetailZeile, idx: number) => {
-    if (z.art === "total") { const d = tagesdauer.get(personalSerien.tage[idx]) ?? 0; return d > 0 ? d : null; }
+    if (z.art === "total" && !mitKranPersonal) { const d = tagesdauer.get(personalSerien.tage[idx]) ?? 0; return d > 0 ? d : null; }
     const k = eingeplant(z, idx); return k > 0 && z.wert > 0 ? z.wert * std / k : null;
   };
   const personalSpalten: DetailSpalte[] = [
     { titel: "Personen",
-      erklaerung: `Personalbedarf des Tages als Vollzeit-Äquivalent = Personenstunden des Tages ÷ ${fmtZahl(std)} h/Tag (Tab Ressourcen).\nPersonenstunden je Task = Menge × Leistungswert, verteilt über die Tage, an denen das Gewerk im Task arbeitet.\nTotal = Summe aller Gewerke. Perfekte Auslastung = eingeplantes Personal (Kolonnen). Personal (Soll) = Summe Personal (Soll) aller laufenden Tasks (Tab Kalkulation).`,
+      erklaerung: `Personalbedarf des Tages als Vollzeit-Äquivalent = Personenstunden des Tages ÷ ${fmtZahl(std)} h/Tag (Tab Ressourcen).\nPersonenstunden je Task = Menge × Leistungswert, verteilt über die Tage, an denen das Gewerk im Task arbeitet.\nTotal = Summe aller Gewerke. Perfekte Auslastung = eingeplantes Personal (Kranpersonal + Kolonnen ohne Kran).`,
       wert: z => fmtZahl(z.wert) },
     { titel: "Arbeit [h]",
       erklaerung: `Arbeit des Tages in Personenstunden = Personen × ${fmtZahl(std)} h/Tag (Tab Ressourcen).\nEntspricht Menge × Leistungswert der an diesem Tag laufenden Tasks.`,
       wert: z => z.art === "linie" ? "" : fmtZahl(z.wert * std) },
     { titel: "Eingeplant [Pers.]",
-      erklaerung: "Eingeplantes Personal = Kolonnengrösse (Personen) der an diesem Tag aktiven Leistungspositionen aus Tab Ressourcen.\nJede Leistungsposition zählt pro Tag nur einmal, auch wenn mehrere Tasks mit ihr parallel laufen.\nTotal = Summe über alle Gewerke (= Linie Perfekte Auslastung).",
+      erklaerung: "Gewerk: Kolonnen (Mindestbesetzung) der an diesem Tag aktiven Leistungspositionen aus Tab Ressourcen — jede Position zählt pro Tag nur einmal.\nTotal (= Linie Perfekte Auslastung): Personal unter den verfügbaren Kränen (Tab Ressourcen → Kräne & Personal, je Kran höchstens Max. Personen) + Kolonnen der Positionen, die nicht aus einem Kran-Pool besetzt werden (nicht kranpflichtig, Task ohne Kran). Ohne Kranpersonal: Summe der Kolonnen.",
       wert: (z, i) => z.art === "total" || z.art === "serie" ? fmtZahl(eingeplant(z, i)) : "" },
     { titel: "Dauer [h]",
-      erklaerung: "Wie lange das eingeplante Personal für die Arbeit des Tages braucht.\nGewerk: Arbeit [h] ÷ Eingeplant [Pers.].\nTotal: Innerhalb eines Tasks laufen die Gewerke nacheinander (Schalung → Bewehrung → Beton) → Summe ihrer Dauern (Arbeit ÷ Kolonne); verschiedene Tasks laufen parallel → die längste Task-Kette zählt. Arbeitet dieselbe Kolonne an mehreren Tasks, zählt mindestens ihre Summe.",
+      erklaerung: mitKranPersonal
+        ? "Wie lange das eingeplante Personal für die Arbeit des Tages braucht.\nGewerk: Arbeit [h] ÷ Kolonnen.\nTotal: Arbeit [h] ÷ Eingeplant [Pers.] — die Leute desselben Unternehmers unter einem Kran sind Allrounder und teilen sich die Arbeit."
+        : "Wie lange das eingeplante Personal für die Arbeit des Tages braucht.\nGewerk: Arbeit [h] ÷ Eingeplant [Pers.].\nTotal: Innerhalb eines Tasks laufen die Schritte nacheinander (Arbeitsablauf je Kürzel, z.B. Schalung → Bewehrung → Beton) → Summe ihrer Dauern (Arbeit ÷ Kolonne); verschiedene Tasks laufen parallel → die längste Task-Kette zählt. Arbeitet dieselbe Kolonne an mehreren Tasks, zählt mindestens ihre Summe.",
       wert: (z, i) => { const d = dauer(z, i); return d != null ? fmtZahl(d) : ""; } },
     { titel: "Auslastung",
       erklaerung: `Wie stark der Arbeitstag belegt ist = Dauer [h] ÷ ${fmtZahl(std)} h/Tag (Tab Ressourcen).\nGewerk: Auslastung seiner Kolonne. Total: wie lange der Tag mit dem eingeplanten Personal dauert.\nUnter 100 % = noch Zeit frei, über 100 % = die Arbeit ist in der normalen Arbeitszeit nicht zu schaffen.`,
@@ -213,8 +212,8 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
       wert: (s: KategorieSerie, bi: number) => fmtZahl(s.werte[bi] ?? 0) },
     { titel: kranMetrik === "stunden" ? "Kapazität [h]" : "Max. Personen",
       erklaerung: kranMetrik === "stunden"
-        ? "Verfügbare Kranzeit = Arbeitstage, an denen der Kran im Monat/in der Woche verfügbar ist (Kranplanung von/bis), × Std./Tag."
-        : "Max. Personen des Krans aus der Kranplanung (Standard 13).",
+        ? "Verfügbare Kranzeit = Arbeitstage, an denen der Kran im Monat/in der Woche verfügbar ist (Tab Ressourcen → Kräne & Personal, von/bis), × Std./Tag."
+        : "Max. Personen des Krans (Tab Ressourcen → Kräne & Personal, Standard 13).",
       wert: (s: KategorieSerie, bi: number) => s.kapazitaet ? fmtZahl(s.kapazitaet[bi] ?? 0) : "" },
     { titel: "Auslastung",
       erklaerung: kranMetrik === "stunden" ? "Bedarf ÷ Kapazität. Über 100 % = Engpass (Balken rot)." : "Personal Ø ÷ Max. Personen. Über 100 % = Engpass (Balken rot).",
@@ -224,8 +223,8 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
     } },
   ];
   const markerEntfernen = () => { setAusgewaehlterTag(null); setKlickErgebnis(null); };
-  // Linie "Perfekte Auslastung": eingeplantes Personal des Tages — arbeitet es die volle Arbeitszeit, deckt es genau den
-  // Bedarf; liegt die Fläche darüber, ist es überlastet, darunter nicht ausgelastet
+  // Linie "Perfekte Auslastung": eingeplantes Personal des Tages (Kranpersonal + Kolonnen ohne Kran) — arbeitet es die volle
+  // Arbeitszeit, deckt es genau den Bedarf; liegt die Fläche darüber, ist es überlastet, darunter nicht ausgelastet
   const perfekteAuslastung = personalSerien.tage.map((_, i) => geplantesPersonal(i));
 
   // ⋮ → Export: jede Auswertung dieses Tabs als CSV (Excel)
@@ -253,9 +252,6 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
         <StatTile label="Peak Personalbedarf" title={"Höchste Personenzahl an einem Tag (Vollzeit-Äquivalent = Personenstunden des Tages ÷ Std./Tag aus Tab Ressourcen), summiert über alle laufenden Tasks.\nJe Task arbeiten die Gewerke nacheinander, jedes so lange wie in Tab Kalkulation berechnet (Menge × Leistungswert ÷ Kolonne ÷ Std./Tag).\nIst ein Task im Gantt länger/kürzer als berechnet, wird die Kolonne entsprechend kleiner/grösser: Personen = Kolonne × berechnete ÷ geplante Dauer.\nSo ergeben die Personen über den Task genau die kalkulierten Personenstunden."} wert={
           <>{fmtZahl(peakWert)} Pers.{peakTagLabel && <span style={{ fontSize: 11, fontWeight: 400, color: FARBEN.textSekundaer, marginLeft: 6 }}>{peakTagLabel}</span>}</>
         } />
-        {personalSollGesetzt && (
-          <StatTile label="Tage über Personal (Soll)" title={"Anzahl Arbeitstage, an denen der berechnete Personalbedarf (Summe aller Gewerke, wie im Diagramm Personalauslastung) höher ist als Personal (Soll).\nPersonal (Soll) = Summe der in Tab Kalkulation erfassten Personal (Soll) aller an diesem Tag laufenden Tasks; Tage ohne Soll zählen nicht."} wert={String(tageUeberPersonalSoll)} status={tageUeberPersonalSoll > 0 ? "warning" : "good"} />
-        )}
         <StatTile label={`${raster === "monat" ? "Monate" : "Wochen"} über Kran-Kapazität`}
           title={`Anzahl ${raster === "monat" ? "Monate" : "Wochen"}, in denen bei mindestens einem Kran der Kranstunden-Bedarf über der verfügbaren Kranzeit liegt (Umschalter Monat/Woche in der Kranoptik)`} wert={String(zeitraeumeUeberKapazitaet)} status={zeitraeumeUeberKapazitaet > 0 ? "warning" : "good"} />
         <div style={{ marginLeft: "auto", alignSelf: "flex-start" }}>
@@ -276,8 +272,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
 
       <CockpitAbschnitt titel="Personalauslastung" eingeklappt={!!eingeklappt["personal"]} onToggle={() => toggleEingeklappt("personal")}>
         <TimeSeriesChart tage={personalSerien.tage} serien={personalSerien.serien} modus="flaeche-gestapelt" einheit="Pers." totalZeile
-          referenzlinie={personalSollGesetzt ? { label: "Personal (Soll)", werte: personalSoll } : undefined}
-          weitereLinien={[{ key: "perfekt", label: "Perfekte Auslastung (Kolonnen)", werte: perfekteAuslastung, farbe: FARBEN.status.good }]}
+          weitereLinien={[{ key: "perfekt", label: mitKranPersonal ? "Perfekte Auslastung (Kranpersonal + Kolonnen)" : "Perfekte Auslastung (Kolonnen)", werte: perfekteAuslastung, farbe: FARBEN.status.good }]}
           formatWert={fmtZahl} kalender={kalender} ohneWochenenden={ohneWochenenden} hoehe={hoehePersonal} detailSpalten={personalSpalten}
           markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick} onMarkerEntfernen={markerEntfernen}
           pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
@@ -314,12 +309,6 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
       <CockpitAbschnitt titel="Kranoptik" eingeklappt={!!eingeklappt["kran"]} onToggle={() => toggleEingeklappt("kran")}
         aktionen={
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <button className="tc-btn-secondary" style={{ fontSize: 11, fontWeight: 600, height: "auto", padding: "3px 8px", borderRadius: 0 }}
-              onClick={() => setKranPlanungOffen(true)}
-              title="Kräne anlegen, ihre Verfügbarkeit festlegen und Personal-/Kran-Budget je Bauphase gegen den Bedarf prüfen">
-              Kranplanung
-            </button>
-            <span style={{ width: 1, alignSelf: "stretch", background: "var(--tc-border)" }} />
             {(["stunden", "personal"] as const).map(m => (
               <button key={m} onClick={() => setKranMetrik(m)}
                 title={m === "stunden" ? "Kranstunden-Bedarf vs. Verfügbarkeit" : "Durchschnittliche Personen pro Arbeitstag je Kran und Monat/Woche (kranpflichtige Gewerke) vs. dessen Max. Personen — nicht mit den Tageswerten der Personalauslastung vergleichbar"}
@@ -343,7 +332,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
         }>
         {kraene.length === 0 ? (
           <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
-            Noch keine Kräne angelegt — siehe Button "Kranplanung" oben rechts.
+            Noch keine Kräne angelegt — Tab Ressourcen → Kräne & Personal.
           </div>
         ) : !hatKranpflichtigeRaten(stammdaten) ? (
           <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
@@ -375,10 +364,6 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
           </>)
         )}
       </CockpitAbschnitt>
-
-      {kranPlanungOffen && (
-        <KranPlanungManager sim={sim} updateSim={updateSim} readOnly={readOnly} onClose={() => setKranPlanungOffen(false)} />
-      )}
     </div>
   );
 }

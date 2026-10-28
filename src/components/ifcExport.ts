@@ -492,22 +492,19 @@ export function erzeuge4dIfc(e: IfcExportEingabe): IfcExportErgebnis {
     if (phase) props.push(prop("Bauphase", `IFCLABEL(${label(phase)})`));
     const kran = vereint(ts.flatMap(t => (t.kraene ?? []).map(k => kranName.get(k) ?? "")));
     if (kran) props.push(prop("Kran", `IFCLABEL(${label(kran)})`));
-    const personal = vereint(ts.filter(t => t.personalSoll != null).map(t => String(t.personalSoll)));
-    if (personal) props.push(prop("Personal_Soll", `IFCLABEL(${label(personal)})`));
     props.push(prop("Simulation", `IFCLABEL(${label(e.simName)})`));
     for (const [name, wert] of metaProps) props.push(prop(name, wert));
     const pset = w.add(`IFCPROPERTYSET('${g(`pset|${key}`)}',${oh},${stepText(PSET_BAUTEIL)},$,${refs(props)})`);
     w.add(`IFCRELDEFINESBYPROPERTIES('${g(`rel-pset|${key}`)}',${oh},$,$,${refs(ids)},${ref(pset)})`);
   }
 
-  // Vorgangs-Pset: Kürzel, Bauphase, Kräne, Personal (nur wenn etwas gesetzt ist)
+  // Vorgangs-Pset: Kürzel, Bauphase, Kräne (nur wenn etwas gesetzt ist)
   tasks.forEach((t, i) => {
     const props: number[] = [];
     if (t.bauteilKuerzel) props.push(prop("Kuerzel", `IFCIDENTIFIER(${label(t.bauteilKuerzel)})`));
     if (t.kranbereich) props.push(prop("Bauphase", `IFCLABEL(${label(t.kranbereich)})`));
     const kran = vereint((t.kraene ?? []).map(k => kranName.get(k) ?? ""));
     if (kran) props.push(prop("Kran", `IFCLABEL(${label(kran)})`));
-    if (t.personalSoll != null) props.push(prop("Personal_Soll", `IFCCOUNTMEASURE(${stepReal(t.personalSoll)})`));
     if (props.length === 0) return;
     const pset = w.add(`IFCPROPERTYSET('${g(`pset-task|${t.id}`)}',${oh},${stepText(PSET_VORGANG)},$,${refs(props)})`);
     w.add(`IFCRELDEFINESBYPROPERTIES('${g(`rel-pset-task|${t.id}`)}',${oh},$,$,(${ref(taskIds[i])}),${ref(pset)})`);

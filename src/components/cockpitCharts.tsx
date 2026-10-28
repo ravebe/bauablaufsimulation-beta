@@ -282,7 +282,7 @@ interface TimeSeriesProps {
   serien: Serie[];
   modus: "linie" | "flaeche-gestapelt";
   /** Konstante Schwelle (wert) ODER Tageswerte über die Zeit (werte, gleiche Länge wie tage) — z.B.
-   *  eine fixe Kranauslastungs-Kapazität vs. eine tagesabhängige "Personal (Soll)"-Linie. */
+   *  eine fixe Kranauslastungs-Kapazität vs. eine tagesabhängige Soll-Linie. */
   referenzlinie?: { label: string; wert?: number; werte?: number[] };
   /** Zusätzliche gestrichelte Tageslinien mit eigener Farbe (z.B. "Perfekte Auslastung") — in Legende und Tooltip */
   weitereLinien?: { key: string; label: string; werte: number[]; farbe: string }[];

@@ -1,12 +1,12 @@
 // kranHelpers.ts — Kran-Stammdaten (SimProjekt.kraene) und Zeitraster-Buckets (Monat/Woche) für die
-// Kran-Verfügbarkeitsmatrix (Tab AVOR) sowie — ab Etappe 3 — die Kranoptik/Kapazitäts-Check-Auswertung.
+// Kranoptik (Tab AVOR), dazu Kranpersonal je Tag (Tab Ressourcen → Kräne & Personal) für Perfekte Auslastung und Optimierung.
 // Reine Funktionen, kein UI. Verfügbarkeit ist bewusst grob: ein zusammenhängender von/bis-Zeitraum je
 // Kran, keine Perioden-Liste (siehe Kran in types.ts).
 import type { Task, Kran, Zeitraster } from "../types";
 import { parseDateUniversal } from "../types";
 import type { Kalender } from "./kalenderHelpers";
 import { istArbeitstag, getKW } from "./kalenderHelpers";
-import { projektzeitraum, kranstundenJeTagFuerTask } from "./avorHelpers";
+import { projektzeitraum, kranstundenJeTagFuerTask, aufwandJeTagUndPhaseFuerTask } from "./avorHelpers";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { istMengeKranpflichtig } from "./stammdatenHelpers";
 
@@ -84,7 +84,7 @@ function arbeitstageInBereich(start: string, end: string, kalender: Kalender): n
 }
 
 /** Verfügbare Arbeitstage eines Krans innerhalb eines Buckets (Verfügbarkeitszeitraum auf den Bucket
- *  geclippt) — Grundlage für die Kran-Kapazität in Kranoptik/Kapazitäts-Check (Etappe 3/4). */
+ *  geclippt) — Grundlage für die Kran-Kapazität in der Kranoptik. */
 export function kranVerfuegbareArbeitstage(kran: Kran, bucket: { start: string; end: string }, kalender: Kalender): number {
   const start = kran.verfuegbarVon && kran.verfuegbarVon > bucket.start ? kran.verfuegbarVon : bucket.start;
   const end = kran.verfuegbarBis && kran.verfuegbarBis < bucket.end ? kran.verfuegbarBis : bucket.end;
@@ -176,4 +176,42 @@ export function kranstundenProKranUndBucket(tasks: Task[], kraene: Kran[], stamm
     }
   }
   return { buckets, serien };
+}
+
+/** Eingeplantes Personal je Tag (Linie "Perfekte Auslastung" und Total "Eingeplant" in Tab AVOR):
+ *  - Kranpersonal: je an diesem Tag verfügbaren Kran das Personal seiner Unternehmer (Tab Ressourcen → Kräne & Personal),
+ *    höchstens Max. Personen — auch an Tagen ohne Arbeit, damit nicht ausgelastetes Personal sichtbar wird.
+ *  - Kolonnen ohne Kranpersonal: Leistungspositionen, die nicht aus einem Kran-Pool besetzt werden (nicht kranpflichtig, Task
+ *    ohne Kran oder Kran ohne Personal an diesem Tag) — ihre Kolonne aus Tab Ressourcen, je Position und Tag einmal.
+ *  Ohne erfasstes Kranpersonal entspricht das genau den Kolonnen (wie bisher). */
+export function eingeplantesPersonalJeTag(tasks: Task[], kraene: Kran[], stammdaten: Stammdaten, kalender: Kalender, tage: string[]): Map<string, { kranPersonal: number; kolonnen: number; total: number }> {
+  const kranById = new Map(kraene.map(k => [k.id, k]));
+  const kolonnenJeTag = new Map<string, Map<string, number>>(); // Tag → Leistungsposition → Kolonne
+  for (const t of tasks) {
+    for (const [iso, liste] of aufwandJeTagUndPhaseFuerTask(t, stammdaten, kalender)) {
+      for (const a of liste) {
+        if (!(a.personenstunden > 1e-9)) continue;
+        const ausPool = a.phase.kranpflichtig && (t.kraene ?? []).some(id => {
+          const k = kranById.get(id);
+          return !!k && (kranPersonalAmTag(k, iso).get(a.phase.unternehmer) ?? 0) > 0;
+        });
+        if (ausPool) continue;
+        const jePos = kolonnenJeTag.get(iso) ?? new Map<string, number>();
+        jePos.set(a.phase.position, a.phase.kolonne);
+        kolonnenJeTag.set(iso, jePos);
+      }
+    }
+  }
+  const ergebnis = new Map<string, { kranPersonal: number; kolonnen: number; total: number }>();
+  for (const iso of tage) {
+    const kranPersonal = istArbeitstag(iso, kalender) ? kraene.reduce((s, k) => s + kranPersonalTotalAmTag(k, iso), 0) : 0;
+    const kolonnen = [...(kolonnenJeTag.get(iso)?.values() ?? [])].reduce((s, v) => s + v, 0);
+    ergebnis.set(iso, { kranPersonal, kolonnen, total: kranPersonal + kolonnen });
+  }
+  return ergebnis;
+}
+
+/** true, sobald bei irgendeinem Kran Personal erfasst ist. */
+export function hatKranPersonal(kraene: Kran[]): boolean {
+  return kraene.some(k => (k.personal ?? []).some(p => p.unternehmer.trim() && p.personen > 0));
 }

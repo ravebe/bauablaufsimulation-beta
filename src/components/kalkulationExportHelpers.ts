@@ -1,5 +1,5 @@
 // kalkulationExportHelpers.ts — Export/Import der in Tab Kalkulation gepflegten Task-Zuordnungen
-// (Bauteil-Kürzel, Kranbereich, Kräne, Personal (Soll), Mengen je Gewerk) als CSV (Excel-bearbeitbar,
+// (Bauteil-Kürzel, Kranbereich, Kräne, Mengen je Gewerk) als CSV (Excel-bearbeitbar,
 // Zuordnung über den Tasknamen) oder JSON (exakter Restore über die Task-ID). Gegenstück zu
 // stammdatenAlsCsv/parseStammdatenCsv in stammdatenHelpers.ts, dort aber für die Stammdaten (Raten)
 // statt die Tasks.
@@ -8,8 +8,9 @@ import { istGruppe } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { csvZelle, parseCsvZeilen } from "./stammdatenHelpers";
 
-// "Kranbereich" wird nicht mehr exportiert (Kran-Auswertungen nutzen nur "Kraene"); ältere CSVs mit dieser Spalte lassen sich weiter importieren
-const CSV_SPALTEN_FIX = ["Nr", "Task", "Kürzel", "Kraene", "Personal (Soll)"];
+// "Kranbereich" und "Personal (Soll)" werden nicht mehr exportiert; ältere CSVs mit diesen Spalten lassen sich weiter importieren
+// (Kranbereich wird gelesen, Personal (Soll) ignoriert)
+const CSV_SPALTEN_FIX = ["Nr", "Task", "Kürzel", "Kraene"];
 
 /** Kraene-Zelle aus den zugewiesenen Kran-IDs eines Tasks bauen ("Kran 1+Kran 2") — Reihenfolge wie
  *  in Task.kraene gespeichert. Unbekannte IDs (z.B. zwischenzeitlich gelöschter Kran) werden ausgelassen. */
@@ -36,7 +37,7 @@ export function kalkulationAlsCsv(tasks: Task[], stammdaten: Stammdaten, kraene:
   const zeilen: string[][] = [[...CSV_SPALTEN_FIX, ...stammdaten.gewerke.map(g => g.label || g.key)]];
   nichtGruppenTasks(tasks).forEach((t, i) => {
     zeilen.push([
-      String(i + 1), t.name, t.bauteilKuerzel ?? "", kraeneAlsText(t.kraene, kraene), t.personalSoll != null ? String(t.personalSoll) : "",
+      String(i + 1), t.name, t.bauteilKuerzel ?? "", kraeneAlsText(t.kraene, kraene),
       ...stammdaten.gewerke.map(g => t.mengen?.[g.key] != null ? String(t.mengen[g.key]) : ""),
     ]);
   });
@@ -63,7 +64,6 @@ export function parseKalkulationCsv(text: string, tasks: Task[], stammdaten: Sta
   const iKuerzel = header.findIndex(h => h.trim().toLowerCase() === "kürzel");
   const iKranbereich = header.findIndex(h => h.trim().toLowerCase() === "kranbereich");
   const iKraene = header.findIndex(h => h.trim().toLowerCase() === "kraene");
-  const iPersonalSoll = header.findIndex(h => h.trim().toLowerCase() === "personal (soll)");
   if (iTask === -1) throw new Error('Ungültiges CSV-Format — Spalte "Task" erwartet');
 
   // Gewerk-Spalten über den Label-Text in der Kopfzeile finden (funktioniert auch bei geänderter
@@ -105,10 +105,6 @@ export function parseKalkulationCsv(text: string, tasks: Task[], stammdaten: Sta
       const ids = kraeneAusText(z[iKraene], kraene);
       t.kraene = ids.length > 0 ? ids : undefined;
     }
-    if (iPersonalSoll !== -1) {
-      const personalWert = parseNum(z[iPersonalSoll] ?? "");
-      if (personalWert !== null) t.personalSoll = personalWert;
-    }
     for (const { gewerk, idx: gi } of gewerkSpalten) {
       const wert = parseNum(z[gi] ?? "");
       if (wert === null) continue;
@@ -134,7 +130,6 @@ interface KalkulationJsonEintrag {
   bauteilKuerzel?: string;
   kranbereich?: string;
   kraene?: string; // Kran-Namen "Kran 1+Kran 2", wie in der CSV — siehe kraeneAlsText/kraeneAusText
-  personalSoll?: number;
   mengen?: Record<string, number>;
   mengenQuelle?: Record<string, "auto" | "manuell" | "fehler">;
   mengenInfo?: Record<string, string>;
@@ -147,7 +142,7 @@ interface KalkulationJsonEintrag {
 export function kalkulationAlsJson(tasks: Task[], kraene: Kran[]): string {
   const eintraege: KalkulationJsonEintrag[] = nichtGruppenTasks(tasks).map(t => ({
     id: t.id, name: t.name, bauteilKuerzel: t.bauteilKuerzel, kranbereich: t.kranbereich,
-    kraene: kraeneAlsText(t.kraene, kraene) || undefined, personalSoll: t.personalSoll,
+    kraene: kraeneAlsText(t.kraene, kraene) || undefined,
     mengen: t.mengen, mengenQuelle: t.mengenQuelle, mengenInfo: t.mengenInfo, mengenObjekte: t.mengenObjekte,
   }));
   return JSON.stringify(eintraege, null, 2);
@@ -171,7 +166,7 @@ export function parseKalkulationJson(text: string, tasks: Task[], kraene: Kran[]
     return {
       ...t,
       kraene: e.kraene ? kraeneAusText(e.kraene, kraene) : undefined,
-      bauteilKuerzel: e.bauteilKuerzel, kranbereich: e.kranbereich, personalSoll: e.personalSoll,
+      bauteilKuerzel: e.bauteilKuerzel, kranbereich: e.kranbereich,
       mengen: e.mengen, mengenQuelle: e.mengenQuelle, mengenInfo: e.mengenInfo, mengenObjekte: e.mengenObjekte,
     };
   });

@@ -28,15 +28,15 @@ interface Props {
 // verschiebt. Die Breiten passen sich automatisch dem breitesten Inhalt an (siehe autoW), damit jeder Wert
 // lesbar ist; von Hand gezogene Breiten (startResize) gehen vor. Alle Zellen vertikal in der Zeilenmitte
 // (alignItems: "center").
-const ALLE_SPALTEN = ["nr", "auge", "task", "kuerzel", "mengen", "geplant", "berechnet", "differenz", "kraene", "personalSoll"] as const;
+const ALLE_SPALTEN = ["nr", "auge", "task", "kuerzel", "mengen", "geplant", "berechnet", "differenz", "kraene"] as const;
 type Spalte = typeof ALLE_SPALTEN[number];
 const SPALTEN_LABEL: Record<Spalte, string> = {
   nr: "Nr.", task: "Task", kuerzel: "Kürzel", mengen: "Mengen", geplant: "Geplant", berechnet: "Berechnet",
-  differenz: "Differenz", kraene: "Kräne", personalSoll: "Personal (Soll)", auge: "",
+  differenz: "Differenz", kraene: "Kräne", auge: "",
 };
 // Mindestbreiten (Ansicht vom 2026-10-08) — breiter, sobald ein Inhalt mehr Platz braucht. Von Hand gezogene Breiten
 // gelten nur bis zum Neuladen der Seite (je Projekt) — bewusst nicht im localStorage.
-const DEFAULT_COL_W: Record<Spalte, number> = { nr: 30, task: 174, kuerzel: 64, mengen: 120, geplant: 76, berechnet: 88, differenz: 60, kraene: 40, personalSoll: 90, auge: 30 };
+const DEFAULT_COL_W: Record<Spalte, number> = { nr: 30, task: 174, kuerzel: 64, mengen: 120, geplant: 76, berechnet: 88, differenz: 60, kraene: 40, auge: 30 };
 const sitzungsColW = new Map<string, Partial<Record<Spalte, number>>>();
 const MAX_AUTO_BREITE = 480; // sehr lange Tasknamen sprengen die Tabelle nicht (Rest per Ziehen)
 
@@ -51,10 +51,10 @@ function textBreite(text: string, px: number, fett = false): number {
 const dauerText = (tage: number) => `${fmtZahl(tage)} d`;
 
 // Spalten mit Sortier-/Filterfunktion im Header (Klick auf Titel = sortieren, ▾ = Filter-Popover).
-const SORTIERBARE_SPALTEN = ["nr", "task", "kuerzel", "geplant", "berechnet", "differenz", "kraene", "personalSoll"] as const;
+const SORTIERBARE_SPALTEN = ["nr", "task", "kuerzel", "geplant", "berechnet", "differenz", "kraene"] as const;
 type SortSpalte = typeof SORTIERBARE_SPALTEN[number];
 // Nr. und Task sind nur sortierbar — der Werte-Filter-Popover (Checkbox-Liste) ist dort nicht nötig.
-const FILTERBARE_SPALTEN: readonly SortSpalte[] = ["kuerzel", "geplant", "berechnet", "differenz", "kraene", "personalSoll"];
+const FILTERBARE_SPALTEN: readonly SortSpalte[] = ["kuerzel", "geplant", "berechnet", "differenz", "kraene"];
 
 type Zeile = { t: Task; nr: string; geplant: number; berechnet: number; differenz: number; abweichung: boolean; kraeneText: string };
 
@@ -67,7 +67,6 @@ function spalteWert(z: Zeile, spalte: SortSpalte): string {
     case "berechnet": return dauerText(z.berechnet);
     case "differenz": return `${fmtZahlMitVorzeichen(z.differenz)} d`;
     case "kraene": return z.kraeneText || "–";
-    case "personalSoll": return z.t.personalSoll != null ? fmtZahl(z.t.personalSoll) : "–";
   }
 }
 
@@ -79,7 +78,6 @@ function sortSchluessel(z: Zeile, spalte: SortSpalte): number | string {
     case "geplant": return z.geplant;
     case "berechnet": return z.berechnet;
     case "differenz": return z.differenz;
-    case "personalSoll": return z.t.personalSoll ?? Infinity;
     case "kuerzel": return z.t.bauteilKuerzel || ZULETZT;
     case "kraene": return z.kraeneText || ZULETZT;
     case "task": return z.t.name;
@@ -247,7 +245,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   }
 
   // Wie taskAendern, wirkt aber auf alle ausgewählten Tasks (selectedIds) zugleich, sofern der
-  // bearbeitete Task Teil einer Mehrfachauswahl ist — für Kürzel/Berechnet/Personal (Soll).
+  // bearbeitete Task Teil einer Mehrfachauswahl ist — für Kürzel/Berechnet.
   function taskAendernBulk(taskId: string, patch: Partial<Task>) {
     const zielIds = selectedIds.length > 1 && selectedIds.includes(taskId) ? selectedIds : [taskId];
     updateSim({ ...sim!, tasks: sim!.tasks.map(t => zielIds.includes(t.id) ? { ...t, ...patch } : t) });
@@ -345,7 +343,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   async function kalkulationImportierenJson(file: File) {
     setImportFehler(null); setImportErgebnis(null);
     try {
-      if (!confirm("Kürzel/Kräne/Personal (Soll)/Mengen der passenden Tasks werden vollständig durch den Inhalt der Datei ersetzt. Fortfahren?")) return;
+      if (!confirm("Kürzel/Kräne/Mengen der passenden Tasks werden vollständig durch den Inhalt der Datei ersetzt. Fortfahren?")) return;
       const erg = parseKalkulationJson(await file.text(), sim!.tasks, sim!.kraene ?? []);
       updateSim({ ...sim!, tasks: erg.tasks });
       setImportErgebnis(`${erg.aktualisiert} Task${erg.aktualisiert === 1 ? "" : "s"} aktualisiert${erg.nichtGefunden > 0 ? ` · ${erg.nichtGefunden} Einträge ohne passenden Task ignoriert` : ""}`);
@@ -516,9 +514,8 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     geplant: Math.max(kopfBreite("geplant"), maxText(zeilen.map(z => dauerText(z.geplant))) + 4 + PAD),
     berechnet: Math.max(kopfBreite("berechnet"), maxText(zeilen.map(z => fmtZahl(z.berechnet)), 12, true) + 14 + 12 + PAD),
     differenz: Math.max(kopfBreite("differenz"), maxText(zeilen.map(z => `${fmtZahlMitVorzeichen(z.differenz)} d`), 12, true) + 4 + PAD),
-    // Spalte Kräne wächst mit den zugewiesenen Kranchips (breitester Chip), damit sie nicht in die Spalte Personal (Soll) ragen
+    // Spalte Kräne wächst mit den zugewiesenen Kranchips (breitester Chip)
     kraene: Math.max(kopfBreite("kraene"), maxText((sim.kraene ?? []).filter(k => zugewieseneKranIds.has(k.id)).map(k => k.name), 10, true) + 36 + PAD),
-    personalSoll: Math.max(kopfBreite("personalSoll"), maxText(zeilen.map(z => z.t.personalSoll != null ? fmtZahl(z.t.personalSoll) : "")) + 14 + PAD),
   };
   const colWEff = Object.fromEntries(
     ALLE_SPALTEN.map(s => [s, manuellW[s] ?? Math.max(DEFAULT_COL_W[s], autoW[s])])) as Record<Spalte, number>;
@@ -788,7 +785,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
               </span>
             )}
             {kraeneListe.length === 0 && (
-              <span style={{ fontSize: 10, color: "var(--tc-text-3)" }} title="Kräne erst in Tab AVOR → Kran-Verfügbarkeit anlegen">–</span>
+              <span style={{ fontSize: 10, color: "var(--tc-text-3)" }} title="Kräne erst in Tab Ressourcen → Kräne & Personal anlegen">–</span>
             )}
             {offen && (
               <>
@@ -806,14 +803,6 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
           </div>
         );
       }
-      case "personalSoll":
-        return (
-          <ZahlFeld disabled={readOnly} wert={z.t.personalSoll}
-            title="Vorgesehene Gesamt-Personenzahl für diesen Task (alle Kürzel zusammen) — unabhängig von den Kolonnengrössen je Kürzel in Tab Ressourcen. Ergibt die rote 'Personal (Soll)'-Referenzlinie in Tab AVOR unter Personalauslastung."
-            onWert={v => taskAendernBulk(z.t.id, { personalSoll: v ?? undefined })}
-            onFocus={mengenBearbeitungStart} onBlur={mengenBearbeitungEnde} onKeyDown={mengenEnterCommit}
-            style={{ width: "calc(100% - 4px)", fontSize: 12, padding: "2px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
-        );
       case "auge": {
         const hatBauteile = z.t.objektGuids.length > 0;
         const aktiv = angezeigtTaskId === z.t.id;
@@ -905,8 +894,8 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
                   title: "Löscht nur manuell eingegebene Mengen (schwarze Werte) — automatisch berechnete Mengen (blau) und die 'Berechnet'-Übersteuerung bleiben erhalten" },
               ] }] : []),
               { titel: "Export", eintraege: [
-                { label: "CSV", onClick: kalkulationExportierenCsv, title: "Kürzel/Kräne/Personal (Soll)/Mengen je Task als CSV — in Excel bearbeitbar, Reimport ordnet über den Tasknamen zu" },
-                { label: "JSON", onClick: kalkulationExportierenJson, title: "Kürzel/Kräne/Personal (Soll)/Mengen je Task als JSON — für einen exakten Restore über die Task-ID (z.B. vor einem Bulk-Vorgang)" },
+                { label: "CSV", onClick: kalkulationExportierenCsv, title: "Kürzel/Kräne/Mengen je Task als CSV — in Excel bearbeitbar, Reimport ordnet über den Tasknamen zu" },
+                { label: "JSON", onClick: kalkulationExportierenJson, title: "Kürzel/Kräne/Mengen je Task als JSON — für einen exakten Restore über die Task-ID (z.B. vor einem Bulk-Vorgang)" },
               ] },
               ...(!readOnly ? [{ titel: "Import", eintraege: [
                 { label: "CSV", onClick: () => importCsvInputRef.current?.click(), title: "Aus einer zuvor exportierten (in Excel bearbeiteten) CSV-Datei importieren — Zuordnung über den Tasknamen" },

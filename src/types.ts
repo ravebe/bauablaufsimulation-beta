@@ -44,11 +44,12 @@ export interface Task {
   mengenInfo?: Record<string, string>; // Tooltip-Text bei Status "fehler" (z.B. fehlende Attribute), siehe formelHelpers.ts
   mengenObjekte?: Record<string, Record<string, number>>; // Gewerk-key → Bauteil-GUID (objektGuids-Eintrag) → manuell gesetzter Einzelwert, überschreibt für genau dieses Bauteil den Formel-Wert — siehe Bauteil-Liste in Tab Kalkulation
   berechneteDauerManuell?: number; // manuelle Übersteuerung der "Berechnet"-Spalte in Tab Kalkulation (schwarz statt blau) — siehe dauerBerechnetTask() in stammdatenHelpers.ts
-  kranbereich?: string; // reine Gruppierung/Bauphase (z.B. für den Kapazitäts-Check) — für die Kranauswertung
+  kranbereich?: string; // reine Gruppierung/Bauphase (IFC-Pset "Bauphase") — für die Kranauswertung
                         // siehe stattdessen kraene; kein Parallel-Datenmodell zu kraene
   kraene?: string[]; // Kran-IDs (SimProjekt.kraene) — mehrere = Schnittstellen-Task zwischen Kränen,
                       // Anteil IMMER automatisch gleichmässig verteilt (2→0.5, 3→0.33…), siehe kranHelpers.ts
-  personalSoll?: number; // vorgesehene Gesamt-Personenzahl für diesen Task (alle Kürzel zusammen), unabhängig von den Kolonnengrössen je Kürzel in Tab Ressourcen — Basis für die "Personal (Soll)"-Referenzlinie in Tab AVOR, siehe personalSollProTag() in avorHelpers.ts
+  /** @deprecated Personal (Soll) wird nicht mehr erfasst oder ausgewertet — eingeplantes Personal kommt aus Tab Ressourcen (Kräne & Personal, Kolonnen); nur noch in alten Projekten vorhanden */
+  personalSoll?: number;
   attrGruppe?: Record<string, string>; // Attribut-Werte-Kombination (pset||name → Wert), die diesen Task bei der Attribut-Task-Erzeugung ergeben hat — dient beim erneuten Generieren dazu, denselben Task (inkl. Termine) wiederzuerkennen statt neu anzulegen, siehe AttributTaskErzeugung.tsx
 }
 
@@ -67,11 +68,11 @@ export interface SimModell {
 
 export type Zugriff = "edit" | "read" | "none";
 
-// Zeitraster für Kran-Auswertungen (Kranoptik, Kapazitäts-Check) — global je Projekt, Default "monat"
+// Zeitraster für Kran-Auswertungen (Kranoptik) — global je Projekt, Default "monat"
 // wenn nicht gesetzt (siehe kranHelpers.ts).
 export type Zeitraster = "monat" | "woche";
 
-// Kran-Stammdaten (Tab AVOR, siehe KranVerfuegbarkeitManager.tsx / kranHelpers.ts). Verfügbarkeit
+// Kran-Stammdaten (Tab Ressourcen → Kräne & Personal, siehe KranPersonalEditor.tsx / kranHelpers.ts). Verfügbarkeit
 // bewusst grob als ein zusammenhängender von/bis-Zeitraum je Kran (keine Perioden-Liste) — fehlt
 // von/bis, gilt der Kran als durchgehend verfügbar.
 export interface Kran {
@@ -91,25 +92,6 @@ export interface KranPersonal {
   personen: number;
   von?: string; // YYYY-MM-DD
   bis?: string; // YYYY-MM-DD
-}
-
-// Kapazitäts-Check (Tab AVOR): Personal-Budget je Kran (Spalte "Kräne" in Tab Kalkulation) gegen den aus Menge × Leistungswert
-// ermittelten Bedarf prüfen, dazu Kranstunden-Bedarf gegen die Verfügbarkeit des Krans — siehe kapazitaetsCheckHelpers.ts.
-export interface KapazitaetsPhase {
-  id: string;
-  kranId?: string;           // Kran, für den dieses Personal-Budget gilt
-  anzahlPersonen: number;
-  dauerTageSandbox?: number; // nur im Sandbox-Modus: Ziel-Dauer in Arbeitstagen
-  /** @deprecated früher Gruppierung über den Freitext Task.kranbereich — wird nicht mehr ausgewertet */
-  kranbereich?: string;
-  /** @deprecated früher frei eingegebene Kran-Anzahl je Bauphase — ersetzt durch die Kranstunden je Kran */
-  anzahlKraene?: number;
-}
-export interface KapazitaetsCheck {
-  modus: "gantt" | "sandbox";
-  /** @deprecated Summe sequentieller Phasen — passt nicht zu parallel arbeitenden Kränen, wird nicht mehr ausgewertet */
-  gesamtDauerTageSandbox?: number;
-  phasen: KapazitaetsPhase[];
 }
 
 /** Aus der Simulation entferntes Bauteil ("modelId:::runtimeId"), mit dem Task, in dem es vorher war */
@@ -135,8 +117,7 @@ export interface SimProjekt {
   kalender?: Kalender; // Arbeitstage-Kalender (Feiertage) dieses Projekts
   stammdaten?: Stammdaten; // Leistungswerte/Personal/CHF für die Kalkulation, siehe stammdatenHelpers.ts
   mengenBerechnetSignatur?: string; // Signatur der Stammdaten (Formeln/Ausschlussfilter) zum Zeitpunkt des letzten "Mengen aus Bauteilen berechnen" — siehe mengenRelevanteSignatur() in stammdatenHelpers.ts; weicht sie vom aktuellen Stand ab, sind die Mengen veraltet
-  kapazitaetsCheck?: KapazitaetsCheck; // Personal-/Kran-Kapazitätscheck je Bauphase, siehe KapazitaetsCheckManager.tsx
-  kraene?: Kran[]; // Kran-Stammdaten + Verfügbarkeit, siehe kranHelpers.ts / KranVerfuegbarkeitManager.tsx
+  kraene?: Kran[]; // Kran-Stammdaten, Verfügbarkeit und Personal je Unternehmer, siehe kranHelpers.ts / KranPersonalEditor.tsx (Tab Ressourcen)
   zeitraster?: Zeitraster; // globaler Monat/Woche-Umschalter für Kran-Auswertungen, fehlt = "monat"
 }
 

@@ -61,7 +61,7 @@ describe("ifcImport", () => {
       expect(r.bauteilGuids.get(b.id)).toEqual([WAND]);
       expect(a.bauteilKuerzel).toBe("AB");
       expect(b.kranbereich).toBe("Kran 1");
-      expect(b.personalSoll).toBe(4);
+      expect(b.personalSoll).toBeUndefined(); // Personal (Soll) wird nicht mehr exportiert
       expect(r.kraene.map(k => k.name)).toEqual(["Kran Nord"]);
       expect(b.kraene).toEqual([r.kraene[0].id]);
       if (schema === "IFC4") {

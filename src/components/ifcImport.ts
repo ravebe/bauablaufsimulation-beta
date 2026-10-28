@@ -278,7 +278,6 @@ export function leseBauablaufAusIfc(text: string, neueId: () => string = () => c
       ...(pw.Kuerzel ? { bauteilKuerzel: pw.Kuerzel } : {}),
       ...(pw.Bauphase ? { kranbereich: pw.Bauphase } : {}),
       ...(pw.Kran ? { kraene: pw.Kran.split(" | ").filter(Boolean).map(kranId) } : {}),
-      ...(pw.Personal_Soll && !isNaN(Number(pw.Personal_Soll)) ? { personalSoll: Number(pw.Personal_Soll) } : {}),
     };
     tasks.push(task);
     const guids = [...new Set((bauteilRefs.get(id) ?? []).map(el => guidVon.get(el)).filter((g): g is string => !!g))];
