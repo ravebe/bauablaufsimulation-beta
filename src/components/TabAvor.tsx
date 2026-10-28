@@ -1,11 +1,11 @@
-// TabAvor.tsx — Cockpit mit Personal-/Kranauslastung, Mengen-Filter und Ertragsoptik, abgeleitet
+// TabAvor.tsx — Cockpit mit Personal-/Kranauslastung und Mengen-Filter, abgeleitet
 // aus den in Tab Kalkulation erfassten Mengen/Kürzeln/WBS-Feldern und den Stammdaten aus Ressourcen.
 import { useState, useEffect } from "react";
 import type { SimProjekt, Zeitraster } from "../types";
 import { parseDateUniversal, nsKey } from "../types";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import { LEERE_STAMMDATEN, hatKranpflichtigeRaten } from "./stammdatenHelpers";
-import { personalauslastung, kolonnenJeTag, personalSollProTag, mengenProTag, ertragsoptik, optimaleTagesleistung } from "./avorHelpers";
+import { personalauslastung, kolonnenJeTag, personalSollProTag, mengenProTag, optimaleTagesleistung } from "./avorHelpers";
 import type { TagWert } from "./avorHelpers";
 import { kranstundenProKranUndBucket } from "./kranHelpers";
 import { personenstundenProKranUndBucket, personalRichtwertJeBucket, MAX_PERSONEN_PRO_KRAN } from "./kapazitaetsCheckHelpers";
@@ -27,8 +27,6 @@ function csvHerunterladen(inhalt: string, dateiname: string) {
 }
 
 interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; projectId?: string | null; api?: ApiInstance | null; sharedNadelTag?: React.MutableRefObject<number>; }
-
-const fmtChf = fmtZahl;
 
 function gestapelteSerien(tagWerte: TagWert[], labelFuer: (k: string) => string): { tage: string[]; serien: Serie[] } {
   const tage = tagWerte.map(t => t.tag);
@@ -111,17 +109,14 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
   const mengen = aktivesGewerk ? mengenProTag(tasks, aktivesGewerk.key, kalender, aktiveRate?.kuerzel, stammdaten) : [];
   const optimal = aktiveRate ? optimaleTagesleistung(aktiveRate, stammdaten.arbeitszeitStdProTag) : null;
 
-  const ertrag = ertragsoptik(tasks, stammdaten, kalender);
-
   // Gemeinsamer Zoom/Scroll aller Diagramme dieses Tabs (Mausrad zoomt zum Cursor, wie im Gantt —
   // Achse wechselt dabei automatisch zwischen Monaten/Wochen/Tagen) + je Diagramm frei per Slider
   // einstellbare Höhe, beides projektbezogen in localStorage gemerkt.
-  const tageAnzahl = Math.max(personal.length, mengen.length, ertrag.length);
+  const tageAnzahl = Math.max(personal.length, mengen.length);
   const zoom = useChartZoom(projectId, "avor", tageAnzahl);
   const [hoehePersonal, setHoehePersonal] = useChartHoehe(projectId, "avor-personal");
   const [hoeheKran, setHoeheKran] = useChartHoehe(projectId, "avor-kran");
   const [hoeheMengen, setHoeheMengen] = useChartHoehe(projectId, "avor-mengen");
-  const [hoeheErtrag, setHoeheErtrag] = useChartHoehe(projectId, "avor-ertrag");
 
   const allStarts = tasks.map(t => parseDateUniversal(t.start)).filter((d): d is Date => !!d);
   const minDate = allStarts.length > 0 ? new Date(Math.min(...allStarts.map(d => d.getTime()))) : null;
@@ -206,11 +201,6 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
         ["Datum", `Menge [${aktivesGewerk.einheit}]`, ...(optimal != null ? [`Optimal ausgelastete Tagesleistung [${aktivesGewerk.einheit}]`] : [])],
         ...mengen.map(m => [datumCh(m.tag), csvZahl(m.menge), ...(optimal != null ? [csvZahl(optimal)] : [])]),
       ]), `${sim!.name}_Mengen_${aktivesGewerk.label}.csv`) }] : []),
-    { label: "Ertrag und Lohnkosten (kumuliert)", title: "Ertrag (Menge × Einheitspreis), Lohnkosten (Personenstunden × Lohnansatz) je Tag, kumuliert",
-      onClick: () => csvHerunterladen(alsCsv([
-        ["Datum", "Ertrag kumuliert [CHF]", "Lohnkosten kumuliert [CHF]"],
-        ...ertrag.map(e => [datumCh(e.tag), csvZahl(e.ertragKum), csvZahl(e.kostenKum)]),
-      ]), `${sim!.name}_Ertrag.csv`) },
   ];
 
   return (
@@ -275,17 +265,6 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
           markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick}
           pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
         <ChartResizeHandle hoehe={hoeheMengen} setHoehe={setHoeheMengen} />
-      </CockpitAbschnitt>
-
-      <CockpitAbschnitt titel="Ertragsoptik" eingeklappt={!!eingeklappt["ertrag"]} onToggle={() => toggleEingeklappt("ertrag")}>
-        <TimeSeriesChart tage={ertrag.map(e => e.tag)} einheit="CHF" formatWert={fmtChf} modus="linie"
-          serien={[
-            { key: "ertrag", label: "Ertrag (kumuliert)", color: FARBEN.kategorial[0], werte: ertrag.map(e => e.ertragKum) },
-            { key: "kosten", label: "Lohnkosten (kumuliert)", color: FARBEN.kategorial[1], werte: ertrag.map(e => e.kostenKum) },
-          ]} kalender={kalender} ohneWochenenden={ohneWochenenden} hoehe={hoeheErtrag}
-          markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick}
-          pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
-        <ChartResizeHandle hoehe={hoeheErtrag} setHoehe={setHoeheErtrag} />
       </CockpitAbschnitt>
 
       <CockpitAbschnitt titel="Kranoptik" eingeklappt={!!eingeklappt["kran"]} onToggle={() => toggleEingeklappt("kran")}

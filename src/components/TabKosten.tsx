@@ -141,12 +141,13 @@ export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }
       )}
 
       {gewerkeMitWerten.length > 0 && (
-        <CockpitAbschnitt titel="Ertrag und Lohnkosten je Gewerk" eingeklappt={!!eingeklappt["gewerk"]} onToggle={() => toggleEingeklappt("gewerk")}>
+        <CockpitAbschnitt titel="Ertrag, Lohnkosten und Marge je Gewerk" eingeklappt={!!eingeklappt["gewerk"]} onToggle={() => toggleEingeklappt("gewerk")}>
           <CategoryBarChart einheit="CHF" formatWert={fmtChf}
             kategorien={gewerkeMitWerten.map(g => g.label || g.key)}
             serien={[
               { key: "ertrag", label: "Ertrag", color: FARBEN.kategorial[0], werte: gewerkeMitWerten.map(g => jeGewerk.get(g.key)!.ertrag) },
               { key: "lohn", label: "Lohnkosten", color: FARBEN.kategorial[1], werte: gewerkeMitWerten.map(g => jeGewerk.get(g.key)!.lohnkosten) },
+              { key: "marge", label: "Marge", color: FARBEN.kategorial[2], werte: gewerkeMitWerten.map(g => jeGewerk.get(g.key)!.ertrag - jeGewerk.get(g.key)!.lohnkosten) },
             ]} />
         </CockpitAbschnitt>
       )}
