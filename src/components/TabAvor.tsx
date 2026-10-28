@@ -12,7 +12,7 @@ import { personenstundenProKranUndBucket, personalRichtwertJeBucket, MAX_PERSONE
 import { dreiDZustandAufTagSetzen, tagVonDatum } from "./dreiDHeuteHelper";
 import type { ApiInstance } from "../hooks/useApi";
 import { TimeSeriesChart, KranBalkenChart, StatTile, CockpitAbschnitt, useEingeklappt, useChartZoom, useChartHoehe, ChartResizeHandle, FARBEN } from "./cockpitCharts";
-import type { Serie, KategorieSerie } from "./cockpitCharts";
+import type { Serie, KategorieSerie, DetailSpalte, DetailZeile } from "./cockpitCharts";
 import KranPlanungManager from "./KranPlanungManager";
 import { fmtZahl } from "./zahlFormat";
 import PunkteMenu from "./PunkteMenu";
@@ -166,20 +166,34 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
 
   // Personen ↔ Personenstunden: 1 Person (Vollzeit) = Std./Tag aus Tab Ressourcen
   const std = stammdaten.arbeitszeitStdProTag;
-  const personenAlsAufwand = (personen: number) => `${fmtZahl(personen * std)} h`;
-  // Tooltip: Arbeit des Tages (Personenstunden) und wie lange das eingeplante Personal (Kolonnen aus Tab Ressourcen, je
-  // Leistungsposition nur einmal, siehe kolonnenJeTag) dafür braucht — mit Auslastung gegenüber der vollen Arbeitszeit
+  // Tagesangaben (fest über dem Diagramm nach Klick): Arbeit des Tages (Personenstunden) und wie lange das eingeplante
+  // Personal (Kolonnen aus Tab Ressourcen, je Leistungsposition nur einmal, siehe kolonnenJeTag) dafür braucht — mit
+  // Auslastung gegenüber der vollen Arbeitszeit
   const kolonnen = kolonnenJeTag(tasks, stammdaten, kalender);
   const geplantesPersonal = (idx: number) => Object.values(kolonnen.get(personalSerien.tage[idx]) ?? {}).reduce((s, k) => s + k.personen, 0);
-  const mitArbeitszeit = (stunden: number, koepfe: number) => {
-    if (!(stunden > 0)) return "0 h";
-    if (!(koepfe > 0)) return `${fmtZahl(stunden)} h Arbeit`;
-    const dauer = stunden / koepfe;
-    return `${fmtZahl(stunden)} h Arbeit · mit ${fmtZahl(koepfe)} Pers.: ${fmtZahl(dauer)} h (${fmtZahl(std > 0 ? dauer / std * 100 : 0)} %)`;
-  };
-  const personalZusatz = (key: string, idx: number, personen: number) =>
-    mitArbeitszeit(personen * std, kolonnen.get(personalSerien.tage[idx])?.[key]?.personen ?? 0);
-  const personalZusatzTotal = (idx: number, personen: number) => mitArbeitszeit(personen * std, geplantesPersonal(idx));
+  const eingeplant = (z: DetailZeile, idx: number) =>
+    z.art === "total" ? geplantesPersonal(idx) : z.art === "serie" ? kolonnen.get(personalSerien.tage[idx])?.[z.key]?.personen ?? 0 : 0;
+  const dauer = (z: DetailZeile, idx: number) => { const k = eingeplant(z, idx); return k > 0 && z.wert > 0 ? z.wert * std / k : null; };
+  const personalSpalten: DetailSpalte[] = [
+    { titel: "Personen", wert: z => fmtZahl(z.wert) },
+    { titel: "Arbeit [h]", wert: z => z.art === "linie" ? "" : fmtZahl(z.wert * std) },
+    { titel: "Eingeplant [Pers.]", wert: (z, i) => z.art === "total" || z.art === "serie" ? fmtZahl(eingeplant(z, i)) : "" },
+    { titel: "Dauer [h]", wert: (z, i) => { const d = dauer(z, i); return d != null ? fmtZahl(d) : ""; } },
+    { titel: "Auslastung", wert: (z, i) => { const d = dauer(z, i); return d != null && std > 0 ? `${fmtZahl(d / std * 100)} %` : ""; } },
+  ];
+  const mengenSpalten: DetailSpalte[] = [
+    { titel: `Tagesleistung [${aktivesGewerk?.einheit ?? ""}]`, wert: z => fmtZahl(z.wert) },
+    ...(optimal != null && optimal > 0 ? [{ titel: "Auslastung", wert: (z: DetailZeile) => z.art === "serie" ? `${fmtZahl(z.wert / optimal * 100)} %` : "" }] : []),
+  ];
+  const kranSpalten = [
+    { titel: kranMetrik === "stunden" ? "Bedarf [h]" : "Personal Ø [Pers.]", wert: (s: KategorieSerie, bi: number) => fmtZahl(s.werte[bi] ?? 0) },
+    { titel: kranMetrik === "stunden" ? "Kapazität [h]" : "Max. Personen", wert: (s: KategorieSerie, bi: number) => s.kapazitaet ? fmtZahl(s.kapazitaet[bi] ?? 0) : "" },
+    { titel: "Auslastung", wert: (s: KategorieSerie, bi: number) => {
+      const kap = s.kapazitaet?.[bi] ?? 0;
+      return kap > 0 ? `${fmtZahl((s.werte[bi] ?? 0) / kap * 100)} %${(s.werte[bi] ?? 0) > kap ? " ← Engpass" : ""}` : "";
+    } },
+  ];
+  const markerEntfernen = () => { setAusgewaehlterTag(null); setKlickErgebnis(null); };
   // Linie "Perfekte Auslastung": eingeplantes Personal des Tages — arbeitet es die volle Arbeitszeit, deckt es genau den
   // Bedarf; liegt die Fläche darüber, ist es überlastet, darunter nicht ausgelastet
   const perfekteAuslastung = personalSerien.tage.map((_, i) => geplantesPersonal(i));
@@ -231,11 +245,11 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
       )}
 
       <CockpitAbschnitt titel="Personalauslastung" eingeklappt={!!eingeklappt["personal"]} onToggle={() => toggleEingeklappt("personal")}>
-        <TimeSeriesChart tage={personalSerien.tage} serien={personalSerien.serien} modus="flaeche-gestapelt" einheit="Pers." zusatz={personenAlsAufwand} zusatzSerie={personalZusatz} zusatzTotal={personalZusatzTotal} totalZeile
+        <TimeSeriesChart tage={personalSerien.tage} serien={personalSerien.serien} modus="flaeche-gestapelt" einheit="Pers." totalZeile
           referenzlinie={personalSollGesetzt ? { label: "Personal (Soll)", werte: personalSoll } : undefined}
           weitereLinien={[{ key: "perfekt", label: "Perfekte Auslastung (Kolonnen)", werte: perfekteAuslastung, farbe: FARBEN.status.good }]}
-          formatWert={fmtZahl} kalender={kalender} ohneWochenenden={ohneWochenenden} hoehe={hoehePersonal}
-          markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick}
+          formatWert={fmtZahl} kalender={kalender} ohneWochenenden={ohneWochenenden} hoehe={hoehePersonal} detailSpalten={personalSpalten}
+          markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick} onMarkerEntfernen={markerEntfernen}
           pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
         <ChartResizeHandle hoehe={hoehePersonal} setHoehe={setHoehePersonal} />
       </CockpitAbschnitt>
@@ -261,8 +275,8 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
           serien={[{ key: "menge", label: `Durchschnittlich nötige Tagesleistung${aktiveRate ? ` (${aktiveRate.kuerzel})` : " (Total)"}`, color: FARBEN.kategorial[0], werte: mengen.map(m => m.menge) }]}
           referenzlinie={optimal != null ? { wert: optimal, label: "Optimal ausgelastete Tagesleistung" } : undefined}
           modus="linie" formatWert={fmtZahl}
-          kalender={kalender} ohneWochenenden={ohneWochenenden} hoehe={hoeheMengen}
-          markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick}
+          kalender={kalender} ohneWochenenden={ohneWochenenden} hoehe={hoeheMengen} detailSpalten={mengenSpalten}
+          markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick} onMarkerEntfernen={markerEntfernen}
           pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
         <ChartResizeHandle hoehe={hoeheMengen} setHoehe={setHoeheMengen} />
       </CockpitAbschnitt>
@@ -313,6 +327,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
           ) : (<>
             <KranBalkenChart tage={personalSerien.tage} buckets={kranBuckets} serien={kranBarSerien} einheit="h"
               formatWert={fmtZahl} kalender={kalender} ohneWochenenden={ohneWochenenden} hoehe={hoeheKran}
+              markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick} onMarkerEntfernen={markerEntfernen} detailSpalten={kranSpalten}
               pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
             <ChartResizeHandle hoehe={hoeheKran} setHoehe={setHoeheKran} />
           </>)
@@ -324,6 +339,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
           ) : (<>
             <KranBalkenChart tage={personalSerien.tage} buckets={personalKranBuckets} serien={personalBarSerien} einheit="Pers. (Ø pro Arbeitstag)"
               formatWert={fmtZahl} kalender={kalender} ohneWochenenden={ohneWochenenden} hoehe={hoeheKran}
+              markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick} onMarkerEntfernen={markerEntfernen} detailSpalten={kranSpalten}
               pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
             <ChartResizeHandle hoehe={hoeheKran} setHoehe={setHoeheKran} />
           </>)

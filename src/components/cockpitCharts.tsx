@@ -233,6 +233,49 @@ export const FARBEN = {
 
 export interface Serie { key: string; label: string; color: string; werte: number[] }
 
+/** Eine Zeile der festen Tagesangaben-Tabelle (siehe detailSpalten): Total, Serie oder gestrichelte Linie */
+export interface DetailZeile { key: string; art: "total" | "serie" | "linie" | "referenz"; wert: number }
+export interface DetailSpalte { titel: string; wert: (zeile: DetailZeile, idx: number) => string }
+
+interface DetailTabellenZeile { key: string; label: string; color?: string; gestrichelt?: boolean; fett?: boolean; rot?: boolean; werte: string[] }
+
+/** Feste Angaben zum angeklickten Tag/Zeitraum an Stelle der Legende (Tab AVOR) — Spalte je Angabe,
+ *  Zeile je Position mit Farbcode wie in der Legende. */
+function DetailTabelle({ kopf, spalten, zeilen, onSchliessen }: { kopf: string; spalten: string[]; zeilen: DetailTabellenZeile[]; onSchliessen?: () => void }) {
+  const zelle: React.CSSProperties = { padding: "2px 10px", textAlign: "right", whiteSpace: "nowrap" };
+  return (
+    <div style={{ overflowX: "auto", marginBottom: 6 }}>
+      <table style={{ borderCollapse: "collapse", fontSize: 10, fontVariantNumeric: "tabular-nums", color: FARBEN.textSekundaer }}>
+        <thead>
+          <tr style={{ borderBottom: `1px solid ${FARBEN.gridline}` }}>
+            <th style={{ ...zelle, textAlign: "left", paddingLeft: 0, color: FARBEN.textPrimaer, fontWeight: 700 }}>
+              {kopf}
+              {onSchliessen && (
+                <button type="button" onClick={onSchliessen} title="Auswahl aufheben — wieder Legende anzeigen"
+                  style={{ marginLeft: 6, border: "none", background: "none", cursor: "pointer", color: FARBEN.textMuted, fontSize: 11, padding: 0, lineHeight: 1 }}>×</button>
+              )}
+            </th>
+            {spalten.map(t => <th key={t} style={{ ...zelle, fontWeight: 600, color: FARBEN.textMuted }}>{t}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {zeilen.map(z => (
+            <tr key={z.key} style={{ fontWeight: z.fett ? 700 : 400, color: z.rot ? FARBEN.status.critical : z.fett ? FARBEN.textPrimaer : undefined }}>
+              <td style={{ ...zelle, textAlign: "left", paddingLeft: 0 }}>
+                {z.color && (z.gestrichelt
+                  ? <span style={{ display: "inline-block", width: 10, height: 0, borderTop: `2px dashed ${z.color}`, marginRight: 5, verticalAlign: "middle" }} />
+                  : <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: z.color, marginRight: 5, verticalAlign: "middle" }} />)}
+                {z.label}
+              </td>
+              {z.werte.map((w, i) => <td key={i} style={zelle}>{w}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 interface TimeSeriesProps {
   tage: string[]; // YYYY-MM-DD, gleiche Länge wie serien[].werte
   serien: Serie[];
@@ -258,6 +301,11 @@ interface TimeSeriesProps {
   /** Klick ins Diagramm meldet den getroffenen Tag zurück (z.B. um das 3D-Modell auf dieses Datum zu
    *  setzen und markerIdx/markerLabel entsprechend nachzuführen) — siehe Tab AVOR. */
   onTagKlick?: (tag: string, index: number) => void;
+  /** Statt Hover-Tooltip: Angaben zum angeklickten Tag (markerIdx) fest als Tabelle an Stelle der Legende,
+   *  Spalten = diese Angaben, Zeilen = Total/Serien/Linien mit Farbcode (Tab AVOR) */
+  detailSpalten?: DetailSpalte[];
+  /** × in der Tagesangaben-Tabelle — Auswahl aufheben, wieder Legende */
+  onMarkerEntfernen?: () => void;
   kalender?: Kalender; // für Wochenend-/Feiertag-Schattierung; ohne wird nur Sa/So schattiert
   /** Arbeitsfreie Sa/So aus der Zeitachse entfernen — Wochen dann durch eine feine graue Linie getrennt (Tab AVOR ⋮) */
   ohneWochenenden?: boolean;
@@ -272,7 +320,7 @@ interface TimeSeriesProps {
 
 const ML = 44, MR = 8, MT = 16, MB = 20;
 
-export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = "", hoehe = 180, formatWert, zusatz, zusatzSerie, zusatzTotal, totalZeile, weitereLinien = [], markerIdx, markerLabel = "Heute", onTagKlick, kalender, ohneWochenenden = false,
+export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = "", hoehe = 180, formatWert, zusatz, zusatzSerie, zusatzTotal, totalZeile, weitereLinien = [], markerIdx, markerLabel = "Heute", onTagKlick, detailSpalten, onMarkerEntfernen, kalender, ohneWochenenden = false,
   pxProTag: pxProTagProp, onPxProTagChange: onPxProTagChangeProp, scrollTag: scrollTagProp, onScrollChange: onScrollChangeProp }: TimeSeriesProps) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [outerRef, viewportW] = useMeasuredWidth<HTMLDivElement>(1000);
@@ -356,9 +404,24 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
 
   const zeigeLegende = serien.length >= 2 || !!referenzlinie?.werte || weitereLinien.length > 0;
 
+  // Feste Tagesangaben (detailSpalten): Zeilen in derselben Reihenfolge wie bisher im Tooltip
+  const detailIdx = detailSpalten && markerIdx != null && markerIdx >= 0 && markerIdx < n ? markerIdx : null;
+  const detailZeilen: DetailTabellenZeile[] = [];
+  if (detailSpalten && detailIdx != null) {
+    const zeile = (label: string, z: DetailZeile, extra: Partial<DetailTabellenZeile> = {}) =>
+      detailZeilen.push({ key: `${z.art}-${z.key}`, label, werte: detailSpalten.map(sp => sp.wert(z, detailIdx)), ...extra });
+    if (totalZeile) zeile("Total", { key: "__total", art: "total", wert: serien.reduce((sum, s) => sum + (s.werte[detailIdx] ?? 0), 0) }, { fett: true });
+    for (const s of serien) zeile(s.label, { key: s.key, art: "serie", wert: s.werte[detailIdx] ?? 0 }, { color: s.color });
+    for (const l of weitereLinien) zeile(l.label, { key: l.key, art: "linie", wert: l.werte[detailIdx] ?? 0 }, { color: l.farbe, gestrichelt: true });
+    if (referenzlinie) zeile(referenzlinie.label, { key: "__referenz", art: "referenz", wert: referenzlinie.werte ? referenzlinie.werte[detailIdx] ?? 0 : referenzlinie.wert ?? 0 },
+      { color: FARBEN.status.critical, gestrichelt: true });
+  }
+
   return (
     <div ref={outerRef} style={{ position: "relative" }}>
-      {zeigeLegende && (
+      {detailSpalten && detailIdx != null ? (
+        <DetailTabelle kopf={tage[detailIdx].split("-").reverse().join(".")} spalten={detailSpalten.map(sp => sp.titel)} zeilen={detailZeilen} onSchliessen={onMarkerEntfernen} />
+      ) : zeigeLegende && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 10, color: FARBEN.textSekundaer, marginBottom: 4 }}>
           {serien.map(s => (
             <span key={s.key} style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -435,7 +498,7 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
             )}
           </svg>
         </div>
-        {hoverIdx !== null && (() => {
+        {hoverIdx !== null && !detailSpalten && (() => {
           // Tooltip neben dem Cursor, auf der Seite mit mehr Platz — so bleibt er auch am ersten/letzten Tag ganz sichtbar
           const cx = x(hoverIdx) - scrollTag * pxProTag;
           const rechtsDavon = cx < viewportW / 2;
@@ -672,6 +735,14 @@ interface KranBalkenChartProps {
   kalender?: Kalender;
   /** Wie bei TimeSeriesChart: arbeitsfreie Sa/So aus der Zeitachse entfernen */
   ohneWochenenden?: boolean;
+  /** Gemeinsame Tagesmarkierung (Index in tage[]) und Klick wie bei TimeSeriesChart */
+  markerIdx?: number | null;
+  markerLabel?: string;
+  onTagKlick?: (tag: string, index: number) => void;
+  /** Statt Hover-Tooltip: Angaben zum Zeitraum (Monat/Woche) des markierten Tages fest als Tabelle an
+   *  Stelle der Legende — Spalten = diese Angaben, Zeilen = Kräne mit Farbcode (Tab AVOR) */
+  detailSpalten?: { titel: string; wert: (s: KategorieSerie, bucketIdx: number) => string }[];
+  onMarkerEntfernen?: () => void;
   /** Gemeinsamer Zoom-/Scroll-Zustand mit den übrigen Zeitachsen-Diagrammen dieses Tabs (siehe
    *  TimeSeriesChart) — Pflichtprops, da dieser Chart nur im Verbund mit anderen sinnvoll ist. */
   pxProTag: number;
@@ -686,6 +757,7 @@ interface KranBalkenChartProps {
  *  Tab AVOR, geteilter Zustand über useChartZoom). Balken über der optionalen Kapazitätslinie (kap)
  *  werden rot (Engpass) eingefärbt, wie in CategoryBarChart. */
 export function KranBalkenChart({ tage, buckets, serien, einheit = "", hoehe = 180, formatWert, kalender, ohneWochenenden = false,
+  markerIdx, markerLabel = "Heute", onTagKlick, detailSpalten, onMarkerEntfernen,
   pxProTag, onPxProTagChange, scrollTag, onScrollChange }: KranBalkenChartProps) {
   const [hover, setHover] = useState<{ bi: number; si: number } | null>(null);
   const [outerRef, viewportW] = useMeasuredWidth<HTMLDivElement>(1000);
@@ -721,9 +793,27 @@ export function KranBalkenChart({ tage, buckets, serien, einheit = "", hoehe = 1
   const ticks = berechneZeitachsenTicks(tage, pxProTag, pos, ohneWochenenden, kalender);
   const zeigeLegende = serien.length >= 2;
 
+  // Markierter Tag → Zeitraum (Monat/Woche), dessen Angaben fest über dem Diagramm stehen
+  const markerGueltig = markerIdx != null && markerIdx >= 0 && markerIdx < n;
+  const markerBucket = markerGueltig ? buckets.findIndex(b => tage[markerIdx!] >= b.start && tage[markerIdx!] <= b.end) : -1;
+
+  function onKlick(e: React.MouseEvent<SVGSVGElement>) {
+    if (!onTagKlick) return;
+    const p = Math.floor((e.clientX - e.currentTarget.getBoundingClientRect().left - ML) / pxProTag);
+    const idx = pos.idx[Math.max(0, Math.min(pos.idx.length - 1, p))];
+    onTagKlick(tage[idx], idx);
+  }
+
   return (
     <div ref={outerRef} style={{ position: "relative" }}>
-      {zeigeLegende && (
+      {detailSpalten && markerBucket >= 0 ? (
+        <DetailTabelle kopf={buckets[markerBucket].label} spalten={detailSpalten.map(sp => sp.titel)} onSchliessen={onMarkerEntfernen}
+          zeilen={serien.map(s => {
+            const kap = s.kapazitaet?.[markerBucket];
+            return { key: s.key, label: s.label, color: s.color, rot: kap != null && (s.werte[markerBucket] ?? 0) > kap,
+              werte: detailSpalten.map(sp => sp.wert(s, markerBucket)) };
+          })} />
+      ) : zeigeLegende && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 10, color: FARBEN.textSekundaer, marginBottom: 4 }}>
           {serien.map(s => (
             <span key={s.key} style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -736,8 +826,14 @@ export function KranBalkenChart({ tage, buckets, serien, einheit = "", hoehe = 1
       <div style={{ position: "relative" }}>
         <ZeitachsenKopf headerRef={headerRef} VBW={VBW} ticks={ticks} pxProTag={pxProTag} />
         <div ref={scrollRef} onScroll={onChartScroll} style={{ overflowX: "auto", overflowY: "hidden" }}>
-          <svg width={VBW} height={hoehe} viewBox={`0 0 ${VBW} ${hoehe}`} style={{ display: "block" }}>
+          <svg width={VBW} height={hoehe} viewBox={`0 0 ${VBW} ${hoehe}`} onClick={onKlick}
+            style={{ display: "block", cursor: onTagKlick ? "pointer" : undefined }}>
             {ticks.weekendBands.map((b, i) => <rect key={`we${i}`} x={b.x} y={MT} width={b.w} height={innerH} fill={WE_BG} />)}
+            {markerBucket >= 0 && (() => {
+              const bx0 = x(dayIndexClamped(buckets[markerBucket].start, false));
+              const bx1 = x(dayIndexClamped(buckets[markerBucket].end, true) + 1);
+              return <rect x={bx0} y={MT} width={Math.max(bx1 - bx0, 1)} height={innerH} fill="#eaf2fb" />;
+            })()}
             <line x1={ML} y1={MT} x2={ML} y2={hoehe - MB} stroke={FARBEN.achse} strokeWidth={1} />
             <line x1={ML} y1={hoehe - MB} x2={VBW - MR} y2={hoehe - MB} stroke={FARBEN.achse} strokeWidth={1} />
             <text x={ML - 4} y={y(maxY) + 3} textAnchor="end" fontSize={9} fontFamily="var(--tc-font)" fill={FARBEN.textMuted}>{fmt(maxY)}</text>
@@ -779,9 +875,15 @@ export function KranBalkenChart({ tage, buckets, serien, einheit = "", hoehe = 1
                 </g>
               );
             })}
+            {markerGueltig && (
+              <g>
+                <line x1={x(markerIdx!)} y1={MT} x2={x(markerIdx!)} y2={hoehe - MB} stroke={FARBEN.status.warning} strokeWidth={1.5} />
+                <text x={x(markerIdx!)} y={MT - 5} textAnchor="middle" fontSize={9} fontWeight={700} fontFamily="var(--tc-font)" fill={FARBEN.status.warning}>{markerLabel}</text>
+              </g>
+            )}
           </svg>
         </div>
-        {hover && (() => {
+        {hover && !detailSpalten && (() => {
           const b = buckets[hover.bi];
           const s = serien[hover.si];
           const w = s.werte[hover.bi] ?? 0;
