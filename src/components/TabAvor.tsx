@@ -175,20 +175,44 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
     z.art === "total" ? geplantesPersonal(idx) : z.art === "serie" ? kolonnen.get(personalSerien.tage[idx])?.[z.key]?.personen ?? 0 : 0;
   const dauer = (z: DetailZeile, idx: number) => { const k = eingeplant(z, idx); return k > 0 && z.wert > 0 ? z.wert * std / k : null; };
   const personalSpalten: DetailSpalte[] = [
-    { titel: "Personen", wert: z => fmtZahl(z.wert) },
-    { titel: "Arbeit [h]", wert: z => z.art === "linie" ? "" : fmtZahl(z.wert * std) },
-    { titel: "Eingeplant [Pers.]", wert: (z, i) => z.art === "total" || z.art === "serie" ? fmtZahl(eingeplant(z, i)) : "" },
-    { titel: "Dauer [h]", wert: (z, i) => { const d = dauer(z, i); return d != null ? fmtZahl(d) : ""; } },
-    { titel: "Auslastung", wert: (z, i) => { const d = dauer(z, i); return d != null && std > 0 ? `${fmtZahl(d / std * 100)} %` : ""; } },
+    { titel: "Personen",
+      erklaerung: `Personalbedarf des Tages als Vollzeit-Äquivalent = Personenstunden des Tages ÷ ${fmtZahl(std)} h/Tag (Tab Ressourcen).\nPersonenstunden je Task = Menge × Leistungswert, verteilt über die Tage, an denen das Gewerk im Task arbeitet.\nTotal = Summe aller Gewerke. Perfekte Auslastung = eingeplantes Personal (Kolonnen). Personal (Soll) = Summe Personal (Soll) aller laufenden Tasks (Tab Kalkulation).`,
+      wert: z => fmtZahl(z.wert) },
+    { titel: "Arbeit [h]",
+      erklaerung: `Arbeit des Tages in Personenstunden = Personen × ${fmtZahl(std)} h/Tag (Tab Ressourcen).\nEntspricht Menge × Leistungswert der an diesem Tag laufenden Tasks.`,
+      wert: z => z.art === "linie" ? "" : fmtZahl(z.wert * std) },
+    { titel: "Eingeplant [Pers.]",
+      erklaerung: "Eingeplantes Personal = Kolonnengrösse (Personen) der an diesem Tag aktiven Leistungspositionen aus Tab Ressourcen.\nJede Leistungsposition zählt pro Tag nur einmal, auch wenn mehrere Tasks mit ihr parallel laufen.\nTotal = Summe über alle Gewerke (= Linie Perfekte Auslastung).",
+      wert: (z, i) => z.art === "total" || z.art === "serie" ? fmtZahl(eingeplant(z, i)) : "" },
+    { titel: "Dauer [h]",
+      erklaerung: "Wie lange das eingeplante Personal für die Arbeit des Tages braucht = Arbeit [h] ÷ Eingeplant [Pers.].",
+      wert: (z, i) => { const d = dauer(z, i); return d != null ? fmtZahl(d) : ""; } },
+    { titel: "Auslastung",
+      erklaerung: `Auslastung des eingeplanten Personals = Dauer [h] ÷ ${fmtZahl(std)} h/Tag (Tab Ressourcen).\nUnter 100 % = noch Kapazität frei, über 100 % = die Kolonne schafft die Arbeit nicht in der normalen Arbeitszeit.`,
+      wert: (z, i) => { const d = dauer(z, i); return d != null && std > 0 ? `${fmtZahl(d / std * 100)} %` : ""; } },
   ];
   const mengenSpalten: DetailSpalte[] = [
-    { titel: `Tagesleistung [${aktivesGewerk?.einheit ?? ""}]`, wert: z => fmtZahl(z.wert) },
-    ...(optimal != null && optimal > 0 ? [{ titel: "Auslastung", wert: (z: DetailZeile) => z.art === "serie" ? `${fmtZahl(z.wert / optimal * 100)} %` : "" }] : []),
+    { titel: `Tagesleistung [${aktivesGewerk?.einheit ?? ""}]`,
+      erklaerung: "Durchschnittlich nötige Tagesleistung = Menge je Task ÷ Arbeitstage, an denen das Gewerk im Task arbeitet, summiert über alle an diesem Tag laufenden Tasks (gewähltes Gewerk/Kürzel).\nOptimal ausgelastete Tagesleistung = was die Kolonne bei voller Arbeitszeit schafft (Kolonne × Std./Tag ÷ Leistungswert, Tab Ressourcen).",
+      wert: z => fmtZahl(z.wert) },
+    ...(optimal != null && optimal > 0 ? [{ titel: "Auslastung",
+      erklaerung: "Nötige Tagesleistung ÷ optimal ausgelastete Tagesleistung.\nUnter 100 % = die Kolonne ist nicht voll ausgelastet, über 100 % = sie schafft die Menge nicht in der normalen Arbeitszeit.",
+      wert: (z: DetailZeile) => z.art === "serie" ? `${fmtZahl(z.wert / optimal * 100)} %` : "" }] : []),
   ];
   const kranSpalten = [
-    { titel: kranMetrik === "stunden" ? "Bedarf [h]" : "Personal Ø [Pers.]", wert: (s: KategorieSerie, bi: number) => fmtZahl(s.werte[bi] ?? 0) },
-    { titel: kranMetrik === "stunden" ? "Kapazität [h]" : "Max. Personen", wert: (s: KategorieSerie, bi: number) => s.kapazitaet ? fmtZahl(s.kapazitaet[bi] ?? 0) : "" },
-    { titel: "Auslastung", wert: (s: KategorieSerie, bi: number) => {
+    { titel: kranMetrik === "stunden" ? "Bedarf [h]" : "Personal Ø [Pers.]",
+      erklaerung: kranMetrik === "stunden"
+        ? "Kranstunden-Bedarf im Monat/in der Woche = Personenstunden der kranpflichtigen Kürzel ÷ Kolonne, summiert über die diesem Kran zugewiesenen Tasks (Tab Kalkulation → Kräne; bei mehreren Kränen gleichmässig aufgeteilt)."
+        : "Durchschnittliche Personen pro Arbeitstag = Personenstunden der kranpflichtigen Kürzel dieses Krans im Monat/in der Woche ÷ verfügbare Arbeitstage ÷ Std./Tag, gerundet.",
+      wert: (s: KategorieSerie, bi: number) => fmtZahl(s.werte[bi] ?? 0) },
+    { titel: kranMetrik === "stunden" ? "Kapazität [h]" : "Max. Personen",
+      erklaerung: kranMetrik === "stunden"
+        ? "Verfügbare Kranzeit = Arbeitstage, an denen der Kran im Monat/in der Woche verfügbar ist (Kranplanung von/bis), × Std./Tag."
+        : "Max. Personen des Krans aus der Kranplanung (Standard 13).",
+      wert: (s: KategorieSerie, bi: number) => s.kapazitaet ? fmtZahl(s.kapazitaet[bi] ?? 0) : "" },
+    { titel: "Auslastung",
+      erklaerung: kranMetrik === "stunden" ? "Bedarf ÷ Kapazität. Über 100 % = Engpass (Balken rot)." : "Personal Ø ÷ Max. Personen. Über 100 % = Engpass (Balken rot).",
+      wert: (s: KategorieSerie, bi: number) => {
       const kap = s.kapazitaet?.[bi] ?? 0;
       return kap > 0 ? `${fmtZahl((s.werte[bi] ?? 0) / kap * 100)} %${(s.werte[bi] ?? 0) > kap ? " ← Engpass" : ""}` : "";
     } },

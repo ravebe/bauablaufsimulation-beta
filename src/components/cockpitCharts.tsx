@@ -235,13 +235,14 @@ export interface Serie { key: string; label: string; color: string; werte: numbe
 
 /** Eine Zeile der festen Tagesangaben-Tabelle (siehe detailSpalten): Total, Serie oder gestrichelte Linie */
 export interface DetailZeile { key: string; art: "total" | "serie" | "linie" | "referenz"; wert: number }
-export interface DetailSpalte { titel: string; wert: (zeile: DetailZeile, idx: number) => string }
+/** erklaerung = Tooltip beim Überfahren von Spaltentitel und Werten: wie die Angabe gerechnet wird */
+export interface DetailSpalte { titel: string; erklaerung?: string; wert: (zeile: DetailZeile, idx: number) => string }
 
 interface DetailTabellenZeile { key: string; label: string; color?: string; gestrichelt?: boolean; fett?: boolean; rot?: boolean; werte: string[] }
 
 /** Feste Angaben zum angeklickten Tag/Zeitraum an Stelle der Legende (Tab AVOR) — Spalte je Angabe,
  *  Zeile je Position mit Farbcode wie in der Legende. */
-function DetailTabelle({ kopf, spalten, zeilen, onSchliessen }: { kopf: string; spalten: string[]; zeilen: DetailTabellenZeile[]; onSchliessen?: () => void }) {
+function DetailTabelle({ kopf, spalten, zeilen, onSchliessen }: { kopf: string; spalten: { titel: string; erklaerung?: string }[]; zeilen: DetailTabellenZeile[]; onSchliessen?: () => void }) {
   const zelle: React.CSSProperties = { padding: "2px 10px", textAlign: "right", whiteSpace: "nowrap" };
   return (
     <div style={{ overflowX: "auto", marginBottom: 6 }}>
@@ -255,7 +256,7 @@ function DetailTabelle({ kopf, spalten, zeilen, onSchliessen }: { kopf: string; 
                   style={{ marginLeft: 6, border: "none", background: "none", cursor: "pointer", color: FARBEN.textMuted, fontSize: 11, padding: 0, lineHeight: 1 }}>×</button>
               )}
             </th>
-            {spalten.map(t => <th key={t} style={{ ...zelle, fontWeight: 600, color: FARBEN.textMuted }}>{t}</th>)}
+            {spalten.map(sp => <th key={sp.titel} title={sp.erklaerung} style={{ ...zelle, fontWeight: 600, color: FARBEN.textMuted, cursor: sp.erklaerung ? "help" : undefined }}>{sp.titel}</th>)}
           </tr>
         </thead>
         <tbody>
@@ -267,7 +268,7 @@ function DetailTabelle({ kopf, spalten, zeilen, onSchliessen }: { kopf: string; 
                   : <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: z.color, marginRight: 5, verticalAlign: "middle" }} />)}
                 {z.label}
               </td>
-              {z.werte.map((w, i) => <td key={i} style={zelle}>{w}</td>)}
+              {z.werte.map((w, i) => <td key={i} title={spalten[i]?.erklaerung} style={{ ...zelle, cursor: spalten[i]?.erklaerung ? "help" : undefined }}>{w}</td>)}
             </tr>
           ))}
         </tbody>
@@ -420,7 +421,7 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
   return (
     <div ref={outerRef} style={{ position: "relative" }}>
       {detailSpalten && detailIdx != null ? (
-        <DetailTabelle kopf={tage[detailIdx].split("-").reverse().join(".")} spalten={detailSpalten.map(sp => sp.titel)} zeilen={detailZeilen} onSchliessen={onMarkerEntfernen} />
+        <DetailTabelle kopf={tage[detailIdx].split("-").reverse().join(".")} spalten={detailSpalten} zeilen={detailZeilen} onSchliessen={onMarkerEntfernen} />
       ) : zeigeLegende && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 10, color: FARBEN.textSekundaer, marginBottom: 4 }}>
           {serien.map(s => (
@@ -741,7 +742,7 @@ interface KranBalkenChartProps {
   onTagKlick?: (tag: string, index: number) => void;
   /** Statt Hover-Tooltip: Angaben zum Zeitraum (Monat/Woche) des markierten Tages fest als Tabelle an
    *  Stelle der Legende — Spalten = diese Angaben, Zeilen = Kräne mit Farbcode (Tab AVOR) */
-  detailSpalten?: { titel: string; wert: (s: KategorieSerie, bucketIdx: number) => string }[];
+  detailSpalten?: { titel: string; erklaerung?: string; wert: (s: KategorieSerie, bucketIdx: number) => string }[];
   onMarkerEntfernen?: () => void;
   /** Gemeinsamer Zoom-/Scroll-Zustand mit den übrigen Zeitachsen-Diagrammen dieses Tabs (siehe
    *  TimeSeriesChart) — Pflichtprops, da dieser Chart nur im Verbund mit anderen sinnvoll ist. */
@@ -807,7 +808,7 @@ export function KranBalkenChart({ tage, buckets, serien, einheit = "", hoehe = 1
   return (
     <div ref={outerRef} style={{ position: "relative" }}>
       {detailSpalten && markerBucket >= 0 ? (
-        <DetailTabelle kopf={buckets[markerBucket].label} spalten={detailSpalten.map(sp => sp.titel)} onSchliessen={onMarkerEntfernen}
+        <DetailTabelle kopf={buckets[markerBucket].label} spalten={detailSpalten} onSchliessen={onMarkerEntfernen}
           zeilen={serien.map(s => {
             const kap = s.kapazitaet?.[markerBucket];
             return { key: s.key, label: s.label, color: s.color, rot: kap != null && (s.werte[markerBucket] ?? 0) > kap,
