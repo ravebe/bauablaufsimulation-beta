@@ -1,0 +1,39 @@
+import { describe, it, expect } from "vitest";
+import type { Task, Kran } from "../types";
+import type { Stammdaten } from "./stammdatenHelpers";
+import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
+import { tagesplan } from "./tagesplan";
+
+const KAL = { feiertage: [], ferien: [] };
+const TAG = "2026-11-09";
+const task = (id: string, p: Partial<Task> = {}): Task =>
+  ({ id, name: id, start: TAG, end: TAG, typ: "neubau", objektGuids: [], bauteilKuerzel: "B", ...p });
+// 8 h/Tag; Beton B: Bau AG, Min. 4 Personen, 1 h/m³, kranpflichtig mit Kranzeit kz
+const sd = (kz: number): Stammdaten => ({
+  ...LEERE_STAMMDATEN, arbeitszeitStdProTag: 8,
+  gewerke: [{ key: "bet", label: "Beton", einheit: "m3", raten: [{ kuerzel: "B", bezeichnung: "Beton", leistungswertHProEinheit: 1, anzahlPersonen: 4,
+    chfProEinheit: null, unternehmer: "Bau AG", kranpflichtig: true, kranzeitProzent: kz }] }],
+} as Stammdaten);
+const kran = (n: number): Kran[] => [{ id: "k1", name: "Kran 1", personal: [{ id: "1", unternehmer: "Bau AG", personen: n }] }];
+
+describe("Tagesplan", () => {
+  it("Team unter dem Kran verstärkt bis auf die doppelten Min. Personen — 32 h mit 8 statt 10 Personen = 4 h", () => {
+    const p = tagesplan(TAG, [task("A", { mengen: { bet: 32 } })], sd(25), KAL, kran(10));
+    expect(p.tasks[0].phasen[0].personen).toBe(8);
+    expect(p.dauer).toBeCloseTo(4);
+    expect(p.tasks[0].phasen[0].kranBegrenzt).toBe(false);
+  });
+
+  it("Kranzeit 90 %: der Kran lässt nur 4 Personen zu — 36 h dauern 9 h, durch den Kran begrenzt", () => {
+    const p = tagesplan(TAG, [task("A", { mengen: { bet: 36 } })], sd(90), KAL, kran(10));
+    expect(p.tasks[0].phasen[0].personen).toBe(4);
+    expect(p.dauer).toBeCloseTo(9);
+    expect(p.tasks[0].phasen[0].kranBegrenzt).toBe(true);
+  });
+
+  it("zwei Arbeiten teilen sich das Team und den Kran", () => {
+    const p = tagesplan(TAG, [task("A", { mengen: { bet: 16 } }), task("B", { mengen: { bet: 16 } })], sd(25), KAL, kran(8));
+    expect(p.tasks.map(t => t.phasen[0].personen)).toEqual([4, 4]); // je Min. 4, keine Leute übrig
+    expect(p.dauer).toBeCloseTo(4);
+  });
+});

@@ -5,7 +5,9 @@ import type { SimProjekt, Zeitraster } from "../types";
 import { parseDateUniversal, nsKey } from "../types";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import { LEERE_STAMMDATEN, hatKranpflichtigeRaten } from "./stammdatenHelpers";
-import { personalauslastung, kolonnenJeTag, tagesdauerJeTag, mengenProTag, optimaleTagesleistung } from "./avorHelpers";
+import { personalauslastung, kolonnenJeTag, mengenProTag, optimaleTagesleistung } from "./avorHelpers";
+import { tagesplan } from "./tagesplan";
+import type { Tagesplan } from "./tagesplan";
 import type { TagWert } from "./avorHelpers";
 import { kranstundenProKranUndBucket, kranPersonalMaxImBereich, RICHTWERT_PERSONEN_PRO_KRAN, eingeplantesPersonalJeTag, hatKranPersonal, durchschnittlicheAuslastung, kranLuecken, arbeitstageInBereich } from "./kranHelpers";
 import { KranLueckenHinweis } from "./KranPersonalEditor";
@@ -197,29 +199,42 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
     const g = gewerkEingeplant(z.key, idx);
     return g?.unterKran ? null : g?.ohneKran ?? 0;
   };
-  // Total ohne Kranpersonal: Schritte eines Tasks nacheinander (Summe), verschiedene Tasks parallel (Maximum) — siehe
-  // tagesdauerJeTag. Mit Kranpersonal sind die Leute desselben Unternehmers Allrounder (Pool) → Arbeit ÷ eingeplantes Personal.
-  // Gewerk-Zeilen: Arbeit des Gewerks ÷ seine Personen (unter dem Kran: keine eigene Dauer)
-  const tagesdauer = tagesdauerJeTag(tasks, stammdaten, kalender);
-  const dauer = (z: DetailZeile, idx: number) => {
-    if (z.art === "total" && !mitKranPersonal) { const d = tagesdauer.get(personalSerien.tage[idx]) ?? 0; return d > 0 ? d : null; }
-    const k = eingeplant(z, idx); return k != null && k > 0 && z.wert > 0 ? z.wert * std / k : null;
+  // Dauer: aus dem Tagesplan (tagesplan.ts) — wie die Arbeit des Tages mit dem Personal tatsächlich abläuft (Team unter dem Kran,
+  // Min. Personen, Kranzeit), derselbe Ablauf wie im Tagesablauf darunter. Total = bis wann alles fertig ist, Gewerk = von seiner
+  // ersten bis zur letzten Arbeit. Je Tag einmal gerechnet.
+  const planCache = new Map<number, Tagesplan>();
+  const planFuer = (idx: number) => {
+    let p = planCache.get(idx);
+    if (!p) { p = tagesplan(personalSerien.tage[idx], tasks, stammdaten, kalender, kraene); planCache.set(idx, p); }
+    return p;
+  };
+  const dauer = (z: DetailZeile, idx: number): number | null => {
+    if (z.art === "total") { const d = planFuer(idx).dauer; return d > 0 ? d : null; }
+    if (z.art !== "serie") return null;
+    const g = planFuer(idx).jeGewerk.get(z.key);
+    return g && g.bis > g.von ? g.bis - g.von : null;
+  };
+  /** Freie Personen = eingeplant − benötigt (nur wo eine eigene Zahl eingeplant ist) */
+  const frei = (z: DetailZeile, idx: number): number | null => {
+    const e = eingeplant(z, idx);
+    return e == null || (z.art !== "total" && z.art !== "serie") ? null : e - z.wert;
   };
   const personalSpalten: DetailSpalte[] = [
-    { titel: "Personen",
-      erklaerung: `Personalbedarf des Tages als Vollzeit-Äquivalent = Personenstunden des Tages ÷ ${fmtZahl(std)} h/Tag (Tab Ressourcen).\nPersonenstunden je Task = Menge × Leistungswert, verteilt über die Tage, an denen das Gewerk im Task arbeitet.\nTotal = Summe aller Gewerke. Perfekte Auslastung = eingeplantes Personal (Personal unter dem Kran + Personen ohne Kran).`,
-      wert: z => fmtZahl(z.wert) },
     { titel: "Arbeit [h]",
-      erklaerung: `Arbeit des Tages in Personenstunden = Personen × ${fmtZahl(std)} h/Tag (Tab Ressourcen).\nEntspricht Menge × Leistungswert der an diesem Tag laufenden Tasks.`,
+      erklaerung: `Arbeit des Tages in Personenstunden = Menge × Leistungswert der an diesem Tag laufenden Tasks (die Arbeit eines Tasks verteilt sich gleichmässig über seine Dauer im Gantt).`,
       wert: z => z.art === "linie" ? "" : fmtZahl(z.wert * std) },
+    { titel: "Benötigt [Pers.]",
+      erklaerung: `So viele Personen braucht die Arbeit des Tages bei voller Arbeitszeit = Arbeit [h] ÷ ${fmtZahl(std)} h/Tag (Tab Ressourcen). Das ist die Fläche im Diagramm.`,
+      wert: z => z.art === "linie" ? "" : fmtZahl(z.wert) },
     { titel: "Eingeplant [Pers.]",
       erklaerung: mitKranPersonal
         ? "Total (= Linie Perfekte Auslastung): Personal unter den verfügbaren Kränen (Tab Ressourcen → Kräne & Personal) + Personen ohne Kran.\nGewerk: «unter Kran» = arbeitet mit dem Personal des Krans (Allrounder, teilen sich die Arbeit aller Gewerke unter dem Kran — darum keine eigene Zahl); eine Zahl = Min. Personen seiner Leistungspositionen ohne Kran (nicht kranpflichtig, Task ohne Kran …).\nDie Zahlen der Gewerke ergeben zusammen den Teil «ohne» im Total."
         : "Gewerk: Min. Personen (Tab Ressourcen) der an diesem Tag aktiven Leistungspositionen — jede Position zählt pro Tag nur einmal.\nTotal (= Linie Perfekte Auslastung): Summe der Gewerke.",
       wert: (z, i) => {
+        if (z.art === "linie") return fmtZahl(z.wert);
         if (z.art === "serie") {
           const e = eingeplant(z, i);
-          if (e != null) return e > 0 || z.wert > 0 ? fmtZahl(e) : "0";
+          if (e != null) return fmtZahl(e);
           const ohne = gewerkEingeplant(z.key, i)?.ohneKran ?? 0;
           return ohne > 0 ? `unter Kran + ${fmtZahl(ohne)}` : "unter Kran";
         }
@@ -239,14 +254,15 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
         }
         return zeilen.join("\n");
       } },
+    { titel: "Frei [Pers.]",
+      erklaerung: "Eingeplant − Benötigt: so viele Personen haben an diesem Tag rechnerisch keine Arbeit (negativ = es fehlen Personen).\nGewerke unter dem Kran teilen sich dessen Personal — ihr freier Anteil steckt im Total.",
+      wert: (z, i) => { const f = frei(z, i); return f == null ? "" : fmtZahl(f); } },
     { titel: "Dauer [h]",
-      erklaerung: mitKranPersonal
-        ? "Wie lange das eingeplante Personal für die Arbeit des Tages braucht.\nGewerk ohne Kran: Arbeit [h] ÷ seine Personen. Gewerke unter dem Kran teilen sich dessen Personal — sie haben keine eigene Dauer, sie stecken im Total.\nTotal: Arbeit [h] ÷ Eingeplant [Pers.]."
-        : "Wie lange das eingeplante Personal für die Arbeit des Tages braucht.\nGewerk: Arbeit [h] ÷ Eingeplant [Pers.].\nTotal: Innerhalb eines Tasks laufen die Schritte nacheinander (Arbeitsablauf je Leistungsposition, z.B. Schalung → Bewehrung → Beton) → Summe ihrer Dauern (Arbeit ÷ Personen); verschiedene Tasks laufen parallel → der längste Task zählt. Arbeiten dieselben Personen (Leistungsposition) an mehreren Tasks, zählt mindestens ihre Summe.",
+      erklaerung: `Bis wann die Arbeit des Tages fertig ist, in Stunden ab Arbeitsbeginn — aus dem Tagesablauf unter der Tabelle: ${mitKranPersonal ? "das Team unter dem Kran verteilt sich auf die Arbeiten (je Arbeit mindestens Min. Personen, höchstens doppelt), " : ""}Positionen ohne Kran mit ihren Min. Personen, Schritte eines Tasks nacheinander, kranpflichtige Arbeiten nur so schnell, wie der Kran nachkommt (Kranzeit %).\nGewerk: von seiner ersten bis zu seiner letzten Arbeit an diesem Tag.\nÜber ${fmtZahl(std)} h = die Arbeit ist in der normalen Arbeitszeit nicht zu schaffen.`,
       wert: (z, i) => { const d = dauer(z, i); return d != null ? fmtZahl(d) : ""; } },
     { titel: "Auslastung",
-      erklaerung: `Wie stark der Arbeitstag belegt ist = Dauer [h] ÷ ${fmtZahl(std)} h/Tag (Tab Ressourcen).\nGewerk: Auslastung seiner Personen. Total: wie lange der Tag mit dem eingeplanten Personal dauert.\nUnter 100 % = noch Zeit frei, über 100 % = die Arbeit ist in der normalen Arbeitszeit nicht zu schaffen.`,
-      wert: (z, i) => { const d = dauer(z, i); return d != null && std > 0 ? `${fmtZahl(d / std * 100)} %` : ""; } },
+      erklaerung: "Wie gut das eingeplante Personal ausgelastet ist = Benötigt ÷ Eingeplant.\nUnter 100 % = Personen ohne Arbeit (siehe Frei), über 100 % = es fehlen Personen.\nGewerke unter dem Kran: siehe Total.",
+      wert: (z, i) => { const e = eingeplant(z, i); return e != null && e > 0 && (z.art === "total" || z.art === "serie") ? `${fmtZahl(z.wert / e * 100)} %` : ""; } },
   ];
   const farbeJeGewerk = new Map(personalSerien.serien.map(s => [s.key, s.color]));
   const mengenSpalten: DetailSpalte[] = [
@@ -338,7 +354,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
           weitereLinien={[{ key: "perfekt", label: mitKranPersonal ? "Perfekte Auslastung (Personal unter dem Kran + Personen ohne Kran)" : "Perfekte Auslastung (Min. Personen)", werte: perfekteAuslastung, farbe: FARBEN.status.good }]}
           formatWert={fmtZahl} kalender={kalender} ohneWochenenden={ohneWochenenden} hoehe={hoehePersonal} detailSpalten={personalSpalten}
           detailUnten={i => <Tagesablauf iso={personalSerien.tage[i]} tasks={tasks} stammdaten={stammdaten} kalender={kalender} farbeJeGewerk={farbeJeGewerk}
-            eingeplant={eingeplantJeTag.get(personalSerien.tage[i])} mitKranPersonal={mitKranPersonal} kraene={kraene} />}
+            eingeplant={eingeplantJeTag.get(personalSerien.tage[i])} mitKranPersonal={mitKranPersonal} kraene={kraene} plan={planFuer(i)} />}
           markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick} onMarkerEntfernen={markerEntfernen}
           pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
         <ChartResizeHandle hoehe={hoehePersonal} setHoehe={setHoehePersonal} />

@@ -1,7 +1,7 @@
-// Tagesablauf.tsx — Tab AVOR → Personalauslastung, nach Klick auf einen Tag unter der Tabelle: wie das Gantt diesen Tag rechnet.
-// Je laufendem Task ein Balken über den Arbeitstag: die Schritte nacheinander (Arbeitsablauf je Leistungsposition), je Phase
-// Gewerk, Personen (Min. Personen aus Tab Ressourcen) und Stunden (Arbeit des Tages ÷ Personen) — dieselbe Rechnung wie
-// aufwandJeTagUndPhaseFuerTask, auf der Tabelle und Diagramm beruhen. Darunter die Summen, die zur Tabelle führen. Ist das
+// Tagesablauf.tsx — Tab AVOR → Personalauslastung, nach Klick auf einen Tag unter der Tabelle: wie die Arbeit dieses Tages abläuft.
+// Je laufendem Task ein Balken über den Arbeitstag mit seinen Arbeiten zur jeweiligen Zeit (Gewerk, Personen, Stunden) aus dem
+// Tagesplan (tagesplan.ts: Team unter dem Kran, Min. Personen, Kranzeit) — derselbe wie die Spalte Dauer der Tabelle. Darunter die
+// Summen, die zur Tabelle führen. Ist das
 // eingeplante Personal nicht ausgelastet, erklärt "Warum arbeiten nicht mehr Personen?", was die übrigen Arbeiten zurückhält
 // (Kranzeit, Vorgänger mit Wartetagen, Startdatum) und was sich von Hand ändern liesse.
 import type { Task, Kran } from "../types";
@@ -9,7 +9,8 @@ import { vorgaengerListe, istGruppe } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { hatKalkulationsWerte } from "./stammdatenHelpers";
 import type { Kalender } from "./kalenderHelpers";
-import { aufwandJeTagUndPhaseFuerTask, kranstundenJeTagFuerTask } from "./avorHelpers";
+import { kranstundenJeTagFuerTask } from "./avorHelpers";
+import type { Tagesplan, TagesplanPhase } from "./tagesplan";
 import type { EingeplantTag } from "./kranHelpers";
 import { kraeneDesTasks, istKranVerfuegbarAn } from "./kranHelpers";
 import { endZeitpunkt, folgeStartZeitpunkt } from "./zeitHelpers";
@@ -24,6 +25,8 @@ const AUSLASTUNG_HINWEIS = 0.9;
 interface Props {
   iso: string; tasks: Task[]; stammdaten: Stammdaten; kalender: Kalender;
   farbeJeGewerk: Map<string, string>; eingeplant?: EingeplantTag; mitKranPersonal: boolean; kraene: Kran[];
+  /** Ablauf des Tages (tagesplan) — derselbe wie in der Spalte Dauer */
+  plan: Tagesplan;
 }
 
 const datumText = (iso: string) => iso.split("-").reverse().join(".");
@@ -70,78 +73,71 @@ function wartegruende(iso: string, tasks: Task[], stammdaten: Stammdaten, kalend
   return { kranVoll, wartend };
 }
 
-export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeGewerk, eingeplant, mitKranPersonal, kraene }: Props) {
+export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeGewerk, eingeplant, mitKranPersonal, kraene, plan }: Props) {
   const std = stammdaten.arbeitszeitStdProTag;
   const gewerkLabel = new Map(stammdaten.gewerke.map(g => [g.key, g.label]));
-
-  // je Task die Schritte des Tages: Phasen eines Schritts gleichzeitig, Schritte nacheinander
-  const zeilen = tasks.flatMap(t => {
-    const liste = aufwandJeTagUndPhaseFuerTask(t, stammdaten, kalender).get(iso)?.filter(a => a.personenstunden > 1e-9) ?? [];
-    if (liste.length === 0) return [];
-    const jeSchritt = new Map<number, { gewerk: string; kuerzel: string; personen: number; stunden: number; arbeit: number }[]>();
-    for (const a of liste) {
-      const phasen = jeSchritt.get(a.schritt) ?? [];
-      phasen.push({ gewerk: a.phase.gewerkKey, kuerzel: a.phase.position.split("::")[1] ?? "", personen: a.phase.kolonne,
-        stunden: a.personenstunden / a.phase.kolonne, arbeit: a.personenstunden });
-      jeSchritt.set(a.schritt, phasen);
-    }
-    const schritte = [...jeSchritt.entries()].sort((x, y) => x[0] - y[0]).map(([, phasen]) => ({ phasen, stunden: Math.max(...phasen.map(p => p.stunden)) }));
-    return [{ t, schritte, stunden: schritte.reduce((s, x) => s + x.stunden, 0), arbeit: liste.reduce((s, a) => s + a.personenstunden, 0) }];
-  });
+  const zeilen = plan.tasks;
   if (zeilen.length === 0) return null;
 
-  const arbeit = zeilen.reduce((s, z) => s + z.arbeit, 0);
-  const skala = Math.max(std, ...zeilen.map(z => z.stunden)); // Balkenbreite: Arbeitstag, oder länger, wenn ein Task überzieht
+  const arbeit = plan.arbeit;
+  const skala = Math.max(std, plan.dauer); // Balkenbreite: Arbeitstag, oder länger, wenn die Arbeit überzieht
   const sichtbar = zeilen.slice(0, MAX_TASKS);
   const datum = iso.split("-").reverse().join(".");
+  const ueberzogen = plan.dauer > std + 1e-6;
 
   return (
     <div style={{ margin: "6px 0 10px", padding: "8px 10px", background: "#fafbfc", border: `1px solid ${FARBEN.gridline}`, fontSize: 11 }}>
-      <div style={{ fontWeight: 600, color: FARBEN.textPrimaer, marginBottom: 2 }}>So rechnet das Gantt den {datum}</div>
+      <div style={{ fontWeight: 600, color: FARBEN.textPrimaer, marginBottom: 2 }}>Tagesablauf {datum}</div>
       <div style={{ color: FARBEN.textSekundaer, marginBottom: 6, lineHeight: 1.5 }}>
-        Jeder Task arbeitet mit den Min. Personen seiner Leistungspositionen (Tab Ressourcen). Die Schritte eines Tasks folgen
-        nacheinander (z.B. Schalung → Bewehrung → Beton), verschiedene Tasks laufen gleichzeitig. Die Arbeit eines Tasks verteilt sich
-        gleichmässig über seine Dauer im Gantt — hier der Anteil dieses Tages. Balken = {fmtZahl(std)} h Arbeitstag.
+        Die Arbeit des Tages laut Gantt, verteilt auf das Personal: {mitKranPersonal
+          ? "das Personal unter dem Kran arbeitet als Team (Allrounder) — jede Arbeit mindestens mit ihren Min. Personen, freie Leute verstärken bis aufs Doppelte; Positionen ohne Kran mit ihren Min. Personen."
+          : "jede Leistungsposition mit ihren Min. Personen, dieselbe Position nie an zwei Tasks gleichzeitig."}
+        {" "}Kranpflichtige Arbeiten gehen nur so schnell, wie der Kran nachkommt (Kranzeit %). Schritte eines Tasks nacheinander. Balken = {fmtZahl(std)} h Arbeitstag.
       </div>
-      {sichtbar.map(z => (
-        <div key={z.t.id} style={{ display: "grid", gridTemplateColumns: "minmax(110px, 180px) 1fr 52px", alignItems: "center", columnGap: 8, marginBottom: 3 }}>
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: FARBEN.textPrimaer }} title={z.t.name}>{z.t.name}</span>
-          <div style={{ position: "relative", height: 18, background: "#eef1f4" }}>
-            {/* Ende des Arbeitstags, falls ein Task länger braucht */}
-            {skala > std && <div style={{ position: "absolute", left: `${std / skala * 100}%`, top: -2, bottom: -2, borderLeft: `1.5px dashed ${FARBEN.status.critical}` }} />}
-            {(() => {
-              let von = 0;
-              return z.schritte.map((s, si) => {
-                const links = von; von += s.stunden;
-                return (
-                  <div key={si} style={{ position: "absolute", left: `${links / skala * 100}%`, width: `${s.stunden / skala * 100}%`, top: 0, bottom: 0, display: "flex", flexDirection: "column" }}>
-                    {s.phasen.map((p, pi) => (
-                      <div key={pi} title={`${gewerkLabel.get(p.gewerk) ?? p.gewerk} · ${p.kuerzel}: ${fmtZahl(p.arbeit)} Personenstunden ÷ ${fmtZahl(p.personen)} Personen = ${fmtZahl(p.stunden)} h`}
-                        style={{ flex: 1, width: `${p.stunden / s.stunden * 100}%`, background: farbeJeGewerk.get(p.gewerk) ?? FARBEN.andere, borderRight: "1px solid #fff",
-                          color: "#fff", fontSize: 9, lineHeight: `${18 / s.phasen.length}px`, overflow: "hidden", whiteSpace: "nowrap", paddingLeft: 3 }}>
-                        {s.phasen.length === 1 ? `${fmtZahl(p.personen)} P · ${fmtZahl(p.stunden)} h` : ""}
-                      </div>
-                    ))}
-                  </div>
-                );
-              });
-            })()}
+      {sichtbar.map(z => {
+        // parallele Arbeiten eines Tasks übereinander (Spuren)
+        const spuren: TagesplanPhase[][] = [];
+        for (const p of [...z.phasen].sort((a, b) => a.von - b.von)) {
+          const spur = spuren.find(s => s[s.length - 1].bis <= p.von + 1e-6);
+          if (spur) spur.push(p); else spuren.push([p]);
+        }
+        const hoehe = 18;
+        return (
+          <div key={z.t.id} style={{ display: "grid", gridTemplateColumns: "minmax(110px, 180px) 1fr 64px", alignItems: "center", columnGap: 8, marginBottom: 3 }}>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: FARBEN.textPrimaer }} title={z.t.name}>{z.t.name}</span>
+            <div style={{ position: "relative", height: hoehe, background: "#eef1f4" }}>
+              {ueberzogen && <div style={{ position: "absolute", left: `${std / skala * 100}%`, top: -3, bottom: -3, borderLeft: `2px solid ${FARBEN.status.critical}` }}
+                title={`Arbeitsende (${fmtZahl(std)} h)`} />}
+              {spuren.map((spur, si) => spur.map((p, pi) => (
+                <div key={`${si}-${pi}`}
+                  title={`${gewerkLabel.get(p.gewerkKey) ?? p.gewerkKey} · ${p.kuerzel}: ${fmtZahl(p.arbeit)} Personenstunden mit ${fmtZahl(p.personen)} Personen (Min. ${fmtZahl(p.minPersonen)}${p.unterKran ? ", Personal unter dem Kran" : ""}) = ${fmtZahl(p.bis - p.von)} h, ${fmtZahl(p.von)}–${fmtZahl(p.bis)} h nach Arbeitsbeginn${p.kranBegrenzt ? "\nDurch die Kranzeit begrenzt: mehr Leute wären frei gewesen, aber der Kran kommt nicht nach (Kranzeit % in Tab Ressourcen)." : ""}`}
+                  style={{ position: "absolute", left: `${p.von / skala * 100}%`, width: `${Math.max(p.bis - p.von, 0.05) / skala * 100}%`,
+                    top: si * hoehe / spuren.length, height: hoehe / spuren.length, background: farbeJeGewerk.get(p.gewerkKey) ?? FARBEN.andere,
+                    borderRight: "1px solid #fff", color: "#fff", fontSize: 9, lineHeight: `${hoehe / spuren.length}px`, overflow: "hidden", whiteSpace: "nowrap", paddingLeft: 3,
+                    backgroundImage: p.kranBegrenzt ? "repeating-linear-gradient(135deg, rgba(255,255,255,.25) 0 4px, transparent 4px 8px)" : undefined }}>
+                  {spuren.length === 1 ? `${fmtZahl(p.personen)} P · ${fmtZahl(p.bis - p.von)} h${p.kranBegrenzt ? " · Kran" : ""}` : ""}
+                </div>
+              )))}
+            </div>
+            <span style={{ textAlign: "right", fontWeight: z.bis > std + 1e-6 ? 700 : 400, color: z.bis > std + 1e-6 ? FARBEN.status.critical : FARBEN.textSekundaer }}
+              title={z.bis > std + 1e-6 ? "Fertig erst nach Arbeitsende — die Arbeit dieses Tages ist in der normalen Arbeitszeit nicht zu schaffen" : "Fertig nach so vielen Stunden ab Arbeitsbeginn"}>
+              bis {fmtZahl(z.bis)} h</span>
           </div>
-          <span style={{ textAlign: "right", color: z.stunden > std + 1e-6 ? FARBEN.status.critical : FARBEN.textSekundaer }}
-            title="Wie lange dieser Task am Tag braucht: Summe seiner Schritte">{fmtZahl(z.stunden)} h</span>
-        </div>
-      ))}
+        );
+      })}
       {zeilen.length > MAX_TASKS && <div style={{ color: FARBEN.textMuted }}>… und {zeilen.length - MAX_TASKS} weitere Tasks</div>}
       <div style={{ marginTop: 6, color: FARBEN.textSekundaer, lineHeight: 1.6 }}>
-        <div><strong>Arbeit:</strong> {zeilen.length} Task{zeilen.length === 1 ? "" : "s"} zusammen {fmtZahl(arbeit)} Personenstunden = {fmtZahl(arbeit / std)} Personen × {fmtZahl(std)} h (Spalten Arbeit und Personen).</div>
+        <div><strong>Arbeit:</strong> {zeilen.length} Task{zeilen.length === 1 ? "" : "s"} zusammen {fmtZahl(arbeit)} Personenstunden = {fmtZahl(arbeit / std)} Personen × {fmtZahl(std)} h (Spalten Arbeit und Benötigt).</div>
         {eingeplant && (mitKranPersonal ? (
-          <div><strong>Eingeplant:</strong> {fmtZahl(eingeplant.kranPersonal)} Personen unter dem Kran (Tab Ressourcen → Kräne & Personal — sie arbeiten als Allrounder an allen Gewerken mit «unter Kran»)
-            {eingeplant.kolonnen > 0 ? ` + ${fmtZahl(eingeplant.kolonnen)} Personen ohne Kran (Min. Personen der übrigen Positionen)` : ""} = <strong>{fmtZahl(eingeplant.total)} Personen</strong>.
-            Auslastung = {fmtZahl(arbeit / std)} ÷ {fmtZahl(eingeplant.total)} = {eingeplant.total > 0 ? `${fmtZahl(arbeit / std / eingeplant.total * 100)} %` : "–"}.</div>
+          <div><strong>Eingeplant:</strong> {fmtZahl(eingeplant.kranPersonal)} Personen unter dem Kran
+            {eingeplant.kolonnen > 0 ? ` + ${fmtZahl(eingeplant.kolonnen)} Personen ohne Kran` : ""} = <strong>{fmtZahl(eingeplant.total)} Personen</strong>,
+            davon frei {fmtZahl(Math.max(0, eingeplant.total - arbeit / std))}. Auslastung = {fmtZahl(arbeit / std)} ÷ {fmtZahl(eingeplant.total)} = {eingeplant.total > 0 ? `${fmtZahl(arbeit / std / eingeplant.total * 100)} %` : "–"}.</div>
         ) : (
-          <div><strong>Eingeplant:</strong> Summe der Min. Personen der an diesem Tag aktiven Leistungspositionen = <strong>{fmtZahl(eingeplant.total)} Personen</strong>
-            {" "}(dieselbe Position an mehreren Tasks zählt einmal).</div>
+          <div><strong>Eingeplant:</strong> Summe der Min. Personen der an diesem Tag aktiven Leistungspositionen = <strong>{fmtZahl(eingeplant.total)} Personen</strong>.</div>
         ))}
+        <div style={{ color: ueberzogen ? FARBEN.status.critical : undefined, fontWeight: ueberzogen ? 600 : undefined }}>
+          <strong>Dauer:</strong> Die Arbeit des Tages ist nach {fmtZahl(plan.dauer)} h fertig{ueberzogen ? ` — ${fmtZahl(plan.dauer - std)} h nach Arbeitsende` : ""} (Spalte Dauer).
+        </div>
       </div>
       {eingeplant && eingeplant.total > 0 && arbeit / std / eingeplant.total < AUSLASTUNG_HINWEIS && (() => {
         const { kranVoll, wartend } = wartegruende(iso, tasks, stammdaten, kalender, kraene);
