@@ -536,7 +536,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                 </div>
               ))}
               <span />
-              <span style={{ textAlign: "left" }} title={"Haken: Leistungsposition braucht den Kran (kranpflichtig) — fliesst in die Kranoptik (Tab AVOR) ein und wird vom Personal unter dem Kran besetzt.\nKranzeit %: so viel der Arbeitszeit der Kolonne braucht sie den Kran (z.B. Schalung 30, Beton 100; leer = 100). Kranstunden = Personenstunden ÷ Kolonne × Kranzeit. «Auslastung optimieren» hält die Kranzeit je Kran ein."}>Kran / Zeit %</span>
+              <span style={{ textAlign: "left" }} title={"Haken: Leistungsposition braucht den Kran (kranpflichtig) — fliesst in die Kranoptik (Tab AVOR) ein und wird vom Personal unter dem Kran besetzt.\nKranzeit %: so viel der Arbeitszeit der Personen braucht sie den Kran (z.B. Schalung 30, Beton 100; leer = 100). Kranstunden = Personenstunden ÷ Min. Personen × Kranzeit. «Auslastung optimieren» hält die Kranzeit je Kran ein."}>Kran / Zeit %</span>
               <span style={{ textAlign: "right" }} title="Aktuelle Mengen-Summe je Leistungsposition aus Tab Kalkulation — rot bei fehlenden oder fehlerhaften Mengen">Menge Ist</span>
               <span />
             </div>
@@ -599,7 +599,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                     onChange={e => rateAendern(gi, ri, { kranpflichtig: e.target.checked })} />
                   {istRateKranpflichtig(r, gewerk) && (
                     <input type="number" min={0} max={100} step={5} disabled={readOnly} value={r.kranzeitProzent ?? ""} placeholder="100"
-                      title="Kranzeit %: so viel der Arbeitszeit der Kolonne braucht diese Leistungsposition den Kran (leer = 100)"
+                      title="Kranzeit %: so viel der Arbeitszeit der Personen braucht diese Leistungsposition den Kran (leer = 100)"
                       onChange={e => { const v = e.target.value.trim() === "" ? undefined : Math.min(100, Math.max(0, Number(e.target.value))); rateAendern(gi, ri, { kranzeitProzent: v != null && isFinite(v) ? v : undefined }); }}
                       style={{ width: 44, fontSize: 11, padding: "2px 3px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
                   )}

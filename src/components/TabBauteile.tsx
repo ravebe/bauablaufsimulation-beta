@@ -449,7 +449,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                         </div>
                         <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 2 }}>
                           {!zeitplanStatus.bereit ? "Klicken für Details, was dafür noch fehlt."
-                            : ausOptimierung ? "Termine stammen aus «Auslastung optimieren» — sie weichen bewusst von der berechneten Dauer (eine Kolonne ohne Unterbruch) ab: verstärkte Arbeiten sind kürzer, Wartezeiten zwischen Schritten länger. Übernehmen würde die Optimierung ersetzen."
+                            : ausOptimierung ? "Termine stammen aus «Auslastung optimieren» — sie weichen bewusst von der berechneten Dauer (Min. Personen ohne Unterbruch) ab: verstärkte Arbeiten sind kürzer, Wartezeiten zwischen Schritten länger. Übernehmen würde die Optimierung ersetzen."
                             : zeitplanAenderungen ? "Überträgt die in Tab Kalkulation berechnete Dauer als neue Start-/Endtermine auf den Bauablauf."
                               : "Bauablauf entspricht bereits der berechneten Dauer — nichts zu übernehmen."}
                         </div>
@@ -472,7 +472,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                           {zeitplanStatus.bereit
                             ? (mitKranPersonal
                               ? "Plant die Tasks so, dass das Personal unter jedem Kran (Tab Ressourcen → Kräne & Personal) möglichst voll arbeitet — Leute desselben Unternehmers als Allrounder, höchstens das Personal unter dem Kran (1–2 mehr nur, wenn sonst Leute untätig wären). Arbeitsablauf je Leistungsposition, Vorgänger und Wartetage bleiben massgebend. Mit Vorschau."
-                              : "Jeder Task bekommt seine berechnete Dauer; jede Kolonne aus Tab Ressourcen arbeitet voll und nie an zwei Tasks gleichzeitig — Tasks mit derselben Leistungsposition laufen nacheinander. Vorgänger und Wartetage bleiben massgebend. Mit Vorschau.")
+                              : "Jeder Task bekommt seine berechnete Dauer; die Min. Personen jeder Leistungsposition arbeiten voll und nie an zwei Tasks gleichzeitig — Tasks mit derselben Leistungsposition laufen nacheinander. Vorgänger und Wartetage bleiben massgebend. Mit Vorschau.")
                             : "Klicken für Details, was dafür noch fehlt."}
                         </div>
                       </button>
@@ -568,8 +568,8 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                     bisher geplant (frühester Start zuerst) — sonst frühestens an ihrem bisherigen Start.</span>
                 </label>
               </>) : (<>
-                Jeder Task bekommt seine berechnete Dauer (Tab Kalkulation). Jede Kolonne aus Tab Ressourcen (Leistungsposition,
-                z.B. Schalung · WB) arbeitet voll und nie an zwei Tasks gleichzeitig — Tasks mit derselben Leistungsposition laufen
+                Jeder Task bekommt seine berechnete Dauer (Tab Kalkulation). Die Min. Personen jeder Leistungsposition aus Tab Ressourcen
+                (z.B. Schalung · WB) arbeiten voll und nie an zwei Tasks gleichzeitig — Tasks mit derselben Leistungsposition laufen
                 nacheinander, die Schritte innerhalb eines Tasks nach dem Arbeitsablauf je Leistungsposition. Vorgänger und Wartetage bleiben
                 massgebend; Tasks ohne Vorgänger beginnen frühestens an ihrem bisherigen Start. Tasks ohne Mengen, Gruppen und
                 Meilensteine bleiben unverändert. Mit Personal unter den Kränen (Tab Ressourcen → Kräne & Personal) wird stattdessen
@@ -605,7 +605,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                   )}
                   <div>Bauende: {datum(endeVorher)} → <strong>{datum(endeNachher)}</strong>
                     {tageDiff !== 0 && <span style={{ color: tageDiff > 0 ? "#d9622b" : "#2e8b57" }}> ({tageDiff > 0 ? "+" : ""}{tageDiff} Kalendertage)</span>}</div>
-                  <div title="Arbeit aller Tage ÷ (eingeplantes Personal × Std./Tag) — eingeplant wie die Linie Perfekte Auslastung in Tab AVOR (Kranpersonal + Kolonnen ohne Kran)">
+                  <div title="Arbeit aller Tage ÷ (eingeplantes Personal × Std./Tag) — eingeplant wie die Linie Perfekte Auslastung in Tab AVOR (Personal unter dem Kran + Personen ohne Kran)">
                     Ø Auslastung Personal: {prozent(auslastungVorher)} → <strong>{prozent(auslastungNachher)}</strong></div>
                   {auslastungVorher != null && auslastungNachher != null && auslastungNachher <= auslastungVorher + 0.005 && endeNachher >= endeVorher && (
                     <div style={{ marginTop: 4, color: "#8a5a00" }}>

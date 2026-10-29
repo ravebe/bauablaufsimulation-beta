@@ -202,7 +202,9 @@ export function kraeneDesTasks(t: Task, kraene: Kran[]): string[] {
 
 /** Leistungsposition eines Tages, die nicht aus einem Kran-Pool besetzt wird, mit Grund (Anzeige in Tab AVOR). */
 export interface OhnePool { position: string; label: string; kolonne: number; grund: string; unterKran: boolean }
-export interface EingeplantTag { kranPersonal: number; kolonnen: number; total: number; ohnePool: OhnePool[] }
+/** jeGewerk: ob das Gewerk an diesem Tag unter einem Kran arbeitet (aus dessen Personal) und wie viele Personen ohne Kran es
+ *  einplant (Min. Personen seiner Positionen ohne Kran) — die Zeilen der Tagesangaben in Tab AVOR ergeben so das Total. */
+export interface EingeplantTag { kranPersonal: number; kolonnen: number; total: number; ohnePool: OhnePool[]; jeGewerk: Record<string, { unterKran: boolean; ohneKran: number }> }
 
 /** Eingeplantes Personal je Tag (Linie "Perfekte Auslastung" und Total "Eingeplant" in Tab AVOR):
  *  - Kranpersonal: je an diesem Tag verfügbaren Kran das Personal seiner Unternehmer (Tab Ressourcen → Kräne & Personal) plus die
@@ -218,13 +220,15 @@ export function eingeplantesPersonalJeTag(tasks: Task[], kraene: Kran[], stammda
   const ausserhalbJeTag = new Map<string, Map<string, number>>(); // Tag → Leistungsposition → Kolonne (ohne Kran)
   const unterKranJeTag = new Map<string, Map<string, Map<string, number>>>(); // Tag → Kran → Leistungsposition → Kolonne
   const ohnePoolJeTag = new Map<string, Map<string, OhnePool>>();
+  const unterKranGewerkeJeTag = new Map<string, Set<string>>(); // Tag → Gewerke, die unter einem Kran arbeiten
   for (const t of tasks) {
     const kranIds = kraeneDesTasks(t, kraene);
     for (const [iso, liste] of aufwandJeTagUndPhaseFuerTask(t, stammdaten, kalender)) {
       for (const a of liste) {
         if (!(a.personenstunden > 1e-9)) continue;
         const kraeneHeute = a.phase.kranpflichtig ? kranIds.filter(id => istKranVerfuegbarAn(kranById.get(id)!, iso)) : [];
-        if (kraeneHeute.some(id => (kranPersonalAmTag(kranById.get(id)!, iso).get(a.phase.unternehmer) ?? 0) > 0)) continue; // aus dem Pool
+        const unterKranMerken = () => { const g = unterKranGewerkeJeTag.get(iso) ?? new Set<string>(); g.add(a.phase.gewerkKey); unterKranGewerkeJeTag.set(iso, g); };
+        if (kraeneHeute.some(id => (kranPersonalAmTag(kranById.get(id)!, iso).get(a.phase.unternehmer) ?? 0) > 0)) { unterKranMerken(); continue; } // aus dem Pool
         const grund = !a.phase.kranpflichtig ? "nicht kranpflichtig"
           : kranIds.length === 0 ? "Task ohne Kran (Tab Kalkulation → Kräne)"
           : kraeneHeute.length === 0 ? "Kran an diesem Tag nicht verfügbar"
@@ -236,6 +240,7 @@ export function eingeplantesPersonalJeTag(tasks: Task[], kraene: Kran[], stammda
           kolonne: a.phase.kolonne, grund, unterKran: kraeneHeute.length > 0 });
         ohnePoolJeTag.set(iso, ohne);
         if (kraeneHeute.length > 0) {
+          unterKranMerken();
           const jeKran = unterKranJeTag.get(iso) ?? new Map<string, Map<string, number>>();
           const jePos = jeKran.get(kraeneHeute[0]) ?? new Map<string, number>();
           jePos.set(a.phase.position, a.phase.kolonne);
@@ -260,7 +265,13 @@ export function eingeplantesPersonalJeTag(tasks: Task[], kraene: Kran[], stammda
       kranPersonal += pool > 0 ? pool : summe(unterKranJeTag.get(iso)?.get(k.id));
     }
     const kolonnen = summe(ausserhalbJeTag.get(iso));
-    ergebnis.set(iso, { kranPersonal, kolonnen, total: kranPersonal + kolonnen, ohnePool: [...(ohnePoolJeTag.get(iso)?.values() ?? [])] });
+    const jeGewerk: EingeplantTag["jeGewerk"] = {};
+    for (const g of unterKranGewerkeJeTag.get(iso) ?? []) jeGewerk[g] = { unterKran: true, ohneKran: 0 };
+    for (const [position, n] of ausserhalbJeTag.get(iso) ?? []) {
+      const g = position.split("::")[0];
+      jeGewerk[g] = { unterKran: jeGewerk[g]?.unterKran ?? false, ohneKran: (jeGewerk[g]?.ohneKran ?? 0) + n };
+    }
+    ergebnis.set(iso, { kranPersonal, kolonnen, total: kranPersonal + kolonnen, ohnePool: [...(ohnePoolJeTag.get(iso)?.values() ?? [])], jeGewerk });
   }
   return ergebnis;
 }

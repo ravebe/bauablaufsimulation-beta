@@ -312,6 +312,8 @@ interface TimeSeriesProps {
   detailSpalten?: DetailSpalte[];
   /** × in der Tagesangaben-Tabelle — Auswahl aufheben, wieder Legende */
   onMarkerEntfernen?: () => void;
+  /** Zusätzlicher Inhalt unter der Tagesangaben-Tabelle, über dem Diagramm (z.B. Tagesablauf in Tab AVOR) */
+  detailUnten?: (idx: number) => React.ReactNode;
   kalender?: Kalender; // für Wochenend-/Feiertag-Schattierung; ohne wird nur Sa/So schattiert
   /** Arbeitsfreie Sa/So aus der Zeitachse entfernen — Wochen dann durch eine feine graue Linie getrennt (Tab AVOR ⋮) */
   ohneWochenenden?: boolean;
@@ -326,7 +328,7 @@ interface TimeSeriesProps {
 
 const ML = 44, MR = 8, MT = 16, MB = 20;
 
-export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = "", hoehe = 180, formatWert, zusatz, zusatzSerie, zusatzTotal, totalZeile, weitereLinien = [], markerIdx, markerLabel = "Heute", onTagKlick, detailSpalten, onMarkerEntfernen, kalender, ohneWochenenden = false,
+export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = "", hoehe = 180, formatWert, zusatz, zusatzSerie, zusatzTotal, totalZeile, weitereLinien = [], markerIdx, markerLabel = "Heute", onTagKlick, detailSpalten, onMarkerEntfernen, detailUnten, kalender, ohneWochenenden = false,
   pxProTag: pxProTagProp, onPxProTagChange: onPxProTagChangeProp, scrollTag: scrollTagProp, onScrollChange: onScrollChangeProp }: TimeSeriesProps) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [outerRef, viewportW] = useMeasuredWidth<HTMLDivElement>(1000);
@@ -426,9 +428,10 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
 
   return (
     <div ref={outerRef} style={{ position: "relative" }}>
-      {detailSpalten && detailIdx != null ? (
+      {detailSpalten && detailIdx != null ? (<>
         <DetailTabelle kopf={tage[detailIdx].split("-").reverse().join(".")} spalten={detailSpalten} zeilen={detailZeilen} onSchliessen={onMarkerEntfernen} />
-      ) : zeigeLegende && (
+        {detailUnten?.(detailIdx)}
+      </>) : zeigeLegende && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 10, color: FARBEN.textSekundaer, marginBottom: 4 }}>
           {serien.map(s => (
             <span key={s.key} style={{ display: "flex", alignItems: "center", gap: 4 }}>
