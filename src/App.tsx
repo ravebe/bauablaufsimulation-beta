@@ -7,6 +7,7 @@ import { useUndo } from "./hooks/useUndo";
 import { useAusgeschlosseneAusblenden } from "./hooks/useAusgeschlosseneAusblenden";
 import { fehlerKontextSetzen } from "./hooks/fehlerMelden";
 import type { SimProjekt } from "./types";
+import { ohneVerschachtelteVorgaenger } from "./types";
 import { darfBearbeiten, istSichtbar } from "./zugriff";
 import TabProjekte from "./components/TabProjekte";
 import TabBauteile from "./components/TabBauteile";
@@ -73,6 +74,19 @@ export default function App() {
     });
     if (changed) setSims(updated);
   }, [userId, sims.length]);
+
+  // Datenbereinigung: Vorgänger zwischen einer Gruppe und ihrem eigenen Inhalt (Untergruppe ← Übergruppe, früher von
+  // "Auto-Vorgänger" gesetzt) sind nicht möglich — beim Laden entfernen
+  useEffect(() => {
+    let changed = false;
+    const updated = sims.map(s => {
+      const tasks = ohneVerschachtelteVorgaenger(s.tasks);
+      if (tasks === s.tasks) return s;
+      changed = true;
+      return { ...s, tasks };
+    });
+    if (changed) setSims(updated);
+  }, [sims.length]);
 
   // Zugriffskontrolle — Regeln zentral in zugriff.ts
   const readOnly = !darfBearbeiten(aktiveSim, userId);

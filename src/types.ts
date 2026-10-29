@@ -394,6 +394,39 @@ export function getKinder(tasks: Task[], groupIdx: number): number[] {
   return children;
 }
 
+/** Übergruppen je Task-ID (alle Gruppen, in denen der Task steckt, nach Gliederung/outlineLevel). */
+export function uebergruppenJeTask(tasks: Task[]): Map<string, Set<string>> {
+  const ergebnis = new Map<string, Set<string>>();
+  const stapel: { id: string; level: number }[] = [];
+  tasks.forEach((t, i) => {
+    const level = getOutlineLevel(t);
+    while (stapel.length && stapel[stapel.length - 1].level >= level) stapel.pop();
+    ergebnis.set(t.id, new Set(stapel.map(s => s.id)));
+    if (istGruppe(tasks, i)) stapel.push({ id: t.id, level });
+  });
+  return ergebnis;
+}
+
+/** Ist die eine Gruppe in der anderen enthalten (Über- ↔ Untergruppe/Task)? Dann kann keine Vorgänger der anderen sein. */
+export function istVerschachtelt(uebergruppen: Map<string, Set<string>>, a: string, b: string): boolean {
+  return !!uebergruppen.get(a)?.has(b) || !!uebergruppen.get(b)?.has(a);
+}
+
+/** Entfernt Vorgänger zwischen einer Gruppe und ihrem eigenen Inhalt (z.B. Untergruppe «UG» mit Vorgänger «Etappe A», in der sie
+ *  steckt) — ein solcher Vorgänger ist nicht möglich. Gibt dasselbe Array zurück, wenn nichts zu entfernen war. */
+export function ohneVerschachtelteVorgaenger(tasks: Task[]): Task[] {
+  const ueber = uebergruppenJeTask(tasks);
+  let geaendert = false;
+  const neu = tasks.map(t => {
+    const liste = vorgaengerListe(t);
+    const gueltig = liste.filter(v => !istVerschachtelt(ueber, t.id, v.id));
+    if (gueltig.length === liste.length) return t;
+    geaendert = true;
+    return mitVorgaengern(t, gueltig);
+  });
+  return geaendert ? neu : tasks;
+}
+
 /** Berechne Start/Ende einer Gruppe aus ihren Kindern */
 export function gruppenDaten(tasks: Task[], groupIdx: number, kalender?: Kalender): { start: string; end: string; tage: number } {
   // Nur Blatt-Tasks zählen, keine verschachtelten Untergruppen — deren eigene start/end-Felder sind
@@ -679,18 +712,21 @@ export function vorgaengerKandidaten(tasks: Task[], taskId: string): (Task & { s
   const idx = tasks.findIndex(t => t.id === taskId);
   if (idx < 0) return [];
   const taskIstGruppe = istGruppe(tasks, idx);
-  return tasks.filter((t, i) => t.id !== taskId && istGruppe(tasks, i) === taskIstGruppe)
+  const ueber = uebergruppenJeTask(tasks);
+  return tasks.filter((t, i) => t.id !== taskId && istGruppe(tasks, i) === taskIstGruppe && !istVerschachtelt(ueber, taskId, t.id))
     .map(t => { const p = zirkelPfad(tasks, taskId, t.id); return p ? { ...t, sperrPfad: p } : t; });
 }
 
-/** Gültige Vorgänger-Kandidaten für einen Task: kein Zyklus, Gruppen nur als Vorgänger von Gruppen */
+/** Gültige Vorgänger-Kandidaten für einen Task: kein Zyklus, Gruppen nur als Vorgänger von Gruppen, keine Über-/Untergruppe */
 export function gueltigeVorgaenger(tasks: Task[], taskId: string): Task[] {
   const idx = tasks.findIndex(t => t.id === taskId);
   if (idx < 0) return [];
   const taskIstGruppe = istGruppe(tasks, idx);
+  const ueber = uebergruppenJeTask(tasks);
   return tasks.filter((t, i) =>
     t.id !== taskId &&
     istGruppe(tasks, i) === taskIstGruppe &&
+    !istVerschachtelt(ueber, taskId, t.id) &&
     !istZirkular(tasks, taskId, t.id)
   );
 }

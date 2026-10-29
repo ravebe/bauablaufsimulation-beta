@@ -335,18 +335,26 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   function autoVorgaenger() {
     if (!aktiveSim) return;
     const tasks = aktiveSim.tasks;
-    const gruppenIds = tasks.filter((_, i) => istGruppe(tasks, i)).map(t => t.id);
+    // Gruppen nur mit ihren Geschwistern (gleiche Ebene, gleiche Übergruppe) verketten — nie eine Untergruppe an die eigene
+    // Übergruppe; Tasks der Reihe nach
+    const gruppenPaare: [string, string][] = [];
+    const letzteJeEbene = new Map<number, string>();
+    tasks.forEach((t, i) => {
+      if (!istGruppe(tasks, i)) return;
+      const level = getOutlineLevel(t);
+      for (const l of [...letzteJeEbene.keys()]) if (l > level) letzteJeEbene.delete(l);
+      const vorher = letzteJeEbene.get(level);
+      if (vorher) gruppenPaare.push([t.id, vorher]);
+      letzteJeEbene.set(level, t.id);
+    });
     const echteIds = tasks.filter((_, i) => !istGruppe(tasks, i)).map(t => t.id);
+    const taskPaare: [string, string][] = echteIds.slice(1).map((id, i) => [id, echteIds[i]]);
     let neueTasks = tasks;
-    for (const ids of [gruppenIds, echteIds]) {
-      ids.forEach((id, i) => {
-        if (i === 0) return;
-        const t = neueTasks.find(x => x.id === id);
-        if (!t || vorgaengerListe(t).length > 0) return;
-        const predId = ids[i - 1];
-        if (zirkelPfad(neueTasks, id, predId)) return;
-        neueTasks = neueTasks.map(x => x.id === id ? { ...x, predecessorId: predId } : x);
-      });
+    for (const [id, predId] of [...gruppenPaare, ...taskPaare]) {
+      const t = neueTasks.find(x => x.id === id);
+      if (!t || vorgaengerListe(t).length > 0) continue;
+      if (zirkelPfad(neueTasks, id, predId)) continue;
+      neueTasks = neueTasks.map(x => x.id === id ? { ...x, predecessorId: predId } : x);
     }
     if (neueTasks === tasks) return;
     updateSim({ ...aktiveSim, tasks: neueTasks });
