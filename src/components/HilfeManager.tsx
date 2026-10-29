@@ -68,6 +68,7 @@ const THEMEN: Thema[] = [
       "Ein Kürzel muss in den Stammdaten (Tab Ressourcen) hinterlegt sein, sonst fehlt der Leistungswert.",
       "\"Berechnet\" ergibt sich aus Leistungswert × Menge sowie Arbeitszeit/Personen aus den Stammdaten — lässt sich bei Bedarf manuell übersteuern (schwarz statt blau).",
       "Abweichungen zwischen Geplant und Berechnet zeigen mögliche Kalkulationsrisiken.",
+      "Nach Tab Bauteile → Werkzeuge → «Auslastung optimieren» zeigt Berechnet (grün, ⚡) die optimierte Dauer — gleich wie Geplant, Differenz 0. Der Tooltip nennt die Rechnung mit den Kolonnen allein und das Ø Personal mit bzw. ohne Optimierung. Sobald Termine geändert werden, gilt wieder die Kolonnen-Rechnung (bearbeitbar).",
       "Mengen lassen sich manuell erfassen oder per Formel (ƒx-Button) aus IFC-Attributen berechnen.",
       "\"Berechnet\" folgt dem Arbeitsablauf je Kürzel (Tab Ressourcen): Schritte nacheinander, Positionen im selben Schritt gleichzeitig (es zählt die längste).",
       "Spalte \"Kräne\": einem Task lassen sich mehrere Kräne zuweisen (Schnittstellen-Task zwischen zwei Kränen) — der Anteil wird dabei immer automatisch gleichmässig verteilt (2 Kräne → je 50%), keine manuelle Eingabe. Kräne selbst werden in Tab Ressourcen unter \"Kräne & Personal\" angelegt. Gibt es nur einen Kran, gelten Tasks ohne Zuweisung automatisch als Tasks dieses Krans.",

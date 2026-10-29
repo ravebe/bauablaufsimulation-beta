@@ -5,7 +5,7 @@ import type { SimProjekt, Task, Kran } from "../types";
 import { istGruppe, berechneNummern, parseDateUniversal } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { LEERER_KALENDER } from "./kalenderHelpers";
-import { LEERE_STAMMDATEN, alleKuerzel, gewerkeFuerKuerzel, dauerBerechnetTask, ausschlussFilterListe, aktiveFilterIds, objektAusgeschlossen, mengenRelevanteSignatur } from "./stammdatenHelpers";
+import { LEERE_STAMMDATEN, alleKuerzel, gewerkeFuerKuerzel, dauerBerechnetTask, schritteFuerTask, ausschlussFilterListe, aktiveFilterIds, objektAusgeschlossen, mengenRelevanteSignatur } from "./stammdatenHelpers";
 import type { Gewerk, Rate, Stammdaten } from "./stammdatenHelpers";
 import { kuerzelVorschlag } from "./bauteilkatalogHelpers";
 import { StatTile, CategoryBarChart, CockpitAbschnitt, useEingeklappt, FARBEN } from "./cockpitCharts";
@@ -17,6 +17,7 @@ import { berechneMenge, mengeStatus } from "./formelHelpers";
 import { kalkulationAlsCsv, parseKalkulationCsv, kalkulationAlsJson, parseKalkulationJson } from "./kalkulationExportHelpers";
 import Schwebend from "./Schwebend";
 import { zeitplanAbweichendeTasks } from "./zeitplanUebernahmeHelpers";
+import { terminSignatur } from "./auslastungOptimieren";
 import PunkteMenu from "./PunkteMenu";
 
 interface Props {
@@ -56,7 +57,10 @@ type SortSpalte = typeof SORTIERBARE_SPALTEN[number];
 // Nr. und Task sind nur sortierbar — der Werte-Filter-Popover (Checkbox-Liste) ist dort nicht nötig.
 const FILTERBARE_SPALTEN: readonly SortSpalte[] = ["kuerzel", "geplant", "berechnet", "differenz", "kraene"];
 
-type Zeile = { t: Task; nr: string; geplant: number; berechnet: number; differenz: number; abweichung: boolean; kraeneText: string };
+type Zeile = { t: Task; nr: string; geplant: number; berechnet: number; differenz: number; abweichung: boolean; kraeneText: string;
+  /** Termine aus "Auslastung optimieren" (seither unverändert): Berechnet = optimierte Dauer; kolonnenDauer = Rechnung mit den
+   *  Kolonnen allein, personen = Ø Personen mit Optimierung bzw. mit den Kolonnen */
+  optimiert?: { kolonnenDauer: number; personen: number; personenKolonnen: number } };
 
 function spalteWert(z: Zeile, spalte: SortSpalte): string {
   switch (spalte) {
@@ -437,10 +441,21 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     );
   }
 
+  // Bauablauf aus "Auslastung optimieren" und seither unverändert → die optimierte Dauer gilt als berechnet (Verstärkung durch
+  // freies Personal, Wartezeiten, Raster); die Rechnung mit den Kolonnen allein steht im Tooltip
+  const optimiert = !!sim.optimiertStand && sim.optimiertStand === terminSignatur(sim.tasks);
   const zeilen: Zeile[] = sim.tasks.map((t, i) => {
     if (t.isGroup || istGruppe(sim.tasks, i) || t.meilenstein) return null; // Meilensteine: Dauer 0, nichts zu kalkulieren
     const geplant = dauerTage(t, kalender); // Arbeitstage (bei Halbtagen/Uhrzeit mit Nachkommastellen)
-    const berechnet = dauerBerechnetTask(t, stammdaten, sim.zeiteinheit);
+    const kolonnenDauer = dauerBerechnetTask(t, stammdaten, sim.zeiteinheit);
+    const ph = optimiert && t.berechneteDauerManuell == null ? schritteFuerTask(t, stammdaten).reduce((s, x) => s + x.phasen.reduce((a, p) => a + p.personenstunden, 0), 0) : 0;
+    if (ph > 0 && geplant > 0) {
+      const std = stammdaten.arbeitszeitStdProTag;
+      const kraeneText = (t.kraene ?? []).map(id => sim.kraene?.find(k => k.id === id)?.name).filter(Boolean).join(", ");
+      return { t, nr: nummern.get(t.id) ?? "", geplant, berechnet: geplant, differenz: 0, abweichung: false, kraeneText,
+        optimiert: { kolonnenDauer, personen: ph / (geplant * std), personenKolonnen: kolonnenDauer > 0 ? ph / (kolonnenDauer * std) : 0 } };
+    }
+    const berechnet = kolonnenDauer;
     const abweichung = berechnet > 0 && (berechnet > geplant * 1.5 || berechnet < geplant * 0.67);
     const kraeneText = (t.kraene ?? []).map(id => sim.kraene?.find(k => k.id === id)?.name).filter(Boolean).join(", ");
     return { t, nr: nummern.get(t.id) ?? "", geplant, berechnet, differenz: berechnet - geplant, abweichung, kraeneText };
@@ -492,7 +507,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   }
   const kuerzelKategorien = [...summeProKuerzel.keys()].sort();
   // Hinweis: so viele Tasks hätten mit "Berechnete Dauer übernehmen" (Tab Bauteile) andere Termine im Gantt
-  const anzahlZeitplanAbweichend = zeitplanAbweichendeTasks(sim.tasks, stammdaten, kalender, sim.zeiteinheit).length;
+  const anzahlZeitplanAbweichend = optimiert ? 0 : zeitplanAbweichendeTasks(sim.tasks, stammdaten, kalender, sim.zeiteinheit).length;
 
   // Automatische Spaltenbreiten: breitester Inhalt je Spalte (gemessen in der Schrift der App) + Zellabstand,
   // mindestens die Standardbreite; von Hand gezogene Breiten gehen vor.
@@ -741,6 +756,15 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
       case "geplant":
         return <span style={{ fontSize: 12, color: "#888", paddingTop: 3, whiteSpace: "nowrap" }}>{dauerText(z.geplant)}</span>;
       case "berechnet": {
+        if (z.optimiert) {
+          const o = z.optimiert;
+          return (
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#2e8b57", paddingTop: 3, whiteSpace: "nowrap", cursor: "help" }}
+              title={`Aus «Auslastung optimieren»: ${fmtZahl(z.geplant)} d mit Ø ${fmtZahl(o.personen)} Pers.\nMit den Kolonnen allein (Ø ${fmtZahl(o.personenKolonnen)} Pers.) wären es ${fmtZahl(o.kolonnenDauer)} d.\nKürzer, wenn freie Leute desselben Unternehmers verstärken; länger bei Wartezeiten zwischen den Schritten oder durch das Raster der Zeiteinheit.\nSobald Termine geändert werden, gilt wieder die Rechnung mit den Kolonnen (bearbeitbar).`}>
+              {dauerText(z.berechnet)} ⚡
+            </span>
+          );
+        }
         const istManuell = z.t.berechneteDauerManuell != null;
         const farbe = z.abweichung ? "#d9622b" : istManuell ? "#333" : "var(--tc-blue)";
         return (
@@ -871,6 +895,10 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
             <span style={{ display: "inline-block", width: 7, height: 7, background: "#fff", border: "1px solid #999", verticalAlign: "middle" }} /> Leere Felder
           </span>
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
+            {optimiert && (
+              <span title="Die Termine stammen aus Tab Bauteile → Werkzeuge → «Auslastung optimieren» und wurden seither nicht geändert. Berechnet (⚡) zeigt darum die optimierte Dauer; die Rechnung mit den Kolonnen allein steht im Tooltip der jeweiligen Zelle."
+                style={{ fontSize: 11, color: "#2e8b57", whiteSpace: "nowrap", cursor: "help" }}>⚡ Termine aus Auslastung optimieren</span>
+            )}
             {anzahlZeitplanAbweichend > 0 && (
               <span title={`Die Termine im Gantt entsprechen bei ${anzahlZeitplanAbweichend} Task(s) nicht der berechneten Dauer. Sie bleiben, bis du in Tab Bauteile → Werkzeuge → "Berechnete Dauer übernehmen" klickst.`}
                 style={{ fontSize: 11, color: "#d9622b", whiteSpace: "nowrap", cursor: "help" }}>
