@@ -50,6 +50,11 @@ export interface Task {
                       // Anteil IMMER automatisch gleichmässig verteilt (2→0.5, 3→0.33…), siehe kranHelpers.ts
   /** @deprecated Personal (Soll) wird nicht mehr erfasst oder ausgewertet — eingeplantes Personal kommt aus Tab Ressourcen (Kräne & Personal, Kolonnen); nur noch in alten Projekten vorhanden */
   personalSoll?: number;
+  /** Stand aus "Auslastung optimieren" (auslastungOptimieren.ts): freigabe = Start vor dem ersten Optimieren, start = vom Optimieren
+   *  gesetzter Start (beide "YYYY-MM-DD HH:MM"), vorgaenger = dabei automatisch ergänzte Vorgänger. Beim nächsten Optimieren werden
+   *  diese Vorgänger neu bestimmt und, solange der Start unverändert ist, gilt wieder freigabe — erneutes Optimieren liefert so
+   *  dasselbe Ergebnis, statt den Ablauf weiter zu verschieben. */
+  optimierung?: { freigabe: string; start: string; vorgaenger: string[] };
   attrGruppe?: Record<string, string>; // Attribut-Werte-Kombination (pset||name → Wert), die diesen Task bei der Attribut-Task-Erzeugung ergeben hat — dient beim erneuten Generieren dazu, denselben Task (inkl. Termine) wiederzuerkennen statt neu anzulegen, siehe AttributTaskErzeugung.tsx
 }
 

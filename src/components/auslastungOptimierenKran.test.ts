@@ -139,4 +139,27 @@ describe("Auslastung optimieren mit Kranpersonal", () => {
     const mit6 = ende(kran([{ unternehmer: "Bau AG", personen: 6 }])), mit13 = ende(kran([{ unternehmer: "Bau AG", personen: 13 }]));
     expect(mit13 < mit6).toBe(true);
   });
+
+  it("nochmals optimieren ändert nichts: ergänzte Vorgänger werden neu bestimmt, nicht angehäuft", () => {
+    const m = task("M", { start: "2026-11-09", end: "2026-11-09", bauteilKuerzel: undefined, mengen: undefined });
+    const ts = [m, ...["F1", "F2", "F3", "F4"].map(id => task(id, { mengen: { sch: 32 }, predecessorId: "M", lagDays: 0 })),
+      task("W", { mengen: { sch: 32 }, start: "2026-11-11" })];
+    const k = kran([{ unternehmer: "Bau AG", personen: 4 }]);
+    const erst = optimiereAuslastung(ts, stammdaten, KAL, "tage", k);
+    const zweit = optimiereAuslastung(erst, stammdaten, KAL, "tage", k);
+    expect(termine(zweit)).toEqual(termine(erst));
+    expect(zweit.map(t => vorgaengerListe(t).map(v => v.id))).toEqual(erst.map(t => vorgaengerListe(t).map(v => v.id)));
+    expect(vorgaengerListe(erst[2]).map(v => v.id)).toEqual(["M", "F1"]); // genau ein ergänzter Vorgänger
+  });
+
+  it("Lücken füllen: untätiges Kranpersonal zieht Tasks ohne Vorgänger vor, nie über dem Personal", () => {
+    // A ab 9.11. (32 h, Min. 4), B ohne Vorgänger erst ab 16.11.; 8 Leute → B läuft mit den freien 4 schon am 9.11.
+    const ts = [task("A", { mengen: { sch: 32 }, start: "2026-11-09" }), task("B", { mengen: { sch: 32 }, start: "2026-11-16" })];
+    const k = kran([{ unternehmer: "Bau AG", personen: 8 }]);
+    expect(termine(optimiereAuslastung(ts, stammdaten, KAL, "tage", k))).toEqual(["A 2026-11-09–2026-11-09", "B 2026-11-16–2026-11-16"]);
+    expect(termine(optimiereAuslastung(ts, stammdaten, KAL, "tage", k, "kritischerPfad", true))).toEqual(["A 2026-11-09–2026-11-09", "B 2026-11-09–2026-11-09"]);
+    // nur 4 Leute → am 9.11. nichts frei, B folgt am 10.11., sobald die Leute sonst untätig wären
+    expect(termine(optimiereAuslastung(ts, stammdaten, KAL, "tage", kran([{ unternehmer: "Bau AG", personen: 4 }]), "kritischerPfad", true)))
+      .toEqual(["A 2026-11-09–2026-11-09", "B 2026-11-10–2026-11-10"]);
+  });
 });

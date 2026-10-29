@@ -57,7 +57,7 @@ describe("Auslastung optimieren: eine Kolonne je Leistungsposition", () => {
       task("X", "2026-11-09", "2026-11-20"),
       task("A", "2026-11-09", "2026-11-09", { bauteilKuerzel: "WB", mengen: { sch: 32 } }),
     ];
-    expect(optimiereAuslastung(ts, stammdaten, KAL)).toEqual(ts);
+    expect(termine(optimiereAuslastung(ts, stammdaten, KAL))).toEqual(termine(ts));
     expect(auslastungAbweichendeTasks(ts, stammdaten, KAL)).toEqual([]);
   });
 });

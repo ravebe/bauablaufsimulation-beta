@@ -17,7 +17,7 @@ import type { Kalender } from "./kalenderHelpers";
 import type { Zeiteinheit, Zeitpunkt } from "./zeitHelpers";
 import {
   startZeitpunkt, endZeitpunkt, naechsteArbeitszeit, endeAusArbeitsMinuten, folgeStartZeitpunkt, arbeitsMinutenZwischen,
-  vergleicheZeitpunkte, zeitFelder, rasteUhrzeit, MIN_PRO_ARBEITSTAG, ARBEITSBEGINN_MIN, schrittMinuten,
+  vergleicheZeitpunkte, zeitFelder, rasteUhrzeit, MIN_PRO_ARBEITSTAG, ARBEITSBEGINN_MIN, schrittMinuten, minZuZeit, zeitZuMin,
 } from "./zeitHelpers";
 import { hatKranPersonal } from "./kranHelpers";
 import { optimiereMitKranpersonal, restkettenJeTask } from "./auslastungOptimierenKran";
@@ -43,11 +43,44 @@ function phasenVon(t: Task, stammdaten: Stammdaten, einheit: Zeiteinheit): { pha
   return { phasen, dauer };
 }
 
+const zpText = (p: Zeitpunkt) => `${p.datum} ${minZuZeit(p.min)}`;
+
+/** Ausgangslage fürs Optimieren: automatisch ergänzte Vorgänger eines früheren Optimierens (Task.optimierung) entfernt und, solange
+ *  der Start seither unverändert ist, der Start von vor dem Optimieren — so hängt das Ergebnis nicht davon ab, wie oft schon
+ *  optimiert wurde. */
+function optimierBasis(t: Task): Task {
+  const o = t.optimierung;
+  if (!o) return t;
+  const auto = new Set(o.vorgaenger);
+  let basis = auto.size > 0 ? mitVorgaengern(t, vorgaengerListe(t).filter(v => !auto.has(v.id))) : t;
+  if (zpText(startZeitpunkt(t)) === o.start) {
+    const [datum, zeit] = o.freigabe.split(" ");
+    const min = zeitZuMin(zeit, ARBEITSBEGINN_MIN);
+    basis = { ...basis, start: datum, startZeit: min === ARBEITSBEGINN_MIN ? undefined : zeit, end: basis.end < datum ? datum : basis.end };
+  }
+  return basis;
+}
+
 /** Neue Termine aller Tasks nach "Auslastung optimieren" (gleiche Reihenfolge wie tasks). Ist in Tab Ressourcen Personal unter
- *  den Kränen erfasst, plant optimiereMitKranpersonal (Pools je Kran und Unternehmer), sonst diese Kolonnen-Variante. */
+ *  den Kränen erfasst, plant optimiereMitKranpersonal (Pools je Kran und Unternehmer), sonst diese Kolonnen-Variante. Geplante
+ *  Tasks merken sich in Task.optimierung ihren Start von vorher und die ergänzten Vorgänger (siehe optimierBasis) — erneutes
+ *  Optimieren ergibt dasselbe Ergebnis. lueckenFuellen siehe optimiereMitKranpersonal. */
 export function optimiereAuslastung(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender, einheit: Zeiteinheit = "tage", kraene: Kran[] = [],
-  reihenfolge: OptimierReihenfolge = "kritischerPfad"): Task[] {
-  if (hatKranPersonal(kraene)) return optimiereMitKranpersonal(tasks, stammdaten, kalender, einheit, kraene, reihenfolge);
+  reihenfolge: OptimierReihenfolge = "kritischerPfad", lueckenFuellen = false): Task[] {
+  const basis = tasks.map(optimierBasis);
+  const roh = hatKranPersonal(kraene)
+    ? optimiereMitKranpersonal(basis, stammdaten, kalender, einheit, kraene, reihenfolge, lueckenFuellen)
+    : optimiereKolonnen(basis, stammdaten, kalender, einheit, reihenfolge);
+  return tasks.map((t, i) => {
+    const neu = roh[i];
+    if (neu === basis[i]) return t; // nicht geplant (Gruppe, Meilenstein, ohne Kalkulation) — unverändert
+    const bisher = new Set(vorgaengerListe(basis[i]).map(v => v.id));
+    const freigabe = t.optimierung && zpText(startZeitpunkt(t)) === t.optimierung.start ? t.optimierung.freigabe : zpText(startZeitpunkt(t));
+    return { ...neu, optimierung: { freigabe, start: zpText(startZeitpunkt(neu)), vorgaenger: vorgaengerListe(neu).filter(v => !bisher.has(v.id)).map(v => v.id) } };
+  });
+}
+
+function optimiereKolonnen(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender, einheit: Zeiteinheit, reihenfolge: OptimierReihenfolge): Task[] {
   const echte = tasks.map((t, i) => ({ t, i })).filter(({ t, i }) => !t.isGroup && !istGruppe(tasks, i) && !!t.start && !!t.end);
   if (echte.length === 0) return tasks;
   const byId = new Map(tasks.map(t => [t.id, t]));

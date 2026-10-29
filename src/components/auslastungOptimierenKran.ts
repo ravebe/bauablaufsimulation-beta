@@ -13,7 +13,8 @@
 //  - Vergabe je Zeitschritt (½ Stunde): zuerst laufende Tasks (Mindestbesetzung), dann neue Tasks nach kritischem Pfad (längste
 //    Restkette über die Nachfolger zuerst), zuletzt Verstärkung laufender Phasen mit dem übrigen Personal.
 //  - Vorgänger und Wartetage bleiben massgebend, Tasks ohne Vorgänger beginnen frühestens an ihrem bisherigen Start (wie die
-//    Kolonnen-Variante in auslastungOptimieren.ts). Start/Ende werden auf die Zeiteinheit der Simulation gerastert.
+//    Kolonnen-Variante in auslastungOptimieren.ts) — mit lueckenFuellen auch früher, wenn Kranpersonal sonst untätig wäre.
+//    Start/Ende werden auf die Zeiteinheit der Simulation gerastert.
 //  - Musste ein Task auf freies Personal warten, bekommt er zusätzlich den Task als Vorgänger, nach dem diese Leute frei wurden
 //    (bisherige Vorgänger bleiben) — so bleibt der neue Ablauf beim Ausrichten der Folge-Tasks erhalten.
 import type { Task, Kran } from "../types";
@@ -73,8 +74,10 @@ interface TaskZ {
   ressourcen: Set<string>; ersteRessourcen: Set<string>; // genutzte Pools/Kolonnen (alle bzw. beim ersten Arbeitsschritt)
 }
 
+/** lueckenFuellen: wäre Personal unter einem Kran sonst untätig, dürfen Tasks ohne Vorgänger früher als an ihrem bisherigen Start
+ *  beginnen (frühester bisheriger Start zuerst) — nur mit Leuten aus dem Kran-Pool, nie über dem Personal des Krans. */
 export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender, einheit: Zeiteinheit, kraene: Kran[],
-  reihenfolge: OptimierReihenfolge = "kritischerPfad"): Task[] {
+  reihenfolge: OptimierReihenfolge = "kritischerPfad", lueckenFuellen = false): Task[] {
   const echte = tasks.map((t, i) => ({ t, i })).filter(({ t, i }) => !t.isGroup && !istGruppe(tasks, i) && !!t.start && !!t.end);
   if (echte.length === 0) return tasks;
   const byId = new Map(tasks.map(t => [t.id, t]));
@@ -187,7 +190,12 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
     const laufend = offen.filter(z => !z.fertig && z.erste !== null).sort(prio);
     const t0 = slot * SLOT;
     const bereit = offen.filter(z => !z.fertig && z.erste === null && z.frueheste !== null && z.frueheste <= t0 + EPS).sort(prio);
-    if (laufend.length === 0 && bereit.length === 0) {
+    // Lückenfüller: Tasks ohne Vorgänger, deren bisheriger Start noch kommt (frühester zuerst)
+    const fueller = lueckenFuellen
+      ? offen.filter(z => !z.fertig && z.erste === null && z.frueheste !== null && z.frueheste > t0 + EPS && vorgaengerListe(z.t).length === 0)
+        .sort((a, b) => a.frueheste! - b.frueheste! || a.i - b.i)
+      : [];
+    if (laufend.length === 0 && bereit.length === 0 && fueller.length === 0) {
       // nichts zu tun: zum nächsten frühesten Start springen
       const naechster = Math.min(...offen.filter(z => !z.fertig && z.frueheste !== null).map(z => z.frueheste!));
       if (!isFinite(naechster)) break; // nur noch Tasks mit uneingeplanten Vorgängern (Zyklus) — unverändert lassen
@@ -225,7 +233,7 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
     };
 
     /** Mindestbesetzung einer Phase vergeben (nichts vergeben = kann in diesem Zeitschritt nicht arbeiten). */
-    const besetzen = (z: TaskZ, p: PhaseZ, mitUeberzug: boolean) => {
+    const besetzen = (z: TaskZ, p: PhaseZ, mitUeberzug: boolean, nurPool = false) => {
       const braucht = Math.max(1, Math.ceil(p.rest / SLOT - EPS));
       const kranIds = p.kranpflichtig ? kraeneDesTasks(z.t, kraene) : [];
       // Kran der Phase: verfügbar heute? Sonst warten, solange er später noch verfügbar wird
@@ -246,6 +254,7 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
         }
         return; // Unternehmer hat Personal unter diesem Kran → nur aus dem Pool
       }
+      if (nurPool) return;
       // 2) Min. Personen ohne Pool (eine Kolonne je Leistungsposition), kranpflichtige zählen zum Personal eines Krans des Tasks
       if (kolonneBelegt.has(p.position)) return;
       let kranId: string | null = null;
@@ -264,14 +273,22 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
       for (const p of z.schritte[z.schritt]) if (p.rest > EPS) besetzen(z, p, false);
     }
     // Verstärkung: übriges Personal des Pools auf laufende Phasen desselben Unternehmers/Krans (grösster Rest zuerst)
-    for (const v of [...vergabe].filter(v => v.poolKey).sort((a, b) => b.p.rest - a.p.rest)) {
-      const sinnvoll = Math.max(1, Math.ceil(v.p.rest / SLOT - EPS));
-      const extra = Math.min(pool.get(v.poolKey!) ?? 0, kranFrei.get(v.kranId!) ?? 0, MAX_VERSTAERKUNG * v.p.kolonne - v.leute, sinnvoll - v.leute);
-      if (extra > 0) {
-        v.leute += extra;
-        pool.set(v.poolKey!, pool.get(v.poolKey!)! - extra);
-        kranFrei.set(v.kranId!, kranFrei.get(v.kranId!)! - extra);
+    const verstaerken = () => {
+      for (const v of [...vergabe].filter(v => v.poolKey).sort((a, b) => b.p.rest - a.p.rest)) {
+        const sinnvoll = Math.max(1, Math.ceil(v.p.rest / SLOT - EPS));
+        const extra = Math.min(pool.get(v.poolKey!) ?? 0, kranFrei.get(v.kranId!) ?? 0, MAX_VERSTAERKUNG * v.p.kolonne - v.leute, sinnvoll - v.leute);
+        if (extra > 0) {
+          v.leute += extra;
+          pool.set(v.poolKey!, pool.get(v.poolKey!)! - extra);
+          kranFrei.set(v.kranId!, kranFrei.get(v.kranId!)! - extra);
+        }
       }
+    };
+    verstaerken();
+    // Immer noch Leute im Pool frei: Lückenfüller vorziehen (nur Pool-Personal, ohne Überzug), danach nochmals verstärken
+    if (fueller.length > 0) {
+      for (const z of fueller) for (const p of z.schritte[z.schritt]) if (p.rest > EPS) besetzen(z, p, false, true);
+      verstaerken();
     }
     // Übrige Leute, die nirgends mehr verstärken können: nächste Arbeit trotzdem starten, wenn ihr höchstens MAX_UEBERZUG fehlen
     for (const z of kandidaten) {
