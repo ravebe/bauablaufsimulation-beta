@@ -31,6 +31,18 @@ describe("Tagesplan", () => {
     expect(p.tasks[0].phasen[0].kranBegrenzt).toBe(true);
   });
 
+  it("Überstunden: 1 h nach Arbeitsende mit 4 Personen = 4 Personenstunden Bau AG, Kran 90 % belegt = 0.9 Kranstunden", () => {
+    const p = tagesplan(TAG, [task("A", { mengen: { bet: 36 } })], sd(90), KAL, kran(10));
+    expect(p.ueberstunden.jeUnternehmer.get("Bau AG")).toBeCloseTo(4);
+    expect(p.ueberstunden.jeKran.get("k1")).toBeCloseTo(0.9);
+  });
+
+  it("keine Überstunden, wenn die Arbeit im Arbeitstag fertig ist", () => {
+    const p = tagesplan(TAG, [task("A", { mengen: { bet: 32 } })], sd(25), KAL, kran(10));
+    expect(p.ueberstunden.jeUnternehmer.size).toBe(0);
+    expect(p.ueberstunden.jeKran.size).toBe(0);
+  });
+
   it("zwei Arbeiten teilen sich das Team und den Kran", () => {
     const p = tagesplan(TAG, [task("A", { mengen: { bet: 16 } }), task("B", { mengen: { bet: 16 } })], sd(25), KAL, kran(8));
     expect(p.tasks.map(t => t.phasen[0].personen)).toEqual([4, 4]); // je Min. 4, keine Leute übrig

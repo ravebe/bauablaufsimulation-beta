@@ -238,9 +238,11 @@ export interface DetailZeile { key: string; art: "total" | "serie" | "linie" | "
 /** erklaerung = Tooltip beim Überfahren von Spaltentitel und Werten: wie die Angabe gerechnet wird */
 export interface DetailSpalte { titel: string; erklaerung?: string; wert: (zeile: DetailZeile, idx: number) => string;
   /** Tooltip einer einzelnen Zelle (statt erklaerung), z.B. Aufschlüsselung des Totals */
-  zellenTitel?: (zeile: DetailZeile, idx: number) => string | undefined }
+  zellenTitel?: (zeile: DetailZeile, idx: number) => string | undefined;
+  /** Zelle rot und fett hervorheben (z.B. Dauer über dem Arbeitsende) */
+  zellenRot?: (zeile: DetailZeile, idx: number) => boolean }
 
-interface DetailTabellenZeile { key: string; label: string; color?: string; gestrichelt?: boolean; fett?: boolean; rot?: boolean; werte: string[]; titel?: (string | undefined)[] }
+interface DetailTabellenZeile { key: string; label: string; color?: string; gestrichelt?: boolean; fett?: boolean; rot?: boolean; werte: string[]; titel?: (string | undefined)[]; zellenRot?: boolean[] }
 
 /** Feste Angaben zum angeklickten Tag/Zeitraum an Stelle der Legende (Tab AVOR) — Spalte je Angabe,
  *  Zeile je Position mit Farbcode wie in der Legende. */
@@ -272,7 +274,9 @@ function DetailTabelle({ kopf, spalten, zeilen, onSchliessen }: { kopf: string; 
               </td>
               {z.werte.map((w, i) => {
                 const titel = z.titel?.[i] ?? spalten[i]?.erklaerung;
-                return <td key={i} title={titel} style={{ ...zelle, cursor: titel ? "help" : undefined }}>{w}</td>;
+                const rot = z.zellenRot?.[i];
+                return <td key={i} title={titel} style={{ ...zelle, cursor: titel ? "help" : undefined,
+                  ...(rot ? { color: FARBEN.status.critical, fontWeight: 700, borderRight: `2px solid ${FARBEN.status.critical}` } : {}) }}>{w}</td>;
               })}
             </tr>
           ))}
@@ -291,6 +295,8 @@ interface TimeSeriesProps {
   referenzlinie?: { label: string; wert?: number; werte?: number[] };
   /** Zusätzliche gestrichelte Tageslinien mit eigener Farbe (z.B. "Perfekte Auslastung") — in Legende und Tooltip */
   weitereLinien?: { key: string; label: string; werte: number[]; farbe: string }[];
+  /** Tage mit einem Streifen über der x-Achse hervorheben (z.B. rot = Arbeit nach Arbeitsende) — in Legende und Tooltip mit titel */
+  markierteTage?: { label: string; farbe: string; titel: (idx: number) => string | null };
   einheit?: string;
   hoehe?: number;
   formatWert?: (v: number) => string;
@@ -328,7 +334,7 @@ interface TimeSeriesProps {
 
 const ML = 44, MR = 8, MT = 16, MB = 20;
 
-export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = "", hoehe = 180, formatWert, zusatz, zusatzSerie, zusatzTotal, totalZeile, weitereLinien = [], markerIdx, markerLabel = "Heute", onTagKlick, detailSpalten, onMarkerEntfernen, detailUnten, kalender, ohneWochenenden = false,
+export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = "", hoehe = 180, formatWert, zusatz, zusatzSerie, zusatzTotal, totalZeile, weitereLinien = [], markierteTage, markerIdx, markerLabel = "Heute", onTagKlick, detailSpalten, onMarkerEntfernen, detailUnten, kalender, ohneWochenenden = false,
   pxProTag: pxProTagProp, onPxProTagChange: onPxProTagChangeProp, scrollTag: scrollTagProp, onScrollChange: onScrollChangeProp }: TimeSeriesProps) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [outerRef, viewportW] = useMeasuredWidth<HTMLDivElement>(1000);
@@ -411,6 +417,7 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
   const linienPfad = (werte: number[]) => sicht.map((i, p) => `${p === 0 ? "M" : "L"} ${x(i)} ${y(werte[i] ?? 0)}`).join(" ");
 
   const zeigeLegende = serien.length >= 2 || !!referenzlinie?.werte || weitereLinien.length > 0;
+  const markiert = markierteTage ? sicht.filter(i => markierteTage.titel(i) != null) : [];
 
   // Feste Tagesangaben (detailSpalten): Zeilen in derselben Reihenfolge wie bisher im Tooltip
   const detailIdx = detailSpalten && markerIdx != null && markerIdx >= 0 && markerIdx < n ? markerIdx : null;
@@ -418,7 +425,7 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
   if (detailSpalten && detailIdx != null) {
     const zeile = (label: string, z: DetailZeile, extra: Partial<DetailTabellenZeile> = {}) =>
       detailZeilen.push({ key: `${z.art}-${z.key}`, label, werte: detailSpalten.map(sp => sp.wert(z, detailIdx)),
-        titel: detailSpalten.map(sp => sp.zellenTitel?.(z, detailIdx)), ...extra });
+        titel: detailSpalten.map(sp => sp.zellenTitel?.(z, detailIdx)), zellenRot: detailSpalten.map(sp => !!sp.zellenRot?.(z, detailIdx)), ...extra });
     if (totalZeile) zeile("Total", { key: "__total", art: "total", wert: serien.reduce((sum, s) => sum + (s.werte[detailIdx] ?? 0), 0) }, { fett: true });
     for (const s of serien) zeile(s.label, { key: s.key, art: "serie", wert: s.werte[detailIdx] ?? 0 }, { color: s.color });
     for (const l of weitereLinien) zeile(l.label, { key: l.key, art: "linie", wert: l.werte[detailIdx] ?? 0 }, { color: l.farbe, gestrichelt: true });
@@ -451,6 +458,12 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
               {l.label}
             </span>
           ))}
+          {markierteTage && markiert.length > 0 && (
+            <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ width: 10, height: 4, background: markierteTage.farbe, display: "inline-block" }} />
+              {markierteTage.label}
+            </span>
+          )}
         </div>
       )}
       <div style={{ position: "relative" }}>
@@ -497,6 +510,9 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
               <path key={s.key} fill="none" stroke={s.color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
                 d={linienPfad(s.werte)} />
             ))}
+            {markierteTage && markiert.map(i => (
+              <rect key={`mt${i}`} x={x(i) - Math.max(pxProTag, 2) / 2} y={hoehe - MB - 5} width={Math.max(pxProTag, 2)} height={5} fill={markierteTage.farbe} />
+            ))}
             {hoverIdx !== null && (
               <line x1={x(hoverIdx)} y1={MT} x2={x(hoverIdx)} y2={hoehe - MB} stroke={FARBEN.achse} strokeWidth={1} strokeDasharray="2 2" />
             )}
@@ -539,6 +555,9 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
                 {l.label}: {fmt(l.werte[hoverIdx] ?? 0)} {einheit}
               </div>
             ))}
+            {markierteTage && markierteTage.titel(hoverIdx) != null && (
+              <div style={{ color: markierteTage.farbe, fontWeight: 600 }}>{markierteTage.titel(hoverIdx)}</div>
+            )}
             {referenzlinie && (referenzlinie.werte ? referenzlinie.werte[hoverIdx] != null : referenzlinie.wert != null) && (
               <div style={{ color: FARBEN.status.critical }}>
                 <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: 2, background: FARBEN.status.critical, marginRight: 4 }} />

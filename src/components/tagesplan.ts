@@ -7,10 +7,12 @@
 //  - Kranzeit: eine kranpflichtige Arbeit belegt den Kran mit Personen ÷ Min. Personen × Kranzeit % — mehr Leute machen eine Arbeit
 //    nur schneller, solange der Kran nachkommt.
 //  - Schritte eines Tasks nacheinander (Arbeitsablauf je Leistungsposition), Tasks in der Reihenfolge ihres Starts.
+//  - Überstunden: was nach Arbeitsende (Std./Tag) noch gearbeitet wird — Personenstunden je Unternehmer, Kranstunden je Kran.
 import type { Task, Kran } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
 import type { Kalender } from "./kalenderHelpers";
 import { aufwandJeTagUndPhaseFuerTask } from "./avorHelpers";
+import type { PhasenAufwand } from "./avorHelpers";
 import { kraeneDesTasks, istKranVerfuegbarAn, kranPersonalAmTag } from "./kranHelpers";
 
 const SLOT = 0.25; // Stunden
@@ -27,14 +29,28 @@ export interface TagesplanPhase {
   kranBegrenzt: boolean; // mehr Leute wären frei gewesen, aber die Kranzeit reichte nicht
 }
 export interface TagesplanTask { t: Task; phasen: TagesplanPhase[]; von: number; bis: number; arbeit: number }
-export interface Tagesplan { tasks: TagesplanTask[]; dauer: number; arbeit: number; jeGewerk: Map<string, { von: number; bis: number }> }
+/** Arbeit nach Arbeitsende: Personenstunden je Unternehmer ("" = Position ohne Unternehmer), Kranstunden je Kran-Id */
+export interface Ueberstunden { jeUnternehmer: Map<string, number>; jeKran: Map<string, number> }
+export const unternehmerLabel = (u: string) => u || "ohne Unternehmer";
+export interface Tagesplan { tasks: TagesplanTask[]; dauer: number; arbeit: number; jeGewerk: Map<string, { von: number; bis: number }>; ueberstunden: Ueberstunden }
+
+/** Aufwand je Tag und Phase eines Tasks — je Task nur einmal gerechnet, wenn der Tagesplan für viele Tage gebraucht wird */
+export type AufwandQuelle = (t: Task) => Map<string, PhasenAufwand[]>;
+export function aufwandCache(stammdaten: Stammdaten, kalender: Kalender): AufwandQuelle {
+  const cache = new Map<Task, Map<string, PhasenAufwand[]>>();
+  return t => {
+    let a = cache.get(t);
+    if (!a) { a = aufwandJeTagUndPhaseFuerTask(t, stammdaten, kalender); cache.set(t, a); }
+    return a;
+  };
+}
 
 interface PhaseZ {
   p: TagesplanPhase; rest: number; kolonne: number; position: string; kranAnteil: number;
-  poolKey: string | null; poolGroesse: number; kraene: string[];
+  poolKey: string | null; poolGroesse: number; kraene: string[]; unternehmer: string;
 }
 
-export function tagesplan(iso: string, tasks: Task[], stammdaten: Stammdaten, kalender: Kalender, kraene: Kran[]): Tagesplan {
+export function tagesplan(iso: string, tasks: Task[], stammdaten: Stammdaten, kalender: Kalender, kraene: Kran[], aufwand?: AufwandQuelle): Tagesplan {
   const kranById = new Map(kraene.map(k => [k.id, k]));
   const kraeneHeute = kraene.filter(k => istKranVerfuegbarAn(k, iso));
   const poolGroessen = new Map<string, number>();
@@ -45,7 +61,7 @@ export function tagesplan(iso: string, tasks: Task[], stammdaten: Stammdaten, ka
   const geordnet = tasks.map((t, i) => ({ t, i })).sort((a, b) =>
     (a.t.start + (a.t.startZeit ?? "")).localeCompare(b.t.start + (b.t.startZeit ?? "")) || a.i - b.i);
   for (const { t } of geordnet) {
-    const liste = aufwandJeTagUndPhaseFuerTask(t, stammdaten, kalender).get(iso)?.filter(a => a.personenstunden > EPS) ?? [];
+    const liste = (aufwand ? aufwand(t) : aufwandJeTagUndPhaseFuerTask(t, stammdaten, kalender)).get(iso)?.filter(a => a.personenstunden > EPS) ?? [];
     if (liste.length === 0) continue;
     const kranIds = kraeneDesTasks(t, kraene).filter(id => { const k = kranById.get(id); return !!k && istKranVerfuegbarAn(k, iso); });
     const jeSchritt = new Map<number, PhaseZ[]>();
@@ -58,13 +74,14 @@ export function tagesplan(iso: string, tasks: Task[], stammdaten: Stammdaten, ka
       tp.phasen.push(p);
       tp.arbeit += a.personenstunden;
       const z: PhaseZ = { p, rest: a.personenstunden, kolonne: Math.max(1, a.phase.kolonne), position: a.phase.position, kranAnteil: a.phase.kranAnteil,
-        poolKey, poolGroesse: poolKey ? poolGroessen.get(poolKey)! : 0, kraene: kr };
+        poolKey, poolGroesse: poolKey ? poolGroessen.get(poolKey)! : 0, kraene: kr, unternehmer: a.phase.unternehmer ?? "" };
       jeSchritt.set(a.schritt, [...(jeSchritt.get(a.schritt) ?? []), z]);
     }
     plan.push({ tp, schritte: [...jeSchritt.entries()].sort((x, y) => x[0] - y[0]).map(([, ps]) => ps), schritt: 0 });
   }
 
   const std = stammdaten.arbeitszeitStdProTag || 8;
+  const ueberstunden: Ueberstunden = { jeUnternehmer: new Map(), jeKran: new Map() };
   const maxSlots = Math.ceil(std * MAX_TAGE / SLOT);
   for (let slot = 0; slot < maxSlots; slot++) {
     const offen = plan.filter(x => x.schritt < x.schritte.length);
@@ -115,8 +132,16 @@ export function tagesplan(iso: string, tasks: Task[], stammdaten: Stammdaten, ka
       const vorher = v.z.rest;
       v.z.rest = Math.max(0, vorher - v.leute * SLOT);
       const p = v.z.p;
+      const ende = t0 + Math.min(SLOT, vorher / v.leute);
       p.von = Math.min(p.von, t0);
-      p.bis = Math.max(p.bis, t0 + Math.min(SLOT, vorher / v.leute));
+      p.bis = Math.max(p.bis, ende);
+      // Überstunden: der Teil dieser Viertelstunde nach Arbeitsende
+      const nachArbeitsende = ende - Math.max(t0, std);
+      if (nachArbeitsende > EPS) {
+        const u = ueberstunden.jeUnternehmer;
+        u.set(v.z.unternehmer, (u.get(v.z.unternehmer) ?? 0) + v.leute * nachArbeitsende);
+        for (const id of v.z.kraene) ueberstunden.jeKran.set(id, (ueberstunden.jeKran.get(id) ?? 0) + belegung(v.z, v.leute) * nachArbeitsende);
+      }
       p.personen = Math.max(p.personen, v.leute);
     }
     for (const x of offen) while (x.schritt < x.schritte.length && x.schritte[x.schritt].every(z => z.rest <= EPS)) x.schritt++;
@@ -135,5 +160,5 @@ export function tagesplan(iso: string, tasks: Task[], stammdaten: Stammdaten, ka
     dauer = Math.max(dauer, tp.bis);
     arbeit += tp.arbeit;
   }
-  return { tasks: plan.map(x => x.tp), dauer, arbeit, jeGewerk };
+  return { tasks: plan.map(x => x.tp), dauer, arbeit, jeGewerk, ueberstunden };
 }
