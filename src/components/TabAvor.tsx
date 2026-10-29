@@ -1,13 +1,14 @@
 // TabAvor.tsx — Cockpit mit Personal-/Kranauslastung und Mengen-Filter, abgeleitet
 // aus den in Tab Kalkulation erfassten Mengen/Kürzeln/WBS-Feldern und den Stammdaten aus Ressourcen.
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import type { SimProjekt, Zeitraster } from "../types";
 import { parseDateUniversal, nsKey } from "../types";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import { LEERE_STAMMDATEN, hatKranpflichtigeRaten } from "./stammdatenHelpers";
 import { personalauslastung, kolonnenJeTag, tagesdauerJeTag, mengenProTag, optimaleTagesleistung } from "./avorHelpers";
 import type { TagWert } from "./avorHelpers";
-import { kranstundenProKranUndBucket, kranPersonalMaxImBereich, RICHTWERT_PERSONEN_PRO_KRAN, eingeplantesPersonalJeTag, hatKranPersonal } from "./kranHelpers";
+import { kranstundenProKranUndBucket, kranPersonalMaxImBereich, RICHTWERT_PERSONEN_PRO_KRAN, eingeplantesPersonalJeTag, hatKranPersonal, durchschnittlicheAuslastung } from "./kranHelpers";
+import { optimiereAuslastung } from "./auslastungOptimieren";
 import { personenstundenProKranUndBucket, personalRichtwertJeBucket } from "./kapazitaetsCheckHelpers";
 import { dreiDZustandAufTagSetzen, tagVonDatum } from "./dreiDHeuteHelper";
 import type { ApiInstance } from "../hooks/useApi";
@@ -75,6 +76,14 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
 
   const kraene = sim?.kraene ?? [];
   const kranById = new Map(kraene.map(k => [k.id, k]));
+  // Ø Auslastung des Gantts und nach "Auslastung optimieren" (Standard: kritischer Pfad, Lücken füllen, aktuelle Zeiteinheit) —
+  // nur Vorschau, übernommen wird in Tab Bauteile
+  const auslastungKennzahl = useMemo(() => {
+    const gantt = durchschnittlicheAuslastung(tasks, kraene, stammdaten, kalender);
+    if (gantt == null) return null;
+    const optimiert = optimiereAuslastung(tasks, stammdaten, kalender, sim?.zeiteinheit ?? "tage", kraene, "kritischerPfad", true);
+    return { gantt, optimiert: durchschnittlicheAuslastung(optimiert, kraene, stammdaten, kalender) };
+  }, [tasks, kraene, stammdaten, kalender, sim?.zeiteinheit]);
   const raster: Zeitraster = sim?.zeitraster ?? "monat";
   const { buckets: kranBuckets, serien: kranstundenSerien } = kranstundenProKranUndBucket(tasks, kraene, stammdaten, kalender, raster);
   const kranHatBedarf = kranstundenSerien.some(s => s.bedarf.some(v => v > 0));
@@ -271,6 +280,16 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
         } />
         <StatTile label={`${raster === "monat" ? "Monate" : "Wochen"} über Kran-Kapazität`}
           title={`Anzahl ${raster === "monat" ? "Monate" : "Wochen"}, in denen bei mindestens einem Kran der Kranstunden-Bedarf über der verfügbaren Kranzeit liegt (Umschalter Monat/Woche in der Kranoptik)`} wert={String(zeitraeumeUeberKapazitaet)} status={zeitraeumeUeberKapazitaet > 0 ? "warning" : "good"} />
+        <StatTile label="Ø Auslastung Personal"
+          title={"Gantt: Ø Auslastung des aktuellen Bauablaufs — Arbeit aller Tage ÷ (eingeplantes Personal × Std./Tag), eingeplant wie die Linie Perfekte Auslastung (Kranpersonal + Kolonnen ohne Kran).\nOptimiert: dieselbe Rechnung nach «Auslastung optimieren» (kritischer Pfad, Lücken füllen, aktuelle Zeiteinheit).\n\nDie Optimierung ist hier nur eine Vorschau — übernehmen in Tab Bauteile → Werkzeuge → «Auslastung optimieren»."}
+          wert={auslastungKennzahl ? (
+            <>{fmtZahl(auslastungKennzahl.gantt * 100)} %
+              <span style={{ fontSize: 11, fontWeight: 400, color: FARBEN.textSekundaer, marginLeft: 6 }}>Gantt</span>
+              {auslastungKennzahl.optimiert != null && Math.abs(auslastungKennzahl.optimiert - auslastungKennzahl.gantt) > 0.0005 && (<>
+                <span style={{ margin: "0 6px", color: FARBEN.textSekundaer }}>→</span>{fmtZahl(auslastungKennzahl.optimiert * 100)} %
+                <span style={{ fontSize: 11, fontWeight: 400, color: FARBEN.textSekundaer, marginLeft: 6 }}>optimiert</span>
+              </>)}
+            </>) : "–"} />
         <div style={{ marginLeft: "auto", alignSelf: "flex-start" }}>
           <PunkteMenu title="Ansicht und Export der Auswertungen" abschnitte={[
             { titel: "Ansicht", eintraege: [{
@@ -281,9 +300,9 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
           ]} />
         </div>
       </div>
-      {ausgewaehltesDatumIso && (
+      {ausgewaehltesDatumIso && (!api || klickErgebnis) && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, marginTop: -8, fontSize: 11, color: "var(--tc-text-3)" }}>
-          <span>📍 {ausgewaehltesDatumLabel}{!api && " — Klick in ein Diagramm springt zu diesem Tag, aber es ist kein 3D-Modell verbunden"}{klickErgebnis && api ? ` — ${klickErgebnis}` : ""}</span>
+          <span>{!api ? "Klick in ein Diagramm springt zu diesem Tag, aber es ist kein 3D-Modell verbunden" : klickErgebnis}</span>
         </div>
       )}
 
