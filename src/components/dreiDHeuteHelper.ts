@@ -47,8 +47,12 @@ async function selektieren(api: ApiInstance, guids: string[]) {
 
 /** Baut den 3D-Zustand für einen bestimmten Tag auf (Sichtbarkeit + Typ-Einfärbung + Selektion der
  * aktiven Neubau-Objekte) und gibt die an diesem Tag aktiven Tasks zurück. */
-/** @param ausgeschlossen aus der Simulation entfernte Bauteile — werden nach dem Einblenden wieder ausgeblendet */
-export async function dreiDZustandAufTagSetzen(api: ApiInstance, tasks: Task[], minDate: Date, tag: number, farbeEin = true, ausgeschlossen: string[] = []): Promise<Task[]> {
+/** @param ausgeschlossen aus der Simulation entfernte Bauteile — werden nach dem Einblenden wieder ausgeblendet
+ *  @param ganzerTag true = den ganzen Tag betrachten (Tab AVOR, wie die Tagesangaben): sichtbar ist, was bis Tagesende begonnen
+ *  hat, aktiv jeder Task, der an diesem Tag arbeitet — sonst der Stand bei Arbeitsbeginn (bei Halbtagen/Uhrzeit nur die Tasks,
+ *  die um diese Zeit laufen). */
+export async function dreiDZustandAufTagSetzen(api: ApiInstance, tasks: Task[], minDate: Date, tag: number, farbeEin = true, ausgeschlossen: string[] = [], ganzerTag = false): Promise<Task[]> {
+  const bisTag = ganzerTag ? tag + 1 - 1e-9 : tag; // spätester betrachteter Zeitpunkt des Tages
   const showGuids: string[] = [];
   const hideGuids: string[] = [];
   const colorBestand: string[] = [];
@@ -66,7 +70,7 @@ export async function dreiDZustandAufTagSetzen(api: ApiInstance, tasks: Task[], 
     const e = endPos(t, minDate); // exklusiv, siehe zeitHelpers.ts
 
     if (t.typ === "neubau") {
-      if (tag >= s) {
+      if (bisTag >= s) {
         showGuids.push(...t.objektGuids);
         if (tag < e) { selGuidsLocal.push(...t.objektGuids); aktive.push(t); }
         if (farbeEin) colorNeubau.push(...t.objektGuids);
