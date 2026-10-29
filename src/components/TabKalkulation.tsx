@@ -5,7 +5,7 @@ import type { SimProjekt, Task, Kran } from "../types";
 import { istGruppe, berechneNummern, parseDateUniversal } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { LEERER_KALENDER } from "./kalenderHelpers";
-import { LEERE_STAMMDATEN, alleKuerzel, gewerkeFuerKuerzel, dauerBerechnetTask, bezeichnungFuerKuerzel, ausschlussFilterListe, aktiveFilterIds, objektAusgeschlossen, mengenRelevanteSignatur } from "./stammdatenHelpers";
+import { LEERE_STAMMDATEN, alleKuerzel, gewerkeFuerKuerzel, dauerBerechnetTask, ausschlussFilterListe, aktiveFilterIds, objektAusgeschlossen, mengenRelevanteSignatur } from "./stammdatenHelpers";
 import type { Gewerk, Rate, Stammdaten } from "./stammdatenHelpers";
 import { kuerzelVorschlag } from "./bauteilkatalogHelpers";
 import { StatTile, CategoryBarChart, CockpitAbschnitt, useEingeklappt, FARBEN } from "./cockpitCharts";
@@ -231,10 +231,8 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   const stammdaten = sim.stammdaten ?? LEERE_STAMMDATEN;
   const kalender = sim.kalender ?? LEERER_KALENDER;
   const kuerzelListe = alleKuerzel(stammdaten);
-  const kuerzelOptionen = kuerzelListe.map(k => {
-    const bez = bezeichnungFuerKuerzel(stammdaten, k);
-    return { k, label: bez ? `${k} – ${bez}` : k };
-  });
+  // nur das Kürzel — die Bezeichnung stammt je Kategorie (z.B. "Fundamentschalung") und passt nicht zum ganzen Bauteil
+  const kuerzelOptionen = kuerzelListe.map(k => ({ k, label: k }));
   const nummern = berechneNummern(sim.tasks);
   // true, sobald sich Formeln/Ausschlussfilter in Tab Ressourcen seit dem letzten Lauf von
   // "Mengen aus Bauteilen berechnen" geändert haben — siehe mengenRelevanteSignatur().
