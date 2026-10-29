@@ -2,13 +2,16 @@
 // dem Kran je Unternehmer und Zeitraum. Grundlage für "Perfekte Auslastung" (Tab AVOR) und "Auslastung optimieren" (Tab Bauteile):
 // Personal desselben Unternehmers unter einem Kran ist ein Pool von Allroundern; die Summe aller Unternehmer ist die Höchstzahl
 // der Leute an kranpflichtigen Arbeiten dieses Krans pro Tag (Richtwert 13 nur als Hinweis).
+import { useState } from "react";
 import type { SimProjekt, Kran, KranPersonal } from "../types";
 import { istGruppe } from "../types";
 import { neuerKran, kranAusTasksEntfernen, kraeneDesTasks, kranPersonalAmTag, RICHTWERT_PERSONEN_PRO_KRAN, kranLuecken, tageAlsZeitraeume } from "./kranHelpers";
 import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 
-interface Props { sim: SimProjekt; updateSim: (s: SimProjekt) => void; readOnly?: boolean; unternehmerListeId: string; bekannteUnternehmer: string[] }
+interface Props { sim: SimProjekt; updateSim: (s: SimProjekt) => void; readOnly?: boolean; bekannteUnternehmer: string[];
+  /** zur Auswahl: alle Unternehmer (Leistungspositionen und Kräne) */
+  alleUnternehmer: string[] }
 
 const feld: React.CSSProperties = { fontSize: 11, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" };
 
@@ -50,7 +53,33 @@ export function KranLueckenHinweis({ luecken, kraene }: { luecken: ReturnType<ty
   </>);
 }
 
-export default function KranPersonalEditor({ sim, updateSim, readOnly, unternehmerListeId, bekannteUnternehmer }: Props) {
+/** Unternehmer-Feld: frei eintippen oder aus allen bekannten Unternehmern wählen — die Liste zeigt immer alle, nicht nur die zum
+ *  Eingetippten passenden (anders als ein Browser-datalist). */
+function UnternehmerFeld({ wert, alle, disabled, unbekannt, onChange }: { wert: string; alle: string[]; disabled?: boolean; unbekannt: boolean; onChange: (u: string) => void }) {
+  const [offen, setOffen] = useState(false);
+  return (
+    <div style={{ position: "relative" }}>
+      <input disabled={disabled} value={wert} placeholder="Unternehmer"
+        title={unbekannt ? "Keine Leistungsposition hat diesen Unternehmer (Spalte Unternehmer in den Kategorien oben)" : undefined}
+        onFocus={() => setOffen(true)} onBlur={() => setTimeout(() => setOffen(false), 150)} onChange={e => onChange(e.target.value)}
+        style={{ ...feld, width: "100%", boxSizing: "border-box", paddingRight: 18, borderColor: unbekannt ? "#e08a00" : "#d4dce4" }} />
+      {!disabled && alle.length > 0 && (
+        <span onMouseDown={e => { e.preventDefault(); setOffen(o => !o); }}
+          style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", fontSize: 9, color: "var(--tc-text-3)", cursor: "pointer" }}>▾</span>
+      )}
+      {offen && !disabled && alle.length > 0 && (
+        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 20, background: "#fff", border: "1px solid var(--tc-border)", boxShadow: "0 2px 8px rgba(0,0,0,.12)", maxHeight: 180, overflowY: "auto" }}>
+          {alle.map(u => (
+            <div key={u} onMouseDown={e => { e.preventDefault(); onChange(u); setOffen(false); }}
+              style={{ fontSize: 11, padding: "4px 6px", cursor: "pointer", background: u === wert.trim() ? "var(--tc-blue-bg)" : undefined }}>{u}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function KranPersonalEditor({ sim, updateSim, readOnly, bekannteUnternehmer, alleUnternehmer }: Props) {
   const kraene = sim.kraene ?? [];
   const speichern = (neu: Kran[]) => updateSim({ ...sim, kraene: neu });
   const kranAendern = (id: string, patch: Partial<Kran>) => speichern(kraene.map(k => k.id === id ? { ...k, ...patch } : k));
@@ -108,10 +137,7 @@ export default function KranPersonalEditor({ sim, updateSim, readOnly, unternehm
                 const unbekannt = p.unternehmer.trim() !== "" && !bekannteUnternehmer.includes(p.unternehmer.trim());
                 return (
                   <div key={p.id} style={{ display: "grid", gridTemplateColumns: "180px 70px 130px 130px 20px", columnGap: 6, alignItems: "center", marginBottom: 3 }}>
-                    <input disabled={readOnly} list={unternehmerListeId} value={p.unternehmer} placeholder="Unternehmer"
-                      title={unbekannt ? "Keine Leistungsposition hat diesen Unternehmer (Spalte Unternehmer in den Kategorien oben)" : undefined}
-                      onChange={e => aendern({ unternehmer: e.target.value })}
-                      style={{ ...feld, borderColor: unbekannt ? "#e08a00" : "#d4dce4" }} />
+                    <UnternehmerFeld wert={p.unternehmer} alle={alleUnternehmer} disabled={readOnly} unbekannt={unbekannt} onChange={u => aendern({ unternehmer: u })} />
                     <input type="number" className="no-spinner" disabled={readOnly} value={p.personen || ""} min={0}
                       onChange={e => aendern({ personen: Number(e.target.value) || 0 })} style={feld} />
                     <input type="date" disabled={readOnly} value={p.von ?? ""} onChange={e => aendern({ von: e.target.value || undefined })} style={feld} />
@@ -125,7 +151,17 @@ export default function KranPersonalEditor({ sim, updateSim, readOnly, unternehm
               })}
               {!readOnly && (
                 <button className="tc-btn-ghost" style={{ fontSize: 10, padding: "2px 8px", marginTop: 2 }}
-                  onClick={() => personalAendern(kran, [...(kran.personal ?? []), { id: crypto.randomUUID(), unternehmer: bekannteUnternehmer[0] ?? "", personen: 0 }])}>
+                  onClick={() => {
+                    // Vorbelegung von oben: Zeitraum und Personen der letzten Zeile, sonst die Verfügbarkeit des Krans; als Unternehmer der
+                    // erste, der unter diesem Kran noch fehlt
+                    const liste = kran.personal ?? [];
+                    const letzte = liste[liste.length - 1];
+                    const vorhanden = new Set(liste.map(x => x.unternehmer.trim()));
+                    personalAendern(kran, [...liste, { id: crypto.randomUUID(),
+                      unternehmer: alleUnternehmer.find(u => !vorhanden.has(u)) ?? bekannteUnternehmer[0] ?? "",
+                      personen: letzte?.personen ?? 0,
+                      von: letzte ? letzte.von : kran.verfuegbarVon, bis: letzte ? letzte.bis : kran.verfuegbarBis }]);
+                  }}>
                   + Unternehmer
                 </button>
               )}

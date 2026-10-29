@@ -780,8 +780,8 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
               }} />
           </CockpitAbschnitt>
           <CockpitAbschnitt titel="Kräne & Personal" eingeklappt={!!eingeklappt["kraene"]} onToggle={() => toggleEingeklappt("kraene")}>
-            <KranPersonalEditor sim={sim} updateSim={updateSim} readOnly={readOnly} unternehmerListeId={UNTERNEHMER_LISTE_ID}
-              bekannteUnternehmer={unternehmerDerRaten} />
+            <KranPersonalEditor sim={sim} updateSim={updateSim} readOnly={readOnly}
+              bekannteUnternehmer={unternehmerDerRaten} alleUnternehmer={alleUnternehmer} />
           </CockpitAbschnitt>
         </div>
       )}
