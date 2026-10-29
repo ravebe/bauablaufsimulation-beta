@@ -236,9 +236,11 @@ export interface Serie { key: string; label: string; color: string; werte: numbe
 /** Eine Zeile der festen Tagesangaben-Tabelle (siehe detailSpalten): Total, Serie oder gestrichelte Linie */
 export interface DetailZeile { key: string; art: "total" | "serie" | "linie" | "referenz"; wert: number }
 /** erklaerung = Tooltip beim Überfahren von Spaltentitel und Werten: wie die Angabe gerechnet wird */
-export interface DetailSpalte { titel: string; erklaerung?: string; wert: (zeile: DetailZeile, idx: number) => string }
+export interface DetailSpalte { titel: string; erklaerung?: string; wert: (zeile: DetailZeile, idx: number) => string;
+  /** Tooltip einer einzelnen Zelle (statt erklaerung), z.B. Aufschlüsselung des Totals */
+  zellenTitel?: (zeile: DetailZeile, idx: number) => string | undefined }
 
-interface DetailTabellenZeile { key: string; label: string; color?: string; gestrichelt?: boolean; fett?: boolean; rot?: boolean; werte: string[] }
+interface DetailTabellenZeile { key: string; label: string; color?: string; gestrichelt?: boolean; fett?: boolean; rot?: boolean; werte: string[]; titel?: (string | undefined)[] }
 
 /** Feste Angaben zum angeklickten Tag/Zeitraum an Stelle der Legende (Tab AVOR) — Spalte je Angabe,
  *  Zeile je Position mit Farbcode wie in der Legende. */
@@ -268,7 +270,10 @@ function DetailTabelle({ kopf, spalten, zeilen, onSchliessen }: { kopf: string; 
                   : <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: z.color, marginRight: 5, verticalAlign: "middle" }} />)}
                 {z.label}
               </td>
-              {z.werte.map((w, i) => <td key={i} title={spalten[i]?.erklaerung} style={{ ...zelle, cursor: spalten[i]?.erklaerung ? "help" : undefined }}>{w}</td>)}
+              {z.werte.map((w, i) => {
+                const titel = z.titel?.[i] ?? spalten[i]?.erklaerung;
+                return <td key={i} title={titel} style={{ ...zelle, cursor: titel ? "help" : undefined }}>{w}</td>;
+              })}
             </tr>
           ))}
         </tbody>
@@ -410,7 +415,8 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
   const detailZeilen: DetailTabellenZeile[] = [];
   if (detailSpalten && detailIdx != null) {
     const zeile = (label: string, z: DetailZeile, extra: Partial<DetailTabellenZeile> = {}) =>
-      detailZeilen.push({ key: `${z.art}-${z.key}`, label, werte: detailSpalten.map(sp => sp.wert(z, detailIdx)), ...extra });
+      detailZeilen.push({ key: `${z.art}-${z.key}`, label, werte: detailSpalten.map(sp => sp.wert(z, detailIdx)),
+        titel: detailSpalten.map(sp => sp.zellenTitel?.(z, detailIdx)), ...extra });
     if (totalZeile) zeile("Total", { key: "__total", art: "total", wert: serien.reduce((sum, s) => sum + (s.werte[detailIdx] ?? 0), 0) }, { fett: true });
     for (const s of serien) zeile(s.label, { key: s.key, art: "serie", wert: s.werte[detailIdx] ?? 0 }, { color: s.color });
     for (const l of weitereLinien) zeile(l.label, { key: l.key, art: "linie", wert: l.werte[detailIdx] ?? 0 }, { color: l.farbe, gestrichelt: true });

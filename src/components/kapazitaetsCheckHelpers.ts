@@ -7,7 +7,7 @@ import type { Stammdaten } from "./stammdatenHelpers";
 import { istMengeKranpflichtig } from "./stammdatenHelpers";
 import { aufwandJeTagFuerTask } from "./avorHelpers";
 import type { ZeitrasterBucket } from "./kranHelpers";
-import { zeitrasterBuckets, kranVerfuegbareArbeitstage, kranAnteil } from "./kranHelpers";
+import { zeitrasterBuckets, kranVerfuegbareArbeitstage, kranAnteil, kraeneDesTasks } from "./kranHelpers";
 
 export const MAX_PERSONEN_PRO_KRAN = 13;
 
@@ -29,10 +29,11 @@ export function personenstundenProKranUndBucket(tasks: Task[], kraene: Kran[], s
   const bucketIndexFuer = (iso: string) => buckets.findIndex(b => iso >= b.start && iso <= b.end);
 
   for (const t of tasks) {
-    if (t.isGroup || !t.kraene || t.kraene.length === 0 || !t.bauteilKuerzel || !t.mengen) continue;
-    const beteiligteSerien = t.kraene.map(id => serieByKranId.get(id)).filter((s): s is KranPersonalSerie => !!s);
+    const kranIds = kraeneDesTasks(t, kraene);
+    if (t.isGroup || kranIds.length === 0 || !t.bauteilKuerzel || !t.mengen) continue;
+    const beteiligteSerien = kranIds.map(id => serieByKranId.get(id)).filter((s): s is KranPersonalSerie => !!s);
     if (beteiligteSerien.length === 0) continue;
-    const anteil = kranAnteil(t.kraene.length);
+    const anteil = kranAnteil(kranIds.length);
 
     for (const [iso, aufwand] of aufwandJeTagFuerTask(t, stammdaten, kalender)) {
       let personenstunden = 0;

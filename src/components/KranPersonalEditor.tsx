@@ -3,7 +3,8 @@
 // "Auslastung optimieren" (Tab Bauteile): Personal desselben Unternehmers unter einem Kran ist ein Pool von Allroundern, alle
 // Unternehmer an kranpflichtigen Kürzeln zusammen höchstens Max. Personen.
 import type { SimProjekt, Kran, KranPersonal } from "../types";
-import { neuerKran, kranAusTasksEntfernen, kranPersonalAmTag, kranMaxPersonen, STANDARD_MAX_PERSONEN_PRO_KRAN } from "./kranHelpers";
+import { istGruppe } from "../types";
+import { neuerKran, kranAusTasksEntfernen, kraeneDesTasks, kranPersonalAmTag, kranMaxPersonen, STANDARD_MAX_PERSONEN_PRO_KRAN } from "./kranHelpers";
 
 interface Props { sim: SimProjekt; updateSim: (s: SimProjekt) => void; readOnly?: boolean; unternehmerListeId: string; bekannteUnternehmer: string[] }
 
@@ -45,7 +46,7 @@ export default function KranPersonalEditor({ sim, updateSim, readOnly, unternehm
       {kraene.map(kran => {
         const { summe, tag } = maxSumme(kran);
         const max = kranMaxPersonen(kran);
-        const tasksAmKran = sim.tasks.filter(t => t.kraene?.includes(kran.id)).length;
+        const tasksAmKran = sim.tasks.filter((t, i) => !t.isGroup && !istGruppe(sim.tasks, i) && kraeneDesTasks(t, kraene).includes(kran.id)).length;
         return (
           <div key={kran.id} style={{ border: "1px solid var(--tc-border-light)", padding: "8px 10px", marginBottom: 8 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -64,7 +65,9 @@ export default function KranPersonalEditor({ sim, updateSim, readOnly, unternehm
                   onChange={e => kranAendern(kran.id, { maxPersonen: e.target.value === "" ? undefined : Number(e.target.value) })}
                   style={{ ...feld, width: 45 }} />
               </label>
-              <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>{tasksAmKran} Task{tasksAmKran === 1 ? "" : "s"} zugewiesen</span>
+              <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}
+                title={kraene.length === 1 ? "Bei nur einem Kran gelten alle Tasks ohne Kran-Zuweisung (Tab Kalkulation → Kräne) automatisch als Tasks dieses Krans" : "Kran-Zuweisung in Tab Kalkulation → Spalte Kräne"}>
+                {tasksAmKran} Task{tasksAmKran === 1 ? "" : "s"}{kraene.length === 1 ? " (inkl. Tasks ohne Zuweisung)" : " zugewiesen"}</span>
               {!readOnly && (
                 <button className="tc-btn-ghost" style={{ fontSize: 11, padding: "2px 6px", marginLeft: "auto" }} onClick={() => kranEntfernen(kran.id)}>Entfernen</button>
               )}

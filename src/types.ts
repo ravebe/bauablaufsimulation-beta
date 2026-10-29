@@ -119,6 +119,7 @@ export interface SimProjekt {
   mengenBerechnetSignatur?: string; // Signatur der Stammdaten (Formeln/Ausschlussfilter) zum Zeitpunkt des letzten "Mengen aus Bauteilen berechnen" — siehe mengenRelevanteSignatur() in stammdatenHelpers.ts; weicht sie vom aktuellen Stand ab, sind die Mengen veraltet
   kraene?: Kran[]; // Kran-Stammdaten, Verfügbarkeit und Personal je Unternehmer, siehe kranHelpers.ts / KranPersonalEditor.tsx (Tab Ressourcen)
   zeitraster?: Zeitraster; // globaler Monat/Woche-Umschalter für Kran-Auswertungen, fehlt = "monat"
+  optimiertStand?: string; // Termin-Signatur nach "Auslastung optimieren" (terminSignatur) — solange gleich, gelten Abweichungen zur berechneten Dauer als gewollt
 }
 
 // TC API Typen

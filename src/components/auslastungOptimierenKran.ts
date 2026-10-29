@@ -2,7 +2,8 @@
 // dass das Personal unter jedem Kran möglichst voll arbeitet und das Bauprogramm dadurch möglichst kurz wird.
 //  - Ressourcen je Arbeitstag: je verfügbarem Kran ein Pool je Unternehmer (Personal laut Kräne & Personal) und die Obergrenze
 //    Max. Personen für alle Leute an kranpflichtigen Positionen zusammen. Leute desselben Unternehmers sind Allrounder: sie
-//    besetzen jede Leistungsposition dieses Unternehmers (Rate.unternehmer) an Tasks dieses Krans (Task.kraene).
+//    besetzen jede Leistungsposition dieses Unternehmers (Rate.unternehmer) an Tasks dieses Krans (Task.kraene; bei nur einem Kran
+//    gelten Tasks ohne Zuweisung als seine, siehe kraeneDesTasks).
 //  - Positionen ohne Kran-Pool (nicht kranpflichtig, Task ohne Kran, Unternehmer ohne Personal unter dem Kran) arbeiten wie bisher
 //    mit ihrer Kolonne, eine Kolonne nie an zwei Tasks gleichzeitig; kranpflichtige zählen trotzdem zu Max. Personen des Krans.
 //  - Je Task gilt der Arbeitsablauf je Kürzel (schritteFuerTask): Schritte nacheinander, Phasen eines Schritts gleichzeitig.
@@ -24,7 +25,7 @@ import {
   startZeitpunkt, endZeitpunkt, naechsteArbeitszeit, endeAusArbeitsMinuten, folgeStartZeitpunkt, arbeitsMinutenZwischen,
   vergleicheZeitpunkte, zeitFelder, rasteUhrzeit, MIN_PRO_ARBEITSTAG, ARBEITSBEGINN_MIN, schrittMinuten,
 } from "./zeitHelpers";
-import { kranPersonalAmTag, kranMaxPersonen, istKranVerfuegbarAn } from "./kranHelpers";
+import { kranPersonalAmTag, kranMaxPersonen, istKranVerfuegbarAn, kraeneDesTasks } from "./kranHelpers";
 
 /** Eine Phase bekommt höchstens so viele Leute: Kolonne × MAX_VERSTAERKUNG (mehr Leute an einem Bauteil behindern sich). */
 export const MAX_VERSTAERKUNG = 2;
@@ -206,7 +207,7 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
     /** Mindestbesetzung einer Phase vergeben (0 = kann in diesem Zeitschritt nicht arbeiten). */
     const besetzen = (z: TaskZ, p: PhaseZ) => {
       const braucht = Math.max(1, Math.ceil(p.rest / SLOT - EPS));
-      const kranIds = p.kranpflichtig ? (z.t.kraene ?? []).filter(id => kranById.has(id)) : [];
+      const kranIds = p.kranpflichtig ? kraeneDesTasks(z.t, kraene) : [];
       // Kran der Phase: verfügbar heute? Sonst warten, solange er später noch verfügbar wird
       const kraeneHeute = kranIds.filter(id => kranFrei.has(id));
       const kranSpaeter = kranIds.some(id => { const b = kranById.get(id)!.verfuegbarBis; return !b || b > iso; });

@@ -186,7 +186,24 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
       wert: z => z.art === "linie" ? "" : fmtZahl(z.wert * std) },
     { titel: "Eingeplant [Pers.]",
       erklaerung: "Gewerk: Kolonnen (Mindestbesetzung) der an diesem Tag aktiven Leistungspositionen aus Tab Ressourcen — jede Position zählt pro Tag nur einmal.\nTotal (= Linie Perfekte Auslastung): Personal unter den verfügbaren Kränen (Tab Ressourcen → Kräne & Personal, je Kran höchstens Max. Personen) + Kolonnen der Positionen, die nicht aus einem Kran-Pool besetzt werden (nicht kranpflichtig, Task ohne Kran). Ohne Kranpersonal: Summe der Kolonnen.",
-      wert: (z, i) => z.art === "total" || z.art === "serie" ? fmtZahl(eingeplant(z, i)) : "" },
+      wert: (z, i) => {
+        if (z.art === "serie") return fmtZahl(eingeplant(z, i));
+        if (z.art !== "total") return "";
+        const e = eingeplantJeTag.get(personalSerien.tage[i]);
+        // mit Kranpersonal: Aufteilung Kran / ohne Kran direkt sichtbar
+        return mitKranPersonal && e && e.kolonnen > 0 ? `${fmtZahl(e.total)} (${fmtZahl(e.kranPersonal)} Kran + ${fmtZahl(e.kolonnen)} ohne)` : fmtZahl(eingeplant(z, i));
+      },
+      zellenTitel: (z, i) => {
+        if (z.art !== "total" || !mitKranPersonal) return undefined;
+        const e = eingeplantJeTag.get(personalSerien.tage[i]);
+        if (!e) return undefined;
+        const zeilen = [`Eingeplant ${fmtZahl(e.total)} Pers. = ${fmtZahl(e.kranPersonal)} unter den Kränen (je Kran Personal + kranpflichtige Kolonnen ohne Pool, höchstens Max. Personen) + ${fmtZahl(e.kolonnen)} ohne Kran.`];
+        if (e.ohnePool.length > 0) {
+          zeilen.push("", "Nicht aus einem Kran-Pool besetzt:");
+          for (const o of e.ohnePool) zeilen.push(`• ${o.label}: Kolonne ${fmtZahl(o.kolonne)} — ${o.grund}${o.unterKran ? " (zählt zu Max. Personen des Krans)" : ""}`);
+        }
+        return zeilen.join("\n");
+      } },
     { titel: "Dauer [h]",
       erklaerung: mitKranPersonal
         ? "Wie lange das eingeplante Personal für die Arbeit des Tages braucht.\nGewerk: Arbeit [h] ÷ Kolonnen.\nTotal: Arbeit [h] ÷ Eingeplant [Pers.] — die Leute desselben Unternehmers unter einem Kran sind Allrounder und teilen sich die Arbeit."

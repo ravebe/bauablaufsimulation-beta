@@ -146,6 +146,17 @@ export function optimiereAuslastung(tasks: Task[], stammdaten: Stammdaten, kalen
   });
 }
 
+/** Kurze Signatur aller Termine (und Vorgänger) — nach "Auslastung optimieren" in SimProjekt.optimiertStand gemerkt: solange sie
+ *  gleich bleibt, sind Abweichungen zur berechneten Dauer gewollt (Verstärkung, Wartezeiten, Raster) und werden nicht gemeldet. */
+export function terminSignatur(tasks: Task[]): string {
+  let h = 5381;
+  for (const t of tasks) {
+    const text = `${t.id}|${t.start}|${t.end}|${t.startZeit ?? ""}|${t.endZeit ?? ""}|${vorgaengerListe(t).map(v => v.id + ":" + v.lagDays).join(",")};`;
+    for (let i = 0; i < text.length; i++) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0;
+  }
+  return `${tasks.length}-${h.toString(36)}`;
+}
+
 /** Tasks, deren Termine sich mit optimiereAuslastung() ändern würden. */
 export function auslastungAbweichendeTasks(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender, einheit: Zeiteinheit = "tage", kraene: Kran[] = []): Task[] {
   // nur Termine vergleichen — ergänzte Vorgänger allein sind keine Abweichung

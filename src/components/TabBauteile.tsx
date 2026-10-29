@@ -10,7 +10,7 @@ import { useClickOutside } from "../hooks/useClickOutside";
 import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
 import { LEERER_KALENDER, ersterArbeitstagAb } from "./kalenderHelpers";
 import { pruefeZeitplanBereitschaft, berechneZeitplanUebernahme, zeitplanAbweichendeTasks } from "./zeitplanUebernahmeHelpers";
-import { optimiereAuslastung } from "./auslastungOptimieren";
+import { optimiereAuslastung, terminSignatur } from "./auslastungOptimieren";
 import type { OptimierReihenfolge } from "./auslastungOptimieren";
 import type { Zeiteinheit } from "./zeitHelpers";
 import { feinerAls, ZEITEINHEIT_LABEL } from "./zeitHelpers";
@@ -279,7 +279,9 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   const zeitplanStatus = aktiveSim ? pruefeZeitplanBereitschaft(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN) : null;
   // Hinweis statt Automatik: Termine im Gantt bleiben, bis "Berechnete Dauer übernehmen" geklickt wird — wie viele Tasks
   // davon betroffen wären, zeigt der Zähler am Werkzeug-Knopf und die Liste im Menü.
-  const abweichendeTasks = aktiveSim && zeitplanStatus?.bereit
+  // Termine aus "Auslastung optimieren" (unverändert seither) weichen gewollt von der berechneten Dauer ab → nicht melden
+  const ausOptimierung = !!aktiveSim?.optimiertStand && aktiveSim.optimiertStand === terminSignatur(aktiveSim.tasks);
+  const abweichendeTasks = aktiveSim && zeitplanStatus?.bereit && !ausOptimierung
     ? zeitplanAbweichendeTasks(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN, aktiveSim.kalender ?? LEERER_KALENDER, aktiveSim.zeiteinheit)
     : [];
   const zeitplanAenderungen = abweichendeTasks.length > 0;
@@ -302,7 +304,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   }
   function auslastungUebernehmen(einheit: Zeiteinheit, tasks: Task[]) {
     if (!aktiveSim) return;
-    updateSim({ ...aktiveSim, tasks, zeiteinheit: einheit === "tage" ? undefined : einheit });
+    updateSim({ ...aktiveSim, tasks, zeiteinheit: einheit === "tage" ? undefined : einheit, optimiertStand: terminSignatur(tasks) });
     setAuslastungVorschau(null);
   }
 
@@ -437,6 +439,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                         </div>
                         <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 2 }}>
                           {!zeitplanStatus.bereit ? "Klicken für Details, was dafür noch fehlt."
+                            : ausOptimierung ? "Termine stammen aus «Auslastung optimieren» — sie weichen bewusst von der berechneten Dauer (eine Kolonne ohne Unterbruch) ab: verstärkte Arbeiten sind kürzer, Wartezeiten zwischen Schritten länger. Übernehmen würde die Optimierung ersetzen."
                             : zeitplanAenderungen ? "Überträgt die in Tab Kalkulation berechnete Dauer als neue Start-/Endtermine auf den Bauablauf."
                               : "Bauablauf entspricht bereits der berechneten Dauer — nichts zu übernehmen."}
                         </div>
