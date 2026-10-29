@@ -9,12 +9,12 @@ import { eingeplantesPersonalJeTag } from "./kranHelpers";
 const KAL = { feiertage: [], ferien: [] };
 const task = (id: string, p: Partial<Task> = {}): Task =>
   ({ id, name: id, start: "2026-11-09", end: "2026-11-20", typ: "neubau", objektGuids: [], bauteilKuerzel: "W", kraene: ["k1"], ...p });
-// 8 h/Tag. Wand W: Schalung (Bau AG, Kolonne 4, 1 h/m², kranpflichtig), Bewehrung (Eisen GmbH, Kolonne 2, 1 h/t, kranpflichtig)
+// 8 h/Tag, Kranzeit je 25 %. Wand W: Schalung (Bau AG, Kolonne 4, 1 h/m², kranpflichtig), Bewehrung (Eisen GmbH, Kolonne 2, 1 h/t, kranpflichtig)
 const stammdaten: Stammdaten = {
   ...LEERE_STAMMDATEN, arbeitszeitStdProTag: 8,
   gewerke: [
-    { key: "sch", label: "Schalung", einheit: "m2", raten: [{ kuerzel: "W", bezeichnung: "Wand", leistungswertHProEinheit: 1, anzahlPersonen: 4, chfProEinheit: null, unternehmer: "Bau AG", kranpflichtig: true }] },
-    { key: "bew", label: "Bewehrung", einheit: "t", raten: [{ kuerzel: "W", bezeichnung: "Wand", leistungswertHProEinheit: 1, anzahlPersonen: 2, chfProEinheit: null, unternehmer: "Eisen GmbH", kranpflichtig: true }] },
+    { key: "sch", label: "Schalung", einheit: "m2", raten: [{ kuerzel: "W", bezeichnung: "Wand", leistungswertHProEinheit: 1, anzahlPersonen: 4, chfProEinheit: null, unternehmer: "Bau AG", kranpflichtig: true, kranzeitProzent: 25 }] },
+    { key: "bew", label: "Bewehrung", einheit: "t", raten: [{ kuerzel: "W", bezeichnung: "Wand", leistungswertHProEinheit: 1, anzahlPersonen: 2, chfProEinheit: null, unternehmer: "Eisen GmbH", kranpflichtig: true, kranzeitProzent: 25 }] },
   ],
 } as Stammdaten;
 const kran = (personal: { unternehmer: string; personen: number }[]): Kran[] =>
@@ -161,5 +161,12 @@ describe("Auslastung optimieren mit Kranpersonal", () => {
     // nur 4 Leute → am 9.11. nichts frei, B folgt am 10.11., sobald die Leute sonst untätig wären
     expect(termine(optimiereAuslastung(ts, stammdaten, KAL, "tage", kran([{ unternehmer: "Bau AG", personen: 4 }]), "kritischerPfad", true)))
       .toEqual(["A 2026-11-09–2026-11-09", "B 2026-11-10–2026-11-10"]);
+  });
+  it("Kranzeit: zwei Kolonnen mit 100 % Kranzeit passen nicht gleichzeitig unter einen Kran — sie arbeiten nacheinander", () => {
+    const voll = { ...stammdaten, gewerke: stammdaten.gewerke.map(g => ({ ...g, raten: g.raten.map(r => ({ ...r, kranzeitProzent: 100 })) })) } as Stammdaten;
+    const ts = [task("A", { mengen: { sch: 32 } }), task("B", { mengen: { sch: 32 } })];
+    const k = kran([{ unternehmer: "Bau AG", personen: 8 }]);
+    expect(termine(optimiereAuslastung(ts, voll, KAL, "tage", k))).toEqual(["A 2026-11-09–2026-11-09", "B 2026-11-10–2026-11-10"]);
+    expect(termine(optimiereAuslastung(ts, stammdaten, KAL, "tage", k))).toEqual(["A 2026-11-09–2026-11-09", "B 2026-11-09–2026-11-09"]); // 25 %: parallel
   });
 });

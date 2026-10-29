@@ -37,7 +37,7 @@ const RATEN_SPALTEN_LABEL: Record<RatenSpalte, string> = { kuerzel: "Leistungspo
 const RATEN_COL_DEFAULT: Record<RatenSpalte, number> = { kuerzel: 110, bezeichnung: 220, lw: 80, personen: 60, unternehmer: 120, chf: 70 };
 const UNTERNEHMER_LISTE_ID = "tc-unternehmer-liste";
 const AKTION_BREITE = 32; // ƒx-Button
-const KRAN_BREITE = 40; // kranpflichtig-Checkbox je Kürzel
+const KRAN_BREITE = 76; // kranpflichtig-Checkbox + Kranzeit % je Leistungsposition
 const TOTAL_BREITE = 110; // Mengen-Summe je Kürzel, rot bei fehlenden/fehlerhaften Mengen (siehe Tab Kalkulation)
 const ENTFERNEN_BREITE = 26; // ×-Button, ganz am Zeilenende
 const LS_RATEN_COLW = "4d-ressourcen-raten-colw";
@@ -536,7 +536,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                 </div>
               ))}
               <span />
-              <span style={{ textAlign: "center" }} title="Mengen dieser Leistungsposition fliessen in die Kranauslastung (Tab AVOR) ein">Kran</span>
+              <span style={{ textAlign: "left" }} title={"Haken: Leistungsposition braucht den Kran (kranpflichtig) — fliesst in die Kranoptik (Tab AVOR) ein und wird vom Personal unter dem Kran besetzt.\nKranzeit %: so viel der Arbeitszeit der Kolonne braucht sie den Kran (z.B. Schalung 30, Beton 100; leer = 100). Kranstunden = Personenstunden ÷ Kolonne × Kranzeit. «Auslastung optimieren» hält die Kranzeit je Kran ein."}>Kran / Zeit %</span>
               <span style={{ textAlign: "right" }} title="Aktuelle Mengen-Summe je Leistungsposition aus Tab Kalkulation — rot bei fehlenden oder fehlerhaften Mengen">Menge Ist</span>
               <span />
             </div>
@@ -593,10 +593,16 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                     </button>
                   )}
                 </div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                   <input type="checkbox" disabled={readOnly} checked={istRateKranpflichtig(r, gewerk)}
-                    title="Mengen dieser Leistungsposition fliessen in die Kranauslastung (Tab AVOR) ein"
+                    title="Leistungsposition braucht den Kran (kranpflichtig) — fliesst in die Kranoptik (Tab AVOR) ein"
                     onChange={e => rateAendern(gi, ri, { kranpflichtig: e.target.checked })} />
+                  {istRateKranpflichtig(r, gewerk) && (
+                    <input type="number" min={0} max={100} step={5} disabled={readOnly} value={r.kranzeitProzent ?? ""} placeholder="100"
+                      title="Kranzeit %: so viel der Arbeitszeit der Kolonne braucht diese Leistungsposition den Kran (leer = 100)"
+                      onChange={e => { const v = e.target.value.trim() === "" ? undefined : Math.min(100, Math.max(0, Number(e.target.value))); rateAendern(gi, ri, { kranzeitProzent: v != null && isFinite(v) ? v : undefined }); }}
+                      style={{ width: 44, fontSize: 11, padding: "2px 3px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
+                  )}
                 </div>
                 <div style={{ textAlign: "right", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     color: tasksMitKuerzel.length === 0 ? "var(--tc-text-3)" : mengeProblem ? "var(--tc-red)" : "#333" }}

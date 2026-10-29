@@ -10,6 +10,9 @@
 //  - Je Task gilt der Arbeitsablauf je Kürzel (schritteFuerTask): Schritte nacheinander, Phasen eines Schritts gleichzeitig.
 //    Eine Phase arbeitet mit mindestens ihrer Kolonne (bzw. dem ganzen Pool, wenn er kleiner ist) und wird mit freien Leuten
 //    desselben Unternehmers bis auf MAX_VERSTAERKUNG × Kolonne verstärkt — sie wird dadurch kürzer.
+//  - Kranzeit: eine kranpflichtige Phase belegt ihren Kran mit Leute ÷ Kolonne × Kranzeit-Anteil (Tab Ressourcen, bei mehreren
+//    verfügbaren Kränen des Tasks aufgeteilt) — dieselbe Rechnung wie die Kranstunden der Kranoptik. Je Zeitschritt hat jeder
+//    Kran höchstens einen Zeitschritt Kranzeit; was keinen Platz mehr hat, wartet — kein Engpass, notfalls wird das Programm länger.
 //  - Vergabe je Zeitschritt (½ Stunde): zuerst laufende Tasks (Mindestbesetzung), dann neue Tasks nach kritischem Pfad (längste
 //    Restkette über die Nachfolger zuerst), zuletzt Verstärkung laufender Phasen mit dem übrigen Personal.
 //  - Vorgänger und Wartetage bleiben massgebend, Tasks ohne Vorgänger beginnen frühestens an ihrem bisherigen Start (wie die
@@ -63,7 +66,7 @@ export function restkettenJeTask(zuPlanen: Task[], stammdaten: Stammdaten, einhe
   return ergebnis;
 }
 
-interface PhaseZ { position: string; unternehmer: string; kranpflichtig: boolean; kolonne: number; rest: number }
+interface PhaseZ { position: string; unternehmer: string; kranpflichtig: boolean; kolonne: number; rest: number; kranAnteil: number }
 interface TaskZ {
   t: Task; i: number;
   schritte: PhaseZ[][]; schritt: number;
@@ -109,7 +112,7 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
   for (const { t, i } of echte) {
     if (t.meilenstein || !hatKalkulationsWerte(t, stammdaten)) continue;
     const schritte = schritteFuerTask(t, stammdaten).map(s => s.phasen.map(p => ({
-      position: p.position, unternehmer: p.unternehmer, kranpflichtig: p.kranpflichtig, kolonne: p.kolonne, rest: p.personenstunden * 60,
+      position: p.position, unternehmer: p.unternehmer, kranpflichtig: p.kranpflichtig, kolonne: p.kolonne, rest: p.personenstunden * 60, kranAnteil: p.kranAnteil,
     })));
     const fixDauer = schritte.length === 0 ? Math.max(dauerBerechnetTask(t, stammdaten, einheit) * MIN_PRO_ARBEITSTAG, raster) : null;
     zustand.set(t.id, { t, i, schritte, schritt: 0, frueheste: null, erste: null, letzte: 0, fertig: false, restkette: 0, fixDauer,
@@ -212,15 +215,17 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
     const poolGroesse = new Map<string, number>();
     const kranTotal = new Map<string, number>();
     const ueberzug = new Map<string, number>(); // Leute über dem Personal des Krans (höchstens MAX_UEBERZUG)
+    const kranZeit = new Map<string, number>(); // freie Kranzeit dieses Zeitschritts (1 = ganzer Zeitschritt)
     for (const k of kraene) {
       if (!istKranVerfuegbarAn(k, iso)) continue;
+      kranZeit.set(k.id, 1);
       const total = kranPersonalTotalAmTag(k, iso);
       kranTotal.set(k.id, total > 0 ? total : Infinity);
       kranFrei.set(k.id, total > 0 ? total : Infinity);
       for (const [u, n] of kranPersonalAmTag(k, iso)) { pool.set(`${k.id}|${u}`, n); poolGroesse.set(`${k.id}|${u}`, n); }
     }
     const kolonneBelegt = new Set<string>();
-    const vergabe: { z: TaskZ; p: PhaseZ; leute: number; poolKey: string | null; kranId: string | null }[] = [];
+    const vergabe: { z: TaskZ; p: PhaseZ; leute: number; poolKey: string | null; kranId: string | null; kranIds: string[] }[] = [];
     const besetzt = new Set<PhaseZ>();
 
     /** Leute verfügbar? Mit Überzug nur, wenn beim Kran noch Leute frei sind (sonst untätig) und höchstens MAX_UEBERZUG insgesamt. */
@@ -231,6 +236,14 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
       if (n > frei && isFinite(frei)) ueberzug.set(kid, (ueberzug.get(kid) ?? 0) + n - Math.max(0, frei));
       kranFrei.set(kid, frei - n);
     };
+
+    /** Kranzeit, die leute an dieser Phase je Kran belegen (auf die verfügbaren Kräne des Tasks aufgeteilt) */
+    const kranBelegung = (ids: string[], p: PhaseZ, leute: number) => ids.length > 0 ? leute / Math.max(1, p.kolonne) * p.kranAnteil / ids.length : 0;
+    const kranZeitReicht = (ids: string[], p: PhaseZ, leute: number) => ids.every(id => (kranZeit.get(id) ?? 0) + EPS >= kranBelegung(ids, p, leute));
+    const kranZeitAbziehen = (ids: string[], p: PhaseZ, leute: number) => { for (const id of ids) kranZeit.set(id, (kranZeit.get(id) ?? 0) - kranBelegung(ids, p, leute)); };
+    /** So viele Leute passen zusätzlich an diese Phase, bevor die Kranzeit ausgeht */
+    const kranZeitPlatz = (ids: string[], p: PhaseZ) => ids.length === 0 || p.kranAnteil <= 0 ? Infinity
+      : Math.floor(Math.min(...ids.map(id => kranZeit.get(id) ?? 0)) / kranBelegung(ids, p, 1) + EPS);
 
     /** Mindestbesetzung einer Phase vergeben (nichts vergeben = kann in diesem Zeitschritt nicht arbeiten). */
     const besetzen = (z: TaskZ, p: PhaseZ, mitUeberzug: boolean, nurPool = false) => {
@@ -246,10 +259,11 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
         if (!p.unternehmer || !poolGroesse.has(key)) continue;
         const mindest = Math.min(p.kolonne, braucht, poolGroesse.get(key)!);
         const frei = Math.min(pool.get(key) ?? 0, kranFrei.get(kid) ?? 0);
-        if (reicht(frei, mindest, kid, mitUeberzug)) {
+        if (reicht(frei, mindest, kid, mitUeberzug) && kranZeitReicht(kraeneHeute, p, mindest)) {
           pool.set(key, pool.get(key)! - mindest);
           abziehen(kid, mindest);
-          vergabe.push({ z, p, leute: mindest, poolKey: key, kranId: kid });
+          kranZeitAbziehen(kraeneHeute, p, mindest);
+          vergabe.push({ z, p, leute: mindest, poolKey: key, kranId: kid, kranIds: kraeneHeute });
           besetzt.add(p);
         }
         return; // Unternehmer hat Personal unter diesem Kran → nur aus dem Pool
@@ -259,12 +273,14 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
       if (kolonneBelegt.has(p.position)) return;
       let kranId: string | null = null;
       if (kraeneHeute.length > 0) {
+        if (!kranZeitReicht(kraeneHeute, p, p.kolonne)) return;
         kranId = kraeneHeute.find(kid => reicht(kranFrei.get(kid) ?? 0, Math.min(p.kolonne, kranTotal.get(kid)!), kid, mitUeberzug)) ?? null;
         if (!kranId) return;
         abziehen(kranId, Math.min(p.kolonne, kranTotal.get(kranId)!));
+        kranZeitAbziehen(kraeneHeute, p, p.kolonne);
       }
       kolonneBelegt.add(p.position);
-      vergabe.push({ z, p, leute: p.kolonne, poolKey: null, kranId });
+      vergabe.push({ z, p, leute: p.kolonne, poolKey: null, kranId, kranIds: kraeneHeute });
       besetzt.add(p);
     };
 
@@ -276,9 +292,11 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
     const verstaerken = () => {
       for (const v of [...vergabe].filter(v => v.poolKey).sort((a, b) => b.p.rest - a.p.rest)) {
         const sinnvoll = Math.max(1, Math.ceil(v.p.rest / SLOT - EPS));
-        const extra = Math.min(pool.get(v.poolKey!) ?? 0, kranFrei.get(v.kranId!) ?? 0, MAX_VERSTAERKUNG * v.p.kolonne - v.leute, sinnvoll - v.leute);
+        const extra = Math.min(pool.get(v.poolKey!) ?? 0, kranFrei.get(v.kranId!) ?? 0, MAX_VERSTAERKUNG * v.p.kolonne - v.leute, sinnvoll - v.leute,
+          kranZeitPlatz(v.kranIds, v.p));
         if (extra > 0) {
           v.leute += extra;
+          kranZeitAbziehen(v.kranIds, v.p, extra);
           pool.set(v.poolKey!, pool.get(v.poolKey!)! - extra);
           kranFrei.set(v.kranId!, kranFrei.get(v.kranId!)! - extra);
         }

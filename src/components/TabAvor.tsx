@@ -243,7 +243,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
   const kranSpalten = [
     { titel: kranMetrik === "stunden" ? "Bedarf [h]" : "Personal Ø [Pers.]",
       erklaerung: kranMetrik === "stunden"
-        ? "Kranstunden-Bedarf im Monat/in der Woche = Personenstunden der kranpflichtigen Leistungspositionen ÷ Kolonne, summiert über die diesem Kran zugewiesenen Tasks (Tab Kalkulation → Kräne; bei mehreren Kränen gleichmässig aufgeteilt)."
+        ? "Kranstunden-Bedarf im Monat/in der Woche = Personenstunden der kranpflichtigen Leistungspositionen ÷ Kolonne × Kranzeit % (Tab Ressourcen, leer = 100), summiert über die diesem Kran zugewiesenen Tasks (Tab Kalkulation → Kräne; bei mehreren Kränen gleichmässig aufgeteilt)."
         : "Durchschnittliche Personen pro Arbeitstag = Personenstunden der kranpflichtigen Leistungspositionen dieses Krans im Monat/in der Woche ÷ verfügbare Arbeitstage ÷ Std./Tag, gerundet.",
       wert: (s: KategorieSerie, bi: number) => fmtZahl(s.werte[bi] ?? 0) },
     { titel: kranMetrik === "stunden" ? "Kapazität [h]" : "Pers. unter Kran",

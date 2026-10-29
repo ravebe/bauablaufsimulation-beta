@@ -6,7 +6,7 @@ import type { Kalender } from "./kalenderHelpers";
 import { istArbeitstag } from "./kalenderHelpers";
 import { arbeitsAnteilAmTag, dauerTage } from "./zeitHelpers";
 import type { Stammdaten, Gewerk, Rate, TaskPhase } from "./stammdatenHelpers";
-import { istMengeKranpflichtig, schritteFuerTask } from "./stammdatenHelpers";
+import { istMengeKranpflichtig, schritteFuerTask, kranzeitAnteil } from "./stammdatenHelpers";
 
 export interface TagWert { tag: string; werte: Record<string, number> }
 
@@ -176,9 +176,9 @@ export function tagesdauerJeTag(tasks: Task[], stammdaten: Stammdaten, kalender:
   return ergebnis;
 }
 
-/** Kranstunden je Tag für einen Task: Aufwand der kranpflichtigen Gewerke ÷ Kolonne — also die Zeit, in
- *  der die Kolonne laut Leistungswert am Bauteil arbeitet (z.B. Stütze 6 Personenstunden ÷ 3 Personen =
- *  2 Kranstunden), verteilt wie der Aufwand (aufwandJeTagFuerTask). Nicht kranpflichtige Gewerke zählen nicht. */
+/** Kranstunden je Tag für einen Task: Aufwand der kranpflichtigen Gewerke ÷ Kolonne × Kranzeit (Tab Ressourcen, leer = 100 %) —
+ *  die Zeit, in der die Kolonne laut Leistungswert am Bauteil arbeitet, davon der Anteil mit Kran (z.B. Stütze 6 Personenstunden
+ *  ÷ 3 Personen × 50 % = 1 Kranstunde), verteilt wie der Aufwand (aufwandJeTagFuerTask). Nicht kranpflichtige Gewerke zählen nicht. */
 export function kranstundenJeTagFuerTask(t: Task, stammdaten: Stammdaten, kalender: Kalender): Map<string, number> {
   const ergebnis = new Map<string, number>();
   for (const [iso, aufwand] of aufwandJeTagFuerTask(t, stammdaten, kalender)) {
@@ -186,8 +186,8 @@ export function kranstundenJeTagFuerTask(t: Task, stammdaten: Stammdaten, kalend
     for (const [k, ph] of Object.entries(aufwand)) {
       if (!istMengeKranpflichtig(stammdaten, k, t.bauteilKuerzel)) continue;
       const gewerk = stammdaten.gewerke.find(g => g.key === k);
-      const kolonne = gewerk ? rateFuer(gewerk, t.bauteilKuerzel!)?.anzahlPersonen : 0;
-      if (kolonne) stunden += ph / kolonne;
+      const rate = gewerk ? rateFuer(gewerk, t.bauteilKuerzel!) : undefined;
+      if (rate?.anzahlPersonen) stunden += ph / rate.anzahlPersonen * kranzeitAnteil(rate);
     }
     if (stunden > 0) ergebnis.set(iso, stunden);
   }

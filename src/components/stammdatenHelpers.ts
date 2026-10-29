@@ -20,6 +20,9 @@ export interface Rate {
   /** Unternehmer, der diese Leistungsposition ausführt — Personal desselben Unternehmers unter einem Kran ist ein gemeinsamer
    *  Pool (Allrounder), siehe Kran.personal und auslastungOptimieren.ts */
   unternehmer?: string;
+  /** Kranzeit [%]: so viel der Arbeitszeit der Kolonne braucht diese (kranpflichtige) Leistungsposition den Kran — z.B. Schalung 30,
+   *  Beton 100. Kranstunden = Personenstunden ÷ Kolonne × Kranzeit. Leer = 100 — siehe kranzeitAnteil() */
+  kranzeitProzent?: number;
   /** Arbeitsschritt im Ablauf je Kürzel: "1" = Schritt 1; "1/3" = je zur Hälfte in Schritt 1 und 3; "1:60/3:40" = 60 % in Schritt 1,
    *  40 % in Schritt 3 (z.B. Wandschalung 1. Seite → Bewehrung → 2. Seite). Gleiche Schritte laufen gleichzeitig. Leer = Position der
    *  Kategorie in Tab Ressourcen — siehe phasenFuerTask() */
@@ -127,7 +130,7 @@ export function parseStammdatenJson(text: string): Stammdaten {
   };
 }
 
-const CSV_HEADER = ["Gewerk-Schlüssel", "Gewerk", "Einheit", "Kranpflichtig", "Kürzel", "Bezeichnung", "LW [h/Einheit]", "Personen", "CHF/Einheit", "Formel", "Ausschlussfilter", "Menge Ist", "Unternehmer", "Schritt"];
+const CSV_HEADER = ["Gewerk-Schlüssel", "Gewerk", "Einheit", "Kranpflichtig", "Kürzel", "Bezeichnung", "LW [h/Einheit]", "Personen", "CHF/Einheit", "Formel", "Ausschlussfilter", "Menge Ist", "Unternehmer", "Schritt", "Kranzeit %"];
 
 /** Lesbare Zusammenfassung der für eine Rate aktiven Ausschlussfilter ("Common Type=Opening" o.ä.),
  *  mehrere durch Komma getrennt. Nur zur Information beim CSV-Export, wird beim Reimport ignoriert
@@ -174,7 +177,7 @@ export function stammdatenAlsCsv(s: Stammdaten, tasks: Task[]): string {
   const zeilen: string[][] = [CSV_HEADER];
   for (const g of s.gewerke) {
     if (g.raten.length === 0) {
-      zeilen.push([g.key, g.label, g.einheit, g.kranpflichtig ? "ja" : "nein", "", "", "", "", "", "", "", "", "", ""]);
+      zeilen.push([g.key, g.label, g.einheit, g.kranpflichtig ? "ja" : "nein", "", "", "", "", "", "", "", "", "", "", ""]);
       continue;
     }
     for (const r of g.raten) {
@@ -189,6 +192,7 @@ export function stammdatenAlsCsv(s: Stammdaten, tasks: Task[]): string {
         mengeIstText(r.kuerzel, g.key, g.einheit, tasks),
         r.unternehmer ?? "",
         r.schritt ?? "",
+        r.kranzeitProzent != null ? String(r.kranzeitProzent) : "",
       ]);
     }
   }
@@ -236,7 +240,7 @@ export function parseStammdatenCsv(text: string, bestehende: Stammdaten): Stammd
   const idx = (name: string) => header.findIndex(h => h.trim().toLowerCase() === name.toLowerCase());
   const iKey = idx("Gewerk-Schlüssel"), iLabel = idx("Gewerk"), iEinheit = idx("Einheit"), iKran = idx("Kranpflichtig"),
     iKuerzel = idx("Kürzel"), iBez = idx("Bezeichnung"), iLw = idx("LW [h/Einheit]"), iPers = idx("Personen"),
-    iChf = idx("CHF/Einheit"), iFormel = idx("Formel"), iUnternehmer = idx("Unternehmer"), iSchritt = idx("Schritt");
+    iChf = idx("CHF/Einheit"), iFormel = idx("Formel"), iUnternehmer = idx("Unternehmer"), iSchritt = idx("Schritt"), iKranzeit = idx("Kranzeit %");
   if (iLabel === -1 || iKuerzel === -1) throw new Error('Ungültiges CSV-Format — Spalten "Gewerk" und "Kürzel" erwartet');
 
   const parseNum = (s: string): number | null => {
@@ -285,6 +289,7 @@ export function parseStammdatenCsv(text: string, bestehende: Stammdaten): Stammd
       // ältere CSV ohne diese Spalten: bisherigen Wert behalten
       unternehmer: (text(iUnternehmer) ?? bisher?.unternehmer) || undefined,
       schritt: (text(iSchritt) ?? bisher?.schritt) || undefined,
+      kranzeitProzent: iKranzeit !== -1 ? (parseNum(z[iKranzeit] ?? "") ?? undefined) : bisher?.kranzeitProzent,
     });
   }
   if (gewerkeMap.size === 0) throw new Error("Keine gültigen Zeilen in der CSV-Datei gefunden");
@@ -382,7 +387,9 @@ export function schritteFuerRate(stammdaten: Stammdaten, gewerkKey: string, rate
 }
 
 /** Eine Phase eines Tasks: (Teil-)Aufwand einer Leistungsposition in einem Schritt. tage = Personenstunden ÷ (Kolonne × Std./Tag). */
-export interface TaskPhase { gewerkKey: string; position: string; unternehmer: string; kranpflichtig: boolean; personenstunden: number; kolonne: number; tage: number }
+export interface TaskPhase { gewerkKey: string; position: string; unternehmer: string; kranpflichtig: boolean; personenstunden: number; kolonne: number; tage: number;
+  /** Anteil der Arbeitszeit, in der die Phase den Kran braucht (0…1, 0 = nicht kranpflichtig), siehe kranzeitAnteil() */
+  kranAnteil: number }
 /** Ein Schritt des Arbeitsablaufs: seine Phasen laufen gleichzeitig, der Schritt dauert so lange wie die längste (tage). */
 export interface TaskSchritt { schritt: number; phasen: TaskPhase[]; tage: number }
 
@@ -401,7 +408,8 @@ export function schritteFuerTask(task: Task, stammdaten: Stammdaten): TaskSchrit
       const ph = personenstunden * s.anteil;
       const liste = jeSchritt.get(s.schritt) ?? [];
       liste.push({ gewerkKey: gewerk.key, position: `${gewerk.key}::${task.bauteilKuerzel}`, unternehmer: rate.unternehmer?.trim() ?? "",
-        kranpflichtig: istRateKranpflichtig(rate, gewerk), personenstunden: ph, kolonne: rate.anzahlPersonen, tage: ph / (rate.anzahlPersonen * std) });
+        kranpflichtig: istRateKranpflichtig(rate, gewerk), personenstunden: ph, kolonne: rate.anzahlPersonen, tage: ph / (rate.anzahlPersonen * std),
+        kranAnteil: istRateKranpflichtig(rate, gewerk) ? kranzeitAnteil(rate) : 0 });
       jeSchritt.set(s.schritt, liste);
     }
   }
@@ -411,6 +419,12 @@ export function schritteFuerTask(task: Task, stammdaten: Stammdaten): TaskSchrit
 
 export function rateFuerKuerzel(gewerk: Gewerk, kuerzel: string): Rate | undefined {
   return gewerk.raten.find(r => r.kuerzel === kuerzel);
+}
+
+/** Anteil der Arbeitszeit einer Kolonne, in der sie den Kran braucht (Rate.kranzeitProzent, leer = 100 %) — 0…1. */
+export function kranzeitAnteil(rate: Rate | undefined): number {
+  const p = rate?.kranzeitProzent;
+  return p == null || !isFinite(p) ? 1 : Math.min(1, Math.max(0, p / 100));
 }
 
 /** Ob eine Rate in die Kranauslastung (Tab AVOR) einfliesst — eigenes Flag je Kürzel, mit Fallback
