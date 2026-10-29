@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Task, Kran } from "../types";
+import { vorgaengerListe } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
 import { optimiereAuslastung } from "./auslastungOptimieren";
@@ -66,5 +67,36 @@ describe("Auslastung optimieren mit Kranpersonal", () => {
     const k = kran([{ unternehmer: "Bau AG", personen: 4 }]);
     k[0].verfuegbarVon = "2026-11-11";
     expect(termine(optimiereAuslastung(ts, stammdaten, KAL, "tage", k))).toEqual(["A 2026-11-11–2026-11-11"]);
+  });
+
+  it("Fundamente mit gemeinsamem Vorgänger: wer auf Personal wartet, bekommt den Task als Vorgänger, nach dem die Leute frei wurden", () => {
+    // Magerbeton (ohne Mengen, unverändert) bis 9.11.; F1, F2 je 32 h Schalung, nur 4 Leute → nacheinander
+    const ts = [task("M", { start: "2026-11-09", end: "2026-11-09", bauteilKuerzel: undefined, mengen: undefined }),
+      task("F1", { mengen: { sch: 32 }, predecessorId: "M", lagDays: 0 }), task("F2", { mengen: { sch: 32 }, predecessorId: "M", lagDays: 0 })];
+    const neu = optimiereAuslastung(ts, stammdaten, KAL, "tage", kran([{ unternehmer: "Bau AG", personen: 4 }]));
+    expect(termine(neu.slice(1))).toEqual(["F1 2026-11-10–2026-11-10", "F2 2026-11-11–2026-11-11"]);
+    expect(vorgaengerListe(neu[2]).map(v => v.id)).toEqual(["M", "F1"]); // bisheriger Vorgänger bleibt, F1 kommt dazu
+    expect(vorgaengerListe(neu[1]).map(v => v.id)).toEqual(["M"]);
+  });
+
+  it("Zeiteinheit Halbtage: Nachfolger am selben Tag — Vorgänger nur, wenn er vor dem Start endet", () => {
+    // F1, F2 je 16 h mit 4 Leuten = ½ Tag
+    const ts = [task("F1", { mengen: { sch: 16 } }), task("F2", { mengen: { sch: 16 } })];
+    const k = kran([{ unternehmer: "Bau AG", personen: 4 }]);
+    const tage = optimiereAuslastung(ts, stammdaten, KAL, "tage", k);
+    expect(termine(tage)).toEqual(["F1 2026-11-09–2026-11-09", "F2 2026-11-09–2026-11-09"]);
+    expect(vorgaengerListe(tage[1])).toEqual([]); // bei Tagen endet F1 erst am Abend → kein Vorgänger möglich
+    const halb = optimiereAuslastung(ts, stammdaten, KAL, "halbtage", k);
+    expect(halb[0].endZeit).toBe("12:00");
+    expect(halb[1].startZeit).toBe("13:00");
+    expect(vorgaengerListe(halb[1]).map(v => v.id)).toEqual(["F1"]);
+  });
+
+  it("Reihenfolge: kritischer Pfad zieht die längere Restkette vor, Gantt-Reihenfolge nicht", () => {
+    // A ohne Nachfolger, B mit Nachfolger C; nur 4 Leute
+    const ts = [task("A", { mengen: { sch: 32 } }), task("B", { mengen: { sch: 32 } }), task("C", { mengen: { sch: 32 }, predecessorId: "B", lagDays: 0 })];
+    const k = kran([{ unternehmer: "Bau AG", personen: 4 }]);
+    expect(termine(optimiereAuslastung(ts, stammdaten, KAL, "tage", k, "kritischerPfad")).slice(0, 2)).toEqual(["A 2026-11-10–2026-11-10", "B 2026-11-09–2026-11-09"]);
+    expect(termine(optimiereAuslastung(ts, stammdaten, KAL, "tage", k, "gantt")).slice(0, 2)).toEqual(["A 2026-11-09–2026-11-09", "B 2026-11-10–2026-11-10"]);
   });
 });

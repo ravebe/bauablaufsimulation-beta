@@ -11,6 +11,9 @@ import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
 import { LEERER_KALENDER, ersterArbeitstagAb } from "./kalenderHelpers";
 import { pruefeZeitplanBereitschaft, berechneZeitplanUebernahme, zeitplanAbweichendeTasks } from "./zeitplanUebernahmeHelpers";
 import { optimiereAuslastung } from "./auslastungOptimieren";
+import type { OptimierReihenfolge } from "./auslastungOptimieren";
+import type { Zeiteinheit } from "./zeitHelpers";
+import { feinerAls, ZEITEINHEIT_LABEL } from "./zeitHelpers";
 import { hatKranPersonal, durchschnittlicheAuslastung } from "./kranHelpers";
 import { fmtZahl } from "./zahlFormat";
 import TabTasks from "./TabTasks";
@@ -66,7 +69,8 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   const [zeitplanHinweisOffen, setZeitplanHinweisOffen] = useState(false);
   const [zeitplanBestaetigenOffen, setZeitplanBestaetigenOffen] = useState(false);
   // "Auslastung optimieren": Vorschau der neuen Termine, erst nach Bestätigung übernommen
-  const [auslastungVorschau, setAuslastungVorschau] = useState<Task[] | null>(null);
+  // je Zeiteinheit (aktuelle + feinere) ein Ergebnis — feinere erlauben Nachfolger am selben Tag, siehe auslastungVorschauOeffnen
+  const [auslastungVorschau, setAuslastungVorschau] = useState<{ reihenfolge: OptimierReihenfolge; ergebnisse: { einheit: Zeiteinheit; tasks: Task[] }[] } | null>(null);
   const [neuInputOffen, setNeuInputOffen] = useState(false);
   const [neuTaskInput, setNeuTaskInput] = useState("");
   const [neuTyp, setNeuTyp] = useState<"task" | "gruppe">("task");
@@ -287,13 +291,18 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   // voll (Pools je Unternehmer, siehe auslastungOptimierenKran.ts), sonst arbeitet jede Kolonne voll und nie an zwei Tasks gleichzeitig
   // (auslastungOptimieren.ts)
   const mitKranPersonal = hatKranPersonal(aktiveSim?.kraene ?? []);
-  function auslastungVorschauOeffnen() {
+  // Gerechnet wird in der aktuellen Zeiteinheit und in jeder feineren (Halbtage, Uhrzeit): darin dürfen Arbeiten innerhalb eines
+  // Tages wechseln und Nachfolger noch am selben Tag beginnen. Ist das Bauende damit früher, schlägt die Vorschau die Umstellung vor.
+  function auslastungVorschauOeffnen(reihenfolge: OptimierReihenfolge = "kritischerPfad") {
     if (!aktiveSim || !zeitplanStatus?.bereit) { setZeitplanHinweisOffen(o => !o); return; }
-    setAuslastungVorschau(optimiereAuslastung(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN, aktiveSim.kalender ?? LEERER_KALENDER, aktiveSim.zeiteinheit, aktiveSim.kraene ?? []));
+    const aktuell: Zeiteinheit = aktiveSim.zeiteinheit ?? "tage";
+    const einheiten = [aktuell, ...(["halbtage", "stunden"] as const).filter(e => feinerAls(e, aktuell))];
+    setAuslastungVorschau({ reihenfolge, ergebnisse: einheiten.map(einheit => ({ einheit,
+      tasks: optimiereAuslastung(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN, aktiveSim.kalender ?? LEERER_KALENDER, einheit, aktiveSim.kraene ?? [], reihenfolge) })) });
   }
-  function auslastungUebernehmen() {
-    if (!aktiveSim || !auslastungVorschau) return;
-    updateSim({ ...aktiveSim, tasks: auslastungVorschau });
+  function auslastungUebernehmen(einheit: Zeiteinheit, tasks: Task[]) {
+    if (!aktiveSim) return;
+    updateSim({ ...aktiveSim, tasks, zeiteinheit: einheit === "tage" ? undefined : einheit });
     setAuslastungVorschau(null);
   }
 
@@ -500,10 +509,17 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
       </div>
 
       {auslastungVorschau && aktiveSim && (() => {
-        const vorher = aktiveSim.tasks, nachher = auslastungVorschau;
-        const geaendert = nachher.filter((t, i) => t.start !== vorher[i].start || t.end !== vorher[i].end || t.startZeit !== vorher[i].startZeit || t.endZeit !== vorher[i].endZeit);
         const ende = (ts: Task[]) => ts.reduce((m, t) => (!t.isGroup && t.end && t.end > m ? t.end : m), "");
         const datum = (iso: string) => iso ? iso.split("-").reverse().join(".") : "–";
+        // Vorschlag: gröbste Zeiteinheit mit dem frühesten Bauende (aktuelle Einheit, solange sie gleich früh fertig wird)
+        const { ergebnisse, reihenfolge } = auslastungVorschau;
+        const aktuellesErgebnis = ergebnisse[0];
+        const fruehestesEnde = ergebnisse.map(e => ende(e.tasks)).reduce((a, b) => (b < a ? b : a));
+        const vorschlag = ergebnisse.find(e => ende(e.tasks) === fruehestesEnde) ?? aktuellesErgebnis;
+        const umstellen = vorschlag.einheit !== aktuellesErgebnis.einheit;
+        const vorher = aktiveSim.tasks, nachher = vorschlag.tasks;
+        const geaendert = nachher.filter((t, i) => t.start !== vorher[i].start || t.end !== vorher[i].end || t.startZeit !== vorher[i].startZeit || t.endZeit !== vorher[i].endZeit);
+        const neueVorgaenger = nachher.reduce((n, t, i) => n + Math.max(0, vorgaengerListe(t).length - vorgaengerListe(vorher[i]).length), 0);
         const endeVorher = ende(vorher), endeNachher = ende(nachher);
         const tageDiff = endeVorher && endeNachher ? Math.round((new Date(endeNachher).getTime() - new Date(endeVorher).getTime()) / 86400000) : 0;
         const sd = aktiveSim.stammdaten ?? LEERE_STAMMDATEN, kal = aktiveSim.kalender ?? LEERER_KALENDER, kr = aktiveSim.kraene ?? [];
@@ -533,9 +549,33 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                 Meilensteine bleiben unverändert. Mit Personal unter den Kränen (Tab Ressourcen → Kräne & Personal) wird stattdessen
                 auf das Kranpersonal optimiert.
               </>)}
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10, fontSize: 11 }}>
+                <span style={{ fontWeight: 600 }}>Reihenfolge:</span>
+                {([["kritischerPfad", "Kritischer Pfad", "Wenn mehrere Arbeiten möglich sind, bekommen zuerst die Tasks mit der längsten Restkette (meiste Arbeit danach) das Personal — kürzestes Bauprogramm"],
+                  ["gantt", "Gantt-Reihenfolge", "Wenn mehrere Arbeiten möglich sind, bekommen die Tasks in der Reihenfolge des Gantts das Personal — geordnetes Arbeiten, z.B. Achse für Achse"]] as const).map(([r, label, title]) => (
+                  <button key={r} title={title} onClick={() => auslastungVorschauOeffnen(r)}
+                    style={{ fontSize: 11, fontWeight: 600, padding: "3px 8px", cursor: "pointer",
+                      border: `1px solid ${reihenfolge === r ? "var(--tc-blue)" : "var(--tc-border)"}`,
+                      background: reihenfolge === r ? "var(--tc-blue-bg)" : "#fff", color: reihenfolge === r ? "var(--tc-blue)" : "var(--tc-text-2)" }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {umstellen && (
+                <div style={{ marginTop: 10, padding: "8px 10px", background: "#fff7e6", border: "1px solid #f5d9a8" }}>
+                  Arbeiten wechseln innerhalb eines Tages: Mit der Zeiteinheit <strong>«{ZEITEINHEIT_LABEL[vorschlag.einheit]}»</strong> beginnen
+                  Nachfolger noch am selben Tag — Bauende {datum(endeNachher)} statt {datum(ende(aktuellesErgebnis.tasks))} mit
+                  «{ZEITEINHEIT_LABEL[aktuellesErgebnis.einheit]}». Beim Übernehmen wird die Zeiteinheit der Simulation auf
+                  «{ZEITEINHEIT_LABEL[vorschlag.einheit]}» umgestellt.
+                </div>
+              )}
               <div style={{ marginTop: 10, padding: "8px 10px", background: "#f5f9ff", border: "1px solid #dbeafe" }}>
                 {geaendert.length === 0 ? "Der Bauablauf ist bereits optimal ausgelastet — nichts zu ändern." : (<>
                   <div><strong>{geaendert.length}</strong> Task{geaendert.length === 1 ? "" : "s"} erhalten neue Termine.</div>
+                  {neueVorgaenger > 0 && (
+                    <div title="Tasks, die auf freies Personal warten mussten, bekommen den Task als zusätzlichen Vorgänger, nach dem diese Leute frei wurden — bisherige Vorgänger bleiben. So bleibt der Ablauf beim Ausrichten der Folge-Tasks erhalten.">
+                      <strong>{neueVorgaenger}</strong> Vorgänger werden ergänzt (bisherige bleiben).</div>
+                  )}
                   <div>Bauende: {datum(endeVorher)} → <strong>{datum(endeNachher)}</strong>
                     {tageDiff !== 0 && <span style={{ color: tageDiff > 0 ? "#d9622b" : "#2e8b57" }}> ({tageDiff > 0 ? "+" : ""}{tageDiff} Kalendertage)</span>}</div>
                   <div title="Arbeit aller Tage ÷ (eingeplantes Personal × Std./Tag) — eingeplant wie die Linie Perfekte Auslastung in Tab AVOR (Kranpersonal + Kolonnen ohne Kran)">
@@ -547,7 +587,15 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
               </div>
             </div>
             <div style={{ display: "flex", gap: 6, padding: "0 18px 18px" }}>
-              <button className="tc-btn-primary" style={{ flex: 1 }} disabled={geaendert.length === 0} onClick={auslastungUebernehmen}>Übernehmen</button>
+              <button className="tc-btn-primary" style={{ flex: 1 }} disabled={geaendert.length === 0} onClick={() => auslastungUebernehmen(vorschlag.einheit, vorschlag.tasks)}>
+                {umstellen ? `Übernehmen und auf «${ZEITEINHEIT_LABEL[vorschlag.einheit]}» umstellen` : "Übernehmen"}
+              </button>
+              {umstellen && (
+                <button className="tc-btn-secondary" title="Ohne Umstellung der Zeiteinheit — Nachfolger beginnen dann erst am nächsten Tag/Halbtag"
+                  onClick={() => auslastungUebernehmen(aktuellesErgebnis.einheit, aktuellesErgebnis.tasks)}>
+                  Mit «{ZEITEINHEIT_LABEL[aktuellesErgebnis.einheit]}»
+                </button>
+              )}
               <button className="tc-btn-secondary" onClick={() => setAuslastungVorschau(null)}>Abbrechen</button>
             </div>
           </div>

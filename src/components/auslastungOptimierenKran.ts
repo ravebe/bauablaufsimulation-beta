@@ -12,8 +12,10 @@
 //    Restkette über die Nachfolger zuerst), zuletzt Verstärkung laufender Phasen mit dem übrigen Personal.
 //  - Vorgänger und Wartetage bleiben massgebend, Tasks ohne Vorgänger beginnen frühestens an ihrem bisherigen Start (wie die
 //    Kolonnen-Variante in auslastungOptimieren.ts). Start/Ende werden auf die Zeiteinheit der Simulation gerastert.
+//  - Musste ein Task auf freies Personal warten, bekommt er zusätzlich den Task als Vorgänger, nach dem diese Leute frei wurden
+//    (bisherige Vorgänger bleiben) — so bleibt der neue Ablauf beim Ausrichten der Folge-Tasks erhalten.
 import type { Task, Kran } from "../types";
-import { istGruppe, vorgaengerListe } from "../types";
+import { istGruppe, vorgaengerListe, mitVorgaengern } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { dauerBerechnetTask, hatKalkulationsWerte, schritteFuerTask } from "./stammdatenHelpers";
 import type { Kalender } from "./kalenderHelpers";
@@ -28,6 +30,32 @@ import { kranPersonalAmTag, kranMaxPersonen, istKranVerfuegbarAn } from "./kranH
 export const MAX_VERSTAERKUNG = 2;
 const EPS = 1e-6;
 
+/** Welche Tasks zuerst Personal bekommen, wenn mehrere gleichzeitig möglich sind: "kritischerPfad" = längste Restkette zuerst
+ *  (kürzestes Bauprogramm), "gantt" = Reihenfolge im Gantt (geordnetes Arbeiten, z.B. Achse für Achse). */
+export type OptimierReihenfolge = "kritischerPfad" | "gantt";
+
+/** Restkette je Task in Tagen: eigene berechnete Dauer + längste Restkette seiner Nachfolger (nur unter den übergebenen Tasks). */
+export function restkettenJeTask(zuPlanen: Task[], stammdaten: Stammdaten, einheit: Zeiteinheit): Map<string, number> {
+  const ids = new Set(zuPlanen.map(t => t.id));
+  const nachfolger = new Map<string, string[]>();
+  for (const t of zuPlanen) for (const v of vorgaengerListe(t)) {
+    if (ids.has(v.id)) nachfolger.set(v.id, [...(nachfolger.get(v.id) ?? []), t.id]);
+  }
+  const byId = new Map(zuPlanen.map(t => [t.id, t]));
+  const ergebnis = new Map<string, number>();
+  const kette = (id: string, besucht: Set<string>): number => {
+    const bekannt = ergebnis.get(id);
+    if (bekannt !== undefined) return bekannt;
+    if (besucht.has(id)) return 0; // Zyklus-Schutz
+    besucht.add(id);
+    const wert = dauerBerechnetTask(byId.get(id)!, stammdaten, einheit) + Math.max(0, ...(nachfolger.get(id) ?? []).map(n => kette(n, besucht)));
+    ergebnis.set(id, wert);
+    return wert;
+  };
+  for (const t of zuPlanen) kette(t.id, new Set());
+  return ergebnis;
+}
+
 interface PhaseZ { position: string; unternehmer: string; kranpflichtig: boolean; kolonne: number; rest: number }
 interface TaskZ {
   t: Task; i: number;
@@ -36,9 +64,11 @@ interface TaskZ {
   erste: number | null; letzte: number; // tatsächliche Arbeit (Arbeitsminuten)
   fertig: boolean; restkette: number;
   fixDauer: number | null; // nur manuell übersteuerte Dauer ohne Leistungswerte: keine Ressourcen, nur Dauer
+  ressourcen: Set<string>; ersteRessourcen: Set<string>; // genutzte Pools/Kolonnen (alle bzw. beim ersten Arbeitsschritt)
 }
 
-export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender, einheit: Zeiteinheit, kraene: Kran[]): Task[] {
+export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender, einheit: Zeiteinheit, kraene: Kran[],
+  reihenfolge: OptimierReihenfolge = "kritischerPfad"): Task[] {
   const echte = tasks.map((t, i) => ({ t, i })).filter(({ t, i }) => !t.isGroup && !istGruppe(tasks, i) && !!t.start && !!t.end);
   if (echte.length === 0) return tasks;
   const byId = new Map(tasks.map(t => [t.id, t]));
@@ -73,26 +103,14 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
       position: p.position, unternehmer: p.unternehmer, kranpflichtig: p.kranpflichtig, kolonne: p.kolonne, rest: p.personenstunden * 60,
     })));
     const fixDauer = schritte.length === 0 ? Math.max(dauerBerechnetTask(t, stammdaten, einheit) * MIN_PRO_ARBEITSTAG, raster) : null;
-    zustand.set(t.id, { t, i, schritte, schritt: 0, frueheste: null, erste: null, letzte: 0, fertig: false, restkette: 0, fixDauer });
+    zustand.set(t.id, { t, i, schritte, schritt: 0, frueheste: null, erste: null, letzte: 0, fertig: false, restkette: 0, fixDauer,
+      ressourcen: new Set(), ersteRessourcen: new Set() });
   }
   if (zustand.size === 0 || !std) return tasks;
 
   // Kritischer Pfad: Restkette = eigene berechnete Dauer + längste Restkette der Nachfolger
-  const nachfolger = new Map<string, string[]>();
-  for (const z of zustand.values()) for (const v of vorgaengerListe(z.t)) {
-    if (!zustand.has(v.id)) continue;
-    nachfolger.set(v.id, [...(nachfolger.get(v.id) ?? []), z.t.id]);
-  }
-  const restkette = (id: string, besucht: Set<string>): number => {
-    const z = zustand.get(id)!;
-    if (z.restkette > 0) return z.restkette;
-    if (besucht.has(id)) return 0; // Zyklus-Schutz
-    besucht.add(id);
-    const eigene = dauerBerechnetTask(z.t, stammdaten, einheit);
-    z.restkette = eigene + Math.max(0, ...(nachfolger.get(id) ?? []).map(n => restkette(n, besucht)));
-    return z.restkette;
-  };
-  for (const id of zustand.keys()) restkette(id, new Set());
+  const ketten = restkettenJeTask([...zustand.values()].map(z => z.t), stammdaten, einheit);
+  for (const z of zustand.values()) z.restkette = ketten.get(z.t.id) ?? 0;
 
   const ergebnis = new Map<string, { start: Zeitpunkt; end: Zeitpunkt }>();
   const endeVon = (id: string): Zeitpunkt | null => {
@@ -115,15 +133,31 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
     return aufRaster(minutenVon(f ?? naechsteArbeitszeit(startZeitpunkt(z.t), kalender)));
   };
   let vorgaengerGeaendert = true; // frühester Start nur neu prüfen, wenn seit dem letzten Mal ein Task eingeplant wurde
+  const freigaben = new Map<string, { id: string; end: Zeitpunkt }[]>(); // Pool/Kolonne → Tasks, die damit fertig wurden
+  const zusatzVorgaenger = new Map<string, string>();
   const abschliessen = (z: TaskZ, von: number, bis: number) => {
     z.fertig = true;
     vorgaengerGeaendert = true;
     const startM = abRaster(von);
-    ergebnis.set(z.t.id, { start: startAus(startM), end: endeAus(Math.max(aufRaster(bis), startM + raster)) });
+    const r = { start: startAus(startM), end: endeAus(Math.max(aufRaster(bis), startM + raster)) };
+    ergebnis.set(z.t.id, r);
+    for (const key of z.ressourcen) freigaben.set(key, [...(freigaben.get(key) ?? []), { id: z.t.id, end: r.end }]);
+    // auf Personal gewartet → Vorgänger = zuletzt mit denselben Leuten fertig gewordener Task, der vor diesem Start endet
+    if (z.frueheste === null || z.erste === null || z.erste <= z.frueheste + EPS) return;
+    const bisher = new Set(vorgaengerListe(z.t).map(v => v.id));
+    let bester: { id: string; end: Zeitpunkt } | null = null;
+    for (const key of z.ersteRessourcen) for (const f of freigaben.get(key) ?? []) {
+      if (f.id === z.t.id || bisher.has(f.id)) continue;
+      if (vergleicheZeitpunkte(folgeStartZeitpunkt(f.end, 0, kalender), r.start) > 0) continue;
+      if (!bester || vergleicheZeitpunkte(f.end, bester.end) > 0) bester = f;
+    }
+    if (bester) zusatzVorgaenger.set(z.t.id, bester.id);
   };
 
   const offen = [...zustand.values()];
-  const prio = (a: TaskZ, b: TaskZ) => b.restkette - a.restkette || vergleicheZeitpunkte(startZeitpunkt(a.t), startZeitpunkt(b.t)) || a.i - b.i;
+  const prio = reihenfolge === "gantt"
+    ? (a: TaskZ, b: TaskZ) => a.i - b.i
+    : (a: TaskZ, b: TaskZ) => b.restkette - a.restkette || vergleicheZeitpunkte(startZeitpunkt(a.t), startZeitpunkt(b.t)) || a.i - b.i;
   const maxSlots = Math.ceil(60 * 260 * MIN_PRO_ARBEITSTAG / SLOT); // Schutz: 60 Jahre
   let slot = 0;
 
@@ -218,6 +252,9 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
       v.p.rest = Math.max(0, vorher - v.leute * SLOT);
       const z = v.z;
       if (z.erste === null) z.erste = t0;
+      const key = v.poolKey ?? `kolonne|${v.p.position}`;
+      z.ressourcen.add(key);
+      if (z.erste === t0) z.ersteRessourcen.add(key);
       z.letzte = Math.max(z.letzte, t0 + Math.min(SLOT, vorher / v.leute));
     }
     for (const z of new Set(vergabe.map(v => v.z))) {
@@ -229,6 +266,9 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
 
   return tasks.map(t => {
     const r = ergebnis.get(t.id);
-    return r ? { ...t, ...zeitFelder(r.start, r.end) } : t;
+    if (!r) return t;
+    const neu = { ...t, ...zeitFelder(r.start, r.end) };
+    const zusatz = zusatzVorgaenger.get(t.id);
+    return zusatz ? mitVorgaengern(neu, [...vorgaengerListe(t), { id: zusatz, lagDays: 0 }]) : neu;
   });
 }
