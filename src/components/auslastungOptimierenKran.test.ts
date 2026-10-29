@@ -5,6 +5,8 @@ import type { Stammdaten } from "./stammdatenHelpers";
 import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
 import { optimiereAuslastung } from "./auslastungOptimieren";
 import { eingeplantesPersonalJeTag } from "./kranHelpers";
+import { aufwandJeTagFuerTask } from "./avorHelpers";
+import { tagesplan } from "./tagesplan";
 
 const KAL = { feiertage: [], ferien: [] };
 const task = (id: string, p: Partial<Task> = {}): Task =>
@@ -168,5 +170,40 @@ describe("Auslastung optimieren mit Kranpersonal", () => {
     const k = kran([{ unternehmer: "Bau AG", personen: 8 }]);
     expect(termine(optimiereAuslastung(ts, voll, KAL, "tage", k))).toEqual(["A 2026-11-09–2026-11-09", "B 2026-11-10–2026-11-10"]);
     expect(termine(optimiereAuslastung(ts, stammdaten, KAL, "tage", k))).toEqual(["A 2026-11-09–2026-11-09", "B 2026-11-09–2026-11-09"]); // 25 %: parallel
+  });
+
+  it("Überstunden bis 5 %: bleibt am Tagesende höchstens 5 % der Arbeit, wird der Task am selben Tag fertig", () => {
+    const k = kran([{ unternehmer: "Bau AG", personen: 4 }]); // 4 Leute = 32 h je Tag
+    // 33 h: 1 h Rest = 3 % → heute fertig
+    expect(termine(optimiereAuslastung([task("A", { mengen: { sch: 33 } })], stammdaten, KAL, "tage", k))).toEqual(["A 2026-11-09–2026-11-09"]);
+    // 36 h: 4 h Rest = 11 % → am nächsten Tag weiter
+    expect(termine(optimiereAuslastung([task("A", { mengen: { sch: 36 } })], stammdaten, KAL, "tage", k))).toEqual(["A 2026-11-09–2026-11-10"]);
+  });
+
+  it("merkt sich die Arbeit je Tag: Tab AVOR rechnet damit statt gleichmässig über die Tage", () => {
+    const k = kran([{ unternehmer: "Bau AG", personen: 4 }]);
+    const [a] = optimiereAuslastung([task("A", { mengen: { sch: 40 } })], stammdaten, KAL, "tage", k); // 32 h + 8 h
+    expect(a.tagesArbeit?.anteile).toEqual({ "2026-11-09": { "sch::W": 0.8 }, "2026-11-10": { "sch::W": 0.2 } });
+    const jeTag = aufwandJeTagFuerTask(a, stammdaten, KAL);
+    expect(jeTag.get("2026-11-09")?.sch).toBeCloseTo(32);
+    expect(jeTag.get("2026-11-10")?.sch).toBeCloseTo(8);
+    // Termin von Hand geändert → wieder gleichmässig verteilt
+    const verschoben = aufwandJeTagFuerTask({ ...a, end: "2026-11-11" }, stammdaten, KAL);
+    expect(verschoben.get("2026-11-09")?.sch).toBeCloseTo(40 / 3);
+  });
+
+  it("nach dem Optimieren überzieht kein Tag im Tagesablauf: der Kran ist der Engpass, die Arbeit geht am nächsten Tag weiter", () => {
+    // Kranzeit 50 %: 12 Leute bräuchten 1.5 Kräne → höchstens 8 Leute gleichzeitig unter dem Kran
+    const halb = { ...stammdaten, gewerke: stammdaten.gewerke.map(g => ({ ...g, raten: g.raten.map(r => ({ ...r, kranzeitProzent: 50 })) })) } as Stammdaten;
+    const k = kran([{ unternehmer: "Bau AG", personen: 12 }, { unternehmer: "Eisen GmbH", personen: 2 }]);
+    const ts = ["A", "B", "C", "D", "E"].map(id => task(id, { mengen: { sch: 45, bew: 10 } }));
+    const neu = optimiereAuslastung(ts, halb, KAL, "tage", k);
+    const ende = neu.reduce((m, t) => t.end > m ? t.end : m, "");
+    for (let d = new Date("2026-11-09T00:00:00"); ; d.setDate(d.getDate() + 1)) {
+      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      if (iso > ende) break;
+      const plan = tagesplan(iso, neu, halb, KAL, k);
+      expect(plan.dauer, iso).toBeLessThanOrEqual(8 * 1.05 + 0.25);
+    }
   });
 });

@@ -203,7 +203,7 @@ function optimiereKolonnen(tasks: Task[], stammdaten: Stammdaten, kalender: Kale
   return tasks.map(t => {
     const r = ergebnis.get(t.id);
     if (!r) return t;
-    const neu = { ...t, ...zeitFelder(r.start, r.end) };
+    const neu = { ...t, ...zeitFelder(r.start, r.end), tagesArbeit: undefined }; // Kolonnen arbeiten gleichmässig über die Dauer
     const zusatz = zusatzVorgaenger.get(t.id);
     return zusatz ? mitVorgaengern(neu, [...vorgaengerListe(t), { id: zusatz, lagDays: 0 }]) : neu;
   });

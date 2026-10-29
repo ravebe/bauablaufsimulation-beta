@@ -20,8 +20,13 @@
 //    Start/Ende werden auf die Zeiteinheit der Simulation gerastert.
 //  - Musste ein Task auf freies Personal warten, bekommt er zusätzlich den Task als Vorgänger, nach dem diese Leute frei wurden
 //    (bisherige Vorgänger bleiben) — so bleibt der neue Ablauf beim Ausrichten der Folge-Tasks erhalten.
+//  - Arbeitstag = Std./Tag (Tab Ressourcen): ein Tag leistet je Person genau so viele Stunden, was nicht mehr Platz hat, geht am
+//    nächsten Tag weiter (eine Arbeit darf sich über mehrere Tage ziehen). Bleibt einem Task am Ende eines Tages nur noch höchstens
+//    UEBERSTUNDEN_ANTEIL seiner Arbeit, wird er am selben Tag in Überstunden fertig statt einen weiteren Tag zu belegen.
+//  - Wie viel Arbeit je Tag geleistet wurde, merkt sich der Task (Task.tagesArbeit) — Tab AVOR rechnet damit statt mit einer
+//    gleichmässigen Verteilung über die Tage im Gantt, solange die Termine nicht geändert werden.
 import type { Task, Kran } from "../types";
-import { istGruppe, vorgaengerListe, mitVorgaengern } from "../types";
+import { istGruppe, vorgaengerListe, mitVorgaengern, terminSchluessel } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { dauerBerechnetTask, hatKalkulationsWerte, schritteFuerTask } from "./stammdatenHelpers";
 import type { Kalender } from "./kalenderHelpers";
@@ -37,6 +42,8 @@ export const MAX_VERSTAERKUNG = 2;
 /** So viele Leute darf ein Kran in einem Zeitschritt höchstens über seinem Personal haben — nur wenn sonst Leute untätig wären,
  *  weil die nächste Arbeit mehr Min. Personen braucht als frei sind (z.B. 2 frei, Min. 4 → 2 zusätzlich). */
 export const MAX_UEBERZUG = 2;
+/** Bleibt einem Task am Tagesende höchstens dieser Anteil seiner Arbeit, wird er am selben Tag in Überstunden fertig. */
+export const UEBERSTUNDEN_ANTEIL = 0.05;
 const EPS = 1e-6;
 
 /** Welche Tasks zuerst Personal bekommen, wenn mehrere gleichzeitig möglich sind: "kritischerPfad" = längste Restkette zuerst
@@ -66,9 +73,12 @@ export function restkettenJeTask(zuPlanen: Task[], stammdaten: Stammdaten, einhe
   return ergebnis;
 }
 
-interface PhaseZ { position: string; unternehmer: string; kranpflichtig: boolean; kolonne: number; rest: number; kranAnteil: number }
+interface PhaseZ {
+  position: string; unternehmer: string; kranpflichtig: boolean; kolonne: number; rest: number; kranAnteil: number;
+  gesamt: number; jeTag: Map<number, number>; // Personenminuten total und je Arbeitstag (Index ab Anker)
+}
 interface TaskZ {
-  t: Task; i: number;
+  t: Task; i: number; gesamt: number; // Personenminuten aller Phasen
   schritte: PhaseZ[][]; schritt: number;
   frueheste: number | null; // Arbeitsminuten, null = Vorgänger noch nicht eingeplant
   erste: number | null; letzte: number; // tatsächliche Arbeit (Arbeitsminuten)
@@ -111,20 +121,25 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
   const zustand = new Map<string, TaskZ>();
   for (const { t, i } of echte) {
     if (t.meilenstein || !hatKalkulationsWerte(t, stammdaten)) continue;
-    const schritte = schritteFuerTask(t, stammdaten).map(s => s.phasen.map(p => ({
+    const schritte: PhaseZ[][] = schritteFuerTask(t, stammdaten).map(s => s.phasen.map(p => ({
       position: p.position, unternehmer: p.unternehmer, kranpflichtig: p.kranpflichtig, kolonne: p.kolonne, rest: p.personenstunden * 60, kranAnteil: p.kranAnteil,
+      gesamt: p.personenstunden * 60, jeTag: new Map(),
     })));
     const fixDauer = schritte.length === 0 ? Math.max(dauerBerechnetTask(t, stammdaten, einheit) * MIN_PRO_ARBEITSTAG, raster) : null;
-    zustand.set(t.id, { t, i, schritte, schritt: 0, frueheste: null, erste: null, letzte: 0, fertig: false, restkette: 0, fixDauer,
+    const gesamt = schritte.flat().reduce((s, p) => s + p.gesamt, 0);
+    zustand.set(t.id, { t, i, gesamt, schritte, schritt: 0, frueheste: null, erste: null, letzte: 0, fertig: false, restkette: 0, fixDauer,
       ressourcen: new Set(), ersteRessourcen: new Set() });
   }
   if (zustand.size === 0 || !std) return tasks;
+  // Ein Arbeitstag der Achse (MIN_PRO_ARBEITSTAG, Kalender) leistet je Person Std./Tag (Tab Ressourcen) — wie Tab AVOR
+  const takt = std * 60 / MIN_PRO_ARBEITSTAG;
 
   // Kritischer Pfad: Restkette = eigene berechnete Dauer + längste Restkette der Nachfolger
   const ketten = restkettenJeTask([...zustand.values()].map(z => z.t), stammdaten, einheit);
   for (const z of zustand.values()) z.restkette = ketten.get(z.t.id) ?? 0;
 
   const ergebnis = new Map<string, { start: Zeitpunkt; end: Zeitpunkt }>();
+  const verteilung = new Map<string, Record<string, Record<string, number>>>(); // Task → Datum → Position → Anteil (Task.tagesArbeit)
   const endeVon = (id: string): Zeitpunkt | null => {
     const r = ergebnis.get(id);
     if (r) return r.end;
@@ -153,6 +168,15 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
     const startM = abRaster(von);
     const r = { start: startAus(startM), end: endeAus(Math.max(aufRaster(bis), startM + raster)) };
     ergebnis.set(z.t.id, r);
+    if (z.gesamt > EPS) {
+      const anteile: Record<string, Record<string, number>> = {};
+      for (const p of z.schritte.flat()) for (const [tag, m] of p.jeTag) {
+        if (p.gesamt <= EPS || m <= EPS) continue;
+        const iso = tagIso(tag);
+        anteile[iso] = { ...anteile[iso], [p.position]: (anteile[iso]?.[p.position] ?? 0) + m / p.gesamt };
+      }
+      verteilung.set(z.t.id, anteile);
+    }
     for (const key of z.ressourcen) freigaben.set(key, [...(freigaben.get(key) ?? []), { id: z.t.id, end: r.end }]);
     // auf Personal gewartet → Vorgänger = zuletzt mit denselben Leuten fertig gewordener Task, der vor diesem Start endet
     if (z.frueheste === null || z.erste === null || z.erste <= z.frueheste + EPS) return;
@@ -249,7 +273,7 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
 
     /** Mindestbesetzung einer Phase vergeben (nichts vergeben = kann in diesem Zeitschritt nicht arbeiten). */
     const besetzen = (z: TaskZ, p: PhaseZ, mitUeberzug: boolean, nurPool = false) => {
-      const braucht = Math.max(1, Math.ceil(p.rest / SLOT - EPS));
+      const braucht = Math.max(1, Math.ceil(p.rest / (SLOT * takt) - EPS));
       const kranIds = p.kranpflichtig ? kraeneDesTasks(z.t, kraene) : [];
       // Kran der Phase: verfügbar heute? Sonst warten, solange er später noch verfügbar wird
       const kraeneHeute = kranIds.filter(id => kranFrei.has(id));
@@ -293,7 +317,7 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
     // Verstärkung: übriges Personal des Pools auf laufende Phasen desselben Unternehmers/Krans (grösster Rest zuerst)
     const verstaerken = () => {
       for (const v of [...vergabe].filter(v => v.poolKey).sort((a, b) => b.p.rest - a.p.rest)) {
-        const sinnvoll = Math.max(1, Math.ceil(v.p.rest / SLOT - EPS));
+        const sinnvoll = Math.max(1, Math.ceil(v.p.rest / (SLOT * takt) - EPS));
         const extra = Math.min(pool.get(v.poolKey!) ?? 0, kranFrei.get(v.kranId!) ?? 0, MAX_VERSTAERKUNG * v.p.kolonne - v.leute, sinnvoll - v.leute,
           kranZeitPlatz(v.kranIds, v.p));
         if (extra > 0) {
@@ -315,20 +339,38 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
       for (const p of z.schritte[z.schritt]) if (p.rest > EPS && !besetzt.has(p)) besetzen(z, p, true);
     }
 
-    // Arbeit leisten
+    // Arbeit leisten (je Person SLOT × takt Personenminuten, siehe takt)
+    const tag = Math.floor(t0 / MIN_PRO_ARBEITSTAG + EPS);
     for (const v of vergabe) {
       const vorher = v.p.rest;
-      v.p.rest = Math.max(0, vorher - v.leute * SLOT);
+      v.p.rest = Math.max(0, vorher - v.leute * SLOT * takt);
+      v.p.jeTag.set(tag, (v.p.jeTag.get(tag) ?? 0) + vorher - v.p.rest);
       const z = v.z;
       if (z.erste === null) z.erste = t0;
       const key = v.poolKey ?? `kolonne|${v.p.position}`;
       z.ressourcen.add(key);
       if (z.erste === t0) z.ersteRessourcen.add(key);
-      z.letzte = Math.max(z.letzte, t0 + Math.min(SLOT, vorher / v.leute));
+      z.letzte = Math.max(z.letzte, t0 + Math.min(SLOT, vorher / (v.leute * takt)));
     }
     for (const z of new Set(vergabe.map(v => v.z))) {
       while (z.schritt < z.schritte.length && z.schritte[z.schritt].every(p => p.rest <= EPS)) z.schritt++;
       if (z.schritt >= z.schritte.length) abschliessen(z, z.erste!, z.letzte);
+    }
+    // Tagesende: bleibt einem laufenden Task nur noch wenig Arbeit, wird er heute in Überstunden fertig (statt einen Tag mehr)
+    const tagesende = t0 + SLOT;
+    if (Math.abs(tagesende / MIN_PRO_ARBEITSTAG - Math.round(tagesende / MIN_PRO_ARBEITSTAG)) < EPS) {
+      for (const z of offen) {
+        if (z.fertig || z.erste === null || z.gesamt <= EPS) continue;
+        const rest = z.schritte.flat().reduce((s, p) => s + p.rest, 0);
+        if (rest > UEBERSTUNDEN_ANTEIL * z.gesamt + EPS) continue;
+        for (const p of z.schritte.flat()) if (p.rest > EPS) {
+          p.jeTag.set(tag, (p.jeTag.get(tag) ?? 0) + p.rest);
+          p.rest = 0;
+        }
+        z.schritt = z.schritte.length;
+        z.letzte = Math.max(z.letzte, tagesende);
+        abschliessen(z, z.erste, z.letzte);
+      }
     }
     slot++;
   }
@@ -336,7 +378,10 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
   return tasks.map(t => {
     const r = ergebnis.get(t.id);
     if (!r) return t;
-    const neu = { ...t, ...zeitFelder(r.start, r.end) };
+    const neu: Task = { ...t, ...zeitFelder(r.start, r.end) };
+    const anteile = verteilung.get(t.id);
+    if (anteile) neu.tagesArbeit = { termin: terminSchluessel(neu), anteile };
+    else delete neu.tagesArbeit;
     const zusatz = zusatzVorgaenger.get(t.id);
     return zusatz ? mitVorgaengern(neu, [...vorgaengerListe(t), { id: zusatz, lagDays: 0 }]) : neu;
   });

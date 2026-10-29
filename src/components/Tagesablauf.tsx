@@ -224,7 +224,8 @@ function Ueberzug({ iso, plan, std, tasks, stammdaten, kalender, kranUeber }: {
   return (
     <div>
       <div style={{ fontWeight: 600, color: FARBEN.status.critical }}>Warum wird die Arbeit erst nach {fmtZahl(plan.dauer)} h fertig?</div>
-      <div>Das Gantt plant ganze Tage: die Arbeit eines Tasks verteilt sich gleichmässig auf alle seine Tage im Gantt. Laufen an diesem
+      <div>Das Gantt plant ganze Tage: die Arbeit eines Tasks verteilt sich gleichmässig auf alle seine Tage im Gantt (ausser nach «Auslastung
+        optimieren», solange seine Termine unverändert sind — dann so, wie es dort im Arbeitstag Platz hatte). Laufen an diesem
         Tag mehr Arbeiten, als {kranUeber.length > 0 ? "der Kran" : "das Personal"} im Arbeitstag schafft, zeigt der Tagesablauf, wie lange es wirklich dauert —
         er verschiebt nichts auf den nächsten Tag.</div>
       {kranUeber.map(k => (
@@ -249,7 +250,7 @@ function Ueberzug({ iso, plan, std, tasks, stammdaten, kalender, kranUeber }: {
       {spaet.some(z => z.von > 0.01) && <div style={{ paddingLeft: 10 }}>– Tasks, die erst spät anfangen können, im Gantt einen Tag später beginnen lassen (z.B. ein Wartetag mehr beim Vorgänger) — ihre Arbeit fällt dann auf Tage mit freier Kranzeit.</div>}
       <div style={{ paddingLeft: 10 }}>– Tasks mit Überzug im Gantt um einen Tag verlängern — ihre Arbeit je Tag wird kleiner.</div>
       {kranUeber.length > 0 && <div style={{ paddingLeft: 10 }}>– Kranzeit % in Tab Ressourcen prüfen (z.B. Bewehrung oder Beton mit Pumpe brauchen den Kran nicht die ganze Zeit) oder einen zweiten Kran einplanen.</div>}
-      <div style={{ paddingLeft: 10 }}>– «Auslastung optimieren» plant Personal und Kranzeit je halbe Stunde — durch das Runden auf die Zeiteinheit des Gantts kann trotzdem Überzug bleiben (Zeiteinheit Halbtage/Stunden ist genauer).</div>
+      <div style={{ paddingLeft: 10 }}>– «Auslastung optimieren» ausführen: es verteilt die Arbeit so auf die Tage, dass Personal und Kran im Arbeitstag fertig werden — was keinen Platz hat, geht am nächsten Tag weiter; höchstens 5 % der Arbeit eines Tasks werden noch am selben Tag in Überstunden fertig.</div>
     </div>
   );
 }

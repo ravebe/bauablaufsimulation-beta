@@ -1,7 +1,7 @@
 // avorHelpers.ts — Tagesreihen für den Tab AVOR (Personal-/Kranauslastung, Mengen-Filter,
 // Ertragsoptik), berechnet aus Tasks + Stammdaten + Arbeitstage-Kalender. Reine Funktionen, kein UI.
 import type { Task } from "../types";
-import { parseDateUniversal } from "../types";
+import { parseDateUniversal, terminSchluessel } from "../types";
 import type { Kalender } from "./kalenderHelpers";
 import { istArbeitstag } from "./kalenderHelpers";
 import { arbeitsAnteilAmTag, dauerTage } from "./zeitHelpers";
@@ -49,6 +49,8 @@ export interface PhasenAufwand { schritt: number; phase: TaskPhase; personenstun
  *     bzw. gestaucht — derselbe Aufwand verteilt sich auf mehr bzw. weniger Tage.
  *  Summe über alle Tage = Menge × Leistungswert, unabhängig von der Dauer im Gantt. Gewerke ohne Leistungswert haben keinen
  *  Aufwand. Halbe Tage/Stunden zählen mit ihrem Anteil am Arbeitstag.
+ *  Ausnahme: hat "Auslastung optimieren" die Arbeit des Tasks auf die Tage verteilt (Task.tagesArbeit) und sind seine Termine
+ *  seither gleich, gilt diese Verteilung — so wie Personal und Kran die Arbeit dort im Arbeitstag geschafft haben.
  */
 export function aufwandJeTagUndPhaseFuerTask(t: Task, stammdaten: Stammdaten, kalender: Kalender): Map<string, PhasenAufwand[]> {
   const ergebnis = new Map<string, PhasenAufwand[]>();
@@ -56,6 +58,24 @@ export function aufwandJeTagUndPhaseFuerTask(t: Task, stammdaten: Stammdaten, ka
   const schritte = schritteFuerTask(t, stammdaten);
   const berechnet = schritte.reduce((s, x) => s + x.tage, 0);
   if (berechnet <= 0) return ergebnis;
+
+  // Verteilung aus "Auslastung optimieren" — nur, wenn sie zu den Terminen und zu allen Phasen passt
+  const verteilt = t.tagesArbeit?.termin === terminSchluessel(t) ? t.tagesArbeit.anteile : null;
+  if (verteilt) {
+    const tage = Object.keys(verteilt).sort();
+    const summe = (pos: string) => tage.reduce((s, iso) => s + (verteilt[iso][pos] ?? 0), 0);
+    if (schritte.every(s => s.phasen.every(p => Math.abs(summe(p.position) - 1) < 1e-3))) {
+      for (const iso of tage) {
+        const liste: PhasenAufwand[] = [];
+        for (const s of schritte) for (const p of s.phasen) {
+          const anteil = verteilt[iso][p.position] ?? 0;
+          if (anteil > 1e-9) liste.push({ schritt: s.schritt, phase: p, personenstunden: p.personenstunden * anteil });
+        }
+        if (liste.length > 0) ergebnis.set(iso, liste);
+      }
+      return ergebnis;
+    }
+  }
 
   // Arbeitstage des Tasks mit ihrem Anteil (ganzer Tag = 1, Halbtag = 0.5)
   const s = parseDateUniversal(t.start), e = parseDateUniversal(t.end);
