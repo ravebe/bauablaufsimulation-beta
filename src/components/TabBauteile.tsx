@@ -67,10 +67,11 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   const [plusMenuOffen, setPlusMenuOffen] = useState(false);
   const [werkzeugOffen, setWerkzeugOffen] = useState(false);
   const [zeitplanHinweisOffen, setZeitplanHinweisOffen] = useState(false);
-  const [zeitplanBestaetigenOffen, setZeitplanBestaetigenOffen] = useState(false);
   // "Auslastung optimieren": Vorschau der neuen Termine, erst nach Bestätigung übernommen
   // je Zeiteinheit (aktuelle + feinere) ein Ergebnis — feinere erlauben Nachfolger am selben Tag, siehe auslastungVorschauOeffnen
-  const [auslastungVorschau, setAuslastungVorschau] = useState<{ reihenfolge: OptimierReihenfolge; luecken: boolean; ergebnisse: { einheit: Zeiteinheit; tasks: Task[] }[] } | null>(null);
+  // modus "dauern" = nur berechnete Dauer übernehmen (früher eigener Menüpunkt "Berechnete Dauer übernehmen"): Reihenfolge und
+  // Vorgänger bleiben, keine Personalplanung — siehe berechneZeitplanUebernahme
+  const [auslastungVorschau, setAuslastungVorschau] = useState<{ modus: "optimieren" | "dauern"; reihenfolge: OptimierReihenfolge; luecken: boolean; ergebnisse: { einheit: Zeiteinheit; tasks: Task[] }[] } | null>(null);
   const [neuInputOffen, setNeuInputOffen] = useState(false);
   const [neuTaskInput, setNeuTaskInput] = useState("");
   const [neuTyp, setNeuTyp] = useState<"task" | "gruppe">("task");
@@ -273,22 +274,17 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
     updateSim({ ...aktiveSim, tasks: verschiebeTaskBlock(aktiveSim.tasks, fromIdx, toIdx, selectedIds) });
   }
 
-  // "Berechnete Dauer übernehmen" — überträgt die Kalkulations-Dauer jedes Tasks auf den Bauablauf,
-  // siehe zeitplanUebernahmeHelpers.ts. Erst möglich, wenn Tab Kalkulation fehlerfrei ist (keine roten
-  // Mengen-Felder).
+  // Werkzeuge → "Auslastung optimieren" (auch "Nur Dauern übernehmen", siehe zeitplanUebernahmeHelpers.ts) — erst möglich,
+  // wenn Tab Kalkulation fehlerfrei ist (keine roten Mengen-Felder).
   const zeitplanStatus = aktiveSim ? pruefeZeitplanBereitschaft(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN) : null;
-  // Hinweis statt Automatik: Termine im Gantt bleiben, bis "Berechnete Dauer übernehmen" geklickt wird — wie viele Tasks
-  // davon betroffen wären, zeigt der Zähler am Werkzeug-Knopf und die Liste im Menü.
+  // Hinweis statt Automatik: Termine im Gantt bleiben, bis im Dialog übernommen wird — wie viele Tasks von der berechneten Dauer
+  // abweichen, zeigt der Zähler am Werkzeug-Knopf und der Hinweis im Menü.
   // Termine aus "Auslastung optimieren" (unverändert seither) weichen gewollt von der berechneten Dauer ab → nicht melden
   const ausOptimierung = !!aktiveSim?.optimiertStand && aktiveSim.optimiertStand === terminSignatur(aktiveSim.tasks);
   const abweichendeTasks = aktiveSim && zeitplanStatus?.bereit && !ausOptimierung
     ? zeitplanAbweichendeTasks(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN, aktiveSim.kalender ?? LEERER_KALENDER, aktiveSim.zeiteinheit)
     : [];
   const zeitplanAenderungen = abweichendeTasks.length > 0;
-  function zeitplanButtonKlick() {
-    if (!zeitplanStatus?.bereit) { setZeitplanHinweisOffen(o => !o); return; }
-    setZeitplanBestaetigenOffen(true);
-  }
   // "Auslastung optimieren" — mit Kranpersonal (Tab Ressourcen → Kräne & Personal) arbeitet das Personal unter jedem Kran möglichst
   // voll (Pools je Unternehmer, siehe auslastungOptimierenKran.ts), sonst arbeitet jede Kolonne voll und nie an zwei Tasks gleichzeitig
   // (auslastungOptimieren.ts)
@@ -296,14 +292,19 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   // Gerechnet wird in der aktuellen Zeiteinheit und in jeder feineren (Halbtage, Uhrzeit): darin dürfen Arbeiten innerhalb eines
   // Tages wechseln und Nachfolger noch am selben Tag beginnen. Ist das Bauende damit früher, schlägt die Vorschau die Umstellung vor.
   // luecken: Tasks ohne Vorgänger dürfen früher beginnen, wenn Personal unter dem Kran sonst untätig wäre (nur mit Kranpersonal)
-  function auslastungVorschauOeffnen(reihenfolge: OptimierReihenfolge = "kritischerPfad", luecken = true) {
+  function auslastungVorschauOeffnen(reihenfolge: OptimierReihenfolge = "kritischerPfad", luecken = true, modus: "optimieren" | "dauern" = "optimieren") {
     if (!aktiveSim || !zeitplanStatus?.bereit) { setZeitplanHinweisOffen(o => !o); return; }
     const aktuell: Zeiteinheit = aktiveSim.zeiteinheit ?? "tage";
+    if (modus === "dauern") {
+      setAuslastungVorschau({ modus, reihenfolge, luecken, ergebnisse: [{ einheit: aktuell,
+        tasks: berechneZeitplanUebernahme(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN, aktiveSim.kalender ?? LEERER_KALENDER, aktiveSim.zeiteinheit) }] });
+      return;
+    }
     const einheiten = [aktuell, ...(["halbtage", "stunden"] as const).filter(e => feinerAls(e, aktuell))];
-    setAuslastungVorschau({ reihenfolge, luecken, ergebnisse: einheiten.map(einheit => ({ einheit,
+    setAuslastungVorschau({ modus, reihenfolge, luecken, ergebnisse: einheiten.map(einheit => ({ einheit,
       tasks: optimiereAuslastung(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN, aktiveSim.kalender ?? LEERER_KALENDER, einheit, aktiveSim.kraene ?? [], reihenfolge, luecken) })) });
   }
-  function auslastungUebernehmen(einheit: Zeiteinheit, tasks: Task[]) {
+  function auslastungUebernehmen(einheit: Zeiteinheit, tasks: Task[], optimiert = true) {
     if (!aktiveSim) return;
     // nur Termine, Vorgänger und Optimierungs-Stand in den aktuellen Stand übernehmen — Bauteile (auch aus der Simulation
     // entfernte), Mengen usw. bleiben, wie sie jetzt sind, selbst wenn sich seit dem Öffnen der Vorschau etwas geändert hat
@@ -314,16 +315,8 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
       return { ...t, start: n.start, end: n.end, startZeit: n.startZeit, endZeit: n.endZeit,
         predecessorId: n.predecessorId, lagDays: n.lagDays, weitereVorgaenger: n.weitereVorgaenger, optimierung: n.optimierung };
     });
-    updateSim({ ...aktiveSim, tasks, zeiteinheit: einheit === "tage" ? undefined : einheit, optimiertStand: terminSignatur(tasks) });
+    updateSim({ ...aktiveSim, tasks, zeiteinheit: einheit === "tage" ? undefined : einheit, optimiertStand: optimiert ? terminSignatur(tasks) : undefined });
     setAuslastungVorschau(null);
-  }
-
-  function zeitplanUebernehmen() {
-    if (!aktiveSim) return;
-    const stammdaten = aktiveSim.stammdaten ?? LEERE_STAMMDATEN;
-    const kalender = aktiveSim.kalender ?? LEERER_KALENDER;
-    updateSim({ ...aktiveSim, tasks: berechneZeitplanUebernahme(aktiveSim.tasks, stammdaten, kalender, aktiveSim.zeiteinheit) });
-    setZeitplanBestaetigenOffen(false);
   }
 
   // "Folge-Tasks neu ausrichten" — jeder Nachfolger beginnt am Arbeitstag NACH dem Ende seines Vorgängers (+ Wartetage),
@@ -404,7 +397,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
           {!readOnly && aktiveSim && (
             <div ref={werkzeugRef} style={{ position: "relative", display: "inline-flex" }}>
               <button className="tc-btn-secondary" style={{ fontSize: 12, padding: "2px 6px", position: "relative" }}
-                title={zeitplanAenderungen ? `Werkzeuge — ${abweichendeTasks.length} Task${abweichendeTasks.length === 1 ? "" : "s"} weichen von der berechneten Dauer ab` : "Werkzeuge"}
+                title={zeitplanAenderungen ? `Werkzeuge — ${abweichendeTasks.length} Task${abweichendeTasks.length === 1 ? "" : "s"} weichen von der berechneten Dauer ab (Auslastung optimieren → Nur Dauern übernehmen)` : "Werkzeuge"}
                 onClick={() => { setWerkzeugOffen(o => !o); setZeitplanHinweisOffen(false); }}>
                 {zeitplanAenderungen && (
                   <span style={{ position: "absolute", top: -6, right: -8, minWidth: 14, height: 14, padding: "0 3px", borderRadius: 7, background: "#d9622b", color: "#fff",
@@ -439,32 +432,6 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                   {zeitplanStatus && (
                     <div>
                       <button
-                        style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", cursor: "pointer" }}
-                        onClick={() => { zeitplanButtonKlick(); if (zeitplanStatus.bereit) setWerkzeugOffen(false); }}>
-                        <div style={{
-                          fontSize: 11, fontWeight: zeitplanStatus.bereit && zeitplanAenderungen ? 600 : 500,
-                          color: !zeitplanStatus.bereit ? "#9aa5b0" : zeitplanAenderungen ? "var(--tc-blue)" : "var(--tc-text)",
-                        }}>
-                          Berechnete Dauer übernehmen
-                        </div>
-                        <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 2 }}>
-                          {!zeitplanStatus.bereit ? "Klicken für Details, was dafür noch fehlt."
-                            : ausOptimierung ? "Termine stammen aus «Auslastung optimieren» — sie weichen bewusst von der berechneten Dauer (Min. Personen ohne Unterbruch) ab: verstärkte Arbeiten sind kürzer, Wartezeiten zwischen Schritten länger. Übernehmen würde die Optimierung ersetzen."
-                            : zeitplanAenderungen ? "Überträgt die in Tab Kalkulation berechnete Dauer als neue Start-/Endtermine auf den Bauablauf."
-                              : "Bauablauf entspricht bereits der berechneten Dauer — nichts zu übernehmen."}
-                        </div>
-                        {zeitplanAenderungen && (
-                          <div style={{ fontSize: 10, color: "#d9622b", marginTop: 4 }}>
-                            <div style={{ fontWeight: 600 }}>
-                              {abweichendeTasks.length} Task{abweichendeTasks.length === 1 ? " weicht" : "s weichen"} ab (Termine würden sich ändern):
-                            </div>
-                            <div style={{ color: "var(--tc-text-3)", marginTop: 2, maxWidth: 320, whiteSpace: "normal" }}>
-                              {abweichendeTasks.slice(0, 8).map(t => t.name).join(", ")}{abweichendeTasks.length > 8 ? ` … und ${abweichendeTasks.length - 8} weitere` : ""}
-                            </div>
-                          </div>
-                        )}
-                      </button>
-                      <button
                         style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", borderTop: "0.5px solid #eef1f4", textAlign: "left", cursor: "pointer" }}
                         onClick={() => { auslastungVorschauOeffnen(); if (zeitplanStatus.bereit) setWerkzeugOffen(false); }}>
                         <div style={{ fontSize: 11, fontWeight: 500, color: zeitplanStatus.bereit ? "var(--tc-text)" : "#9aa5b0" }}>Auslastung optimieren</div>
@@ -474,7 +441,13 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                               ? "Plant die Tasks so, dass das Personal unter jedem Kran (Tab Ressourcen → Kräne & Personal) möglichst voll arbeitet — Leute desselben Unternehmers als Allrounder, höchstens das Personal unter dem Kran (1–2 mehr nur, wenn sonst Leute untätig wären). Arbeitsablauf je Leistungsposition, Vorgänger und Wartetage bleiben massgebend. Mit Vorschau."
                               : "Jeder Task bekommt seine berechnete Dauer; die Min. Personen jeder Leistungsposition arbeiten voll und nie an zwei Tasks gleichzeitig — Tasks mit derselben Leistungsposition laufen nacheinander. Vorgänger und Wartetage bleiben massgebend. Mit Vorschau.")
                             : "Klicken für Details, was dafür noch fehlt."}
+                          {zeitplanStatus.bereit && " Im Dialog auch «Nur Dauern übernehmen»: berechnete Dauer je Task, Reihenfolge und Vorgänger bleiben."}
                         </div>
+                        {zeitplanAenderungen && (
+                          <div style={{ fontSize: 10, color: "#d9622b", marginTop: 4, maxWidth: 320, whiteSpace: "normal" }}>
+                            {abweichendeTasks.length} Task{abweichendeTasks.length === 1 ? " weicht" : "s weichen"} von der berechneten Dauer ab: {abweichendeTasks.slice(0, 6).map(t => t.name).join(", ")}{abweichendeTasks.length > 6 ? ` … und ${abweichendeTasks.length - 6} weitere` : ""}
+                          </div>
+                        )}
                       </button>
                       {zeitplanHinweisOffen && !zeitplanStatus.bereit && (
                         <div style={{ padding: "8px 14px 10px", fontSize: 11, borderTop: "0.5px solid #eef1f4" }}>
@@ -525,7 +498,8 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
         const ende = (ts: Task[]) => ts.reduce((m, t) => (!t.isGroup && t.end && t.end > m ? t.end : m), "");
         const datum = (iso: string) => iso ? iso.split("-").reverse().join(".") : "–";
         // Vorschlag: gröbste Zeiteinheit mit dem frühesten Bauende (aktuelle Einheit, solange sie gleich früh fertig wird)
-        const { ergebnisse, reihenfolge, luecken } = auslastungVorschau;
+        const { ergebnisse, reihenfolge, luecken, modus } = auslastungVorschau;
+        const nurDauern = modus === "dauern";
         const aktuellesErgebnis = ergebnisse[0];
         const fruehestesEnde = ergebnisse.map(e => ende(e.tasks)).reduce((a, b) => (b < a ? b : a));
         const vorschlag = ergebnisse.find(e => ende(e.tasks) === fruehestesEnde) ?? aktuellesErgebnis;
@@ -553,7 +527,24 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
               Auslastung optimieren
             </div>
             <div style={{ padding: "16px 18px", fontSize: 12, color: "var(--tc-text-2)", lineHeight: 1.6 }}>
-              {mitKranPersonal ? (<>
+              <div style={{ display: "flex", gap: 0, marginBottom: 10 }}>
+                {([["optimieren", "Optimieren", "Personal und Kranzeit planen: Reihenfolge, parallele Arbeiten und Verstärkung so, dass das Personal möglichst voll arbeitet"],
+                  ["dauern", "Nur Dauern übernehmen", "Jeder Task bekommt seine berechnete Dauer aus Tab Kalkulation, Folge-Tasks rücken entlang der Vorgänger nach — Reihenfolge und Vorgänger bleiben, keine Personalplanung"]] as const).map(([m, label, title]) => (
+                  <button key={m} title={title} onClick={() => auslastungVorschauOeffnen(reihenfolge, luecken, m)}
+                    style={{ flex: 1, fontSize: 12, fontWeight: 600, padding: "5px 8px", cursor: "pointer",
+                      border: `1px solid ${modus === m ? "var(--tc-blue)" : "var(--tc-border)"}`,
+                      background: modus === m ? "var(--tc-blue-bg)" : "#fff", color: modus === m ? "var(--tc-blue)" : "var(--tc-text-2)" }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {nurDauern ? (<>
+                Jeder Task bekommt seine berechnete Dauer aus Tab Kalkulation (Menge × Leistungswert ÷ Min. Personen). Folge-Tasks rücken
+                entlang der bestehenden Vorgänger nach, Tasks ohne Vorgänger bleiben an ihrem Start. Reihenfolge und Vorgänger bleiben —
+                es wird nicht geprüft, ob Personal oder Kranzeit reichen. Gut, wenn das Gantt bewusst von Hand geordnet ist und nur die
+                Dauern zu den Mengen passen sollen.
+                {ausOptimierung && <div style={{ marginTop: 6, color: "#8a5a00" }}>Die Termine stammen aus «Optimieren» — Übernehmen ersetzt die Optimierung.</div>}
+              </>) : mitKranPersonal ? (<>
                 Das Personal unter jedem Kran (Tab Ressourcen → Kräne & Personal) arbeitet möglichst voll: Leute desselben Unternehmers
                 sind Allrounder und besetzen jede seiner kranpflichtigen Leistungspositionen, freie Leute verstärken laufende Arbeiten
                 (höchstens doppelte Min. Personen) — so werden Tasks kürzer und mehr laufen parallel. Je Kran arbeiten höchstens so viele Leute wie sein Personal, 1–2 mehr nur, wenn sonst Leute untätig wären.
@@ -575,7 +566,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                 Meilensteine bleiben unverändert. Mit Personal unter den Kränen (Tab Ressourcen → Kräne & Personal) wird stattdessen
                 auf das Kranpersonal optimiert.
               </>)}
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10, fontSize: 11 }}>
+              {!nurDauern && <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10, fontSize: 11 }}>
                 <span style={{ fontWeight: 600 }}>Reihenfolge:</span>
                 {([["kritischerPfad", "Kritischer Pfad", "Wenn mehrere Arbeiten möglich sind, bekommen zuerst die Tasks mit der längsten Restkette (meiste Arbeit danach) das Personal — kürzestes Bauprogramm"],
                   ["startdatum", "Startdatum", "Wenn mehrere Arbeiten möglich sind, bekommen die Tasks mit dem frühesten aktuellen Start zuerst das Personal (bei gleichem Datum die Gantt-Reihenfolge) — z.B. wenn das Gantt nach Etappen statt nach Datum aufgebaut ist"],
@@ -587,7 +578,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                     {label}
                   </button>
                 ))}
-              </div>
+              </div>}
               {umstellen && (
                 <div style={{ marginTop: 10, padding: "8px 10px", background: "#fff7e6", border: "1px solid #f5d9a8" }}>
                   Arbeiten wechseln innerhalb eines Tages: Mit der Zeiteinheit <strong>«{ZEITEINHEIT_LABEL[vorschlag.einheit]}»</strong> beginnen
@@ -597,7 +588,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                 </div>
               )}
               <div style={{ marginTop: 10, padding: "8px 10px", background: "#f5f9ff", border: "1px solid #dbeafe" }}>
-                {geaendert.length === 0 ? "Der Bauablauf ist bereits optimal ausgelastet — nichts zu ändern." : (<>
+                {geaendert.length === 0 ? (nurDauern ? "Der Bauablauf entspricht bereits der berechneten Dauer — nichts zu übernehmen." : "Der Bauablauf ist bereits optimal ausgelastet — nichts zu ändern.") : (<>
                   <div><strong>{terminGeaendert.length}</strong> Task{terminGeaendert.length === 1 ? "" : "s"} erhalten neue Termine.</div>
                   {(neueVorgaenger > 0 || wegVorgaenger > 0) && (
                     <div title="Tasks, die auf freies Personal warten mussten, bekommen den Task als zusätzlichen Vorgänger, nach dem diese Leute frei wurden — so bleibt der Ablauf beim Ausrichten der Folge-Tasks erhalten. Eigene Vorgänger bleiben; automatisch ergänzte eines früheren Optimierens werden neu bestimmt.">
@@ -607,7 +598,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                     {tageDiff !== 0 && <span style={{ color: tageDiff > 0 ? "#d9622b" : "#2e8b57" }}> ({tageDiff > 0 ? "+" : ""}{tageDiff} Kalendertage)</span>}</div>
                   <div title="Arbeit aller Tage ÷ (eingeplantes Personal × Std./Tag) — eingeplant wie die Linie Perfekte Auslastung in Tab AVOR (Personal unter dem Kran + Personen ohne Kran)">
                     Ø Auslastung Personal: {prozent(auslastungVorher)} → <strong>{prozent(auslastungNachher)}</strong></div>
-                  {auslastungVorher != null && auslastungNachher != null && auslastungNachher <= auslastungVorher + 0.005 && endeNachher >= endeVorher && (
+                  {!nurDauern && auslastungVorher != null && auslastungNachher != null && auslastungNachher <= auslastungVorher + 0.005 && endeNachher >= endeVorher && (
                     <div style={{ marginTop: 4, color: "#8a5a00" }}>
                       Keine höhere Auslastung möglich: Es sind nicht genug Arbeiten gleichzeitig frei — Vorgänger und Wartetage
                       {luecken || !mitKranPersonal ? "" : ", bisherige Starttermine (→ «Lücken füllen»)"} halten das Personal zurück.
@@ -621,12 +612,12 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
               </div>
             </div>
             <div style={{ display: "flex", gap: 6, padding: "0 18px 18px" }}>
-              <button className="tc-btn-primary" style={{ flex: 1 }} disabled={geaendert.length === 0} onClick={() => auslastungUebernehmen(vorschlag.einheit, vorschlag.tasks)}>
+              <button className="tc-btn-primary" style={{ flex: 1 }} disabled={geaendert.length === 0} onClick={() => auslastungUebernehmen(vorschlag.einheit, vorschlag.tasks, !nurDauern)}>
                 {umstellen ? `Übernehmen und auf «${ZEITEINHEIT_LABEL[vorschlag.einheit]}» umstellen` : "Übernehmen"}
               </button>
               {umstellen && (
                 <button className="tc-btn-secondary" title="Ohne Umstellung der Zeiteinheit — Nachfolger beginnen dann erst am nächsten Tag/Halbtag"
-                  onClick={() => auslastungUebernehmen(aktuellesErgebnis.einheit, aktuellesErgebnis.tasks)}>
+                  onClick={() => auslastungUebernehmen(aktuellesErgebnis.einheit, aktuellesErgebnis.tasks, !nurDauern)}>
                   Mit «{ZEITEINHEIT_LABEL[aktuellesErgebnis.einheit]}»
                 </button>
               )}
@@ -636,32 +627,6 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
         </div>
         );
       })()}
-
-      {zeitplanBestaetigenOffen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}
-          onClick={() => setZeitplanBestaetigenOffen(false)}>
-          <div style={{ background: "#fff", borderRadius: 8, overflow: "hidden", width: 420, maxWidth: "92vw", boxShadow: "0 8px 30px rgba(0,0,0,.25)", fontFamily: "var(--tc-font)" }}
-            onClick={e => e.stopPropagation()}>
-            <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--tc-border-light)", fontSize: 16, fontWeight: 700, color: "var(--tc-text)" }}>
-              Berechnete Dauer übernehmen
-            </div>
-            <div style={{ padding: "16px 18px", fontSize: 12, color: "var(--tc-text-2)", lineHeight: 1.6 }}>
-              Für jeden Task wird die in Tab Kalkulation berechnete Dauer als neuer Start-/Endtermin
-              übernommen, entlang der bestehenden Vorgänger-Kette — bestehende Termine werden dabei
-              überschrieben. Direkt danach lässt sich das mit „Rückgängig“ oben in der Kopfzeile zurücknehmen
-              (letzte 15 Schritte, solange die Seite offen ist — nach dem Neuladen nicht mehr).
-              <div style={{ marginTop: 10, fontWeight: 600 }}>
-                Empfehlung bei grösseren Änderungen: Zuerst das Projekt kopieren (⋮-Menü der Simulation), dann die
-                Übernahme in der Kopie durchführen.
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 6, padding: "0 18px 18px" }}>
-              <button className="tc-btn-primary" style={{ flex: 1 }} onClick={zeitplanUebernehmen}>Übernehmen</button>
-              <button className="tc-btn-secondary" onClick={() => setZeitplanBestaetigenOffen(false)}>Abbrechen</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {neuInputOffen && (
         <div style={{ display: "flex", gap: 4, padding: "4px 8px", alignItems: "center" }}>

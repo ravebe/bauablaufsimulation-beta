@@ -900,7 +900,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
                 style={{ fontSize: 11, color: "#2e8b57", whiteSpace: "nowrap", cursor: "help" }}>⚡ Termine aus Auslastung optimieren</span>
             )}
             {anzahlZeitplanAbweichend > 0 && (
-              <span title={`Die Termine im Gantt entsprechen bei ${anzahlZeitplanAbweichend} Task(s) nicht der berechneten Dauer. Sie bleiben, bis du in Tab Bauteile → Werkzeuge → "Berechnete Dauer übernehmen" klickst.`}
+              <span title={`Die Termine im Gantt entsprechen bei ${anzahlZeitplanAbweichend} Task(s) nicht der berechneten Dauer. Sie bleiben, bis du in Tab Bauteile → Werkzeuge → "Auslastung optimieren" → «Nur Dauern übernehmen» klickst.`}
                 style={{ fontSize: 11, color: "#d9622b", whiteSpace: "nowrap", cursor: "help" }}>
                 {anzahlZeitplanAbweichend} Task{anzahlZeitplanAbweichend === 1 ? " weicht" : "s weichen"} vom Gantt ab
               </span>
