@@ -448,11 +448,14 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
       )}
 
       {stammdaten.gewerke.length > 0 ? (<>
-        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
-          <ArbeitszeitEingabe wert={effektiveArbeitszeit(stammdaten)} readOnly={!!readOnly} onChange={az => speichern(mitArbeitszeit(stammdaten, az))} />
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontWeight: 600 }} title="Lohnkosten je Personenstunde — Lohnkosten = Menge × Leistungswert × Lohnansatz (Tab Kosten, Ertragsoptik in Tab AVOR)">Lohnansatz [CHF/h]:</span>
-            {numInput(stammdaten.umsatzChfProMannstunde ?? 80, v => speichern({ ...stammdaten, umsatzChfProMannstunde: v ?? 80 }), 60)}
+        {/* Lohnansatz und Arbeitszeit übereinander; die genaue Arbeitszeit (Uhrzeiten) erst über ⋮ neben der Arbeitszeit */}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 16, marginBottom: 12 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontWeight: 600, width: LABEL_BREITE_KOPF }} title="Lohnkosten je Personenstunde — Lohnkosten = Menge × Leistungswert × Lohnansatz (Tab Kosten)">Lohnansatz [CHF/h]:</span>
+              {numInput(stammdaten.umsatzChfProMannstunde ?? 80, v => speichern({ ...stammdaten, umsatzChfProMannstunde: v ?? 80 }), 60)}
+            </div>
+            <ArbeitszeitEingabe wert={effektiveArbeitszeit(stammdaten)} readOnly={!!readOnly} onChange={az => speichern(mitArbeitszeit(stammdaten, az))} />
           </div>
           <div style={{ marginLeft: "auto" }}>{ressourcenMenu}</div>
         </div>
@@ -782,8 +785,11 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
 
 /** Arbeitszeit des Projekts (Beginn, Mittag von/bis, Ende) — gilt für Gantt-Uhrzeiten, Halbtage, Exporte und ergibt die Std./Tag
  *  für Kalkulation und Auswertungen (siehe zeitHelpers.ts / mitArbeitszeit). Ungültige Kombinationen werden nicht gespeichert. */
+const LABEL_BREITE_KOPF = 130; // Beschriftung Lohnansatz/Arbeitszeit, damit die Werte untereinander stehen
+
 function ArbeitszeitEingabe({ wert, readOnly, onChange }: { wert: Arbeitszeit; readOnly: boolean; onChange: (az: Arbeitszeit) => void }) {
   const [entwurf, setEntwurf] = useState(wert);
+  const [offen, setOffen] = useState(false); // Uhrzeiten nur nach Klick auf ⋮
   useEffect(() => { setEntwurf(wert); }, [wert.beginn, wert.mittagVon, wert.mittagBis, wert.ende]);
   const fehler = pruefeArbeitszeit(entwurf);
   function aendern(feld: keyof Arbeitszeit, v: string) {
@@ -798,13 +804,15 @@ function ArbeitszeitEingabe({ wert, readOnly, onChange }: { wert: Arbeitszeit; r
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}
       title="Arbeitszeit des Projekts — gilt für Gantt (Uhrzeit/Halbtage), Exporte und ergibt die Std./Tag für Kalkulation, Personal, Kran und Ertrag">
-      <span style={{ fontWeight: 600 }}>Arbeitszeit:</span>
-      {feld("beginn", "Arbeitsbeginn")}–{feld("mittagVon", "Mittagspause von")}
-      <span style={{ color: "#888" }}>/</span>
-      {feld("mittagBis", "Mittagspause bis")}–{feld("ende", "Arbeitsende")}
-      <span style={{ color: fehler ? "#d9534f" : "#555" }}>
-        {fehler ?? `= ${fmtZahl(arbeitszeitStunden(entwurf))} h/Tag`}
-      </span>
+      <span style={{ fontWeight: 600, width: LABEL_BREITE_KOPF }}>Arbeitszeit:</span>
+      <span style={{ color: fehler ? "#d9534f" : "#555" }}>{fehler ?? `${fmtZahl(arbeitszeitStunden(entwurf))} h/Tag`}</span>
+      <button type="button" onClick={() => setOffen(o => !o)} title={offen ? "Uhrzeiten ausblenden" : "Genaue Arbeitszeit (Beginn, Mittagspause, Ende)"}
+        style={{ border: "none", background: offen ? "var(--tc-blue-bg)" : "transparent", cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "2px 6px", color: "var(--tc-text-2)" }}>⋮</button>
+      {(offen || !!fehler) && (<>
+        {feld("beginn", "Arbeitsbeginn")}–{feld("mittagVon", "Mittagspause von")}
+        <span style={{ color: "#888" }}>/</span>
+        {feld("mittagBis", "Mittagspause bis")}–{feld("ende", "Arbeitsende")}
+      </>)}
     </div>
   );
 }
