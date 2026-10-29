@@ -305,6 +305,15 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   }
   function auslastungUebernehmen(einheit: Zeiteinheit, tasks: Task[]) {
     if (!aktiveSim) return;
+    // nur Termine, Vorgänger und Optimierungs-Stand in den aktuellen Stand übernehmen — Bauteile (auch aus der Simulation
+    // entfernte), Mengen usw. bleiben, wie sie jetzt sind, selbst wenn sich seit dem Öffnen der Vorschau etwas geändert hat
+    const neuById = new Map(tasks.map(t => [t.id, t]));
+    tasks = aktiveSim.tasks.map(t => {
+      const n = neuById.get(t.id);
+      if (!n || n === t) return t;
+      return { ...t, start: n.start, end: n.end, startZeit: n.startZeit, endZeit: n.endZeit,
+        predecessorId: n.predecessorId, lagDays: n.lagDays, weitereVorgaenger: n.weitereVorgaenger, optimierung: n.optimierung };
+    });
     updateSim({ ...aktiveSim, tasks, zeiteinheit: einheit === "tage" ? undefined : einheit, optimiertStand: terminSignatur(tasks) });
     setAuslastungVorschau(null);
   }
