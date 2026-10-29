@@ -156,6 +156,8 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
     for (const key of z.ressourcen) freigaben.set(key, [...(freigaben.get(key) ?? []), { id: z.t.id, end: r.end }]);
     // auf Personal gewartet → Vorgänger = zuletzt mit denselben Leuten fertig gewordener Task, der vor diesem Start endet
     if (z.frueheste === null || z.erste === null || z.erste <= z.frueheste + EPS) return;
+    // nur nötig, wenn der Task im Gantt (gerastert) wirklich später beginnt, als seine Vorgänger erlauben
+    if (vergleicheZeitpunkte(r.start, startAus(z.frueheste)) <= 0) return;
     const bisher = new Set(vorgaengerListe(z.t).map(v => v.id));
     let bester: { id: string; end: Zeitpunkt } | null = null;
     for (const key of z.ersteRessourcen) for (const f of freigaben.get(key) ?? []) {

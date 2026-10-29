@@ -525,7 +525,7 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
       <div style={{ display: "flex", flexShrink: 0 }}>
         <div style={{ width: labelW, flexShrink: 0, height: HEAD_H, background: "#f5f7f9", borderBottom: "1px solid #d4dce4", borderRight: "1px solid #d4dce4", display: "flex", alignItems: "center", padding: "0 6px", position: "relative" }}>
           <span style={{ fontSize: 11, fontWeight: 600, color: "#555" }}>Task</span>
-          <span style={{ marginLeft: "auto", fontSize: 10, color: "#8a9baa", width: 46, boxSizing: "border-box", alignSelf: "stretch", display: "flex", alignItems: "center", justifyContent: "flex-end", borderLeft: "1px solid #e4e8ec", marginRight: scrollbarBreite - 2 }}>{showObjektCount ? "Objekte" : "Tage"}</span>
+          <span style={{ marginLeft: "auto", fontSize: 10, color: "#8a9baa", width: 46, boxSizing: "border-box", alignSelf: "stretch", display: "flex", alignItems: "center", justifyContent: "flex-end", borderLeft: "1px solid #e4e8ec", marginRight: scrollbarBreite - 2 }}>{showObjektCount ? "Objekte" : "Dauer"}</span>
           <div onMouseDown={startResize} style={{ position: "absolute", top: 0, right: -3, width: 6, height: "100%", cursor: "col-resize", zIndex: 5 }} />
         </div>
         <div ref={headerRef} style={{ flex: 1, height: HEAD_H, overflow: "hidden", background: "#f5f7f9", borderBottom: "1px solid #d4dce4" }}>

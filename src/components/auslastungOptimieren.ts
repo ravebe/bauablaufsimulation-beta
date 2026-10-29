@@ -61,6 +61,35 @@ function optimierBasis(t: Task): Task {
   return basis;
 }
 
+/** Ergänzte Vorgänger nur, wo sie nötig sind: gilt ein ergänzter Vorgänger schon über eine Kette anderer Vorgänger des Tasks (ohne
+ *  negative Wartetage), ändert er nichts und entfällt — so bleiben nur die Vorgänger, die die Reihenfolge der Optimierung festhalten. */
+function nurNoetigeVorgaenger(basis: Task[], roh: Task[]): Task[] {
+  const vorg = new Map(roh.map(t => [t.id, vorgaengerListe(t)]));
+  const erreicht = (von: string, ziel: string): boolean => {
+    const besucht = new Set<string>();
+    const stapel = [von];
+    while (stapel.length) {
+      const id = stapel.pop()!;
+      if (id === ziel) return true;
+      if (besucht.has(id)) continue;
+      besucht.add(id);
+      for (const v of vorg.get(id) ?? []) if (v.lagDays >= 0) stapel.push(v.id);
+    }
+    return false;
+  };
+  return roh.map((t, i) => {
+    if (t === basis[i]) return t;
+    const bisher = new Set(vorgaengerListe(basis[i]).map(v => v.id));
+    const liste = vorgaengerListe(t);
+    const neu = liste.filter(v => !bisher.has(v.id));
+    if (neu.length === 0) return t;
+    const behalten = liste.filter(v => bisher.has(v.id) || !liste.some(w => w.id !== v.id && w.lagDays >= 0 && erreicht(w.id, v.id)));
+    if (behalten.length === liste.length) return t;
+    vorg.set(t.id, behalten);
+    return mitVorgaengern(t, behalten);
+  });
+}
+
 /** Neue Termine aller Tasks nach "Auslastung optimieren" (gleiche Reihenfolge wie tasks). Ist in Tab Ressourcen Personal unter
  *  den Kränen erfasst, plant optimiereMitKranpersonal (Pools je Kran und Unternehmer), sonst diese Kolonnen-Variante. Geplante
  *  Tasks merken sich in Task.optimierung ihren Start von vorher und die ergänzten Vorgänger (siehe optimierBasis) — erneutes
@@ -71,9 +100,10 @@ export function optimiereAuslastung(tasks: Task[], stammdaten: Stammdaten, kalen
   const roh = hatKranPersonal(kraene)
     ? optimiereMitKranpersonal(basis, stammdaten, kalender, einheit, kraene, reihenfolge, lueckenFuellen)
     : optimiereKolonnen(basis, stammdaten, kalender, einheit, reihenfolge);
+  const geprueft = nurNoetigeVorgaenger(basis, roh);
   return tasks.map((t, i) => {
-    const neu = roh[i];
-    if (neu === basis[i]) return t; // nicht geplant (Gruppe, Meilenstein, ohne Kalkulation) — unverändert
+    const neu = geprueft[i];
+    if (roh[i] === basis[i]) return t; // nicht geplant (Gruppe, Meilenstein, ohne Kalkulation) — unverändert
     const bisher = new Set(vorgaengerListe(basis[i]).map(v => v.id));
     const freigabe = t.optimierung && zpText(startZeitpunkt(t)) === t.optimierung.start ? t.optimierung.freigabe : zpText(startZeitpunkt(t));
     return { ...neu, optimierung: { freigabe, start: zpText(startZeitpunkt(neu)), vorgaenger: vorgaengerListe(neu).filter(v => !bisher.has(v.id)).map(v => v.id) } };
