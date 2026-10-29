@@ -412,6 +412,7 @@ export default function App() {
               taskSort={taskSort}
               sharedNadelTag={sharedNadelTag}
               onIfcExport={aktiveIfcExport}
+              updateSim={readOnly ? undefined : updateSim}
             />
           </FehlerGrenze>
         </div>

@@ -13,7 +13,9 @@ import PunkteMenu from "./PunkteMenu";
 import { exportEintraege } from "./exportEintraege";
 import { useFreieTageAusblenden } from "../hooks/useFreieTageAusblenden";
 
-interface Props { api: ApiInstance | null; projectId?: string | null; aktiveSim: SimProjekt | null; aktivesModellId: string | null; taskSort?: "gantt" | "datum" | "aktiv" | "name" | "nummer"; sharedNadelTag?: React.MutableRefObject<number>; onIfcExport?: () => void; }
+interface Props { api: ApiInstance | null; projectId?: string | null; aktiveSim: SimProjekt | null; aktivesModellId: string | null; taskSort?: "gantt" | "datum" | "aktiv" | "name" | "nummer"; sharedNadelTag?: React.MutableRefObject<number>; onIfcExport?: () => void;
+  /** zum Umschalten Ganzer Tag / genau nach Uhrzeit (SimProjekt.genauNachUhrzeit); fehlt im Nur-Lese-Modus */
+  updateSim?: (s: SimProjekt) => void; }
 
 const FARBEN = TASK_TYP_FARBE;
 // Typen mit demselben Zeit-Verhalten wie "temporaer" (sichtbar von Start bis Ende, dann ausgeblendet) —
@@ -28,7 +30,7 @@ function tagVonDatum(s: string, min: Date): number {
   return Math.round((d.getTime() - min.getTime()) / 86400000);
 }
 
-export default function TabAbspielen({ api, projectId = null, aktiveSim, aktivesModellId, taskSort = "gantt", sharedNadelTag, onIfcExport }: Props) {
+export default function TabAbspielen({ api, projectId = null, aktiveSim, aktivesModellId, taskSort = "gantt", sharedNadelTag, onIfcExport, updateSim }: Props) {
   const [freieTageAus, setFreieTageAus] = useFreieTageAusblenden(projectId);
   const kalender = aktiveSim?.kalender ?? LEERER_KALENDER;
   const [sekProTag, setSekProTag] = useState(0.5);
@@ -163,17 +165,26 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
     (api!.viewer as any).setSelection({ modelObjectIds: zuBatch(guids) }, "set").catch(() => {});
   }
 
+  // Ganzer Tag (Standard, wie Tab AVOR/Kosten) oder genau nach Uhrzeit (⋮ → Optionen, nur bei Halbtagen/Uhrzeit): bei ganzem Tag
+  // gilt für eine Position der ganze Kalendertag — begonnen hat, was bis Tagesende beginnt (bis), vorbei ist, was vor Tagesbeginn
+  // endet (von). Ref für den rAF-Loop des Abspielens.
+  const ganzerTag = !aktiveSim?.genauNachUhrzeit || (aktiveSim?.zeiteinheit ?? "tage") === "tage";
+  const ganzerTagRef = useRef(ganzerTag);
+  ganzerTagRef.current = ganzerTag;
+  const bis = (tag: number) => ganzerTagRef.current ? Math.floor(tag + 1e-9) + 1 - 1e-6 : tag;
+  const von = (tag: number) => ganzerTagRef.current ? Math.floor(tag + 1e-9) : tag;
+
   // --- Ist Task aktiv bei Tag? ---
   function istAktiv(t: Task, tag: number): boolean {
     if (!minDate) return false;
     const s = startPos(t, minDate);
     const e = endPos(t, minDate);
-    return tag >= s && tag < e;
+    return bis(tag) >= s && von(tag) < e;
   }
 
   function istVorbei(t: Task, tag: number): boolean {
     if (!minDate) return false;
-    return tag >= endPos(t, minDate);
+    return von(tag) >= endPos(t, minDate);
   }
 
   // --- Startzustand ---
@@ -220,22 +231,22 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
       const e = endPos(t, minDate);
 
       if (t.typ === "neubau") {
-        if (tag >= s) { showGuids.push(...t.objektGuids); if (tag < e) selGuidsLocal.push(...t.objektGuids); if (farbeEin) colorNeubau.push(...t.objektGuids); }
+        if (bis(tag) >= s) { showGuids.push(...t.objektGuids); if (von(tag) < e) selGuidsLocal.push(...t.objektGuids); if (farbeEin) colorNeubau.push(...t.objektGuids); }
         else hideGuids.push(...t.objektGuids);
       } else if (t.typ === "bestand") {
         showGuids.push(...t.objektGuids); colorBestand.push(...t.objektGuids);
       } else if (t.typ === "abbruch") {
-        if (tag >= e) hideGuids.push(...t.objektGuids);
-        else { showGuids.push(...t.objektGuids); if (tag >= s) colorAbbruch.push(...t.objektGuids); }
+        if (von(tag) >= e) hideGuids.push(...t.objektGuids);
+        else { showGuids.push(...t.objektGuids); if (bis(tag) >= s) colorAbbruch.push(...t.objektGuids); }
       } else if (t.typ === "temporaer") {
-        if (tag >= e) hideGuids.push(...t.objektGuids);
-        else { showGuids.push(...t.objektGuids); if (farbeEin && tag >= s) colorTemp.push(...t.objektGuids); }
+        if (von(tag) >= e) hideGuids.push(...t.objektGuids);
+        else { showGuids.push(...t.objektGuids); if (farbeEin && bis(tag) >= s) colorTemp.push(...t.objektGuids); }
       } else if (t.typ === "baustelleneinrichtung") {
-        if (tag >= e) hideGuids.push(...t.objektGuids);
-        else { showGuids.push(...t.objektGuids); if (farbeEin && tag >= s) colorBaustelleneinrichtung.push(...t.objektGuids); }
+        if (von(tag) >= e) hideGuids.push(...t.objektGuids);
+        else { showGuids.push(...t.objektGuids); if (farbeEin && bis(tag) >= s) colorBaustelleneinrichtung.push(...t.objektGuids); }
       } else if (t.typ === "drittprojekt") {
-        if (tag >= e) hideGuids.push(...t.objektGuids);
-        else { showGuids.push(...t.objektGuids); if (farbeEin && tag >= s) colorDrittprojekt.push(...t.objektGuids); }
+        if (von(tag) >= e) hideGuids.push(...t.objektGuids);
+        else { showGuids.push(...t.objektGuids); if (farbeEin && bis(tag) >= s) colorDrittprojekt.push(...t.objektGuids); }
       }
     }
 
@@ -271,10 +282,10 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
       if (t.objektGuids.length === 0) continue;
       const s = startPos(t, minDate);
       const e = endPos(t, minDate);
-      if (t.typ === "neubau" && tag >= s) colorNeubau.push(...t.objektGuids);
-      else if (t.typ === "temporaer" && tag >= s && tag < e) colorTemp.push(...t.objektGuids);
-      else if (t.typ === "baustelleneinrichtung" && tag >= s && tag < e) colorBaustelleneinrichtung.push(...t.objektGuids);
-      else if (t.typ === "drittprojekt" && tag >= s && tag < e) colorDrittprojekt.push(...t.objektGuids);
+      if (t.typ === "neubau" && bis(tag) >= s) colorNeubau.push(...t.objektGuids);
+      else if (t.typ === "temporaer" && bis(tag) >= s && von(tag) < e) colorTemp.push(...t.objektGuids);
+      else if (t.typ === "baustelleneinrichtung" && bis(tag) >= s && von(tag) < e) colorBaustelleneinrichtung.push(...t.objektGuids);
+      else if (t.typ === "drittprojekt" && bis(tag) >= s && von(tag) < e) colorDrittprojekt.push(...t.objektGuids);
     }
     if (colorNeubau.length > 0) setzeZustandAsync(colorNeubau, { color: neu ? FARBEN.neubau : "reset" });
     if (colorTemp.length > 0) setzeZustandAsync(colorTemp, { color: neu ? FARBEN.temporaer : "reset" });
@@ -302,16 +313,16 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
     // Prüfe ob wir eine neue Event-Grenze überschritten haben
     let neueEvents = false;
     for (const evt of events) {
-      if (evt.tag > letzterEventTag.current && evt.tag <= tag) {
+      if (evt.tag > letzterEventTag.current && evt.tag <= bis(tag)) {
         neueEvents = true;
         break;
       }
     }
     if (!neueEvents && gestartet.current.size > 0) {
-      letzterEventTag.current = tag;
+      letzterEventTag.current = bis(tag);
       return; // Kein neues Event → nichts tun
     }
-    letzterEventTag.current = tag;
+    letzterEventTag.current = bis(tag);
 
     // Neue Events verarbeiten
     const showGuids: string[] = [];
@@ -324,7 +335,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
       const e = endPos(t, minDate);
 
       // Start-Event
-      if (tag >= s && !gestartet.current.has(t.id)) {
+      if (bis(tag) >= s && !gestartet.current.has(t.id)) {
         gestartet.current.add(t.id);
         statusChanged = true;
         if (t.typ === "neubau") {
@@ -341,10 +352,10 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
       }
 
       // Neubau bleibt selektiert während aktiv
-      if (t.typ === "neubau" && tag >= s && tag < e) selGuidsLocal.push(...t.objektGuids);
+      if (t.typ === "neubau" && bis(tag) >= s && von(tag) < e) selGuidsLocal.push(...t.objektGuids);
 
       // End-Event
-      if (tag >= e && !beendet.current.has(t.id)) {
+      if (von(tag) >= e && !beendet.current.has(t.id)) {
         beendet.current.add(t.id);
         statusChanged = true;
         if (t.typ === "abbruch") {
@@ -442,7 +453,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
     if (sliderDebounceRef.current) clearTimeout(sliderDebounceRef.current);
     sliderDebounceRef.current = setTimeout(async () => {
       gestartet.current.clear(); beendet.current.clear();
-      tasks.forEach(t => { const s = startPos(t, minDate!); const e = endPos(t, minDate!); if (tag >= s) gestartet.current.add(t.id); if (tag >= e) beendet.current.add(t.id); });
+      tasks.forEach(t => { const s = startPos(t, minDate!); const e = endPos(t, minDate!); if (bis(tag) >= s) gestartet.current.add(t.id); if (von(tag) >= e) beendet.current.add(t.id); });
       await zustandBeiTag(tag);
     }, 150);
   }
@@ -477,7 +488,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
 
   if (!aktiveSim) return <div className="tc-empty"><div className="tc-empty-icon">▶</div><div className="tc-empty-title">Keine aktive Simulation</div></div>;
 
-  const aktuellesDatum = minDate ? datumZeitBeiPos(minDate, currentTag, aktiveSim.zeiteinheit, totalTage) : "";
+  const aktuellesDatum = minDate ? datumZeitBeiPos(minDate, currentTag, ganzerTag ? "tage" : aktiveSim.zeiteinheit, totalTage) : "";
   const dot = (typ: string) => ({ width: 6, height: 6, borderRadius: "50%" as const, display: "inline-block" as const, margin: "0 8px 0 3px", flexShrink: 0 as const,
     background: (FARBEN as Record<string, string>)[typ] ?? FARBEN.bestand });
 
@@ -497,7 +508,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
 
       {totalTage > 0 && minDate && maxDate && (
         <div style={{ marginTop: 4 }}>
-          <input type="range" min={0} max={totalTage} step={schrittTage(aktiveSim.zeiteinheit)} value={currentTag}
+          <input type="range" min={0} max={totalTage} step={ganzerTag ? 1 : schrittTage(aktiveSim.zeiteinheit)} value={currentTag}
             onChange={e => sliderChange(Number(e.target.value))} disabled={laeuft} style={{ width: "100%", margin: "4px 0 0" }} />
           {/* Start | aktuelles Datum | Ende — unter dem Slider */}
           <div style={{ display: "flex", alignItems: "baseline", fontSize: 11, color: "var(--tc-text-3)" }}>
@@ -534,11 +545,20 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
           {ganttOffen ? "☰ Liste" : "▤ Gantt"}
         </button>
         <PunkteMenu title="Optionen / Export" abschnitte={[
-          ...(ganttOffen ? [{ titel: "Optionen", eintraege: [{
-            label: freieTageAus ? "Wochenende, Ferien und Feiertage einblenden" : "Wochenende, Ferien und Feiertage ausblenden",
-            title: "Arbeitsfreie Tage (graue Bänder) im Gantt einklappen bzw. wieder anzeigen",
-            onClick: () => setFreieTageAus(!freieTageAus),
-          }] }] : []),
+          ...((ganttOffen || (aktiveSim.zeiteinheit ?? "tage") !== "tage") ? [{ titel: "Optionen", eintraege: [
+            ...((aktiveSim.zeiteinheit ?? "tage") !== "tage" && updateSim ? [{
+              label: ganzerTag ? "Genau nach Uhrzeit abspielen" : "Ganzen Tag anzeigen",
+              title: ganzerTag
+                ? "Abspielen folgt der genauen Uhrzeit: sichtbar und markiert ist, was zur jeweiligen Zeit läuft — zeigt den Ablauf innerhalb eines Tages. Gilt auch für Klicks in Tab AVOR und Kosten."
+                : "Jeder Tag wird als Ganzes gezeigt (Standard): sichtbar ist, was bis Tagesende begonnen hat, markiert alle Tasks, die an diesem Tag arbeiten — wie die Tagesangaben in Tab AVOR. Gilt auch für Klicks in Tab AVOR und Kosten.",
+              onClick: () => updateSim({ ...aktiveSim, genauNachUhrzeit: ganzerTag ? true : undefined }),
+            }] : []),
+            ...(ganttOffen ? [{
+              label: freieTageAus ? "Wochenende, Ferien und Feiertage einblenden" : "Wochenende, Ferien und Feiertage ausblenden",
+              title: "Arbeitsfreie Tage (graue Bänder) im Gantt einklappen bzw. wieder anzeigen",
+              onClick: () => setFreieTageAus(!freieTageAus),
+            }] : []),
+          ] }] : []),
           ...(exportEintraege(aktiveSim, onIfcExport).length > 0 ? [{ titel: "Export", eintraege: exportEintraege(aktiveSim, onIfcExport) }] : []),
         ]} />
       </div>

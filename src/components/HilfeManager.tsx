@@ -54,7 +54,7 @@ const THEMEN: Thema[] = [
     punkte: [
       "Farbcodierung: grün = Neubau, grau = Bestand, gelb = Abbruch, braun = Bauhilfsmassnahme, blau = Baustelleneinrichtung, violett = Drittprojekt.",
       "\"Starten\" spielt den Bauablauf ab; das Feld rechts daneben legt die Sekunden pro Tag fest. Slider, Klick in den Gantt oder Ziehen der roten Nadel springen zu einem Datum.",
-      "Der Zeitverlauf basiert auf Start- und Enddatum der Tasks; bei Zeiteinheit Halbtage/Uhrzeit läuft er auch innerhalb des Tages.",
+      "Der Zeitverlauf basiert auf Start- und Enddatum der Tasks. Bei Zeiteinheit Halbtage/Uhrzeit wird standardmässig jeder Tag als Ganzes gezeigt — sichtbar ist, was bis Tagesende begonnen hat, markiert alle Tasks, die an diesem Tag arbeiten (gleich wie Klicks in Tab AVOR und Kosten). ⋮ → Optionen → \"Genau nach Uhrzeit abspielen\" zeigt stattdessen den Stand zur jeweiligen Uhrzeit, also den Ablauf innerhalb des Tages; die Einstellung gilt je Simulation für alle Tabs.",
       "Unter der Liste bzw. dem Gantt erscheinen nur Ablauf-Meldungen (Bereit machen / Bereit / abgeschlossen).",
       "Ein im Modell markiertes Bauteil holt den verknüpften Task in Liste und Gantt in die Mitte.",
       "Gantt-⋮ → Optionen: Wochenende, Ferien und Feiertage aus- bzw. wieder einblenden (wie in Tab Bauteile).",

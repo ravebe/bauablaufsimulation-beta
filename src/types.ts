@@ -125,6 +125,10 @@ export interface SimProjekt {
   mengenBerechnetSignatur?: string; // Signatur der Stammdaten (Formeln/Ausschlussfilter) zum Zeitpunkt des letzten "Mengen aus Bauteilen berechnen" — siehe mengenRelevanteSignatur() in stammdatenHelpers.ts; weicht sie vom aktuellen Stand ab, sind die Mengen veraltet
   kraene?: Kran[]; // Kran-Stammdaten, Verfügbarkeit und Personal je Unternehmer, siehe kranHelpers.ts / KranPersonalEditor.tsx (Tab Ressourcen)
   zeitraster?: Zeitraster; // globaler Monat/Woche-Umschalter für Kran-Auswertungen, fehlt = "monat"
+  /** 3D-Ansicht bei Halbtagen/Uhrzeit: true = genau nach Uhrzeit (Abspielen zeigt den Stand zur jeweiligen Zeit); fehlt/false =
+   *  ganzer Tag (sichtbar ist, was bis Tagesende begonnen hat, aktiv alle Tasks des Tages) — gilt für Abspielen, Tab AVOR und Tab
+   *  Kosten gleich, siehe dreiDZustandAufTagSetzen. Umschalten: Tab Abspielen → ⋮ → Optionen. */
+  genauNachUhrzeit?: boolean;
   optimiertStand?: string; // Termin-Signatur nach "Auslastung optimieren" (terminSignatur) — solange gleich, gelten Abweichungen zur berechneten Dauer als gewollt
 }
 

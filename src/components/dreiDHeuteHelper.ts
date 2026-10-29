@@ -52,7 +52,8 @@ async function selektieren(api: ApiInstance, guids: string[]) {
  *  hat, aktiv jeder Task, der an diesem Tag arbeitet — sonst der Stand bei Arbeitsbeginn (bei Halbtagen/Uhrzeit nur die Tasks,
  *  die um diese Zeit laufen). */
 export async function dreiDZustandAufTagSetzen(api: ApiInstance, tasks: Task[], minDate: Date, tag: number, farbeEin = true, ausgeschlossen: string[] = [], ganzerTag = false): Promise<Task[]> {
-  const bisTag = ganzerTag ? tag + 1 - 1e-9 : tag; // spätester betrachteter Zeitpunkt des Tages
+  const bisTag = ganzerTag ? Math.floor(tag + 1e-9) + 1 - 1e-6 : tag; // spätester betrachteter Zeitpunkt des Tages
+  const vonTag = ganzerTag ? Math.floor(tag + 1e-9) : tag; // frühester betrachteter Zeitpunkt des Tages
   const showGuids: string[] = [];
   const hideGuids: string[] = [];
   const colorBestand: string[] = [];
@@ -72,23 +73,23 @@ export async function dreiDZustandAufTagSetzen(api: ApiInstance, tasks: Task[], 
     if (t.typ === "neubau") {
       if (bisTag >= s) {
         showGuids.push(...t.objektGuids);
-        if (tag < e) { selGuidsLocal.push(...t.objektGuids); aktive.push(t); }
+        if (vonTag < e) { selGuidsLocal.push(...t.objektGuids); aktive.push(t); }
         if (farbeEin) colorNeubau.push(...t.objektGuids);
       } else hideGuids.push(...t.objektGuids);
     } else if (t.typ === "bestand") {
       showGuids.push(...t.objektGuids); colorBestand.push(...t.objektGuids);
     } else if (t.typ === "abbruch") {
-      if (tag >= e) hideGuids.push(...t.objektGuids);
-      else { showGuids.push(...t.objektGuids); if (tag >= s) colorAbbruch.push(...t.objektGuids); if (tag >= s) aktive.push(t); }
+      if (vonTag >= e) hideGuids.push(...t.objektGuids);
+      else { showGuids.push(...t.objektGuids); if (bisTag >= s) colorAbbruch.push(...t.objektGuids); if (bisTag >= s) aktive.push(t); }
     } else if (t.typ === "temporaer") {
-      if (tag >= e) hideGuids.push(...t.objektGuids);
-      else { showGuids.push(...t.objektGuids); if (farbeEin && tag >= s) colorTemp.push(...t.objektGuids); if (tag >= s) aktive.push(t); }
+      if (vonTag >= e) hideGuids.push(...t.objektGuids);
+      else { showGuids.push(...t.objektGuids); if (farbeEin && bisTag >= s) colorTemp.push(...t.objektGuids); if (bisTag >= s) aktive.push(t); }
     } else if (t.typ === "baustelleneinrichtung") {
-      if (tag >= e) hideGuids.push(...t.objektGuids);
-      else { showGuids.push(...t.objektGuids); if (farbeEin && tag >= s) colorBaustelleneinrichtung.push(...t.objektGuids); if (tag >= s) aktive.push(t); }
+      if (vonTag >= e) hideGuids.push(...t.objektGuids);
+      else { showGuids.push(...t.objektGuids); if (farbeEin && bisTag >= s) colorBaustelleneinrichtung.push(...t.objektGuids); if (bisTag >= s) aktive.push(t); }
     } else if (t.typ === "drittprojekt") {
-      if (tag >= e) hideGuids.push(...t.objektGuids);
-      else { showGuids.push(...t.objektGuids); if (farbeEin && tag >= s) colorDrittprojekt.push(...t.objektGuids); if (tag >= s) aktive.push(t); }
+      if (vonTag >= e) hideGuids.push(...t.objektGuids);
+      else { showGuids.push(...t.objektGuids); if (farbeEin && bisTag >= s) colorDrittprojekt.push(...t.objektGuids); if (bisTag >= s) aktive.push(t); }
     }
   }
 
