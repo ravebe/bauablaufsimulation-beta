@@ -7,7 +7,7 @@ import type { Stammdaten } from "./stammdatenHelpers";
 import { istMengeKranpflichtig } from "./stammdatenHelpers";
 import { aufwandJeTagFuerTask } from "./avorHelpers";
 import type { ZeitrasterBucket } from "./kranHelpers";
-import { zeitrasterBuckets, kranVerfuegbareArbeitstage, kranAnteil, kraeneDesTasks } from "./kranHelpers";
+import { zeitrasterBuckets, kranVerfuegbareArbeitstage, kranAnteil, kraeneDesTasks, istKranVerfuegbarAn } from "./kranHelpers";
 
 export const MAX_PERSONEN_PRO_KRAN = 13;
 
@@ -16,9 +16,10 @@ export interface KranPersonalSerie { kranId: string; kranName: string; personens
 /** Personenstunden-Bedarf (Menge × Leistungswert kranpflichtiger Gewerke) je Kran und Zeitraster-Bucket
  *  — über die Tage verteilt wie der Aufwand (aufwandJeTagFuerTask in avorHelpers.ts) und bei mehreren zugeordneten Kränen
  *  anteilig aufgeteilt (kranAnteil, 0.5/0.33…). Grundlage für personalRichtwertJeBucket(). */
-export function personenstundenProKranUndBucket(tasks: Task[], kraene: Kran[], stammdaten: Stammdaten, kalender: Kalender, raster: Zeitraster): { buckets: ZeitrasterBucket[]; serien: KranPersonalSerie[] } {
+export function personenstundenProKranUndBucket(tasks: Task[], kraene: Kran[], stammdaten: Stammdaten, kalender: Kalender, raster: Zeitraster): { buckets: ZeitrasterBucket[]; serien: KranPersonalSerie[]; ohneKran: number[] } {
   const buckets = zeitrasterBuckets(tasks, raster);
-  if (buckets.length === 0 || kraene.length === 0) return { buckets, serien: [] };
+  const ohneKran: number[] = new Array(buckets.length).fill(0); // Personenstunden kranpflichtiger Arbeit ohne verfügbaren Kran
+  if (buckets.length === 0) return { buckets, serien: [], ohneKran };
 
   const serien: KranPersonalSerie[] = kraene.map(k => ({
     kranId: k.id, kranName: k.name,
@@ -26,23 +27,26 @@ export function personenstundenProKranUndBucket(tasks: Task[], kraene: Kran[], s
     arbeitstageVerfuegbar: buckets.map(b => kranVerfuegbareArbeitstage(k, b, kalender)),
   }));
   const serieByKranId = new Map(serien.map(s => [s.kranId, s]));
+  const kranById = new Map(kraene.map(k => [k.id, k]));
   const bucketIndexFuer = (iso: string) => buckets.findIndex(b => iso >= b.start && iso <= b.end);
 
   for (const t of tasks) {
     const kranIds = kraeneDesTasks(t, kraene);
-    if (t.isGroup || kranIds.length === 0 || !t.bauteilKuerzel || !t.mengen) continue;
-    const beteiligteSerien = kranIds.map(id => serieByKranId.get(id)).filter((s): s is KranPersonalSerie => !!s);
-    if (beteiligteSerien.length === 0) continue;
-    const anteil = kranAnteil(kranIds.length);
+    if (t.isGroup || !t.bauteilKuerzel || !t.mengen) continue;
 
     for (const [iso, aufwand] of aufwandJeTagFuerTask(t, stammdaten, kalender)) {
       let personenstunden = 0;
       for (const [k, ph] of Object.entries(aufwand)) if (istMengeKranpflichtig(stammdaten, k, t.bauteilKuerzel)) personenstunden += ph;
       const bi = bucketIndexFuer(iso);
-      if (personenstunden > 0 && bi !== -1) for (const s of beteiligteSerien) s.personenstunden[bi] += personenstunden * anteil;
+      if (!(personenstunden > 0) || bi === -1) continue;
+      // auf die an diesem Tag verfügbaren Kräne des Tasks verteilt, sonst ohne Kran (wie kranstundenProKranUndBucket)
+      const verfuegbar = kranIds.filter(id => istKranVerfuegbarAn(kranById.get(id)!, iso)).map(id => serieByKranId.get(id)!);
+      if (verfuegbar.length === 0) { ohneKran[bi] += personenstunden; continue; }
+      const anteil = kranAnteil(verfuegbar.length);
+      for (const s of verfuegbar) s.personenstunden[bi] += personenstunden * anteil;
     }
   }
-  return { buckets, serien };
+  return { buckets, serien, ohneKran };
 }
 
 export interface KranPersonalRichtwert {

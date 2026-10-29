@@ -7,7 +7,8 @@ import { LEERER_KALENDER } from "./kalenderHelpers";
 import { LEERE_STAMMDATEN, hatKranpflichtigeRaten } from "./stammdatenHelpers";
 import { personalauslastung, kolonnenJeTag, tagesdauerJeTag, mengenProTag, optimaleTagesleistung } from "./avorHelpers";
 import type { TagWert } from "./avorHelpers";
-import { kranstundenProKranUndBucket, kranPersonalMaxImBereich, RICHTWERT_PERSONEN_PRO_KRAN, eingeplantesPersonalJeTag, hatKranPersonal, durchschnittlicheAuslastung } from "./kranHelpers";
+import { kranstundenProKranUndBucket, kranPersonalMaxImBereich, RICHTWERT_PERSONEN_PRO_KRAN, eingeplantesPersonalJeTag, hatKranPersonal, durchschnittlicheAuslastung, kranLuecken, arbeitstageInBereich } from "./kranHelpers";
+import { KranLueckenHinweis } from "./KranPersonalEditor";
 import { optimiereAuslastung } from "./auslastungOptimieren";
 import { personenstundenProKranUndBucket, personalRichtwertJeBucket } from "./kapazitaetsCheckHelpers";
 import { dreiDZustandAufTagSetzen, tagVonDatum } from "./dreiDHeuteHelper";
@@ -85,29 +86,38 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
     return { gantt, optimiert: durchschnittlicheAuslastung(optimiert, kraene, stammdaten, kalender) };
   }, [tasks, kraene, stammdaten, kalender, sim?.zeiteinheit]);
   const raster: Zeitraster = sim?.zeitraster ?? "monat";
-  const { buckets: kranBuckets, serien: kranstundenSerien } = kranstundenProKranUndBucket(tasks, kraene, stammdaten, kalender, raster);
-  const kranHatBedarf = kranstundenSerien.some(s => s.bedarf.some(v => v > 0));
-  const kranBarSerien: KategorieSerie[] = kranstundenSerien.map((s, i) => ({
+  const { buckets: kranBuckets, serien: kranstundenSerien, ohneKran: kranstundenOhneKran } = kranstundenProKranUndBucket(tasks, kraene, stammdaten, kalender, raster);
+  const kranHatBedarf = kranstundenSerien.some(s => s.bedarf.some(v => v > 0)) || kranstundenOhneKran.some(v => v > 0);
+  // Kranarbeit an Tagen ohne verfügbaren Kran (oder Task ohne Kran): eigener oranger Balken "Ohne Kran" — Kapazität 0
+  const ohneKranSerie = (werte: number[]): KategorieSerie[] => werte.some(v => v > 1e-9)
+    ? [{ key: "__ohneKran", label: "Ohne Kran", color: FARBEN.status.warning, werte }] : [];
+  const kranBarSerien: KategorieSerie[] = [...kranstundenSerien.map((s, i) => ({
     key: s.kranId, label: s.kranName, color: FARBEN.kategorial[i % FARBEN.kategorial.length], werte: s.bedarf, kapazitaet: s.kapazitaet,
-  }));
+  })), ...ohneKranSerie(kranstundenOhneKran)];
+  const luecken = kranLuecken(tasks, kraene, stammdaten, kalender);
   // Personal-Pendant zur Kran-Stunden-Kapazität: je Kran und Zeitraster-Bucket ergibt sich aus den
   // Personenstunden kranpflichtiger Gewerke (nur Kürzel, die in Tab Ressourcen als kranpflichtig markiert
   // sind, und nur Tasks mit einer Kran-Zuweisung aus Tab Kalkulation) ein Personal-Richtwert — Engpass,
   // sobald der über dem je Kran in "Kräne & Verfügbarkeit" hinterlegten Max-Personen-Wert liegt.
-  const { buckets: personalKranBuckets, serien: personalKranSerien } = personenstundenProKranUndBucket(tasks, kraene, stammdaten, kalender, raster);
+  const { buckets: personalKranBuckets, serien: personalKranSerien, ohneKran: personalOhneKran } = personenstundenProKranUndBucket(tasks, kraene, stammdaten, kalender, raster);
   // Personal-Ansicht der Kranoptik (Umschalter neben Kranstunden): Balken = gerundeter Personal-
   // Richtwert je Kran und Zeitraster-Bucket, Kapazitätslinie = Personal unter dem Kran in diesem Zeitraum (Tab Ressourcen →
-  // Kräne & Personal, grösster Tageswert; ohne erfasstes Personal der Richtwert 13).
-  const personalBarSerien: KategorieSerie[] = personalKranSerien.map((s, i) => {
+  // Kräne & Personal, grösster Tageswert; Kran ganz ohne erfasstes Personal: Richtwert 13; mit Personal-Zeilen, aber in diesem
+  // Zeitraum ohne Personal: 0 → Engpass).
+  const personalBarSerien: KategorieSerie[] = [...personalKranSerien.map((s, i) => {
     const kran = kranById.get(s.kranId);
-    const kapazitaet = personalKranBuckets.map(b => (kran ? kranPersonalMaxImBereich(kran, b.start, b.end) : 0) || RICHTWERT_PERSONEN_PRO_KRAN);
+    const mitPersonal = !!kran && hatKranPersonal([kran]);
+    const kapazitaet = personalKranBuckets.map(b => mitPersonal ? kranPersonalMaxImBereich(kran!, b.start, b.end) : RICHTWERT_PERSONEN_PRO_KRAN);
     return {
       key: s.kranId, label: s.kranName, color: FARBEN.kategorial[i % FARBEN.kategorial.length],
       werte: personalKranBuckets.map((_, bi) => personalRichtwertJeBucket(s.personenstunden[bi], s.arbeitstageVerfuegbar[bi], stammdaten.arbeitszeitStdProTag, kapazitaet[bi]).richtwert ?? 0),
       kapazitaet,
     };
-  });
-  const personalKranHatBedarf = personalKranSerien.some(s => s.personenstunden.some(v => v > 0));
+  }), ...ohneKranSerie(personalKranBuckets.map((b, bi) => {
+    const tage = arbeitstageInBereich(b.start, b.end, kalender);
+    return tage > 0 && stammdaten.arbeitszeitStdProTag > 0 ? personalOhneKran[bi] / (tage * stammdaten.arbeitszeitStdProTag) : 0;
+  }))];
+  const personalKranHatBedarf = personalKranSerien.some(s => s.personenstunden.some(v => v > 0)) || personalOhneKran.some(v => v > 0);
 
   const gewerkOptionen = stammdaten.gewerke;
   const aktivesGewerk = gewerkOptionen.find(g => g.key === mengenGewerkKey) ?? gewerkOptionen[0];
@@ -366,7 +376,8 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
             <span title="Richtwerte zur Plausibilisierung, keine exakte Kalkulation" style={{ fontSize: 11, color: "var(--tc-text-3)", cursor: "help" }}>ⓘ</span>
           </div>
         }>
-        {kraene.length === 0 ? (
+        <KranLueckenHinweis luecken={luecken} kraene={kraene} />
+        {kraene.length === 0 && luecken.ohneKran.tage.length === 0 ? (
           <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
             Noch keine Kräne angelegt — Tab Ressourcen → Kräne & Personal.
           </div>

@@ -4,7 +4,9 @@
 // der Leute an kranpflichtigen Arbeiten dieses Krans pro Tag (Richtwert 13 nur als Hinweis).
 import type { SimProjekt, Kran, KranPersonal } from "../types";
 import { istGruppe } from "../types";
-import { neuerKran, kranAusTasksEntfernen, kraeneDesTasks, kranPersonalAmTag, RICHTWERT_PERSONEN_PRO_KRAN } from "./kranHelpers";
+import { neuerKran, kranAusTasksEntfernen, kraeneDesTasks, kranPersonalAmTag, RICHTWERT_PERSONEN_PRO_KRAN, kranLuecken, tageAlsZeitraeume } from "./kranHelpers";
+import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
+import { LEERER_KALENDER } from "./kalenderHelpers";
 
 interface Props { sim: SimProjekt; updateSim: (s: SimProjekt) => void; readOnly?: boolean; unternehmerListeId: string; bekannteUnternehmer: string[] }
 
@@ -21,6 +23,31 @@ function maxSumme(kran: Kran): { summe: number; tag: string | null } {
     if (s > best.summe) best = { summe: s, tag: tag === "0000-01-01" ? null : tag };
   }
   return best;
+}
+
+/** Warnung über der Kranoptik bzw. in Tab Ressourcen: kranpflichtige Arbeit ohne verfügbaren Kran und Kräne, an deren Tasks an
+ *  manchen Tagen gearbeitet wird, ohne dass Personal unter dem Kran erfasst ist (siehe kranLuecken). */
+export function KranLueckenHinweis({ luecken, kraene }: { luecken: ReturnType<typeof kranLuecken>; kraene: SimProjekt["kraene"] }) {
+  const datum = (iso: string) => iso.split("-").reverse().join(".");
+  const zeitraeume = (tage: string[]) => {
+    const z = tageAlsZeitraeume(tage);
+    return z.slice(0, 4).map(r => r.von === r.bis ? datum(r.von) : `${datum(r.von)}–${datum(r.bis)}`).join(", ") + (z.length > 4 ? " …" : "");
+  };
+  const ohnePersonal = [...luecken.ohnePersonal].map(([id, l]) => ({ name: (kraene ?? []).find(k => k.id === id)?.name ?? "Kran", l }));
+  if (luecken.ohneKran.tage.length === 0 && ohnePersonal.length === 0) return null;
+  const stil: React.CSSProperties = { fontSize: 11, color: "#8a5a00", background: "#fff7e6", border: "1px solid #f5d9a8", padding: "6px 10px", marginBottom: 6 };
+  return (<>
+    {luecken.ohneKran.tage.length > 0 && (
+      <div style={stil} title="Diese Arbeiten brauchen einen Kran (kranpflichtige Leistungsposition), aber an diesen Tagen ist keiner der Kräne des Tasks verfügbar bzw. dem Task ist kein Kran zugewiesen. Kran in Tab Ressourcen → Kräne & Personal ergänzen oder seine Verfügbarkeit (von/bis) anpassen, bei mehreren Kränen in Tab Kalkulation → Kräne zuweisen.">
+        ⚠ <strong>Kran fehlt:</strong> {luecken.ohneKran.taskIds.length} Task{luecken.ohneKran.taskIds.length === 1 ? "" : "s"} mit kranpflichtiger Arbeit ohne verfügbaren Kran ({zeitraeume(luecken.ohneKran.tage)})
+      </div>
+    )}
+    {ohnePersonal.map(({ name, l }) => (
+      <div key={name} style={stil} title="An diesen Tagen ist der Kran verfügbar und es gibt Arbeit an seinen Tasks, aber kein Personal unter dem Kran (Tab Ressourcen → Kräne & Personal, von/bis der Unternehmer). Auslastung optimieren plant dort ohne Personalgrenze.">
+        ⚠ <strong>{name} ohne Personal:</strong> Arbeit an {l.taskIds.length} Task{l.taskIds.length === 1 ? "" : "s"}, aber kein Personal unter dem Kran ({zeitraeume(l.tage)})
+      </div>
+    ))}
+  </>);
 }
 
 export default function KranPersonalEditor({ sim, updateSim, readOnly, unternehmerListeId, bekannteUnternehmer }: Props) {
@@ -43,6 +70,7 @@ export default function KranPersonalEditor({ sim, updateSim, readOnly, unternehm
         desselben Unternehmers sind Allrounder und besetzen jede seiner Leistungspositionen an Tasks dieses Krans (Kran-Zuweisung in
         Tab Kalkulation, bei nur einem Kran automatisch). Von/bis leer = ganze Verfügbarkeit des Krans.
       </div>
+      <KranLueckenHinweis luecken={kranLuecken(sim.tasks, kraene, sim.stammdaten ?? LEERE_STAMMDATEN, sim.kalender ?? LEERER_KALENDER)} kraene={kraene} />
       {kraene.length === 0 && <div style={{ fontSize: 11, color: "var(--tc-text-3)", marginBottom: 8 }}>Noch keine Kräne angelegt.</div>}
       {kraene.map(kran => {
         const { summe, tag } = maxSumme(kran);

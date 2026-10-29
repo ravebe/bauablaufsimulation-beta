@@ -4,7 +4,7 @@ import { LEERER_KALENDER } from "./kalenderHelpers";
 import type { Stammdaten } from "./stammdatenHelpers";
 import {
   zeitrasterBuckets, kranAktivInBucket, istKranVerfuegbarAn, kranVerfuegbareArbeitstage, neuerKran,
-  kranAnteil, kranAusTasksEntfernen, kranstundenProKranUndBucket,
+  kranAnteil, kranAusTasksEntfernen, kranstundenProKranUndBucket, kranLuecken,
 } from "./kranHelpers";
 
 function task(start: string, end: string): Task {
@@ -132,12 +132,16 @@ describe("kranstundenProKranUndBucket", () => {
     expect(s1.bedarf[0]).toBeLessThanOrEqual(s1.kapazitaet[0]);
   });
 
-  it("Engpass, wenn der Kran im Bucket gar nicht verfügbar ist (Kapazität 0, Bedarf > 0)", () => {
+  it("Kran im Bucket nicht verfügbar: Bedarf geht an den verfügbaren Kran des Tasks, ohne jeden Kran an «Ohne Kran»", () => {
     const nichtVerfuegbar: Kran = { id: "k2", name: "Kran 2", verfuegbarBis: "2026-01-04" }; // vor Taskbeginn
-    const { serien } = kranstundenProKranUndBucket([taskWoche], [k1, nichtVerfuegbar], stammdaten, LEERER_KALENDER, "woche");
-    const s2 = serien.find(s => s.kranId === "k2")!;
-    expect(s2.kapazitaet[0]).toBe(0);
-    expect(s2.bedarf[0]).toBeGreaterThan(0);
+    const beide = kranstundenProKranUndBucket([taskWoche], [k1, nichtVerfuegbar], stammdaten, LEERER_KALENDER, "woche");
+    expect(beide.serien.find(s => s.kranId === "k2")!.bedarf[0]).toBe(0);
+    expect(beide.serien.find(s => s.kranId === "k1")!.bedarf[0]).toBeGreaterThan(0);
+    const keiner = kranstundenProKranUndBucket([{ ...taskWoche, kraene: ["k2"] }], [k1, nichtVerfuegbar], stammdaten, LEERER_KALENDER, "woche");
+    expect(keiner.ohneKran[0]).toBeGreaterThan(0);
+    expect(keiner.serien.every(s => s.bedarf[0] === 0)).toBe(true);
+    const luecken = kranLuecken([{ ...taskWoche, kraene: ["k2"] }], [k1, nichtVerfuegbar], stammdaten, LEERER_KALENDER);
+    expect(luecken.ohneKran.taskIds).toEqual(["t1"]);
   });
 
   it("kein Bedarf, wenn kein Gewerk am Task kranpflichtig ist", () => {

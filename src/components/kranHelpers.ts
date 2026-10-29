@@ -70,7 +70,7 @@ export function istKranVerfuegbarAn(kran: Kran, iso: string): boolean {
 /** Arbeitstage eines Zeitraums, ohne Mindestwert 1 (anders als arbeitstageZwischen() in
  *  kalenderHelpers.ts, die für Task-Dauern nie 0 liefern darf) — hier ist 0 ein gültiges, wichtiges
  *  Ergebnis (Kran in diesem Bucket nicht verfügbar → keine Kapazität). */
-function arbeitstageInBereich(start: string, end: string, kalender: Kalender): number {
+export function arbeitstageInBereich(start: string, end: string, kalender: Kalender): number {
   if (start > end) return 0;
   const s = parseDateUniversal(start), e = parseDateUniversal(end);
   if (!s || !e) return 0;
@@ -158,9 +158,10 @@ export interface KranstundenSerie { kranId: string; kranName: string; bedarf: nu
  *  abgeleitete Kapazität — Grundlage der Kranoptik (Tab AVOR). Bedarf je Task: Aufwand der kranpflichtigen
  *  Gewerke ÷ Kolonne (Einsatzzeit der Kolonne laut Leistungswert, siehe kranstundenJeTagFuerTask in
  *  avorHelpers.ts), bei mehreren zugeordneten Kränen anteilig gleichmässig verteilt (kranAnteil — 0.5/0.33…). */
-export function kranstundenProKranUndBucket(tasks: Task[], kraene: Kran[], stammdaten: Stammdaten, kalender: Kalender, raster: Zeitraster): { buckets: ZeitrasterBucket[]; serien: KranstundenSerie[] } {
+export function kranstundenProKranUndBucket(tasks: Task[], kraene: Kran[], stammdaten: Stammdaten, kalender: Kalender, raster: Zeitraster): { buckets: ZeitrasterBucket[]; serien: KranstundenSerie[]; ohneKran: number[] } {
   const buckets = zeitrasterBuckets(tasks, raster);
-  if (buckets.length === 0 || kraene.length === 0) return { buckets, serien: [] };
+  const ohneKran: number[] = new Array(buckets.length).fill(0);
+  if (buckets.length === 0) return { buckets, serien: [], ohneKran };
 
   const serien: KranstundenSerie[] = kraene.map(k => ({
     kranId: k.id, kranName: k.name,
@@ -168,23 +169,27 @@ export function kranstundenProKranUndBucket(tasks: Task[], kraene: Kran[], stamm
     kapazitaet: buckets.map(b => kranVerfuegbareArbeitstage(k, b, kalender) * stammdaten.arbeitszeitStdProTag),
   }));
   const serieByKranId = new Map(serien.map(s => [s.kranId, s]));
+  const kranById = new Map(kraene.map(k => [k.id, k]));
   const bucketIndexFuer = (iso: string) => buckets.findIndex(b => iso >= b.start && iso <= b.end);
 
   for (const t of tasks) {
     const kranIds = kraeneDesTasks(t, kraene);
-    if (t.isGroup || kranIds.length === 0 || !t.mengen) continue;
+    if (t.isGroup || !t.mengen) continue;
     const hatKranGewerk = Object.keys(t.mengen).some(k => (t.mengen![k] ?? 0) > 0 && istMengeKranpflichtig(stammdaten, k, t.bauteilKuerzel));
     if (!hatKranGewerk) continue;
-    const beteiligteSerien = kranIds.map(id => serieByKranId.get(id)).filter((s): s is KranstundenSerie => !!s);
-    if (beteiligteSerien.length === 0) continue;
-    const anteil = kranAnteil(kranIds.length);
 
+    // je Tag auf die an diesem Tag verfügbaren Kräne des Tasks gleichmässig verteilt; keiner verfügbar (oder Task ohne Kran)
+    // → ohneKran: Kranarbeit, für die kein Kran da ist
     for (const [iso, stunden] of kranstundenJeTagFuerTask(t, stammdaten, kalender)) {
       const bi = bucketIndexFuer(iso);
-      if (bi !== -1) for (const s of beteiligteSerien) s.bedarf[bi] += stunden * anteil;
+      if (bi === -1) continue;
+      const verfuegbar = kranIds.filter(id => istKranVerfuegbarAn(kranById.get(id)!, iso)).map(id => serieByKranId.get(id)!);
+      if (verfuegbar.length === 0) { ohneKran[bi] += stunden; continue; }
+      const anteil = kranAnteil(verfuegbar.length);
+      for (const s of verfuegbar) s.bedarf[bi] += stunden * anteil;
     }
   }
-  return { buckets, serien };
+  return { buckets, serien, ohneKran };
 }
 
 /** Kräne eines Tasks: die in Tab Kalkulation (Spalte Kräne) zugewiesenen — gibt es nur einen Kran, gelten Tasks ohne Zuweisung
@@ -256,6 +261,50 @@ export function eingeplantesPersonalJeTag(tasks: Task[], kraene: Kran[], stammda
     }
     const kolonnen = summe(ausserhalbJeTag.get(iso));
     ergebnis.set(iso, { kranPersonal, kolonnen, total: kranPersonal + kolonnen, ohnePool: [...(ohnePoolJeTag.get(iso)?.values() ?? [])] });
+  }
+  return ergebnis;
+}
+
+/** Kranarbeit ohne Kran oder ohne Personal (Warnung in Tab Ressourcen → Kräne & Personal und Tab AVOR → Kranoptik):
+ *  - ohneKran: Tage mit Arbeit an kranpflichtigen Leistungspositionen, an denen keiner der Kräne des Tasks verfügbar ist (auch Task
+ *    ohne Kran bzw. noch kein Kran angelegt) — mit den betroffenen Tasks.
+ *  - ohnePersonal je Kran: Tage, an denen der Kran verfügbar ist und Arbeit an seinen Tasks hat, aber kein Personal unter ihm
+ *    erfasst ist (nur bei Kränen mit Personal-Zeilen) — dort plant "Auslastung optimieren" ohne Personalgrenze. */
+export interface KranLuecke { tage: string[]; taskIds: string[] }
+export function kranLuecken(tasks: Task[], kraene: Kran[], stammdaten: Stammdaten, kalender: Kalender): { ohneKran: KranLuecke; ohnePersonal: Map<string, KranLuecke> } {
+  const kranById = new Map(kraene.map(k => [k.id, k]));
+  const ohneKranTage = new Set<string>(), ohneKranTasks = new Set<string>();
+  const ohnePers = new Map<string, { tage: Set<string>; tasks: Set<string> }>();
+  for (const t of tasks) {
+    if (t.isGroup) continue;
+    const kranIds = kraeneDesTasks(t, kraene);
+    for (const [iso, liste] of aufwandJeTagUndPhaseFuerTask(t, stammdaten, kalender)) {
+      if (!liste.some(a => a.phase.kranpflichtig && a.personenstunden > 1e-9)) continue;
+      const verfuegbar = kranIds.filter(id => istKranVerfuegbarAn(kranById.get(id)!, iso));
+      if (verfuegbar.length === 0) { ohneKranTage.add(iso); ohneKranTasks.add(t.id); continue; }
+      for (const id of verfuegbar) {
+        const k = kranById.get(id)!;
+        if (!(k.personal ?? []).some(p => p.unternehmer.trim() && p.personen > 0) || kranPersonalTotalAmTag(k, iso) > 0) continue;
+        const e = ohnePers.get(id) ?? { tage: new Set<string>(), tasks: new Set<string>() };
+        e.tage.add(iso); e.tasks.add(t.id);
+        ohnePers.set(id, e);
+      }
+    }
+  }
+  return {
+    ohneKran: { tage: [...ohneKranTage].sort(), taskIds: [...ohneKranTasks] },
+    ohnePersonal: new Map([...ohnePers].map(([id, e]) => [id, { tage: [...e.tage].sort(), taskIds: [...e.tasks] }])),
+  };
+}
+
+/** Zusammenhängende Zeiträume aus sortierten Tagen (Lücken bis 7 Kalendertage, z.B. Wochenenden/Feiertage, überbrückt) —
+ *  für kurze Meldungen wie "13.05.–30.06.2027". */
+export function tageAlsZeitraeume(tage: string[]): { von: string; bis: string }[] {
+  const ergebnis: { von: string; bis: string }[] = [];
+  for (const iso of tage) {
+    const letzter = ergebnis[ergebnis.length - 1];
+    if (letzter && (new Date(iso).getTime() - new Date(letzter.bis).getTime()) / 86400000 <= 7) letzter.bis = iso;
+    else ergebnis.push({ von: iso, bis: iso });
   }
   return ergebnis;
 }
