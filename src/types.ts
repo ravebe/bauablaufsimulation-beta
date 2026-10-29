@@ -80,7 +80,8 @@ export interface Kran {
   name: string;
   verfuegbarVon?: string; // YYYY-MM-DD
   verfuegbarBis?: string; // YYYY-MM-DD
-  maxPersonen?: number; // Richtwert max. Personen, die dieser Kran gleichzeitig versorgt (alle Unternehmer, nur kranpflichtige Kürzel), fehlt = 13
+  /** @deprecated nicht mehr verwendet — die Höchstzahl unter dem Kran ist die Summe seines Personals (personal) */
+  maxPersonen?: number;
   personal?: KranPersonal[]; // Personal unter dem Kran je Zeitraum und Unternehmer (Tab Ressourcen → Kräne & Personal)
 }
 

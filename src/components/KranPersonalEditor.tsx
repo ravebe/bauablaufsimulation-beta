@@ -1,10 +1,10 @@
-// KranPersonalEditor.tsx — Tab Ressourcen → "Kräne & Personal": Kräne mit Verfügbarkeit (von/bis) und Richtwert Max. Personen,
-// darunter das Personal unter dem Kran je Unternehmer und Zeitraum. Grundlage für "Perfekte Auslastung" (Tab AVOR) und
-// "Auslastung optimieren" (Tab Bauteile): Personal desselben Unternehmers unter einem Kran ist ein Pool von Allroundern, alle
-// Unternehmer an kranpflichtigen Kürzeln zusammen höchstens Max. Personen.
+// KranPersonalEditor.tsx — Tab Ressourcen → "Kräne & Personal": Kräne mit Verfügbarkeit (von/bis), darunter das Personal unter
+// dem Kran je Unternehmer und Zeitraum. Grundlage für "Perfekte Auslastung" (Tab AVOR) und "Auslastung optimieren" (Tab Bauteile):
+// Personal desselben Unternehmers unter einem Kran ist ein Pool von Allroundern; die Summe aller Unternehmer ist die Höchstzahl
+// der Leute an kranpflichtigen Arbeiten dieses Krans pro Tag (Richtwert 13 nur als Hinweis).
 import type { SimProjekt, Kran, KranPersonal } from "../types";
 import { istGruppe } from "../types";
-import { neuerKran, kranAusTasksEntfernen, kraeneDesTasks, kranPersonalAmTag, kranMaxPersonen, STANDARD_MAX_PERSONEN_PRO_KRAN } from "./kranHelpers";
+import { neuerKran, kranAusTasksEntfernen, kraeneDesTasks, kranPersonalAmTag, RICHTWERT_PERSONEN_PRO_KRAN } from "./kranHelpers";
 
 interface Props { sim: SimProjekt; updateSim: (s: SimProjekt) => void; readOnly?: boolean; unternehmerListeId: string; bekannteUnternehmer: string[] }
 
@@ -38,14 +38,14 @@ export default function KranPersonalEditor({ sim, updateSim, readOnly, unternehm
   return (
     <div>
       <div style={{ fontSize: 10, color: "var(--tc-text-3)", marginBottom: 8, lineHeight: 1.5 }}>
-        Je Kran: Verfügbarkeit und Richtwert Max. Personen (alle Unternehmer an kranpflichtigen Kürzeln zusammen, leer = {STANDARD_MAX_PERSONEN_PRO_KRAN}).
-        Darunter das Personal je Unternehmer — Leute desselben Unternehmers sind Allrounder und verstärken jede seiner Leistungspositionen
-        an Tasks dieses Krans (Kran-Zuweisung in Tab Kalkulation). Von/bis leer = ganze Verfügbarkeit des Krans.
+        Je Kran die Verfügbarkeit und darunter das Personal je Unternehmer. Die Summe ist die Höchstzahl der Leute, die pro Tag unter
+        diesem Kran an kranpflichtigen Arbeiten arbeiten (beim Optimieren höchstens 1–2 mehr, wenn sonst Leute untätig wären). Leute
+        desselben Unternehmers sind Allrounder und besetzen jede seiner Leistungspositionen an Tasks dieses Krans (Kran-Zuweisung in
+        Tab Kalkulation, bei nur einem Kran automatisch). Von/bis leer = ganze Verfügbarkeit des Krans.
       </div>
       {kraene.length === 0 && <div style={{ fontSize: 11, color: "var(--tc-text-3)", marginBottom: 8 }}>Noch keine Kräne angelegt.</div>}
       {kraene.map(kran => {
         const { summe, tag } = maxSumme(kran);
-        const max = kranMaxPersonen(kran);
         const tasksAmKran = sim.tasks.filter((t, i) => !t.isGroup && !istGruppe(sim.tasks, i) && kraeneDesTasks(t, kraene).includes(kran.id)).length;
         return (
           <div key={kran.id} style={{ border: "1px solid var(--tc-border-light)", padding: "8px 10px", marginBottom: 8 }}>
@@ -58,13 +58,10 @@ export default function KranPersonalEditor({ sim, updateSim, readOnly, unternehm
               <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--tc-text-2)" }}>
                 bis <input type="date" disabled={readOnly} value={kran.verfuegbarBis ?? ""} onChange={e => kranAendern(kran.id, { verfuegbarBis: e.target.value || undefined })} style={feld} />
               </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--tc-text-2)" }}
-                title="Wie viele Personen dieser Kran gleichzeitig versorgen kann — alle Unternehmer an kranpflichtigen Kürzeln zusammen">
-                Max. Personen
-                <input type="number" className="no-spinner" disabled={readOnly} value={kran.maxPersonen ?? ""} placeholder={String(STANDARD_MAX_PERSONEN_PRO_KRAN)}
-                  onChange={e => kranAendern(kran.id, { maxPersonen: e.target.value === "" ? undefined : Number(e.target.value) })}
-                  style={{ ...feld, width: 45 }} />
-              </label>
+              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--tc-text-2)" }}
+                title="Summe des Personals aller Unternehmer (grösster Tageswert) — Höchstzahl der Leute unter diesem Kran pro Tag">
+                {summe} Pers. unter dem Kran
+              </span>
               <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}
                 title={kraene.length === 1 ? "Bei nur einem Kran gelten alle Tasks ohne Kran-Zuweisung (Tab Kalkulation → Kräne) automatisch als Tasks dieses Krans" : "Kran-Zuweisung in Tab Kalkulation → Spalte Kräne"}>
                 {tasksAmKran} Task{tasksAmKran === 1 ? "" : "s"}{kraene.length === 1 ? " (inkl. Tasks ohne Zuweisung)" : " zugewiesen"}</span>
@@ -104,9 +101,9 @@ export default function KranPersonalEditor({ sim, updateSim, readOnly, unternehm
                   + Unternehmer
                 </button>
               )}
-              {summe > max && (
+              {summe > RICHTWERT_PERSONEN_PRO_KRAN && (
                 <div style={{ fontSize: 10, color: "#b5750a", marginTop: 4 }}>
-                  ⚠ {summe} Personen{tag ? ` ab ${tag.split("-").reverse().join(".")}` : ""} — mehr als Max. Personen ({max}); es arbeiten höchstens {max} gleichzeitig unter dem Kran.
+                  ⚠ {summe} Personen{tag ? ` ab ${tag.split("-").reverse().join(".")}` : ""} — mehr als der Richtwert von {RICHTWERT_PERSONEN_PRO_KRAN} Personen, die ein Kran etwa versorgen kann.
                 </div>
               )}
             </div>

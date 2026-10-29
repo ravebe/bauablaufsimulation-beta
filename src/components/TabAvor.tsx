@@ -7,7 +7,7 @@ import { LEERER_KALENDER } from "./kalenderHelpers";
 import { LEERE_STAMMDATEN, hatKranpflichtigeRaten } from "./stammdatenHelpers";
 import { personalauslastung, kolonnenJeTag, tagesdauerJeTag, mengenProTag, optimaleTagesleistung } from "./avorHelpers";
 import type { TagWert } from "./avorHelpers";
-import { kranstundenProKranUndBucket, kranMaxPersonen, eingeplantesPersonalJeTag, hatKranPersonal } from "./kranHelpers";
+import { kranstundenProKranUndBucket, kranPersonalMaxImBereich, RICHTWERT_PERSONEN_PRO_KRAN, eingeplantesPersonalJeTag, hatKranPersonal } from "./kranHelpers";
 import { personenstundenProKranUndBucket, personalRichtwertJeBucket } from "./kapazitaetsCheckHelpers";
 import { dreiDZustandAufTagSetzen, tagVonDatum } from "./dreiDHeuteHelper";
 import type { ApiInstance } from "../hooks/useApi";
@@ -87,15 +87,15 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
   // sobald der über dem je Kran in "Kräne & Verfügbarkeit" hinterlegten Max-Personen-Wert liegt.
   const { buckets: personalKranBuckets, serien: personalKranSerien } = personenstundenProKranUndBucket(tasks, kraene, stammdaten, kalender, raster);
   // Personal-Ansicht der Kranoptik (Umschalter neben Kranstunden): Balken = gerundeter Personal-
-  // Richtwert je Kran und Zeitraster-Bucket, Kapazitätslinie = dessen fixer Max-Personen-Wert (anders
-  // als bei Kranstunden nicht zeitraum-abhängig, da Max. Personen eine statische Kran-Eigenschaft ist).
+  // Richtwert je Kran und Zeitraster-Bucket, Kapazitätslinie = Personal unter dem Kran in diesem Zeitraum (Tab Ressourcen →
+  // Kräne & Personal, grösster Tageswert; ohne erfasstes Personal der Richtwert 13).
   const personalBarSerien: KategorieSerie[] = personalKranSerien.map((s, i) => {
     const kran = kranById.get(s.kranId);
-    const maxPersonenDiesesKrans = kran ? kranMaxPersonen(kran) : 13;
+    const kapazitaet = personalKranBuckets.map(b => (kran ? kranPersonalMaxImBereich(kran, b.start, b.end) : 0) || RICHTWERT_PERSONEN_PRO_KRAN);
     return {
       key: s.kranId, label: s.kranName, color: FARBEN.kategorial[i % FARBEN.kategorial.length],
-      werte: personalKranBuckets.map((_, bi) => personalRichtwertJeBucket(s.personenstunden[bi], s.arbeitstageVerfuegbar[bi], stammdaten.arbeitszeitStdProTag, maxPersonenDiesesKrans).richtwert ?? 0),
-      kapazitaet: personalKranBuckets.map(() => maxPersonenDiesesKrans),
+      werte: personalKranBuckets.map((_, bi) => personalRichtwertJeBucket(s.personenstunden[bi], s.arbeitstageVerfuegbar[bi], stammdaten.arbeitszeitStdProTag, kapazitaet[bi]).richtwert ?? 0),
+      kapazitaet,
     };
   });
   const personalKranHatBedarf = personalKranSerien.some(s => s.personenstunden.some(v => v > 0));
@@ -185,7 +185,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
       erklaerung: `Arbeit des Tages in Personenstunden = Personen × ${fmtZahl(std)} h/Tag (Tab Ressourcen).\nEntspricht Menge × Leistungswert der an diesem Tag laufenden Tasks.`,
       wert: z => z.art === "linie" ? "" : fmtZahl(z.wert * std) },
     { titel: "Eingeplant [Pers.]",
-      erklaerung: "Gewerk: Kolonnen (Mindestbesetzung) der an diesem Tag aktiven Leistungspositionen aus Tab Ressourcen — jede Position zählt pro Tag nur einmal.\nTotal (= Linie Perfekte Auslastung): Personal unter den verfügbaren Kränen (Tab Ressourcen → Kräne & Personal, je Kran höchstens Max. Personen) + Kolonnen der Positionen, die nicht aus einem Kran-Pool besetzt werden (nicht kranpflichtig, Task ohne Kran). Ohne Kranpersonal: Summe der Kolonnen.",
+      erklaerung: "Gewerk: Min. Personen (Tab Ressourcen) der an diesem Tag aktiven Leistungspositionen aus Tab Ressourcen — jede Position zählt pro Tag nur einmal.\nTotal (= Linie Perfekte Auslastung): Personal unter den verfügbaren Kränen (Tab Ressourcen → Kräne & Personal, je Kran höchstens Max. Personen) + Kolonnen der Positionen, die nicht aus einem Kran-Pool besetzt werden (nicht kranpflichtig, Task ohne Kran). Ohne Kranpersonal: Summe der Kolonnen.",
       wert: (z, i) => {
         if (z.art === "serie") return fmtZahl(eingeplant(z, i));
         if (z.art !== "total") return "";
@@ -197,10 +197,10 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
         if (z.art !== "total" || !mitKranPersonal) return undefined;
         const e = eingeplantJeTag.get(personalSerien.tage[i]);
         if (!e) return undefined;
-        const zeilen = [`Eingeplant ${fmtZahl(e.total)} Pers. = ${fmtZahl(e.kranPersonal)} unter den Kränen (je Kran Personal + kranpflichtige Kolonnen ohne Pool, höchstens Max. Personen) + ${fmtZahl(e.kolonnen)} ohne Kran.`];
+        const zeilen = [`Eingeplant ${fmtZahl(e.total)} Pers. = ${fmtZahl(e.kranPersonal)} unter den Kränen (je Kran sein Personal laut Tab Ressourcen — Min. Personen kranpflichtiger Arbeiten ohne Pool zählen darin) + ${fmtZahl(e.kolonnen)} ohne Kran.`];
         if (e.ohnePool.length > 0) {
           zeilen.push("", "Nicht aus einem Kran-Pool besetzt:");
-          for (const o of e.ohnePool) zeilen.push(`• ${o.label}: Kolonne ${fmtZahl(o.kolonne)} — ${o.grund}${o.unterKran ? " (zählt zu Max. Personen des Krans)" : ""}`);
+          for (const o of e.ohnePool) zeilen.push(`• ${o.label}: Min. ${fmtZahl(o.kolonne)} Pers. — ${o.grund}${o.unterKran ? " (zählt zum Personal des Krans)" : ""}`);
         }
         return zeilen.join("\n");
       } },
@@ -227,13 +227,13 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
         ? "Kranstunden-Bedarf im Monat/in der Woche = Personenstunden der kranpflichtigen Kürzel ÷ Kolonne, summiert über die diesem Kran zugewiesenen Tasks (Tab Kalkulation → Kräne; bei mehreren Kränen gleichmässig aufgeteilt)."
         : "Durchschnittliche Personen pro Arbeitstag = Personenstunden der kranpflichtigen Kürzel dieses Krans im Monat/in der Woche ÷ verfügbare Arbeitstage ÷ Std./Tag, gerundet.",
       wert: (s: KategorieSerie, bi: number) => fmtZahl(s.werte[bi] ?? 0) },
-    { titel: kranMetrik === "stunden" ? "Kapazität [h]" : "Max. Personen",
+    { titel: kranMetrik === "stunden" ? "Kapazität [h]" : "Pers. unter Kran",
       erklaerung: kranMetrik === "stunden"
         ? "Verfügbare Kranzeit = Arbeitstage, an denen der Kran im Monat/in der Woche verfügbar ist (Tab Ressourcen → Kräne & Personal, von/bis), × Std./Tag."
-        : "Max. Personen des Krans (Tab Ressourcen → Kräne & Personal, Standard 13).",
+        : "Personal unter dem Kran im Monat/in der Woche (Tab Ressourcen → Kräne & Personal, grösster Tageswert; ohne Personal der Richtwert 13).",
       wert: (s: KategorieSerie, bi: number) => s.kapazitaet ? fmtZahl(s.kapazitaet[bi] ?? 0) : "" },
     { titel: "Auslastung",
-      erklaerung: kranMetrik === "stunden" ? "Bedarf ÷ Kapazität. Über 100 % = Engpass (Balken rot)." : "Personal Ø ÷ Max. Personen. Über 100 % = Engpass (Balken rot).",
+      erklaerung: kranMetrik === "stunden" ? "Bedarf ÷ Kapazität. Über 100 % = Engpass (Balken rot)." : "Personal Ø ÷ Personal unter dem Kran. Über 100 % = Engpass (Balken rot).",
       wert: (s: KategorieSerie, bi: number) => {
       const kap = s.kapazitaet?.[bi] ?? 0;
       return kap > 0 ? `${fmtZahl((s.werte[bi] ?? 0) / kap * 100)} %${(s.werte[bi] ?? 0) > kap ? " ← Engpass" : ""}` : "";
@@ -328,7 +328,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             {(["stunden", "personal"] as const).map(m => (
               <button key={m} onClick={() => setKranMetrik(m)}
-                title={m === "stunden" ? "Kranstunden-Bedarf vs. Verfügbarkeit" : "Durchschnittliche Personen pro Arbeitstag je Kran und Monat/Woche (kranpflichtige Gewerke) vs. dessen Max. Personen — nicht mit den Tageswerten der Personalauslastung vergleichbar"}
+                title={m === "stunden" ? "Kranstunden-Bedarf vs. Verfügbarkeit" : "Durchschnittliche Personen pro Arbeitstag je Kran und Monat/Woche (kranpflichtige Gewerke) vs. Personal unter dem Kran — nicht mit den Tageswerten der Personalauslastung vergleichbar"}
                 style={{ fontSize: 11, fontWeight: 600, padding: "3px 8px", cursor: "pointer",
                   border: `1px solid ${kranMetrik === m ? "var(--tc-blue)" : "var(--tc-border)"}`,
                   background: kranMetrik === m ? "var(--tc-blue-bg)" : "#fff", color: kranMetrik === m ? "var(--tc-blue)" : "var(--tc-text-2)" }}>

@@ -461,7 +461,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                         <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 2, whiteSpace: "normal", maxWidth: 320 }}>
                           {zeitplanStatus.bereit
                             ? (mitKranPersonal
-                              ? "Plant die Tasks so, dass das Personal unter jedem Kran (Tab Ressourcen → Kräne & Personal) möglichst voll arbeitet — Leute desselben Unternehmers als Allrounder, höchstens Max. Personen je Kran. Arbeitsablauf je Kürzel, Vorgänger und Wartetage bleiben massgebend. Mit Vorschau."
+                              ? "Plant die Tasks so, dass das Personal unter jedem Kran (Tab Ressourcen → Kräne & Personal) möglichst voll arbeitet — Leute desselben Unternehmers als Allrounder, höchstens das Personal unter dem Kran (1–2 mehr nur, wenn sonst Leute untätig wären). Arbeitsablauf je Kürzel, Vorgänger und Wartetage bleiben massgebend. Mit Vorschau."
                               : "Jeder Task bekommt seine berechnete Dauer; jede Kolonne aus Tab Ressourcen arbeitet voll und nie an zwei Tasks gleichzeitig — Tasks mit derselben Leistungsposition laufen nacheinander. Vorgänger und Wartetage bleiben massgebend. Mit Vorschau.")
                             : "Klicken für Details, was dafür noch fehlt."}
                         </div>
@@ -540,7 +540,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
               {mitKranPersonal ? (<>
                 Das Personal unter jedem Kran (Tab Ressourcen → Kräne & Personal) arbeitet möglichst voll: Leute desselben Unternehmers
                 sind Allrounder und besetzen jede seiner kranpflichtigen Leistungspositionen, freie Leute verstärken laufende Arbeiten
-                (höchstens doppelte Kolonne) — so werden Tasks kürzer und mehr laufen parallel. Je Kran höchstens Max. Personen.
+                (höchstens doppelte Min. Personen) — so werden Tasks kürzer und mehr laufen parallel. Je Kran arbeiten höchstens so viele Leute wie sein Personal, 1–2 mehr nur, wenn sonst Leute untätig wären.
                 Andere Positionen arbeiten mit ihrer Kolonne, nie an zwei Tasks gleichzeitig. Arbeitsablauf je Kürzel, Vorgänger und
                 Wartetage bleiben massgebend; Tasks ohne Vorgänger beginnen frühestens an ihrem bisherigen Start. Tasks ohne Mengen,
                 Gruppen und Meilensteine bleiben unverändert.

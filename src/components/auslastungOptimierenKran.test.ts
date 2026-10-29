@@ -17,8 +17,8 @@ const stammdaten: Stammdaten = {
     { key: "bew", label: "Bewehrung", einheit: "t", raten: [{ kuerzel: "W", bezeichnung: "Wand", leistungswertHProEinheit: 1, anzahlPersonen: 2, chfProEinheit: null, unternehmer: "Eisen GmbH", kranpflichtig: true }] },
   ],
 } as Stammdaten;
-const kran = (personal: { unternehmer: string; personen: number }[], maxPersonen?: number): Kran[] =>
-  [{ id: "k1", name: "Kran 1", maxPersonen, personal: personal.map((p, i) => ({ id: String(i), ...p })) }];
+const kran = (personal: { unternehmer: string; personen: number }[]): Kran[] =>
+  [{ id: "k1", name: "Kran 1", personal: personal.map((p, i) => ({ id: String(i), ...p })) }];
 const termine = (ts: Task[]) => ts.map(t => `${t.id} ${t.start}–${t.end}`);
 
 describe("Auslastung optimieren mit Kranpersonal", () => {
@@ -39,10 +39,9 @@ describe("Auslastung optimieren mit Kranpersonal", () => {
       .toEqual(["A 2026-11-09–2026-11-10"]);
   });
 
-  it("Max. Personen je Kran begrenzt alle Unternehmer zusammen", () => {
-    // Pool Bau AG 8, aber Max. Personen 4 → nur eine Schalungskolonne gleichzeitig
+  it("Personal unter dem Kran ist die Höchstzahl: 4 Leute → nur eine Schalung (Min. 4) gleichzeitig", () => {
     const ts = [task("A", { mengen: { sch: 32 } }), task("B", { mengen: { sch: 32 } })];
-    expect(termine(optimiereAuslastung(ts, stammdaten, KAL, "tage", kran([{ unternehmer: "Bau AG", personen: 8 }], 4)))).toEqual([
+    expect(termine(optimiereAuslastung(ts, stammdaten, KAL, "tage", kran([{ unternehmer: "Bau AG", personen: 4 }])))).toEqual([
       "A 2026-11-09–2026-11-09", "B 2026-11-10–2026-11-10",
     ]);
   });
@@ -121,16 +120,23 @@ describe("Auslastung optimieren mit Kranpersonal", () => {
   it("Eingeplant: kranpflichtige Kolonnen ohne Pool zählen innerhalb von Max. Personen, mit Grund", () => {
     // Bau AG 6 Leute, Max. 6; Bewehrung (Eisen GmbH, ohne Personal unter dem Kran, Kolonne 2) am selben Tag
     const ts = [task("A", { start: "2026-11-09", end: "2026-11-09", mengen: { sch: 16, bew: 8 } })];
-    const e = eingeplantesPersonalJeTag(ts, kran([{ unternehmer: "Bau AG", personen: 6 }], 6), stammdaten, KAL, ["2026-11-09"]).get("2026-11-09")!;
-    expect(e.kranPersonal).toBe(6); // 6 + 2 Kolonne, aber höchstens Max. 6
+    const e = eingeplantesPersonalJeTag(ts, kran([{ unternehmer: "Bau AG", personen: 6 }]), stammdaten, KAL, ["2026-11-09"]).get("2026-11-09")!;
+    expect(e.kranPersonal).toBe(6); // Bewehrung (Min. 2) ohne Pool zählt innerhalb der 6 unter dem Kran
     expect(e.kolonnen).toBe(0);
     expect(e.total).toBe(6);
     expect(e.ohnePool.map(o => o.grund)).toEqual(["Eisen GmbH hat kein Personal unter dem Kran"]);
     // zwei Kräne, Task ohne Zuweisung → Kolonnen ausserhalb, Grund "Task ohne Kran"
-    const zwei = [...kran([{ unternehmer: "Bau AG", personen: 6 }], 6), { id: "k2", name: "Kran 2" }];
+    const zwei = [...kran([{ unternehmer: "Bau AG", personen: 6 }]), { id: "k2", name: "Kran 2" }];
     const ohne = eingeplantesPersonalJeTag([{ ...ts[0], kraene: undefined }], zwei, stammdaten, KAL, ["2026-11-09"]).get("2026-11-09")!;
     expect(ohne.kranPersonal).toBe(6);
     expect(ohne.kolonnen).toBe(6); // Schalung 4 + Bewehrung 2 ausserhalb
     expect(ohne.ohnePool.every(o => o.grund.startsWith("Task ohne Kran"))).toBe(true);
+  });
+
+  it("mehr Personal unter dem Kran → kürzeres Bauprogramm (6 → 13)", () => {
+    const ts = ["A", "B", "C", "D", "E", "F"].map(id => task(id, { mengen: { sch: 48 } }));
+    const ende = (k: Kran[]) => optimiereAuslastung(ts, stammdaten, KAL, "tage", k).reduce((m, t) => (t.end > m ? t.end : m), "");
+    const mit6 = ende(kran([{ unternehmer: "Bau AG", personen: 6 }])), mit13 = ende(kran([{ unternehmer: "Bau AG", personen: 13 }]));
+    expect(mit13 < mit6).toBe(true);
   });
 });

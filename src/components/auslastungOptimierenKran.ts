@@ -1,11 +1,12 @@
 // auslastungOptimierenKran.ts — "Auslastung optimieren" mit Kranpersonal (Tab Ressourcen → Kräne & Personal): plant die Tasks so,
 // dass das Personal unter jedem Kran möglichst voll arbeitet und das Bauprogramm dadurch möglichst kurz wird.
 //  - Ressourcen je Arbeitstag: je verfügbarem Kran ein Pool je Unternehmer (Personal laut Kräne & Personal) und die Obergrenze
-//    Max. Personen für alle Leute an kranpflichtigen Positionen zusammen. Leute desselben Unternehmers sind Allrounder: sie
+//    Summe dieses Personals als Höchstzahl für alle Leute an kranpflichtigen Positionen (höchstens MAX_UEBERZUG mehr, wenn
+//    sonst Leute untätig wären). Leute desselben Unternehmers sind Allrounder: sie
 //    besetzen jede Leistungsposition dieses Unternehmers (Rate.unternehmer) an Tasks dieses Krans (Task.kraene; bei nur einem Kran
 //    gelten Tasks ohne Zuweisung als seine, siehe kraeneDesTasks).
 //  - Positionen ohne Kran-Pool (nicht kranpflichtig, Task ohne Kran, Unternehmer ohne Personal unter dem Kran) arbeiten wie bisher
-//    mit ihrer Kolonne, eine Kolonne nie an zwei Tasks gleichzeitig; kranpflichtige zählen trotzdem zu Max. Personen des Krans.
+//    mit ihrer Kolonne, eine Kolonne nie an zwei Tasks gleichzeitig; kranpflichtige zählen trotzdem zum Personal des Krans.
 //  - Je Task gilt der Arbeitsablauf je Kürzel (schritteFuerTask): Schritte nacheinander, Phasen eines Schritts gleichzeitig.
 //    Eine Phase arbeitet mit mindestens ihrer Kolonne (bzw. dem ganzen Pool, wenn er kleiner ist) und wird mit freien Leuten
 //    desselben Unternehmers bis auf MAX_VERSTAERKUNG × Kolonne verstärkt — sie wird dadurch kürzer.
@@ -25,10 +26,13 @@ import {
   startZeitpunkt, endZeitpunkt, naechsteArbeitszeit, endeAusArbeitsMinuten, folgeStartZeitpunkt, arbeitsMinutenZwischen,
   vergleicheZeitpunkte, zeitFelder, rasteUhrzeit, MIN_PRO_ARBEITSTAG, ARBEITSBEGINN_MIN, schrittMinuten,
 } from "./zeitHelpers";
-import { kranPersonalAmTag, kranMaxPersonen, istKranVerfuegbarAn, kraeneDesTasks } from "./kranHelpers";
+import { kranPersonalAmTag, kranPersonalTotalAmTag, istKranVerfuegbarAn, kraeneDesTasks } from "./kranHelpers";
 
 /** Eine Phase bekommt höchstens so viele Leute: Kolonne × MAX_VERSTAERKUNG (mehr Leute an einem Bauteil behindern sich). */
 export const MAX_VERSTAERKUNG = 2;
+/** So viele Leute darf ein Kran in einem Zeitschritt höchstens über seinem Personal haben — nur wenn sonst Leute untätig wären,
+ *  weil die nächste Arbeit mehr Min. Personen braucht als frei sind (z.B. 2 frei, Min. 4 → 2 zusätzlich). */
+export const MAX_UEBERZUG = 2;
 const EPS = 1e-6;
 
 /** Welche Tasks zuerst Personal bekommen, wenn mehrere gleichzeitig möglich sind: "kritischerPfad" = längste Restkette zuerst
@@ -193,19 +197,35 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
 
     // Ressourcen dieses Zeitschritts
     const iso = tagIso(Math.floor(t0 / MIN_PRO_ARBEITSTAG + EPS));
+    // Personal unter dem Kran = Summe seiner Unternehmer an diesem Tag (Tab Ressourcen → Kräne & Personal) — zugleich die
+    // Obergrenze für alle Leute an kranpflichtigen Arbeiten dieses Krans. Kran ohne Personal an diesem Tag: keine Grenze.
     const kranFrei = new Map<string, number>();
     const pool = new Map<string, number>(); // "kranId|Unternehmer" → freie Leute
     const poolGroesse = new Map<string, number>();
+    const kranTotal = new Map<string, number>();
+    const ueberzug = new Map<string, number>(); // Leute über dem Personal des Krans (höchstens MAX_UEBERZUG)
     for (const k of kraene) {
       if (!istKranVerfuegbarAn(k, iso)) continue;
-      kranFrei.set(k.id, kranMaxPersonen(k));
+      const total = kranPersonalTotalAmTag(k, iso);
+      kranTotal.set(k.id, total > 0 ? total : Infinity);
+      kranFrei.set(k.id, total > 0 ? total : Infinity);
       for (const [u, n] of kranPersonalAmTag(k, iso)) { pool.set(`${k.id}|${u}`, n); poolGroesse.set(`${k.id}|${u}`, n); }
     }
     const kolonneBelegt = new Set<string>();
     const vergabe: { z: TaskZ; p: PhaseZ; leute: number; poolKey: string | null; kranId: string | null }[] = [];
+    const besetzt = new Set<PhaseZ>();
 
-    /** Mindestbesetzung einer Phase vergeben (0 = kann in diesem Zeitschritt nicht arbeiten). */
-    const besetzen = (z: TaskZ, p: PhaseZ) => {
+    /** Leute verfügbar? Mit Überzug nur, wenn beim Kran noch Leute frei sind (sonst untätig) und höchstens MAX_UEBERZUG insgesamt. */
+    const reicht = (frei: number, noetig: number, kid: string, mitUeberzug: boolean) =>
+      frei >= noetig || (mitUeberzug && frei > 0 && noetig - frei <= MAX_UEBERZUG - (ueberzug.get(kid) ?? 0));
+    const abziehen = (kid: string, n: number) => {
+      const frei = kranFrei.get(kid)!;
+      if (n > frei && isFinite(frei)) ueberzug.set(kid, (ueberzug.get(kid) ?? 0) + n - Math.max(0, frei));
+      kranFrei.set(kid, frei - n);
+    };
+
+    /** Mindestbesetzung einer Phase vergeben (nichts vergeben = kann in diesem Zeitschritt nicht arbeiten). */
+    const besetzen = (z: TaskZ, p: PhaseZ, mitUeberzug: boolean) => {
       const braucht = Math.max(1, Math.ceil(p.rest / SLOT - EPS));
       const kranIds = p.kranpflichtig ? kraeneDesTasks(z.t, kraene) : [];
       // Kran der Phase: verfügbar heute? Sonst warten, solange er später noch verfügbar wird
@@ -216,28 +236,32 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
       for (const kid of kraeneHeute) {
         const key = `${kid}|${p.unternehmer}`;
         if (!p.unternehmer || !poolGroesse.has(key)) continue;
-        const mindest = Math.min(p.kolonne, braucht, poolGroesse.get(key)!, kranMaxPersonen(kranById.get(kid)!));
-        if ((pool.get(key) ?? 0) >= mindest && (kranFrei.get(kid) ?? 0) >= mindest) {
+        const mindest = Math.min(p.kolonne, braucht, poolGroesse.get(key)!);
+        const frei = Math.min(pool.get(key) ?? 0, kranFrei.get(kid) ?? 0);
+        if (reicht(frei, mindest, kid, mitUeberzug)) {
           pool.set(key, pool.get(key)! - mindest);
-          kranFrei.set(kid, kranFrei.get(kid)! - mindest);
+          abziehen(kid, mindest);
           vergabe.push({ z, p, leute: mindest, poolKey: key, kranId: kid });
+          besetzt.add(p);
         }
         return; // Unternehmer hat Personal unter diesem Kran → nur aus dem Pool
       }
-      // 2) Kolonne (eine Kolonne je Leistungsposition), kranpflichtige zählen zu Max. Personen eines Krans des Tasks
+      // 2) Min. Personen ohne Pool (eine Kolonne je Leistungsposition), kranpflichtige zählen zum Personal eines Krans des Tasks
       if (kolonneBelegt.has(p.position)) return;
       let kranId: string | null = null;
       if (kraeneHeute.length > 0) {
-        kranId = kraeneHeute.find(kid => (kranFrei.get(kid) ?? 0) >= Math.min(p.kolonne, kranMaxPersonen(kranById.get(kid)!))) ?? null;
+        kranId = kraeneHeute.find(kid => reicht(kranFrei.get(kid) ?? 0, Math.min(p.kolonne, kranTotal.get(kid)!), kid, mitUeberzug)) ?? null;
         if (!kranId) return;
-        kranFrei.set(kranId, kranFrei.get(kranId)! - Math.min(p.kolonne, kranFrei.get(kranId)!));
+        abziehen(kranId, Math.min(p.kolonne, kranTotal.get(kranId)!));
       }
       kolonneBelegt.add(p.position);
       vergabe.push({ z, p, leute: p.kolonne, poolKey: null, kranId });
+      besetzt.add(p);
     };
 
-    for (const z of [...laufend, ...bereit]) {
-      for (const p of z.schritte[z.schritt]) if (p.rest > EPS) besetzen(z, p);
+    const kandidaten = [...laufend, ...bereit];
+    for (const z of kandidaten) {
+      for (const p of z.schritte[z.schritt]) if (p.rest > EPS) besetzen(z, p, false);
     }
     // Verstärkung: übriges Personal des Pools auf laufende Phasen desselben Unternehmers/Krans (grösster Rest zuerst)
     for (const v of [...vergabe].filter(v => v.poolKey).sort((a, b) => b.p.rest - a.p.rest)) {
@@ -248,6 +272,10 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
         pool.set(v.poolKey!, pool.get(v.poolKey!)! - extra);
         kranFrei.set(v.kranId!, kranFrei.get(v.kranId!)! - extra);
       }
+    }
+    // Übrige Leute, die nirgends mehr verstärken können: nächste Arbeit trotzdem starten, wenn ihr höchstens MAX_UEBERZUG fehlen
+    for (const z of kandidaten) {
+      for (const p of z.schritte[z.schritt]) if (p.rest > EPS && !besetzt.has(p)) besetzen(z, p, true);
     }
 
     // Arbeit leisten

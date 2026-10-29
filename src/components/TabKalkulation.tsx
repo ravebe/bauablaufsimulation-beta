@@ -442,7 +442,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   }
 
   // Bauablauf aus "Auslastung optimieren" und seither unverändert → die optimierte Dauer gilt als berechnet (Verstärkung durch
-  // freies Personal, Wartezeiten, Raster); die Rechnung mit den Kolonnen allein steht im Tooltip
+  // freies Personal, Wartezeiten, Raster); die Rechnung nur mit Min. Personen steht im Tooltip
   const optimiert = !!sim.optimiertStand && sim.optimiertStand === terminSignatur(sim.tasks);
   const zeilen: Zeile[] = sim.tasks.map((t, i) => {
     if (t.isGroup || istGruppe(sim.tasks, i) || t.meilenstein) return null; // Meilensteine: Dauer 0, nichts zu kalkulieren
@@ -760,7 +760,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
           const o = z.optimiert;
           return (
             <span style={{ fontSize: 12, fontWeight: 600, color: "#2e8b57", paddingTop: 3, whiteSpace: "nowrap", cursor: "help" }}
-              title={`Aus «Auslastung optimieren»: ${fmtZahl(z.geplant)} d mit Ø ${fmtZahl(o.personen)} Pers.\nMit den Kolonnen allein (Ø ${fmtZahl(o.personenKolonnen)} Pers.) wären es ${fmtZahl(o.kolonnenDauer)} d.\nKürzer, wenn freie Leute desselben Unternehmers verstärken; länger bei Wartezeiten zwischen den Schritten oder durch das Raster der Zeiteinheit.\nSobald Termine geändert werden, gilt wieder die Rechnung mit den Kolonnen (bearbeitbar).`}>
+              title={`Aus «Auslastung optimieren»: ${fmtZahl(z.geplant)} d mit Ø ${fmtZahl(o.personen)} Pers.\nNur mit Min. Personen (Ø ${fmtZahl(o.personenKolonnen)} Pers.) wären es ${fmtZahl(o.kolonnenDauer)} d.\nKürzer, wenn freie Leute desselben Unternehmers verstärken; länger bei Wartezeiten zwischen den Schritten oder durch das Raster der Zeiteinheit.\nSobald Termine geändert werden, gilt wieder die Rechnung mit Min. Personen (bearbeitbar).`}>
               {dauerText(z.berechnet)} ⚡
             </span>
           );
@@ -896,7 +896,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
           </span>
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
             {optimiert && (
-              <span title="Die Termine stammen aus Tab Bauteile → Werkzeuge → «Auslastung optimieren» und wurden seither nicht geändert. Berechnet (⚡) zeigt darum die optimierte Dauer; die Rechnung mit den Kolonnen allein steht im Tooltip der jeweiligen Zelle."
+              <span title="Die Termine stammen aus Tab Bauteile → Werkzeuge → «Auslastung optimieren» und wurden seither nicht geändert. Berechnet (⚡) zeigt darum die optimierte Dauer; die Rechnung nur mit Min. Personen steht im Tooltip der jeweiligen Zelle."
                 style={{ fontSize: 11, color: "#2e8b57", whiteSpace: "nowrap", cursor: "help" }}>⚡ Termine aus Auslastung optimieren</span>
             )}
             {anzahlZeitplanAbweichend > 0 && (

@@ -91,11 +91,9 @@ export function kranVerfuegbareArbeitstage(kran: Kran, bucket: { start: string; 
   return arbeitstageInBereich(start, end, kalender);
 }
 
-/** Richtwert max. Personen eines Krans (alle Unternehmer an kranpflichtigen Kürzeln zusammen), Standard 13. */
-export const STANDARD_MAX_PERSONEN_PRO_KRAN = 13;
-export function kranMaxPersonen(kran: Kran): number {
-  return kran.maxPersonen != null && kran.maxPersonen > 0 ? kran.maxPersonen : STANDARD_MAX_PERSONEN_PRO_KRAN;
-}
+/** Richtwert: so viele Personen kann ein Kran etwa versorgen — nur als Hinweis in Tab Ressourcen, keine Grenze in der Rechnung
+ *  (die Grenze ist das erfasste Personal unter dem Kran, siehe kranPersonalTotalAmTag). */
+export const RICHTWERT_PERSONEN_PRO_KRAN = 13;
 
 /** Personal je Unternehmer unter dem Kran an diesem Tag (Tab Ressourcen → Kräne & Personal) — leer, wenn der Kran nicht
  *  verfügbar ist. Mehrere Zeilen desselben Unternehmers, die sich überschneiden, addieren sich. */
@@ -111,11 +109,21 @@ export function kranPersonalAmTag(kran: Kran, iso: string): Map<string, number> 
   return jeUnternehmer;
 }
 
-/** Eingeplantes Personal unter dem Kran an diesem Tag: Summe der Unternehmer, höchstens Max. Personen des Krans. */
+/** Personal unter dem Kran an diesem Tag = Summe seiner Unternehmer (0, wenn nicht verfügbar) — zugleich die Höchstzahl der
+ *  Leute an kranpflichtigen Arbeiten dieses Krans. */
 export function kranPersonalTotalAmTag(kran: Kran, iso: string): number {
   let summe = 0;
   for (const v of kranPersonalAmTag(kran, iso).values()) summe += v;
-  return Math.min(summe, kranMaxPersonen(kran));
+  return summe;
+}
+
+/** Grösstes Tagespersonal unter dem Kran in einem Zeitraum (Kalendertage, z.B. Monat/Woche der Kranoptik). */
+export function kranPersonalMaxImBereich(kran: Kran, start: string, end: string): number {
+  let max = 0;
+  const s = parseDateUniversal(start), e = parseDateUniversal(end);
+  if (!s || !e) return 0;
+  for (const cur = new Date(s.getTime()); cur.getTime() <= e.getTime(); cur.setDate(cur.getDate() + 1)) max = Math.max(max, kranPersonalTotalAmTag(kran, toIso(cur)));
+  return max;
 }
 
 /** Neuen Kran mit fortlaufendem Namen ("Kran 1", "Kran 2", …) anlegen. */
@@ -194,7 +202,7 @@ export interface EingeplantTag { kranPersonal: number; kolonnen: number; total: 
 /** Eingeplantes Personal je Tag (Linie "Perfekte Auslastung" und Total "Eingeplant" in Tab AVOR):
  *  - Kranpersonal: je an diesem Tag verfügbaren Kran das Personal seiner Unternehmer (Tab Ressourcen → Kräne & Personal) plus die
  *    Kolonnen kranpflichtiger Positionen an Tasks dieses Krans, die nicht aus seinem Pool kommen (Unternehmer ohne Personal unter
- *    dem Kran) — zusammen höchstens Max. Personen, wie in "Auslastung optimieren". Auch an Tagen ohne Arbeit, damit nicht
+ *    dem Kran) — zusammen höchstens das Personal des Krans, wie in "Auslastung optimieren". Auch an Tagen ohne Arbeit, damit nicht
  *    ausgelastetes Personal sichtbar wird.
  *  - Kolonnen ohne Kran: nicht kranpflichtige Positionen und Tasks ohne Kran (bei nur einem Kran gelten alle Tasks als seine) —
  *    ihre Kolonne aus Tab Ressourcen, je Position und Tag einmal.
@@ -242,9 +250,9 @@ export function eingeplantesPersonalJeTag(tasks: Task[], kraene: Kran[], stammda
     let kranPersonal = 0;
     if (istArbeitstag(iso, kalender)) for (const k of kraene) {
       if (!istKranVerfuegbarAn(k, iso)) continue;
-      let pool = 0;
-      for (const v of kranPersonalAmTag(k, iso).values()) pool += v;
-      kranPersonal += Math.min(kranMaxPersonen(k), pool + summe(unterKranJeTag.get(iso)?.get(k.id)));
+      // Personal unter dem Kran ist die Grenze; Min. Personen ohne Pool an seinen Tasks zählen darin (ohne Personal: keine Grenze)
+      const pool = kranPersonalTotalAmTag(k, iso);
+      kranPersonal += pool > 0 ? pool : summe(unterKranJeTag.get(iso)?.get(k.id));
     }
     const kolonnen = summe(ausserhalbJeTag.get(iso));
     ergebnis.set(iso, { kranPersonal, kolonnen, total: kranPersonal + kolonnen, ohnePool: [...(ohnePoolJeTag.get(iso)?.values() ?? [])] });

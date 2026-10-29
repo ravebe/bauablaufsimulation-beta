@@ -1,6 +1,6 @@
 // kapazitaetsCheckHelpers.ts — Kran-Personal-Bilanz für die Kranoptik (Tab AVOR, Ansicht "Personal"): je Kran und Zeitraster-Bucket
 // die Personenstunden der kranpflichtigen Gewerke an den ihm zugewiesenen Tasks (Spalte "Kräne" in Tab Kalkulation, Task.kraene;
-// ein Task mit mehreren Kränen zählt bei jedem anteilig, kranAnteil 0.5/0.33 …) und daraus ein Personal-Richtwert gegen Max. Personen.
+// ein Task mit mehreren Kränen zählt bei jedem anteilig, kranAnteil 0.5/0.33 …) und daraus ein Personal-Richtwert gegen das Personal unter dem Kran.
 import type { Task, Kran, Zeitraster } from "../types";
 import type { Kalender } from "./kalenderHelpers";
 import type { Stammdaten } from "./stammdatenHelpers";
