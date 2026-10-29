@@ -33,8 +33,8 @@ const NEUE_RATE: Rate = { kuerzel: "", bezeichnung: "", leistungswertHProEinheit
 // dieser Zeile, sondern im aufklappbaren Formel-Bereich, siehe weiter unten.
 const RATEN_SPALTEN = ["kuerzel", "bezeichnung", "lw", "personen", "unternehmer", "chf"] as const;
 type RatenSpalte = typeof RATEN_SPALTEN[number];
-const RATEN_SPALTEN_LABEL: Record<RatenSpalte, string> = { kuerzel: "Kürzel", bezeichnung: "Bezeichnung", lw: "LW [h/Einh.]", personen: "Min. Personen", unternehmer: "Unternehmer", chf: "Einheitspreis [CHF/Einh.]" };
-const RATEN_COL_DEFAULT: Record<RatenSpalte, number> = { kuerzel: 60, bezeichnung: 220, lw: 80, personen: 60, unternehmer: 120, chf: 70 };
+const RATEN_SPALTEN_LABEL: Record<RatenSpalte, string> = { kuerzel: "Leistungsposition", bezeichnung: "Bezeichnung", lw: "LW [h/Einh.]", personen: "Min. Personen", unternehmer: "Unternehmer", chf: "Einheitspreis [CHF/Einh.]" };
+const RATEN_COL_DEFAULT: Record<RatenSpalte, number> = { kuerzel: 110, bezeichnung: 220, lw: 80, personen: 60, unternehmer: 120, chf: 70 };
 const UNTERNEHMER_LISTE_ID = "tc-unternehmer-liste";
 const AKTION_BREITE = 32; // ƒx-Button
 const KRAN_BREITE = 40; // kranpflichtig-Checkbox je Kürzel
@@ -206,7 +206,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
       `Einheit wird von "${alteEinheit}" auf "${neueEinheit}" geändert.\n\n` +
       `Leistungswert und CHF/Einheit sind noch auf "${alteEinheit}" kalibriert — ohne Anpassung ` +
       `würden Tage/Kosten für diese Kategorie um Faktor ${Math.round((1 / faktor) * 1000) / 1000} verzerrt.\n\n` +
-      `LW und CHF/Einheit aller Kürzel dieser Kategorie automatisch umrechnen (× ${faktor})?`
+      `LW und CHF/Einheit aller Leistungspositionen dieser Kategorie automatisch umrechnen (× ${faktor})?`
     )) {
       speichern({
         ...stammdaten,
@@ -410,8 +410,8 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
           title: "Berechnet die Mengen aus den Formeln für alle Bauteile je Task (wie in Tab Kalkulation) — manuell überschriebene Werte bleiben unangetastet" },
       ] }] : []),
       ...(stammdaten.gewerke.length > 0 ? [{ titel: "Export", eintraege: [
-        { label: "JSON", onClick: stammdatenExportieren, title: "Alle Kategorien/Kürzel/Leistungswerte als JSON-Datei — z.B. für ein anderes Trimble-Connect-Projekt" },
-        { label: "CSV", onClick: stammdatenExportierenCsv, title: "Raten (Kürzel/LW/Personen/CHF/Formel) als CSV — in Excel bearbeitbar, danach wieder importierbar" },
+        { label: "JSON", onClick: stammdatenExportieren, title: "Alle Kategorien/Leistungspositionen/Leistungswerte als JSON-Datei — z.B. für ein anderes Trimble-Connect-Projekt" },
+        { label: "CSV", onClick: stammdatenExportierenCsv, title: "Raten (Leistungsposition/LW/Personen/CHF/Formel) als CSV — in Excel bearbeitbar, danach wieder importierbar" },
       ] }] : []),
       ...(!readOnly ? [
         { titel: "Import", eintraege: [
@@ -420,7 +420,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
         ] },
         { titel: "Kategorie hinzufügen", leerText: "Alle Kategorien sind geladen",
           eintraege: GEWERKE_KATALOGE.filter(k => !katalogVollstaendigGeladen(k)).map(k => ({ label: k.label, onClick: () => katalogHinzufuegen(k.key),
-            title: "Legt nur Gewerke/Kürzel/Einheiten an — Werte selbst befüllen; Kategorien lassen sich danach frei umbenennen" })) },
+            title: "Legt nur Gewerke/Leistungspositionen/Einheiten an — Werte selbst befüllen; Kategorien lassen sich danach frei umbenennen" })) },
       ] : []),
     ]} />
   );
@@ -441,9 +441,9 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
 
       {stammdaten.gewerke.length > 0 && (
         <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-          <StatTile label="Elemente ohne Leistungswert" title={"Kürzel in den Stammdaten, bei denen kein Leistungswert (LW h/Einh.) eingetragen ist — für sie gibt es keine berechnete Dauer, kein Personal und keine Lohnkosten. Welche es sind, steht unter den Kacheln."} wert={String(kuerzelOhneLw.length)} status={kuerzelOhneLw.length > 0 ? "warning" : "good"} />
-          <StatTile label="Elemente ohne Stammdaten" title={"Kürzel, die in Tasks (Tab Kalkulation) verwendet werden, aber in keiner Kategorie hier angelegt sind — diese Tasks lassen sich nicht berechnen. Welche es sind, steht unter den Kacheln."} wert={String(kuerzelOhneRate.length)} status={kuerzelOhneRate.length > 0 ? "warning" : "good"} />
-          <StatTile label="Unbenutzte Elemente" title={"Kürzel, die hier angelegt sind, aber in keinem Task der aktiven Simulation vorkommen — kein Fehler, nur ein Hinweis (z.B. Vorlage-Kürzel)."} wert={String(kuerzelUnbenutzt.length)} />
+          <StatTile label="Elemente ohne Leistungswert" title={"Leistungspositionen in den Stammdaten, bei denen kein Leistungswert (LW h/Einh.) eingetragen ist — für sie gibt es keine berechnete Dauer, kein Personal und keine Lohnkosten. Welche es sind, steht unter den Kacheln."} wert={String(kuerzelOhneLw.length)} status={kuerzelOhneLw.length > 0 ? "warning" : "good"} />
+          <StatTile label="Elemente ohne Stammdaten" title={"Leistungspositionen, die in Tasks (Tab Kalkulation) verwendet werden, aber in keiner Kategorie hier angelegt sind — diese Tasks lassen sich nicht berechnen. Welche es sind, steht unter den Kacheln."} wert={String(kuerzelOhneRate.length)} status={kuerzelOhneRate.length > 0 ? "warning" : "good"} />
+          <StatTile label="Unbenutzte Elemente" title={"Leistungspositionen, die hier angelegt sind, aber in keinem Task der aktiven Simulation vorkommen — kein Fehler, nur ein Hinweis (z.B. Vorlage-Leistungspositionen)."} wert={String(kuerzelUnbenutzt.length)} />
         </div>
       )}
 
@@ -504,7 +504,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                     title={
                       gewerkProblem
                         ? "Mindestens ein Task in dieser Kategorie hat keine oder eine fehlerhafte Menge — siehe Tab Kalkulation"
-                        : `${gewerkTaskAnzahl} Task${gewerkTaskAnzahl === 1 ? "" : "s"} mit Kürzel aus dieser Kategorie`
+                        : `${gewerkTaskAnzahl} Task${gewerkTaskAnzahl === 1 ? "" : "s"} mit Leistungsposition aus dieser Kategorie`
                     }>
                     {fmtZahl(gewerkSumme)}
                   </span>
@@ -533,8 +533,8 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                 </div>
               ))}
               <span />
-              <span style={{ textAlign: "center" }} title="Mengen dieses Kürzels fliessen in die Kranauslastung (Tab AVOR) ein">Kran</span>
-              <span style={{ textAlign: "right" }} title="Aktuelle Mengen-Summe je Kürzel aus Tab Kalkulation — rot bei fehlenden oder fehlerhaften Mengen">Menge Ist</span>
+              <span style={{ textAlign: "center" }} title="Mengen dieser Leistungsposition fliessen in die Kranauslastung (Tab AVOR) ein">Kran</span>
+              <span style={{ textAlign: "right" }} title="Aktuelle Mengen-Summe je Leistungsposition aus Tab Kalkulation — rot bei fehlenden oder fehlerhaften Mengen">Menge Ist</span>
               <span />
             </div>
           </div>
@@ -545,7 +545,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
             const dupImGewerk = kuerzelGetrimmt !== "" && gewerk.raten.filter(x => x.kuerzel.trim() === kuerzelGetrimmt).length > 1;
             const andereGewerkeMitKuerzel = kuerzelGetrimmt === "" ? [] : (kuerzelOrte.get(kuerzelGetrimmt) ?? []).filter(o => o.gewerkIdx !== gi);
             const kuerzelTitle = dupImGewerk
-              ? "Kürzel ist in dieser Kategorie mehrfach vergeben — nur die erste Zeile wird verwendet"
+              ? "Leistungsposition ist in dieser Kategorie mehrfach vergeben — nur die erste Zeile wird verwendet"
               : andereGewerkeMitKuerzel.length > 0
                 ? `Auch verwendet in: ${andereGewerkeMitKuerzel.map(o => o.gewerkLabel).join(", ")}`
                 : undefined;
@@ -592,14 +592,14 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                 </div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <input type="checkbox" disabled={readOnly} checked={istRateKranpflichtig(r, gewerk)}
-                    title="Mengen dieses Kürzels fliessen in die Kranauslastung (Tab AVOR) ein"
+                    title="Mengen dieser Leistungsposition fliessen in die Kranauslastung (Tab AVOR) ein"
                     onChange={e => rateAendern(gi, ri, { kranpflichtig: e.target.checked })} />
                 </div>
                 <div style={{ textAlign: "right", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     color: tasksMitKuerzel.length === 0 ? "var(--tc-text-3)" : mengeProblem ? "var(--tc-red)" : "#333" }}
                   title={
-                    tasksMitKuerzel.length === 0 ? "Keine Tasks mit diesem Kürzel"
-                      : mengeProblem ? "Mindestens ein Task mit diesem Kürzel hat für dieses Gewerk keine oder eine fehlerhafte Menge — siehe Tab Kalkulation"
+                    tasksMitKuerzel.length === 0 ? "Keine Tasks mit dieser Leistungsposition"
+                      : mengeProblem ? "Mindestens ein Task mit dieser Leistungsposition hat für dieses Gewerk keine oder eine fehlerhafte Menge — siehe Tab Kalkulation"
                         : `${tasksMitKuerzel.length} Task${tasksMitKuerzel.length === 1 ? "" : "s"}`
                   }>
                   {tasksMitKuerzel.length === 0 ? "–" : `${fmtZahl(mengeSumme)} ${gewerk.einheit}`}
@@ -731,7 +731,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
               )}
               {dupImGewerk && (
                 <div style={{ fontSize: 9, color: "var(--tc-red)", marginTop: 2 }}>
-                  ⚠ Kürzel "{kuerzelGetrimmt}" mehrfach in dieser Kategorie — nur die erste Zeile zählt
+                  ⚠ Leistungsposition "{kuerzelGetrimmt}" mehrfach in dieser Kategorie — nur die erste Zeile zählt
                 </div>
               )}
               {formelFehler && <div style={{ fontSize: 9, color: "var(--tc-red)", marginTop: 2, paddingLeft: ratenColW.kuerzel + 6 }}>⚠ {formelFehler}</div>}
@@ -740,7 +740,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
           })}
           {!readOnly && (
             <button className="tc-btn-ghost" style={{ fontSize: 10, padding: "3px 8px", marginTop: 4 }} onClick={() => rateHinzufuegen(gi)}>
-              + Kürzel hinzufügen
+              + Leistungsposition hinzufügen
             </button>
           )}
         </div>
@@ -762,7 +762,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
       <datalist id={UNTERNEHMER_LISTE_ID}>{alleUnternehmer.map(u => <option key={u} value={u} />)}</datalist>
       {stammdaten.gewerke.length > 0 && (
         <div style={{ marginTop: 22 }}>
-          <CockpitAbschnitt titel="Arbeitsablauf je Kürzel" eingeklappt={!!eingeklappt["ablauf"]} onToggle={() => toggleEingeklappt("ablauf")}>
+          <CockpitAbschnitt titel="Arbeitsablauf je Leistungsposition" eingeklappt={!!eingeklappt["ablauf"]} onToggle={() => toggleEingeklappt("ablauf")}>
             <ArbeitsablaufEditor stammdaten={stammdaten} readOnly={readOnly}
               onRateAendern={(gewerkKey, kuerzel, patch) => {
                 const gi = stammdaten.gewerke.findIndex(g => g.key === gewerkKey);

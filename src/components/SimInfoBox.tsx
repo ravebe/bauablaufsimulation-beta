@@ -55,7 +55,7 @@ export default function SimInfoBox({ sim, api, onClose }: { sim: SimProjekt; api
       ["IFC 4D in Connect", vierD.length ? vierD.join(", ") : "—"],
     ]],
     ["Kalkulation", [
-      ["Kürzel", `${d.tasksMitKuerzel} von ${d.anzahlTasks} Tasks`],
+      ["Leistungsposition", `${d.tasksMitKuerzel} von ${d.anzahlTasks} Tasks`],
       ["Kräne", d.kraene > 0 ? String(d.kraene) : "—"],
     ]],
   ];

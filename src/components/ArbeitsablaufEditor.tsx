@@ -23,7 +23,7 @@ export function ablaufText(stammdaten: Stammdaten, kuerzel: string): string {
 
 export default function ArbeitsablaufEditor({ stammdaten, readOnly, onRateAendern }: Props) {
   const kuerzelListe = alleKuerzel(stammdaten).filter(k => k.trim() && gewerkeFuerKuerzel(stammdaten, k).length > 0);
-  if (kuerzelListe.length === 0) return <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>Noch keine Kürzel angelegt.</div>;
+  if (kuerzelListe.length === 0) return <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>Noch keine Leistungspositionen angelegt.</div>;
   return (
     <div>
       <div style={{ fontSize: 10, color: "var(--tc-text-3)", marginBottom: 8, lineHeight: 1.5 }}>

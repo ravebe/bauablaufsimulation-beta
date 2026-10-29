@@ -152,7 +152,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
     return (
       <div style={{ padding: 14, fontSize: 12, color: "var(--tc-text-3)" }}>
         Noch keine Auswertung möglich — zuerst in Tab Ressourcen Stammdaten anlegen und in Tab
-        Kalkulation Bauteil-Kürzel + Mengen je Task erfassen.
+        Kalkulation Leistungsposition + Mengen je Task erfassen.
       </div>
     );
   }
@@ -216,7 +216,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
     { titel: "Dauer [h]",
       erklaerung: mitKranPersonal
         ? "Wie lange das eingeplante Personal für die Arbeit des Tages braucht.\nGewerk: Arbeit [h] ÷ Kolonnen.\nTotal: Arbeit [h] ÷ Eingeplant [Pers.] — die Leute desselben Unternehmers unter einem Kran sind Allrounder und teilen sich die Arbeit."
-        : "Wie lange das eingeplante Personal für die Arbeit des Tages braucht.\nGewerk: Arbeit [h] ÷ Eingeplant [Pers.].\nTotal: Innerhalb eines Tasks laufen die Schritte nacheinander (Arbeitsablauf je Kürzel, z.B. Schalung → Bewehrung → Beton) → Summe ihrer Dauern (Arbeit ÷ Kolonne); verschiedene Tasks laufen parallel → die längste Task-Kette zählt. Arbeitet dieselbe Kolonne an mehreren Tasks, zählt mindestens ihre Summe.",
+        : "Wie lange das eingeplante Personal für die Arbeit des Tages braucht.\nGewerk: Arbeit [h] ÷ Eingeplant [Pers.].\nTotal: Innerhalb eines Tasks laufen die Schritte nacheinander (Arbeitsablauf je Leistungsposition, z.B. Schalung → Bewehrung → Beton) → Summe ihrer Dauern (Arbeit ÷ Kolonne); verschiedene Tasks laufen parallel → die längste Task-Kette zählt. Arbeitet dieselbe Kolonne an mehreren Tasks, zählt mindestens ihre Summe.",
       wert: (z, i) => { const d = dauer(z, i); return d != null ? fmtZahl(d) : ""; } },
     { titel: "Auslastung",
       erklaerung: `Wie stark der Arbeitstag belegt ist = Dauer [h] ÷ ${fmtZahl(std)} h/Tag (Tab Ressourcen).\nGewerk: Auslastung seiner Kolonne. Total: wie lange der Tag mit dem eingeplanten Personal dauert.\nUnter 100 % = noch Zeit frei, über 100 % = die Arbeit ist in der normalen Arbeitszeit nicht zu schaffen.`,
@@ -224,7 +224,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
   ];
   const mengenSpalten: DetailSpalte[] = [
     { titel: `Tagesleistung [${aktivesGewerk?.einheit ?? ""}]`,
-      erklaerung: "Durchschnittlich nötige Tagesleistung = Menge je Task ÷ Arbeitstage, an denen das Gewerk im Task arbeitet, summiert über alle an diesem Tag laufenden Tasks (gewähltes Gewerk/Kürzel).\nOptimal ausgelastete Tagesleistung = was die Kolonne bei voller Arbeitszeit schafft (Kolonne × Std./Tag ÷ Leistungswert, Tab Ressourcen).",
+      erklaerung: "Durchschnittlich nötige Tagesleistung = Menge je Task ÷ Arbeitstage, an denen das Gewerk im Task arbeitet, summiert über alle an diesem Tag laufenden Tasks (gewähltes Gewerk/Leistungsposition).\nOptimal ausgelastete Tagesleistung = was die Kolonne bei voller Arbeitszeit schafft (Kolonne × Std./Tag ÷ Leistungswert, Tab Ressourcen).",
       wert: z => fmtZahl(z.wert) },
     ...(optimal != null && optimal > 0 ? [{ titel: "Auslastung",
       erklaerung: "Nötige Tagesleistung ÷ optimal ausgelastete Tagesleistung.\nUnter 100 % = die Kolonne ist nicht voll ausgelastet, über 100 % = sie schafft die Menge nicht in der normalen Arbeitszeit.",
@@ -233,8 +233,8 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
   const kranSpalten = [
     { titel: kranMetrik === "stunden" ? "Bedarf [h]" : "Personal Ø [Pers.]",
       erklaerung: kranMetrik === "stunden"
-        ? "Kranstunden-Bedarf im Monat/in der Woche = Personenstunden der kranpflichtigen Kürzel ÷ Kolonne, summiert über die diesem Kran zugewiesenen Tasks (Tab Kalkulation → Kräne; bei mehreren Kränen gleichmässig aufgeteilt)."
-        : "Durchschnittliche Personen pro Arbeitstag = Personenstunden der kranpflichtigen Kürzel dieses Krans im Monat/in der Woche ÷ verfügbare Arbeitstage ÷ Std./Tag, gerundet.",
+        ? "Kranstunden-Bedarf im Monat/in der Woche = Personenstunden der kranpflichtigen Leistungspositionen ÷ Kolonne, summiert über die diesem Kran zugewiesenen Tasks (Tab Kalkulation → Kräne; bei mehreren Kränen gleichmässig aufgeteilt)."
+        : "Durchschnittliche Personen pro Arbeitstag = Personenstunden der kranpflichtigen Leistungspositionen dieses Krans im Monat/in der Woche ÷ verfügbare Arbeitstage ÷ Std./Tag, gerundet.",
       wert: (s: KategorieSerie, bi: number) => fmtZahl(s.werte[bi] ?? 0) },
     { titel: kranMetrik === "stunden" ? "Kapazität [h]" : "Pers. unter Kran",
       erklaerung: kranMetrik === "stunden"
@@ -255,7 +255,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
 
   // ⋮ → Export: jede Auswertung dieses Tabs als CSV (Excel)
   const exporte = [
-    { label: "Personalbedarf je Tag und Leistungsposition", title: "Je Arbeitstag: Personen total, Personenstunden total, Personen je Gewerk und Stunden je Leistungsposition (Gewerk + Kürzel)",
+    { label: "Personalbedarf je Tag und Leistungsposition", title: "Je Arbeitstag: Personen total, Personenstunden total, Personen je Gewerk und Stunden je Leistungsposition",
       onClick: () => csvHerunterladen(personalbedarfAlsCsv(tasks, stammdaten, kalender), `${sim!.name}_Personalbedarf.csv`) },
     { label: `Kranstunden je Kran (${raster === "monat" ? "Monat" : "Woche"})`, title: "Bedarf und Kapazität je Kran und Zeitraum, wie in der Kranoptik",
       onClick: () => csvHerunterladen(alsCsv([
@@ -324,7 +324,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
             </select>
             {aktivesGewerk && aktivesGewerk.raten.length > 0 && (
               <select value={mengenKuerzel} onChange={e => setMengenKuerzel(e.target.value)}
-                title="Bauteil-Kürzel — bestimmt die Optimal-Tagesleistung (Leistungswert × Personen × Arbeitszeit dieses Kürzels). Total summiert alle Kürzel dieser Kategorie, ohne Optimal-Referenzlinie."
+                title="Leistungsposition — bestimmt die Optimal-Tagesleistung (Leistungswert × Personen × Arbeitszeit dieser Leistungsposition). Total summiert alle Leistungspositionen dieser Kategorie, ohne Optimal-Referenzlinie."
                 style={{ fontSize: 11, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }}>
                 <option value="">Total {aktivesGewerk.label}</option>
                 {aktivesGewerk.raten.map(r => <option key={r.kuerzel} value={r.kuerzel}>{r.kuerzel} — {r.bezeichnung}</option>)}
@@ -372,7 +372,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
           </div>
         ) : !hatKranpflichtigeRaten(stammdaten) ? (
           <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
-            Kein Kürzel als kranpflichtig markiert (Tab Ressourcen).
+            Keine Leistungsposition als kranpflichtig markiert (Tab Ressourcen).
           </div>
         ) : kranMetrik === "stunden" ? (
           !kranHatBedarf ? (

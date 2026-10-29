@@ -786,7 +786,7 @@ export default function TabProjekte({ api, laedt, sims, setSims, aktivId, setAkt
               <div style={{ fontSize: 9, fontWeight: 600, color: "var(--tc-text-3)", letterSpacing: ".5px", marginBottom: 8 }}>ZU KOPIERENDE INHALTE</div>
               {([
                 { key: "tasks", label: "Bauablauf (Tasks, Termine, Struktur)", indent: 0, disabled: false },
-                { key: "kalkulation", label: "Bauteil-Kürzel & Kranbereich (Kalkulation-Zuordnung)", indent: 1, disabled: !kopierDialog.tasks },
+                { key: "kalkulation", label: "Leistungsposition & Kranbereich (Kalkulation-Zuordnung)", indent: 1, disabled: !kopierDialog.tasks },
                 { key: "mengenWerte", label: "Berechnete & manuelle Mengen-Werte je Task", indent: 2, disabled: !kopierDialog.tasks || !kopierDialog.kalkulation },
                 { key: "kraene", label: "Kräne (Stammdaten, Verfügbarkeit & Zuweisung je Task)", indent: 0, disabled: false },
                 { key: "modelle", label: "Zugewiesene Modelle", indent: 0, disabled: false },

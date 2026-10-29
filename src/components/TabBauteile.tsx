@@ -462,7 +462,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                         <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 2, whiteSpace: "normal", maxWidth: 320 }}>
                           {zeitplanStatus.bereit
                             ? (mitKranPersonal
-                              ? "Plant die Tasks so, dass das Personal unter jedem Kran (Tab Ressourcen → Kräne & Personal) möglichst voll arbeitet — Leute desselben Unternehmers als Allrounder, höchstens das Personal unter dem Kran (1–2 mehr nur, wenn sonst Leute untätig wären). Arbeitsablauf je Kürzel, Vorgänger und Wartetage bleiben massgebend. Mit Vorschau."
+                              ? "Plant die Tasks so, dass das Personal unter jedem Kran (Tab Ressourcen → Kräne & Personal) möglichst voll arbeitet — Leute desselben Unternehmers als Allrounder, höchstens das Personal unter dem Kran (1–2 mehr nur, wenn sonst Leute untätig wären). Arbeitsablauf je Leistungsposition, Vorgänger und Wartetage bleiben massgebend. Mit Vorschau."
                               : "Jeder Task bekommt seine berechnete Dauer; jede Kolonne aus Tab Ressourcen arbeitet voll und nie an zwei Tasks gleichzeitig — Tasks mit derselben Leistungsposition laufen nacheinander. Vorgänger und Wartetage bleiben massgebend. Mit Vorschau.")
                             : "Klicken für Details, was dafür noch fehlt."}
                         </div>
@@ -549,7 +549,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                 sind Allrounder und besetzen jede seiner kranpflichtigen Leistungspositionen, freie Leute verstärken laufende Arbeiten
                 (höchstens doppelte Min. Personen) — so werden Tasks kürzer und mehr laufen parallel. Je Kran arbeiten höchstens so viele Leute wie sein Personal, 1–2 mehr nur, wenn sonst Leute untätig wären.
                 Positionen ohne Personal unter dem Kran (nicht kranpflichtig, kein Unternehmer) arbeiten mit ihren Min. Personen als
-                feste Gruppe — diese Gruppe ist immer nur an einem Task gleichzeitig. Arbeitsablauf je Kürzel, Vorgänger und
+                feste Gruppe — diese Gruppe ist immer nur an einem Task gleichzeitig. Arbeitsablauf je Leistungsposition, Vorgänger und
                 Wartetage bleiben massgebend. Tasks ohne Mengen, Gruppen und Meilensteine bleiben unverändert. Erneutes Optimieren
                 ergibt dasselbe Ergebnis (früher ergänzte Vorgänger werden neu bestimmt).
                 <label style={{ display: "flex", alignItems: "flex-start", gap: 6, marginTop: 8, cursor: "pointer" }}
@@ -561,7 +561,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
               </>) : (<>
                 Jeder Task bekommt seine berechnete Dauer (Tab Kalkulation). Jede Kolonne aus Tab Ressourcen (Leistungsposition,
                 z.B. Schalung · WB) arbeitet voll und nie an zwei Tasks gleichzeitig — Tasks mit derselben Leistungsposition laufen
-                nacheinander, die Schritte innerhalb eines Tasks nach dem Arbeitsablauf je Kürzel. Vorgänger und Wartetage bleiben
+                nacheinander, die Schritte innerhalb eines Tasks nach dem Arbeitsablauf je Leistungsposition. Vorgänger und Wartetage bleiben
                 massgebend; Tasks ohne Vorgänger beginnen frühestens an ihrem bisherigen Start. Tasks ohne Mengen, Gruppen und
                 Meilensteine bleiben unverändert. Mit Personal unter den Kränen (Tab Ressourcen → Kräne & Personal) wird stattdessen
                 auf das Kranpersonal optimiert.

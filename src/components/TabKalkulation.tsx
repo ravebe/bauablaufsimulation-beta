@@ -32,12 +32,12 @@ interface Props {
 const ALLE_SPALTEN = ["nr", "auge", "task", "kuerzel", "mengen", "geplant", "berechnet", "differenz", "kraene"] as const;
 type Spalte = typeof ALLE_SPALTEN[number];
 const SPALTEN_LABEL: Record<Spalte, string> = {
-  nr: "Nr.", task: "Task", kuerzel: "Kürzel", mengen: "Mengen", geplant: "Geplant", berechnet: "Berechnet",
+  nr: "Nr.", task: "Task", kuerzel: "Leistungsposition", mengen: "Mengen", geplant: "Geplant", berechnet: "Berechnet",
   differenz: "Differenz", kraene: "Kräne", auge: "",
 };
 // Mindestbreiten (Ansicht vom 2026-10-08) — breiter, sobald ein Inhalt mehr Platz braucht. Von Hand gezogene Breiten
 // gelten nur bis zum Neuladen der Seite (je Projekt) — bewusst nicht im localStorage.
-const DEFAULT_COL_W: Record<Spalte, number> = { nr: 30, task: 174, kuerzel: 64, mengen: 120, geplant: 76, berechnet: 88, differenz: 60, kraene: 40, auge: 30 };
+const DEFAULT_COL_W: Record<Spalte, number> = { nr: 30, task: 174, kuerzel: 110, mengen: 120, geplant: 76, berechnet: 88, differenz: 60, kraene: 40, auge: 30 };
 const sitzungsColW = new Map<string, Partial<Record<Spalte, number>>>();
 const MAX_AUTO_BREITE = 480; // sehr lange Tasknamen sprengen die Tabelle nicht (Rest per Ziehen)
 
@@ -345,7 +345,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   async function kalkulationImportierenJson(file: File) {
     setImportFehler(null); setImportErgebnis(null);
     try {
-      if (!confirm("Kürzel/Kräne/Mengen der passenden Tasks werden vollständig durch den Inhalt der Datei ersetzt. Fortfahren?")) return;
+      if (!confirm("Leistungsposition/Kräne/Mengen der passenden Tasks werden vollständig durch den Inhalt der Datei ersetzt. Fortfahren?")) return;
       const erg = parseKalkulationJson(await file.text(), sim!.tasks, sim!.kraene ?? []);
       updateSim({ ...sim!, tasks: erg.tasks });
       setImportErgebnis(`${erg.aktualisiert} Task${erg.aktualisiert === 1 ? "" : "s"} aktualisiert${erg.nichtGefunden > 0 ? ` · ${erg.nichtGefunden} Einträge ohne passenden Task ignoriert` : ""}`);
@@ -397,7 +397,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   async function alleUnzugeordnetenZuordnen() {
     if (!api) return;
     const kandidaten = sim!.tasks.filter((t, i) => !t.isGroup && !istGruppe(sim!.tasks, i) && !t.bauteilKuerzel && t.objektGuids.length > 0);
-    if (kandidaten.length === 0) { setBulkStufe("ok"); setBulkErgebnis("Keine unzugeordneten Tasks mit Bauteilen gefunden."); return; }
+    if (kandidaten.length === 0) { setBulkStufe("ok"); setBulkErgebnis("Keine Tasks mit Bauteilen ohne Leistungsposition gefunden."); return; }
     setBulkLaeuft(true);
     setBulkErgebnis(null);
     let zugeordnet = 0, uneindeutigN = 0, keinTreffer = 0;
@@ -749,7 +749,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
                 </div>
               );
             })}
-            {gewerke.length === 0 && <span style={{ fontSize: 12, color: "var(--tc-text-3)" }}>Kürzel wählen…</span>}
+            {gewerke.length === 0 && <span style={{ fontSize: 12, color: "var(--tc-text-3)" }}>Leistungsposition wählen…</span>}
           </div>
         );
       }
@@ -847,13 +847,13 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
     <div ref={wurzelRef} style={{ display: "flex", flexDirection: "column", height: "100%", fontSize: 12 }}>
       <div style={{ padding: "14px 14px 0", flexShrink: 0 }}>
         <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-          <StatTile label="Total Abweichung" title={"Summe der Differenzen Berechnet − Geplant (in Tagen) über alle Tasks mit Kürzel.\nPositiv: laut Mengen und Leistungswerten braucht es insgesamt mehr Zeit als im Gantt geplant, negativ: weniger."} wert={`${fmtZahlMitVorzeichen(gesamtAbweichungTage)} d`} status={gesamtAbweichungTage !== 0 ? "warning" : "good"} sub="Berechnet − Geplant, alle Tasks" />
-          <StatTile label="Tasks mit Kürzel" title={"Tasks mit zugeordnetem Bauteil-Kürzel / alle Tasks der Tabelle.\nNur Tasks mit Kürzel bekommen Mengen, eine berechnete Dauer und fliessen in Personal, Kosten und Kranauslastung ein."} wert={`${tasksMitKuerzel}/${zeilen.length}`} />
+          <StatTile label="Total Abweichung" title={"Summe der Differenzen Berechnet − Geplant (in Tagen) über alle Tasks mit Leistungsposition.\nPositiv: laut Mengen und Leistungswerten braucht es insgesamt mehr Zeit als im Gantt geplant, negativ: weniger."} wert={`${fmtZahlMitVorzeichen(gesamtAbweichungTage)} d`} status={gesamtAbweichungTage !== 0 ? "warning" : "good"} sub="Berechnet − Geplant, alle Tasks" />
+          <StatTile label="Tasks mit Leistungsposition" title={"Tasks mit zugeordnetem Leistungsposition / alle Tasks der Tabelle.\nNur Tasks mit Leistungsposition bekommen Mengen, eine berechnete Dauer und fliessen in Personal, Kosten und Kranauslastung ein."} wert={`${tasksMitKuerzel}/${zeilen.length}`} />
           <StatTile label="Tasks mit Abweichung" title={"Anzahl Tasks, deren berechnete Dauer mehr als 150 % oder weniger als 67 % der geplanten Dauer beträgt (Spalte Differenz).\nTipp: Legende \"Fehler / fehlende Attribute\" anklicken, um diese Tasks zuoberst zu sortieren."} sub="Berechnet > 150 % oder < 67 % von Geplant" wert={String(anzahlAbweichung)} status={anzahlAbweichung > 0 ? "warning" : "good"} />
-          <StatTile label="Ø Abweichung" title={"Durchschnittliche prozentuale Abweichung |Berechnet − Geplant| ÷ Geplant über alle Tasks mit Kürzel und geplanter Dauer (ohne Vorzeichen — zu lange und zu kurze Tasks heben sich nicht auf)."} wert={`${fmtZahl(durchschnAbweichungProzent)}%`} />
+          <StatTile label="Ø Abweichung" title={"Durchschnittliche prozentuale Abweichung |Berechnet − Geplant| ÷ Geplant über alle Tasks mit Leistungsposition und geplanter Dauer (ohne Vorzeichen — zu lange und zu kurze Tasks heben sich nicht auf)."} wert={`${fmtZahl(durchschnAbweichungProzent)}%`} />
         </div>
         {kuerzelKategorien.length > 0 && (
-          <CockpitAbschnitt titel="Geplant vs. berechnet je Kürzel" eingeklappt={!!eingeklappt["kuerzel-chart"]} onToggle={() => toggleEingeklappt("kuerzel-chart")}>
+          <CockpitAbschnitt titel="Geplant vs. berechnet je Leistungsposition" eingeklappt={!!eingeklappt["kuerzel-chart"]} onToggle={() => toggleEingeklappt("kuerzel-chart")}>
             <CategoryBarChart einheit="Tage" kategorien={kuerzelKategorien}
               serien={[
                 { key: "geplant", label: "Geplant", color: FARBEN.kategorial[0], werte: kuerzelKategorien.map(k => summeProKuerzel.get(k)!.geplant) },
@@ -912,7 +912,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
             <PunkteMenu title="Zuordnen, Mengen berechnen, Export, Import" abschnitte={[
               ...(!readOnly ? [{ titel: "Aktionen", eintraege: [
                 ...(api ? [
-                  { label: bulkLaeuft ? "Wird zugeordnet…" : "Alle unzugeordneten automatisch zuordnen", onClick: alleUnzugeordnetenZuordnen, disabled: bulkLaeuft },
+                  { label: bulkLaeuft ? "Wird zugeordnet…" : "Leistungspositionen automatisch zuordnen", onClick: alleUnzugeordnetenZuordnen, disabled: bulkLaeuft },
                   { label: mengenLaeuft ? "Wird berechnet…" : "Mengen aus Bauteilen berechnen" + (mengenVeraltet ? " ⚠" : ""), onClick: mengenBerechnen, disabled: mengenLaeuft,
                     title: "Berechnet Mengen aus den Formeln in Tab Ressourcen für alle Bauteile je Task — manuell überschriebene Werte bleiben unangetastet" },
                 ] : []),
@@ -920,8 +920,8 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
                   title: "Löscht nur manuell eingegebene Mengen (schwarze Werte) — automatisch berechnete Mengen (blau) und die 'Berechnet'-Übersteuerung bleiben erhalten" },
               ] }] : []),
               { titel: "Export", eintraege: [
-                { label: "CSV", onClick: kalkulationExportierenCsv, title: "Kürzel/Kräne/Mengen je Task als CSV — in Excel bearbeitbar, Reimport ordnet über den Tasknamen zu" },
-                { label: "JSON", onClick: kalkulationExportierenJson, title: "Kürzel/Kräne/Mengen je Task als JSON — für einen exakten Restore über die Task-ID (z.B. vor einem Bulk-Vorgang)" },
+                { label: "CSV", onClick: kalkulationExportierenCsv, title: "Leistungsposition/Kräne/Mengen je Task als CSV — in Excel bearbeitbar, Reimport ordnet über den Tasknamen zu" },
+                { label: "JSON", onClick: kalkulationExportierenJson, title: "Leistungsposition/Kräne/Mengen je Task als JSON — für einen exakten Restore über die Task-ID (z.B. vor einem Bulk-Vorgang)" },
               ] },
               ...(!readOnly ? [{ titel: "Import", eintraege: [
                 { label: "CSV", onClick: () => importCsvInputRef.current?.click(), title: "Aus einer zuvor exportierten (in Excel bearbeiteten) CSV-Datei importieren — Zuordnung über den Tasknamen" },

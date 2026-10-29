@@ -116,7 +116,7 @@ export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }
   if (stammdaten.gewerke.length === 0) {
     return (
       <div style={{ padding: 14, fontSize: 12, color: "var(--tc-text-3)" }}>
-        Noch keine Werte — im Tab Ressourcen zuerst Kategorien/Kürzel mit Einheitspreis und Leistungswert anlegen, dann in Tab Kalkulation Bauteil-Kürzel und Mengen erfassen.
+        Noch keine Werte — im Tab Ressourcen zuerst Kategorien/Leistungspositionen mit Einheitspreis und Leistungswert anlegen, dann in Tab Kalkulation Leistungsposition und Mengen erfassen.
       </div>
     );
   }
@@ -165,7 +165,7 @@ export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }
       )}
 
       <div style={{ display: "flex", gap: 6, fontSize: 9, color: "var(--tc-text-3)", padding: "4px 0", fontWeight: 600, position: "sticky", top: 0, background: "#fff", zIndex: 3 }}>
-        <span style={{ width: 60, flexShrink: 0 }}>Kürzel</span>
+        <span style={{ width: 110, flexShrink: 0 }}>Leistungsposition</span>
         <span style={{ flex: 1, minWidth: 0 }}>Bezeichnung</span>
         <span style={{ ...spalte(100), display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3, cursor: "pointer", userSelect: "none" }}
           onClick={() => setKostenSortRichtung(r => r === "desc" ? "asc" : r === "asc" ? null : "desc")}
@@ -188,7 +188,7 @@ export default function TabKosten({ sim, projectId = null, api, sharedNadelTag }
             const leer = anzahl === 0;
             return (
               <div key={r.kuerzel} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 0", borderBottom: "1px solid var(--tc-border-light)", color: leer ? "#aaa" : undefined }}>
-                <span style={{ width: 60, flexShrink: 0, fontWeight: 600 }}>{r.kuerzel}</span>
+                <span style={{ width: 110, flexShrink: 0, fontWeight: 600 }}>{r.kuerzel}</span>
                 <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.bezeichnung}</span>
                 <span style={spalte(100)}>{fmtChf(e)}</span>
                 <span style={spalte(100)}>{fmtChf(l)}</span>
