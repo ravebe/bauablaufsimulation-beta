@@ -99,4 +99,14 @@ describe("Auslastung optimieren mit Kranpersonal", () => {
     expect(termine(optimiereAuslastung(ts, stammdaten, KAL, "tage", k, "kritischerPfad")).slice(0, 2)).toEqual(["A 2026-11-10–2026-11-10", "B 2026-11-09–2026-11-09"]);
     expect(termine(optimiereAuslastung(ts, stammdaten, KAL, "tage", k, "gantt")).slice(0, 2)).toEqual(["A 2026-11-09–2026-11-09", "B 2026-11-10–2026-11-10"]);
   });
+
+  it("Reihenfolge Startdatum: frühester aktueller Start zuerst, unabhängig von der Gantt-Reihenfolge", () => {
+    // Gantt nach Etappe: E2-Wand steht oben, startet aber später als die E1-Wand; beide nach M (bis 6.11.) ab 9.11. möglich
+    const m = task("M", { start: "2026-11-06", end: "2026-11-06", bauteilKuerzel: undefined, mengen: undefined });
+    const ts = [m, task("E2", { mengen: { sch: 32 }, start: "2026-11-12", predecessorId: "M", lagDays: 0 }),
+      task("E1", { mengen: { sch: 32 }, start: "2026-11-10", predecessorId: "M", lagDays: 0 })];
+    const k = kran([{ unternehmer: "Bau AG", personen: 4 }]);
+    expect(termine(optimiereAuslastung(ts, stammdaten, KAL, "tage", k, "startdatum")).slice(1)).toEqual(["E2 2026-11-10–2026-11-10", "E1 2026-11-09–2026-11-09"]);
+    expect(termine(optimiereAuslastung(ts, stammdaten, KAL, "tage", k, "gantt")).slice(1)).toEqual(["E2 2026-11-09–2026-11-09", "E1 2026-11-10–2026-11-10"]);
+  });
 });

@@ -31,8 +31,9 @@ export const MAX_VERSTAERKUNG = 2;
 const EPS = 1e-6;
 
 /** Welche Tasks zuerst Personal bekommen, wenn mehrere gleichzeitig möglich sind: "kritischerPfad" = längste Restkette zuerst
- *  (kürzestes Bauprogramm), "gantt" = Reihenfolge im Gantt (geordnetes Arbeiten, z.B. Achse für Achse). */
-export type OptimierReihenfolge = "kritischerPfad" | "gantt";
+ *  (kürzestes Bauprogramm), "startdatum" = frühester aktueller Start zuerst (wenn das Gantt z.B. nach Etappen statt nach Datum
+ *  sortiert ist), "gantt" = Reihenfolge im Gantt (geordnetes Arbeiten, z.B. Achse für Achse). */
+export type OptimierReihenfolge = "kritischerPfad" | "startdatum" | "gantt";
 
 /** Restkette je Task in Tagen: eigene berechnete Dauer + längste Restkette seiner Nachfolger (nur unter den übergebenen Tasks). */
 export function restkettenJeTask(zuPlanen: Task[], stammdaten: Stammdaten, einheit: Zeiteinheit): Map<string, number> {
@@ -157,6 +158,8 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
   const offen = [...zustand.values()];
   const prio = reihenfolge === "gantt"
     ? (a: TaskZ, b: TaskZ) => a.i - b.i
+    : reihenfolge === "startdatum"
+    ? (a: TaskZ, b: TaskZ) => vergleicheZeitpunkte(startZeitpunkt(a.t), startZeitpunkt(b.t)) || a.i - b.i
     : (a: TaskZ, b: TaskZ) => b.restkette - a.restkette || vergleicheZeitpunkte(startZeitpunkt(a.t), startZeitpunkt(b.t)) || a.i - b.i;
   const maxSlots = Math.ceil(60 * 260 * MIN_PRO_ARBEITSTAG / SLOT); // Schutz: 60 Jahre
   let slot = 0;

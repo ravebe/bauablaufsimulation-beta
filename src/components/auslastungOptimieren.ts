@@ -76,13 +76,15 @@ export function optimiereAuslastung(tasks: Task[], stammdaten: Stammdaten, kalen
   };
 
   // Reihenfolge: Vorgänger zuerst (nur planbare zählen als Abhängigkeit), dann nach Option kritischer Pfad (längste Restkette,
-  // bei Gleichstand bisheriger Start, dann Gantt-Reihenfolge) oder Gantt-Reihenfolge
+  // bei Gleichstand bisheriger Start, dann Gantt-Reihenfolge), Startdatum (bisheriger Start, dann Gantt) oder Gantt-Reihenfolge
   const offen = echte.filter(({ t }) => planbar.has(t.id));
   const fertig = new Set<string>();
   const bereit = (t: Task) => vorgaengerListe(t).every(v => !planbar.has(v.id) || fertig.has(v.id));
   const ketten = restkettenJeTask(offen.map(o => o.t), stammdaten, einheit);
   const prio = reihenfolge === "gantt"
     ? (a: { t: Task; i: number }, b: { t: Task; i: number }) => a.i - b.i
+    : reihenfolge === "startdatum"
+    ? (a: { t: Task; i: number }, b: { t: Task; i: number }) => vergleicheZeitpunkte(startZeitpunkt(a.t), startZeitpunkt(b.t)) || a.i - b.i
     : (a: { t: Task; i: number }, b: { t: Task; i: number }) => (ketten.get(b.t.id) ?? 0) - (ketten.get(a.t.id) ?? 0)
       || vergleicheZeitpunkte(startZeitpunkt(a.t), startZeitpunkt(b.t)) || a.i - b.i;
 

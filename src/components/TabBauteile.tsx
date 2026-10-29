@@ -552,6 +552,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10, fontSize: 11 }}>
                 <span style={{ fontWeight: 600 }}>Reihenfolge:</span>
                 {([["kritischerPfad", "Kritischer Pfad", "Wenn mehrere Arbeiten möglich sind, bekommen zuerst die Tasks mit der längsten Restkette (meiste Arbeit danach) das Personal — kürzestes Bauprogramm"],
+                  ["startdatum", "Startdatum", "Wenn mehrere Arbeiten möglich sind, bekommen die Tasks mit dem frühesten aktuellen Start zuerst das Personal (bei gleichem Datum die Gantt-Reihenfolge) — z.B. wenn das Gantt nach Etappen statt nach Datum aufgebaut ist"],
                   ["gantt", "Gantt-Reihenfolge", "Wenn mehrere Arbeiten möglich sind, bekommen die Tasks in der Reihenfolge des Gantts das Personal — geordnetes Arbeiten, z.B. Achse für Achse"]] as const).map(([r, label, title]) => (
                   <button key={r} title={title} onClick={() => auslastungVorschauOeffnen(r)}
                     style={{ fontSize: 11, fontWeight: 600, padding: "3px 8px", cursor: "pointer",
