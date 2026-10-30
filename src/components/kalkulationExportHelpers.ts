@@ -57,7 +57,7 @@ export interface KalkulationCsvErgebnis {
  *  ausgefüllten Spalten beim Reimport nichts löscht. Importierte Mengen gelten als "manuell" (siehe
  *  Task.mengenQuelle) — eine spätere "Mengen aus Bauteilen berechnen" überschreibt sie nicht automatisch. */
 export function parseKalkulationCsv(text: string, tasks: Task[], stammdaten: Stammdaten, kraene: Kran[]): KalkulationCsvErgebnis {
-  const zeilen = parseCsvZeilen(text.replace(/^﻿/, ""));
+  const zeilen = parseCsvZeilen(text.replace(/^\uFEFF/, ""));
   if (zeilen.length === 0) throw new Error("Leere CSV-Datei");
   const header = zeilen[0];
   const iTask = header.findIndex(h => h.trim().toLowerCase() === "task");

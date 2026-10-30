@@ -43,7 +43,7 @@ describe("Personalbedarf je Tag und Leistungsposition", () => {
   });
 
   it("CSV: Personen total, Stunden total, Personen je Gewerk, Stunden je Position", () => {
-    const zeilen = personalbedarfAlsCsv(tasks, stammdaten, KAL).replace(/^﻿/, "").split("\r\n").map(z => z.split(";"));
+    const zeilen = personalbedarfAlsCsv(tasks, stammdaten, KAL).replace(/^\uFEFF/, "").split("\r\n").map(z => z.split(";"));
     expect(zeilen[0].slice(0, 5)).toEqual(["Datum", "Wochentag", "Personen total", "Personenstunden total [h]", "Personenstunden total (Tage + Stunden)"]);
     expect(zeilen[0]).toContain("Schalung · WB Wandschalung [h]");
     // 35,875 h ÷ 8,5 = 4,22 Personen; 4 d 1,88 h
