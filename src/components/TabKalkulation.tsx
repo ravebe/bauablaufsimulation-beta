@@ -159,7 +159,6 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
   const [selGuids, setSelGuids] = useState<Set<string>>(new Set());
   useEffect(() => {
     if (!api || taskSort !== "aktiv") return;
-    let intervalId: ReturnType<typeof setInterval>;
     async function check() {
       try {
         const sel = await (api!.viewer as any).getSelection();
@@ -175,7 +174,7 @@ export default function TabKalkulation({ sim, updateSim, readOnly, api, projectI
       } catch { setSelGuids(new Set()); }
     }
     check();
-    intervalId = setInterval(check, 1500);
+    const intervalId = setInterval(check, 1500);
     return () => clearInterval(intervalId);
   }, [api, taskSort]);
 

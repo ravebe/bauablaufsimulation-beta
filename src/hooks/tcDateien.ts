@@ -31,7 +31,7 @@ async function holeAccessToken(api: ApiInstance): Promise<string> {
     try { res = await api.extension.requestPermission("accesstoken") as string; break; }
     catch (e) {
       if (letzterToken) return letzterToken;
-      if (versuch >= 4) throw new Error(`Kein Zugriffs-Token von Trimble Connect erhalten (${e instanceof Error ? e.message : String(e)}). Bitte warten, bis das Modell geladen ist, und erneut versuchen.`);
+      if (versuch >= 4) throw new Error(`Kein Zugriffs-Token von Trimble Connect erhalten (${e instanceof Error ? e.message : String(e)}). Bitte warten, bis das Modell geladen ist, und erneut versuchen.`, { cause: e });
       await pause(3000);
     }
   }

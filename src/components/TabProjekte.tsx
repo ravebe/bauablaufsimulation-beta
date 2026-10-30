@@ -187,11 +187,9 @@ export default function TabProjekte({ api, laedt, sims, setSims, aktivId, setAkt
         );
         if (valid.length === 0) return;
         setModellMsg({ simId: id, typ: "ok", text: `⟳ ${valid.length} Modelle werden geladen…` });
-        let loaded = 0;
         for (const m of valid) {
           try {
             await api.viewer.toggleModelVersion({ id: m.id, versionId: m.versionId }, true, false);
-            loaded++;
           } catch (e) {
             setModellMsg({ simId: id, typ: "err", text: `Fehler: ${e instanceof Error ? e.message : String(e)}` });
             return;
@@ -328,7 +326,7 @@ export default function TabProjekte({ api, laedt, sims, setSims, aktivId, setAkt
   function modellToggle(id: string) {
     if (!modellPicker) return;
     const neu = new Set(modellPicker.ausgewaehlt);
-    neu.has(id) ? neu.delete(id) : neu.add(id);
+    if (neu.has(id)) neu.delete(id); else neu.add(id);
     setModellPicker({ ...modellPicker, ausgewaehlt: neu });
   }
 
@@ -520,11 +518,9 @@ export default function TabProjekte({ api, laedt, sims, setSims, aktivId, setAkt
                           }
                         } catch { /* ignore */ }
 
-                        let loaded = 0;
                         for (const m of valid) {
                           try {
                             await api.viewer.toggleModelVersion({ id: m.id, versionId: m.versionId }, true, false);
-                            loaded++;
                           } catch { /* ignore */ }
                         }
                         pruefeNeueVersionen(sim);
