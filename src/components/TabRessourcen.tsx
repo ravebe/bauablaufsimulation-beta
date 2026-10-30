@@ -9,6 +9,7 @@ import { StatTile, CockpitAbschnitt, useEingeklappt } from "./cockpitCharts";
 import KranPersonalEditor from "./KranPersonalEditor";
 import ArbeitsablaufEditor from "./ArbeitsablaufEditor";
 import AblaufRegelnEditor from "./AblaufRegelnEditor";
+import EntwurfInput from "./EntwurfInput";
 import { fmtZahl } from "./zahlFormat";
 import type { Arbeitszeit } from "./zeitHelpers";
 import { pruefeArbeitszeit, arbeitszeitStunden } from "./zeitHelpers";
@@ -365,8 +366,8 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   }
 
   const numInput = (val: number | null, onChange: (v: number | null) => void, width: number | string = "100%") => (
-    <input type="number" className="no-spinner" disabled={readOnly} value={val ?? ""} placeholder="—"
-      onChange={e => onChange(e.target.value === "" ? null : Number(e.target.value))}
+    <EntwurfInput type="number" className="no-spinner" disabled={readOnly} wert={val == null ? "" : String(val)} placeholder="—"
+      onCommit={v => { const n = v.trim() === "" ? null : Number(v); if (n === null || isFinite(n)) onChange(n); }}
       style={{ width, minWidth: 0, fontSize: 12, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
   );
 
@@ -583,16 +584,16 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
             return (
             <div key={ri} style={{ padding: "3px 0", borderBottom: "1px solid var(--tc-border-light)" }}>
               <div style={{ display: "grid", gridTemplateColumns: ratenGridTemplate, alignItems: "center", columnGap: 6 }}>
-                <input disabled={readOnly} value={r.kuerzel} onChange={e => rateAendern(gi, ri, { kuerzel: e.target.value })}
+                <EntwurfInput disabled={readOnly} wert={r.kuerzel} onCommit={v => rateAendern(gi, ri, { kuerzel: v })}
                   title={kuerzelTitle}
                   style={{ width: "100%", minWidth: 0, fontSize: 12, padding: "3px 5px", fontFamily: "inherit",
                     border: `1px solid ${dupImGewerk ? "var(--tc-red)" : andereGewerkeMitKuerzel.length > 0 ? "var(--tc-blue)" : "#d4dce4"}` }} />
-                <input disabled={readOnly} value={r.bezeichnung} onChange={e => rateAendern(gi, ri, { bezeichnung: e.target.value })}
+                <EntwurfInput disabled={readOnly} wert={r.bezeichnung} onCommit={v => rateAendern(gi, ri, { bezeichnung: v })}
                   style={{ width: "100%", minWidth: 0, fontSize: 12, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
                 {numInput(r.leistungswertHProEinheit, v => rateAendern(gi, ri, { leistungswertHProEinheit: v }))}
                 {numInput(r.anzahlPersonen, v => rateAendern(gi, ri, { anzahlPersonen: v ?? 1 }))}
-                <input disabled={readOnly} list={UNTERNEHMER_LISTE_ID} value={r.unternehmer ?? ""} placeholder="—"
-                  onChange={e => rateAendern(gi, ri, { unternehmer: e.target.value.trim() ? e.target.value : undefined })}
+                <EntwurfInput disabled={readOnly} list={UNTERNEHMER_LISTE_ID} wert={r.unternehmer ?? ""} placeholder="—"
+                  onCommit={v => rateAendern(gi, ri, { unternehmer: v.trim() ? v : undefined })}
                   style={{ width: "100%", minWidth: 0, fontSize: 12, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
                 {numInput(r.chfProEinheit, v => rateAendern(gi, ri, { chfProEinheit: v }))}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
@@ -611,9 +612,9 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                     title="Leistungsposition braucht den Kran (kranpflichtig) — fliesst in die Kranoptik (Tab AVOR) ein"
                     onChange={e => rateAendern(gi, ri, { kranpflichtig: e.target.checked })} />
                   {istRateKranpflichtig(r, gewerk) && (
-                    <input type="number" min={0} max={100} step={5} disabled={readOnly} value={r.kranzeitProzent ?? ""} placeholder="100"
+                    <EntwurfInput type="number" min={0} max={100} step={5} disabled={readOnly} wert={r.kranzeitProzent == null ? "" : String(r.kranzeitProzent)} placeholder="100"
                       title="Kranzeit %: so viel der Arbeitszeit der Personen braucht diese Leistungsposition den Kran (leer = 100)"
-                      onChange={e => { const v = e.target.value.trim() === "" ? undefined : Math.min(100, Math.max(0, Number(e.target.value))); rateAendern(gi, ri, { kranzeitProzent: v != null && isFinite(v) ? v : undefined }); }}
+                      onCommit={t => { const v = t.trim() === "" ? undefined : Math.min(100, Math.max(0, Number(t))); rateAendern(gi, ri, { kranzeitProzent: v != null && isFinite(v) ? v : undefined }); }}
                       style={{ width: 44, fontSize: 11, padding: "2px 3px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
                   )}
                 </div>
@@ -640,8 +641,8 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                 <div ref={pickerOffenFuer === pickerKey ? pickerRef : undefined}
                   style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3, paddingLeft: ratenColW.kuerzel + 6, position: "relative" }}>
                   <span style={{ fontSize: 9, color: "var(--tc-text-3)", width: 40, flexShrink: 0, whiteSpace: "nowrap" }}>Formel</span>
-                  <input disabled={readOnly} value={r.formel ?? ""} placeholder="z.B. {Qto_WallBaseQuantities||NetVolume}"
-                    onChange={e => rateAendern(gi, ri, { formel: e.target.value })}
+                  <EntwurfInput disabled={readOnly} wert={r.formel ?? ""} placeholder="z.B. {Qto_WallBaseQuantities||NetVolume}"
+                    onCommit={v => rateAendern(gi, ri, { formel: v })}
                     style={{ flex: 1, minWidth: 0, fontSize: 10, padding: "3px 5px", fontFamily: "monospace", border: `1px solid ${formelFehler ? "var(--tc-red)" : "#d4dce4"}` }} />
                   {api && !readOnly && (
                     <button className="tc-btn-ghost" style={{ fontSize: 9, padding: "2px 6px", flexShrink: 0 }}

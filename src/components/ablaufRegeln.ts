@@ -8,7 +8,7 @@
 // Vorgänger bleiben; ein gleicher automatischer (Auto-Vorgänger/Optimieren) wird zum Regel-Vorgänger. Neue Regel-Vorgänger schieben
 // Tasks, die zu früh beginnen, samt Nachfolgern nach hinten (nie nach vorne).
 import type { Task, AblaufRegel, RegelBedingung, RegelFeld, SimProjekt, GruppenReihenfolge } from "../types";
-import { istGruppe, vorgaengerListe, mitVorgaengern, vorgaengerStart, verschiebeAufStart, kaskadiereNachfolger, MAX_VORGAENGER } from "../types";
+import { istGruppe, getOutlineLevel, vorgaengerListe, mitVorgaengern, vorgaengerStart, verschiebeAufStart, MAX_VORGAENGER } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { LEERE_STAMMDATEN, alleKuerzel } from "./stammdatenHelpers";
 import type { Kalender } from "./kalenderHelpers";
@@ -54,12 +54,6 @@ function bedingungTrifft(b: RegelBedingung, t: Task, m: Merkmale, gruppen: Map<n
   }
 }
 
-/** Gleiche Gruppen auf allen Ebenen bis einschliesslich bis (fehlt auf beiden Seiten = gleich) */
-function gleicheGruppen(a: Map<number, string> | undefined, b: Map<number, string> | undefined, bis: number): boolean {
-  for (let e = 1; e <= bis; e++) if ((a?.get(e) ?? "") !== (b?.get(e) ?? "")) return false;
-  return true;
-}
-
 export interface RegelErgebnis {
   tasks: Task[];
   /** je Regel-ID: so viele Vorgänger hat sie gesetzt (nach dem Weglassen unnötiger) */
@@ -68,6 +62,41 @@ export interface RegelErgebnis {
   zirkel: number;
   /** Tasks mit mehr als MAX_VORGAENGER Vorgängern — die überzähligen Regel-Vorgänger fehlen */
   zuViele: string[];
+}
+
+/** Tasks (ids), die vor dem Ende ihrer Vorgänger (+ Wartetage) beginnen, auf den frühestmöglichen Start schieben — samt allen
+ *  Nachfolgern, die dadurch zu früh beginnen; nie nach vorne. Über eine Nachfolger-Liste statt das ganze Gantt je Schritt (wie
+ *  kaskadiereNachfolger), damit es auch bei sehr vielen Tasks schnell bleibt. Gruppen: verschiebt sich ein Task, kann sich das
+ *  Ende seiner Übergruppen ändern — deren Nachfolger werden mitgeprüft; eine verschobene Gruppe nimmt ihre Kinder mit. */
+function nachHintenSchieben(tasks: Task[], ids: string[], kalender: Kalender): Task[] {
+  let erg = tasks;
+  const nachfolger = new Map<string, string[]>();
+  for (const t of tasks) for (const v of vorgaengerListe(t)) nachfolger.set(v.id, [...(nachfolger.get(v.id) ?? []), t.id]);
+  // Übergruppen je Task (Gliederung), Kinder je Gruppe
+  const uebergruppen = new Map<string, string[]>(), kinder = new Map<string, string[]>();
+  const stapel: { id: string; level: number }[] = [];
+  tasks.forEach((t, i) => {
+    const level = getOutlineLevel(t);
+    while (stapel.length && stapel[stapel.length - 1].level >= level) stapel.pop();
+    uebergruppen.set(t.id, stapel.map(s => s.id));
+    for (const s of stapel) kinder.set(s.id, [...(kinder.get(s.id) ?? []), t.id]);
+    if (istGruppe(tasks, i)) stapel.push({ id: t.id, level });
+  });
+  const index = new Map(tasks.map((t, i) => [t.id, i])); // verschiebeAufStart behält die Reihenfolge
+  const queue = [...ids];
+  let schritte = 0;
+  const maxSchritte = (tasks.length + 1) * (MAX_VORGAENGER + 1) * 4; // Schutz gegen Zyklen in alten Daten
+  while (queue.length > 0 && schritte++ < maxSchritte) {
+    const id = queue.shift()!;
+    const t = erg[index.get(id) ?? -1];
+    if (!t || !t.start) continue;
+    const frueh = vorgaengerStart(erg, t, kalender, index);
+    if (!frueh || vergleicheZeitpunkte(frueh, startZeitpunkt(t)) <= 0) continue;
+    erg = verschiebeAufStart(erg, id, frueh, kalender);
+    // geändert: der Task selbst, seine Übergruppen (Ende) und bei einer Gruppe ihre Kinder → deren Nachfolger prüfen
+    for (const x of [id, ...(uebergruppen.get(id) ?? []), ...(kinder.get(id) ?? [])]) for (const n of nachfolger.get(x) ?? []) queue.push(n);
+  }
+  return erg;
 }
 
 /** Regel-Vorgänger aller Tasks neu bestimmen (siehe Kopf). Ändert sich nichts, kommt dasselbe tasks-Array zurück. */
@@ -91,69 +120,116 @@ export function regelnAnwenden(tasks: Task[], regeln: AblaufRegel[], stammdaten:
     const merk = new Map(echte.map(t => [t.id, merkmale(t, stammdaten)]));
     const passt = (bed: RegelBedingung[], t: Task) => bed.every(b => bedingungTrifft(b, t, merk.get(t.id)!, gruppen.get(t.id)) !== !!b.nicht);
     const ordnung = reihenfolge ?? gruppenReihenfolgeAbgleichen(undefined, erg);
+    const raenge = new Map<number, Map<string, number>>(); // Ebene → Gruppe → Position in der Reihenfolge
     const rangAufEbene = (ebene: number, t: Task) => {
-      const werte = ordnung.stufen.find(s => s.quelle === "gruppe" && s.ebene === ebene)?.werte ?? [];
-      const g = gruppen.get(t.id)?.get(ebene);
-      return g ? werte.indexOf(g) : -1;
-    };
-
-    // Graph: Task → Vorgänger (bestehende + neue aus Regeln)
-    const vorg = new Map<string, Map<string, number>>(erg.map(t => [t.id, new Map(vorgaengerListe(t).map(v => [v.id, v.lagDays]))]));
-    const neu = new Map<string, Map<string, { lag: number; regel: string }>>(); // B → A → Regel
-    const istVorfahr = (vorfahr: string, von: string): boolean => { // erreicht man vorfahr über die Vorgänger von «von»?
-      const besucht = new Set<string>(), stapel = [von];
-      while (stapel.length) {
-        const id = stapel.pop()!;
-        if (id === vorfahr) return true;
-        if (besucht.has(id)) continue;
-        besucht.add(id);
-        for (const v of vorg.get(id)?.keys() ?? []) stapel.push(v);
-        for (const v of neu.get(id)?.keys() ?? []) stapel.push(v);
+      let r = raenge.get(ebene);
+      if (!r) {
+        r = new Map((ordnung.stufen.find(s => s.quelle === "gruppe" && s.ebene === ebene)?.werte ?? []).map((w, i) => [w, i]));
+        raenge.set(ebene, r);
       }
-      return false;
+      const g = gruppen.get(t.id)?.get(ebene);
+      return g ? r.get(g) ?? -1 : -1;
+    };
+    // Gruppen eines Tasks auf den Ebenen 1 … bis als Schlüssel (gleicher Schlüssel = dieselben Gruppen, wie gleicheGruppen)
+    const pfad = (t: Task, bis: number) => { const g = gruppen.get(t.id); let k = ""; for (let e = 1; e <= bis; e++) k += (g?.get(e) ?? "") + "\u0001"; return k; };
+
+    // Graph: Task → Vorgänger und Task → Nachfolger (bestehende + neue aus Regeln)
+    const vorg = new Map<string, Map<string, number>>(erg.map(t => [t.id, new Map(vorgaengerListe(t).map(v => [v.id, v.lagDays]))]));
+    const nachf = new Map<string, Set<string>>();
+    const nachfolgerDazu = (a: string, b: string) => { let s = nachf.get(a); if (!s) { s = new Set(); nachf.set(a, s); } s.add(b); };
+    for (const [b, m] of vorg) for (const a of m.keys()) nachfolgerDazu(a, b);
+    const neu = new Map<string, Map<string, { lag: number; regel: string }>>(); // B → A → Regel
+    /** alle Nachfolger von id über alle Stufen — A → B ergäbe einen Zirkel, wenn A darunter ist */
+    const nachkommen = (id: string): Set<string> => {
+      const besucht = new Set<string>(), stapel = [id];
+      while (stapel.length) for (const n of nachf.get(stapel.pop()!) ?? []) if (!besucht.has(n)) { besucht.add(n); stapel.push(n); }
+      return besucht;
     };
 
     for (const regel of aktive) {
       const as = echte.filter(t => passt(regel.vor, t));
       if (as.length === 0) continue;
       const ebene = regel.ebene ?? 1;
+      // A nach Gruppen vorsortiert: «gleich» = dieselben Gruppen bis zur Ebene, «darunter» = dieselben Gruppen darüber
+      const index = new Map<string, Task[]>();
+      if (regel.bezug !== "ueberall") for (const a of as) {
+        const k = pfad(a, regel.bezug === "gleich" ? ebene : ebene - 1);
+        index.set(k, [...(index.get(k) ?? []), a]);
+      }
       for (const b of echte) {
         if (!passt(regel.nach, b)) continue;
-        let liste = as.filter(a => a.id !== b.id);
-        if (regel.bezug === "gleich") liste = liste.filter(a => gleicheGruppen(gruppen.get(a.id), gruppen.get(b.id), ebene));
-        else if (regel.bezug === "darunter") {
+        let liste: Task[];
+        if (regel.bezug === "ueberall") liste = as;
+        else if (regel.bezug === "gleich") liste = index.get(pfad(b, ebene)) ?? [];
+        else {
           // nächste Gruppe davor auf dieser Ebene (fehlt eine, z.B. kein 1.OG, die nächstuntere), gleiche Gruppen darüber
           const rb = rangAufEbene(ebene, b);
           if (rb < 0) continue;
-          liste = liste.filter(a => gleicheGruppen(gruppen.get(a.id), gruppen.get(b.id), ebene - 1) && rangAufEbene(ebene, a) >= 0 && rangAufEbene(ebene, a) < rb);
-          const naechste = Math.max(-1, ...liste.map(a => rangAufEbene(ebene, a)));
-          liste = liste.filter(a => rangAufEbene(ebene, a) === naechste);
+          const kandidaten = (index.get(pfad(b, ebene - 1)) ?? []).filter(a => { const r = rangAufEbene(ebene, a); return r >= 0 && r < rb; });
+          const naechste = kandidaten.reduce((m, a) => Math.max(m, rangAufEbene(ebene, a)), -1);
+          liste = kandidaten.filter(a => rangAufEbene(ebene, a) === naechste);
         }
+        let unten: Set<string> | null = null; // Nachkommen von B — ändern sich durch neue Verknüpfungen A → B nicht
         for (const a of liste) {
+          if (a.id === b.id) continue;
           const bisher = neu.get(b.id)?.get(a.id);
           if (bisher) { if (regel.wartetage > bisher.lag) neu.get(b.id)!.set(a.id, { lag: regel.wartetage, regel: regel.id }); continue; }
-          if (!vorg.get(b.id)!.has(a.id) && istVorfahr(b.id, a.id)) { zirkel++; continue; }
+          if (!vorg.get(b.id)!.has(a.id)) {
+            unten ??= nachkommen(b.id);
+            if (unten.has(a.id)) { zirkel++; continue; }
+          }
           if (!neu.has(b.id)) neu.set(b.id, new Map());
           neu.get(b.id)!.set(a.id, { lag: regel.wartetage, regel: regel.id });
+          nachfolgerDazu(a.id, b.id);
         }
       }
     }
 
-    // 2. unnötige weglassen: A ist über einen anderen Vorgänger P von B schon gesichert (A → … → P → B), ohne eigene Wartetage
-    const vorfahren = new Map<string, Set<string>>();
-    const alleVorfahren = (id: string): Set<string> => {
-      const fertig = vorfahren.get(id);
+    // 2. unnötige weglassen: A ist über einen anderen Vorgänger P von B schon gesichert (A → … → P → B), ohne eigene Wartetage.
+    //    Nur über Verknüpfungen, die stehen bleiben: nicht die vom Optimieren ergänzten (das Optimieren entfernt sie zuerst und
+    //    bestimmt sie neu — die Regel gälte dann nicht) und keine mit negativen Wartetagen (sichern die Reihenfolge nicht).
+    const byId = new Map(erg.map(t => [t.id, t]));
+    const stabil = (id: string): string[] => {
+      const t = byId.get(id);
+      const opt = new Set(t?.optimierung?.vorgaenger ?? []);
+      return [...(vorg.get(id) ?? [])].filter(([v, lag]) => lag >= 0 && !opt.has(v)).map(([v]) => v);
+    };
+    // Vorfahren je Task als Bit-Menge (1 Bit je Task) — so bleibt das auch bei breiten Regeln (z.B. «Etappe A vor Etappe B» mit
+    // Hunderten von Verknüpfungen je Task) schnell
+    const nr = new Map(erg.map((t, i) => [t.id, i]));
+    const W = Math.ceil(erg.length / 32);
+    const bit = (m: Uint32Array, j: number) => (m[j >> 5] & (1 << (j & 31))) !== 0;
+    const vorfahren: (Uint32Array | undefined)[] = [];
+    const inArbeit = new Uint8Array(erg.length);
+    const alleVorfahren = (i: number): Uint32Array => {
+      const fertig = vorfahren[i];
       if (fertig) return fertig;
-      const s = new Set<string>();
-      vorfahren.set(id, s); // gegen Zyklen in alten Daten
-      for (const v of [...(vorg.get(id)?.keys() ?? []), ...(neu.get(id)?.keys() ?? [])]) { s.add(v); for (const x of alleVorfahren(v)) s.add(x); }
+      const s = new Uint32Array(W);
+      if (inArbeit[i]) return s; // Zyklus in alten Daten
+      inArbeit[i] = 1;
+      for (const v of [...stabil(erg[i].id), ...(neu.get(erg[i].id)?.keys() ?? [])]) {
+        const j = nr.get(v);
+        if (j === undefined) continue;
+        s[j >> 5] |= 1 << (j & 31);
+        const x = alleVorfahren(j);
+        for (let w = 0; w < W; w++) s[w] |= x[w];
+      }
+      vorfahren[i] = s;
       return s;
     };
     for (const [b, links] of neu) {
-      const andere = [...(vorg.get(b)?.keys() ?? []), ...links.keys()];
-      for (const [a, l] of [...links]) {
-        if (l.lag > 0 || vorg.get(b)!.has(a)) continue;
-        if (andere.some(p => p !== a && alleVorfahren(p).has(a))) links.delete(a);
+      const kandidaten = [...links].filter(([a, l]) => l.lag <= 0 && !vorg.get(b)!.has(a)).map(([a]) => a);
+      if (kandidaten.length === 0) continue;
+      const gesichert = new Uint32Array(W); // alles, was über einen Vorgänger von B schon vorher fertig ist
+      for (const p of [...stabil(b), ...links.keys()]) {
+        const j = nr.get(p);
+        if (j === undefined) continue;
+        const x = alleVorfahren(j);
+        for (let w = 0; w < W; w++) gesichert[w] |= x[w];
+      }
+      for (const a of kandidaten) {
+        const j = nr.get(a)!;
+        if (bit(gesichert, j) && !bit(alleVorfahren(j), j)) links.delete(a); // (nicht bei einem Zyklus über A selbst)
       }
     }
 
@@ -183,17 +259,15 @@ export function regelnAnwenden(tasks: Task[], regeln: AblaufRegel[], stammdaten:
   // 4. Tasks mit neuen Regel-Vorgängern, die zu früh beginnen, nach hinten schieben (samt Nachfolgern)
   const linkText = (t: Task) => { const r = new Set(t.regelVorgaenger ?? []); return vorgaengerListe(t).filter(v => r.has(v.id)).map(v => `${v.id}:${v.lagDays}`); };
   const alt = new Map(tasks.map(t => [t.id, new Set(linkText(t))]));
-  for (const t of [...erg]) {
-    if (!linkText(t).some(l => !alt.get(t.id)?.has(l))) continue;
-    const aktuell = erg.find(x => x.id === t.id)!;
-    const frueh = vorgaengerStart(erg, aktuell, kalender);
-    if (!frueh || !aktuell.start || vergleicheZeitpunkte(frueh, startZeitpunkt(aktuell)) <= 0) continue;
-    erg = kaskadiereNachfolger(verschiebeAufStart(erg, t.id, frueh, kalender), t.id, kalender);
-  }
+  const pruefen = erg.filter(t => linkText(t).some(l => !alt.get(t.id)?.has(l))).map(t => t.id);
+  if (pruefen.length > 0) erg = nachHintenSchieben(erg, pruefen, kalender);
 
-  // unveränderte Tasks als dieselben Objekte zurückgeben, ganz unverändert = dasselbe Array
-  const schluessel = (t: Task) => JSON.stringify([t.start, t.end, t.startZeit, t.endZeit, t.predecessorId, t.lagDays, t.weitereVorgaenger,
-    t.regelVorgaenger, t.autoVorgaenger, t.optimierung?.vorgaenger]);
+  // unveränderte Tasks als dieselben Objekte zurückgeben, ganz unverändert = dasselbe Array. Die Reihenfolge der Vorgänger zählt
+  // nicht (Regel-Vorgänger werden oben entfernt und hinten wieder angehängt) — sonst änderte sich die Termin-Signatur
+  // (terminSignatur) bei jedem Anwenden, und «aus der Optimierung» ginge verloren.
+  const sortiert = (l: string[] | undefined) => [...(l ?? [])].sort();
+  const schluessel = (t: Task) => JSON.stringify([t.start, t.end, t.startZeit, t.endZeit, sortiert(vorgaengerListe(t).map(v => `${v.id}:${v.lagDays}`)),
+    sortiert(t.regelVorgaenger), sortiert(t.autoVorgaenger), sortiert(t.optimierung?.vorgaenger)]);
   let geaendert = false;
   erg = erg.map((t, i) => { if (schluessel(t) === schluessel(tasks[i])) return tasks[i]; geaendert = true; return t; });
   return { tasks: geaendert ? erg : tasks, anzahl, zirkel, zuViele };

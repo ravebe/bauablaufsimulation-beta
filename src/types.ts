@@ -209,12 +209,12 @@ export interface TcSelectionEvent {
 // Universeller Datum-Parser: akzeptiert YYYY-MM-DD, DD.MM.YYYY, MM/DD/YYYY etc.
 export function parseDateUniversal(s: string): Date | null {
   if (!s) return null;
+  // YYYY-MM-DD (der häufigste Fall zuerst — wird in den Kalender-Rechnungen sehr oft aufgerufen)
+  const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
   // DD.MM.YYYY
   const de = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:[ T]\d{1,2}:\d{2}(?::\d{2})?)?$/);
   if (de) return new Date(Number(de[3]), Number(de[2]) - 1, Number(de[1]));
-  // YYYY-MM-DD
-  const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
   // MM/DD/YYYY
   const us = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T]\d{1,2}:\d{2}(?::\d{2})?)?$/);
   if (us) return new Date(Number(us[3]), Number(us[1]) - 1, Number(us[2]));
@@ -703,19 +703,20 @@ export function ersetzeLetztenVorgaengerEintrag(text: string, nr: string): strin
 }
 
 /** Ende eines Vorgängers als Zeitpunkt (Gruppen: Tagesende ihres letzten Tasks). */
-function vorgaengerEndZeitpunkt(tasks: Task[], id: string): Zeitpunkt | null {
-  const idx = tasks.findIndex(t => t.id === id);
-  if (idx < 0) return null;
+function vorgaengerEndZeitpunkt(tasks: Task[], id: string, index?: Map<string, number>): Zeitpunkt | null {
+  const idx = index ? index.get(id) ?? -1 : tasks.findIndex(t => t.id === id);
+  if (idx < 0 || tasks[idx]?.id !== id) return null;
   const p = tasks[idx];
   if (p.isGroup || istGruppe(tasks, idx)) { const e = gruppenDaten(tasks, idx).end; return e ? { datum: e, min: ARBEITSENDE_MIN } : null; }
   return p.end ? endZeitpunkt(p) : null;
 }
 
-/** Start eines Tasks aus ALLEN Vorgängern: der späteste Folge-Start (Tag nach Vorgänger-Ende + Wartetage, auf Arbeitstag gerückt). */
-export function vorgaengerStart(tasks: Task[], t: Task, kalender: Kalender = LEERER_KALENDER): Zeitpunkt | null {
+/** Start eines Tasks aus ALLEN Vorgängern: der späteste Folge-Start (Tag nach Vorgänger-Ende + Wartetage, auf Arbeitstag gerückt).
+ *  index (Task-ID → Position in tasks) beschleunigt das Nachschlagen bei vielen Aufrufen. */
+export function vorgaengerStart(tasks: Task[], t: Task, kalender: Kalender = LEERER_KALENDER, index?: Map<string, number>): Zeitpunkt | null {
   let spaetester: Zeitpunkt | null = null;
   for (const v of vorgaengerListe(t)) {
-    const ende = vorgaengerEndZeitpunkt(tasks, v.id);
+    const ende = vorgaengerEndZeitpunkt(tasks, v.id, index);
     if (!ende) continue;
     // ein Meilenstein ohne Wartetage liegt genau auf dem Ende seines Vorgängers (wie MS Project), ein Task beginnt danach
     const s = t.meilenstein && !v.lagDays ? meilensteinZeitpunkt(ende, kalender) : folgeStartZeitpunkt(ende, v.lagDays, kalender);

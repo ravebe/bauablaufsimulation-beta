@@ -147,9 +147,49 @@ function aufHalbtagEinrasten(p: Zeitpunkt, art: "start" | "ende", kal: Kalender)
   return { datum: p.datum, min: a < VORMITTAG_MIN / 2 ? ARBEITSBEGINN_MIN : MITTAG_BIS_MIN };
 }
 
+// Arbeitstage je Kalender vorgezählt (laufende Summe ab BASIS_UTC): kum[k] = Arbeitstage vor Tag k. So rechnet
+// arbeitsMinutenZwischen jede Spanne sofort statt Tag für Tag — der Optimierer ruft sie sehr oft auf — und ohne Obergrenze
+// (bisher 3660 Tage: lag ein Termin mehr als 10 Jahre nach dem frühesten Start, rechnete der Optimierer falsche Zeiten).
+const BASIS_UTC = Date.UTC(1950, 0, 1);
+const MAX_TAG_NR = 200 * 366;
+const kumJeKalender = new WeakMap<Kalender, number[]>();
+const tagNr = (d: Date) => Math.round((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - BASIS_UTC) / 86400000);
+function arbeitstageVor(kal: Kalender, nr: number): number {
+  let kum = kumJeKalender.get(kal);
+  if (!kum) { kum = [0]; kumJeKalender.set(kal, kum); }
+  while (kum.length <= nr) {
+    const k = kum.length - 1, d = new Date(BASIS_UTC + k * 86400000);
+    kum.push(kum[k] + (istArbeitstag(iso(new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())), kal) ? 1 : 0));
+  }
+  return kum[nr];
+}
+
+/** Ist Tag nr ein Arbeitstag? / Erster Arbeitstag ab Tag nr (MAX_TAG_NR, wenn keiner im vorgezählten Bereich) */
+const istArbeitstagNr = (kal: Kalender, nr: number) => arbeitstageVor(kal, nr + 1) > arbeitstageVor(kal, nr);
+function naechsterArbeitstagNr(kal: Kalender, nr: number, anzahl = 1): number {
+  const ziel = arbeitstageVor(kal, nr) + anzahl; // so viele Arbeitstage ab nr bis und mit dem gesuchten Tag
+  let lo = nr, hi = nr;
+  while (hi < MAX_TAG_NR && arbeitstageVor(kal, hi + 1) < ziel) { lo = hi + 1; hi = Math.min(MAX_TAG_NR, nr + (hi - nr + 1) * 2); }
+  if (hi >= MAX_TAG_NR) return MAX_TAG_NR;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (arbeitstageVor(kal, m + 1) >= ziel) hi = m; else lo = m + 1; }
+  return lo;
+}
+const nrZuIso = (nr: number) => { const d = new Date(BASIS_UTC + nr * 86400000); return iso(new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())); };
+
 /** Frühester Arbeitszeitpunkt am oder nach p (Mittagspause, Abend und freie Tage werden übersprungen). */
 export function naechsteArbeitszeit(p: Zeitpunkt, kal: Kalender): Zeitpunkt {
   let datum = p.datum, min = p.min;
+  const pd = parseDateUniversal(datum), pn = pd ? tagNr(pd) : -1;
+  if (pn >= 0 && pn < MAX_TAG_NR) { // über die vorgezählten Arbeitstage statt Tag für Tag (gleiche Regel wie die Schleife unten)
+    if (istArbeitstagNr(kal, pn)) {
+      if (min < ARBEITSBEGINN_MIN) return { datum, min: ARBEITSBEGINN_MIN };
+      if (min >= MITTAG_VON_MIN && min < MITTAG_BIS_MIN) return { datum, min: MITTAG_BIS_MIN };
+      if (min < ARBEITSENDE_MIN) return { datum, min };
+    }
+    const n = naechsterArbeitstagNr(kal, pn + 1);
+    if (n - pn < 4000) return { datum: nrZuIso(n), min: ARBEITSBEGINN_MIN };
+    if (n < MAX_TAG_NR) return p; // wie die Schleife: kein Arbeitstag in den nächsten 4000 Tagen
+  }
   for (let i = 0; i < 4000; i++) {
     if (istArbeitstag(datum, kal)) {
       if (min < ARBEITSBEGINN_MIN) return { datum, min: ARBEITSBEGINN_MIN };
@@ -182,13 +222,24 @@ export function arbeitsMinutenZwischen(s: Zeitpunkt, e: Zeitpunkt, kal: Kalender
   const sd = parseDateUniversal(s.datum), ed = parseDateUniversal(e.datum);
   if (!sd || !ed) return MIN_PRO_ARBEITSTAG;
   let summe = 0;
-  const n = Math.min(3660, Math.round((ed.getTime() - sd.getTime()) / 86400000));
-  for (let i = 0; i <= n; i++) {
-    const tag = iso(new Date(sd.getFullYear(), sd.getMonth(), sd.getDate() + i));
-    if (!istArbeitstag(tag, kal)) continue;
-    const von = i === 0 ? arbeitsMinBis(s.min) : 0;
-    const bis = i === n ? arbeitsMinBis(e.min) : MIN_PRO_ARBEITSTAG;
-    summe += Math.max(0, bis - von);
+  const sn = tagNr(sd), en = tagNr(ed), n = en - sn;
+  if (n >= 0 && sn >= 0 && en < MAX_TAG_NR) {
+    // erster Tag ab s, letzter Tag bis e, dazwischen ganze Arbeitstage (gleiche Rechnung wie Tag für Tag)
+    const ersterIstArbeitstag = istArbeitstagNr(kal, sn);
+    if (n === 0) summe = ersterIstArbeitstag ? Math.max(0, arbeitsMinBis(e.min) - arbeitsMinBis(s.min)) : 0;
+    else {
+      if (ersterIstArbeitstag) summe += MIN_PRO_ARBEITSTAG - arbeitsMinBis(s.min);
+      if (istArbeitstagNr(kal, en)) summe += arbeitsMinBis(e.min);
+      summe += (arbeitstageVor(kal, en) - arbeitstageVor(kal, sn + 1)) * MIN_PRO_ARBEITSTAG;
+    }
+  } else {
+    for (let i = 0; i <= n; i++) { // ausserhalb 1950 bis 2150: Tag für Tag
+      const tag = iso(new Date(sd.getFullYear(), sd.getMonth(), sd.getDate() + i));
+      if (!istArbeitstag(tag, kal)) continue;
+      const von = i === 0 ? arbeitsMinBis(s.min) : 0;
+      const bis = i === n ? arbeitsMinBis(e.min) : MIN_PRO_ARBEITSTAG;
+      summe += Math.max(0, bis - von);
+    }
   }
   return summe > 0 ? summe : arbeitstageZwischen(s.datum, e.datum, kal) * MIN_PRO_ARBEITSTAG;
 }
@@ -198,6 +249,18 @@ export function endeAusArbeitsMinuten(s: Zeitpunkt, minuten: number, kal: Kalend
   const p = naechsteArbeitszeit(s, kal);
   let rest = Math.max(1, Math.round(minuten));
   let datum = p.datum, a = arbeitsMinBis(p.min);
+  // schnell über die vorgezählten Arbeitstage: der n-te Arbeitstag nach p (statt Tag für Tag — der Optimierer rechnet so jeden
+  // Zeitschritt ab Projektbeginn um); gleiche Rechnung wie die Schleife unten
+  const pd = parseDateUniversal(datum);
+  const pn = pd ? tagNr(pd) : -1;
+  if (pn >= 0 && pn < MAX_TAG_NR && istArbeitstagNr(kal, pn)) {
+    if (rest <= MIN_PRO_ARBEITSTAG - a) return aufHalbtagEinrasten({ datum, min: uhrzeitAusArbeitsMin(a + rest, "ende") }, "ende", kal);
+    rest -= MIN_PRO_ARBEITSTAG - a;
+    const tage = Math.ceil(rest / MIN_PRO_ARBEITSTAG); // so viele weitere Arbeitstage, im letzten bleibt rest − (tage − 1) × Tag
+    const tag = naechsterArbeitstagNr(kal, pn + 1, tage);
+    if (tag < MAX_TAG_NR) return aufHalbtagEinrasten({ datum: nrZuIso(tag), min: uhrzeitAusArbeitsMin(rest - (tage - 1) * MIN_PRO_ARBEITSTAG, "ende") }, "ende", kal);
+    rest += MIN_PRO_ARBEITSTAG - a; // ausserhalb des vorgezählten Bereichs: Schleife unten
+  }
   for (let i = 0; i < 40000; i++) {
     if (istArbeitstag(datum, kal)) {
       const verfuegbar = MIN_PRO_ARBEITSTAG - a;

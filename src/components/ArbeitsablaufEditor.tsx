@@ -3,6 +3,7 @@
 // Schritte aufteilen (z.B. Wandschalung 1. Seite → Bewehrung → 2. Seite → Beton: Schalung "1/3", Bewehrung "2", Beton "4").
 // Verschieben ohne Tippen: Positionen anklicken (Ctrl = dazu/weg, Shift = Bereich), dann ▲ / ▼ rechts = einen Schritt früher/später.
 import { useEffect, useState } from "react";
+import EntwurfInput from "./EntwurfInput";
 import type { Rate, Stammdaten } from "./stammdatenHelpers";
 import { alleKuerzel, gewerkeFuerKuerzel, rateFuerKuerzel, parseSchritt, schritteFuerRate, schrittVerschieben, ablaufText } from "./stammdatenHelpers";
 
@@ -88,8 +89,8 @@ export default function ArbeitsablaufEditor({ stammdaten, readOnly, onRateAender
                     <span onClick={e => anklicken(key, e)} style={{ cursor: readOnly ? "default" : "pointer", userSelect: "none", color: markiert ? "var(--tc-blue)" : undefined, fontWeight: markiert ? 600 : undefined }}>
                       {g.label}
                     </span>
-                    <input disabled={readOnly} value={rate?.schritt ?? ""} placeholder={String(standard)}
-                      onChange={e => onRateAendern(g.key, k, { schritt: e.target.value.trim() ? e.target.value : undefined })}
+                    <EntwurfInput disabled={readOnly} wert={rate?.schritt ?? ""} placeholder={String(standard)}
+                      onCommit={v => onRateAendern(g.key, k, { schritt: v.trim() ? v : undefined })}
                       style={{ width: 70, fontSize: 11, padding: "2px 5px", fontFamily: "inherit", border: `1px solid ${ungueltig ? "var(--tc-red)" : "#d4dce4"}` }} />
                   </div>
                 );
