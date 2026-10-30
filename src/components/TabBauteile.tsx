@@ -301,7 +301,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   // Tages wechseln und Nachfolger noch am selben Tag beginnen. Ist das Bauende damit früher, schlägt die Vorschau die Umstellung vor.
   // luecken: Tasks ohne Vorgänger dürfen früher beginnen, wenn Personal unter dem Kran sonst untätig wäre (nur mit Kranpersonal)
   // gruppen: Reihenfolge «Nach Gruppen» (gruppenReihenfolge.ts) — gespeicherte mit dem aktuellen Gantt abgeglichen, im Dialog änderbar
-  function auslastungVorschauOeffnen(reihenfolge: OptimierReihenfolge = "kritischerPfad", luecken = true, modus: "optimieren" | "dauern" = "optimieren",
+  function auslastungVorschauOeffnen(reihenfolge: OptimierReihenfolge = "gruppen", luecken = true, modus: "optimieren" | "dauern" = "optimieren",
     gruppen?: GruppenReihenfolge) {
     if (!aktiveSim || !zeitplanStatus?.bereit) { setZeitplanHinweisOffen(o => !o); return; }
     if (!auslastungVorschau) setAutoNachfuehren(!!aktiveSim.autoNachfuehren);
@@ -607,8 +607,8 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
               ) : (<>
                 <div style={abschnitt}>REIHENFOLGE</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))" }}>
-                  {([["kritischerPfad", "Kritischer Pfad", "Wenn mehrere Arbeiten möglich sind, bekommen zuerst die Tasks mit der längsten Restkette (meiste Arbeit danach) das Personal — kürzestes Bauprogramm"],
-                    ["gruppen", "Nach Gruppen", "Zuerst nach den Gruppen des Gantts (z.B. Etappe, Geschoss) und der Bauteilart (z.B. Boden → Wände → Stützen → Decken) in der unten festgelegten Reihenfolge, bei Gleichstand der kritische Pfad — weich: hat die vordere Gruppe gerade keine Arbeit, geht das Personal zur nächsten"],
+                  {([["gruppen", "Nach Gruppen", "Zuerst nach den Gruppen des Gantts (z.B. Etappe, Geschoss) und der Bauteilart (z.B. Boden → Wände → Stützen → Decken) in der unten festgelegten Reihenfolge, bei Gleichstand der kritische Pfad — weich: hat die vordere Gruppe gerade keine Arbeit, geht das Personal zur nächsten"],
+                    ["kritischerPfad", "Kritischer Pfad", "Wenn mehrere Arbeiten möglich sind, bekommen zuerst die Tasks mit der längsten Restkette (meiste Arbeit danach) das Personal — kürzestes Bauprogramm"],
                     ["startdatum", "Startdatum", "Wenn mehrere Arbeiten möglich sind, bekommen die Tasks mit dem frühesten aktuellen Start zuerst das Personal (bei gleichem Datum die Gantt-Reihenfolge) — z.B. wenn das Gantt nach Etappen statt nach Datum aufgebaut ist"],
                     ["gantt", "Gantt-Reihenfolge", "Wenn mehrere Arbeiten möglich sind, bekommen die Tasks in der Reihenfolge des Gantts das Personal — geordnetes Arbeiten, z.B. Achse für Achse"]] as const).map(([r, label, title]) => (
                     <button key={r} title={title} onClick={() => auslastungVorschauOeffnen(r, luecken)} style={wahl(reihenfolge === r)}>{label}</button>

@@ -13,6 +13,7 @@ import { kranstundenProKranUndBucket, kranPersonalMaxImBereich, RICHTWERT_PERSON
 import { KranLueckenHinweis } from "./KranPersonalEditor";
 import Tagesablauf from "./Tagesablauf";
 import { optimiereAuslastung } from "./auslastungOptimieren";
+import { gruppenReihenfolgeAbgleichen } from "./gruppenReihenfolge";
 import { personenstundenProKranUndBucket, personalRichtwertJeBucket } from "./kapazitaetsCheckHelpers";
 import { dreiDZustandAufTagSetzen, tagVonDatum } from "./dreiDHeuteHelper";
 import type { ApiInstance } from "../hooks/useApi";
@@ -91,14 +92,17 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
 
   const kraene = sim?.kraene ?? [];
   const kranById = new Map(kraene.map(k => [k.id, k]));
-  // Ø Auslastung des Gantts und nach "Auslastung optimieren" (Standard: kritischer Pfad, Lücken füllen, aktuelle Zeiteinheit) —
-  // nur Vorschau, übernommen wird in Tab Bauteile
+  // Ø Auslastung des Gantts und nach "Auslastung optimieren" mit denselben Einstellungen wie im Dialog (Reihenfolge und Lücken füllen
+  // des automatischen Nachführens, sonst «Nach Gruppen» mit gespeicherter Gruppen-Reihenfolge und Lücken füllen; aktuelle
+  // Zeiteinheit) — nur Vorschau, übernommen wird in Tab Bauteile
   const auslastungKennzahl = useMemo(() => {
     const gantt = durchschnittlicheAuslastung(tasks, kraene, stammdaten, kalender);
     if (gantt == null) return null;
-    const optimiert = optimiereAuslastung(tasks, stammdaten, kalender, sim?.zeiteinheit ?? "tage", kraene, "kritischerPfad", true);
+    const reihenfolge = sim?.autoNachfuehren?.reihenfolge ?? "gruppen";
+    const optimiert = optimiereAuslastung(tasks, stammdaten, kalender, sim?.zeiteinheit ?? "tage", kraene, reihenfolge, sim?.autoNachfuehren?.luecken ?? true,
+      { gruppen: reihenfolge === "gruppen" ? gruppenReihenfolgeAbgleichen(sim?.gruppenReihenfolge, tasks) : undefined });
     return { gantt, optimiert: durchschnittlicheAuslastung(optimiert, kraene, stammdaten, kalender) };
-  }, [tasks, kraene, stammdaten, kalender, sim?.zeiteinheit]);
+  }, [tasks, kraene, stammdaten, kalender, sim?.zeiteinheit, sim?.autoNachfuehren, sim?.gruppenReihenfolge]);
   // Tagesplan (tagesplan.ts) für jeden Tag einmal: Spalte Dauer, Tagesablauf, rote Tage im Diagramm (Arbeit nach Arbeitsende) und
   // Überstunden je Unternehmer/Kran über das ganze Projekt
   const tageSchluessel = personalSerien.tage.join(",");
@@ -362,7 +366,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
         <StatTile label={`${raster === "monat" ? "Monate" : "Wochen"} über Kran-Kapazität`}
           title={`Anzahl ${raster === "monat" ? "Monate" : "Wochen"}, in denen bei mindestens einem Kran der Kranstunden-Bedarf über der verfügbaren Kranzeit liegt (Umschalter Monat/Woche in der Kranoptik)`} wert={String(zeitraeumeUeberKapazitaet)} status={zeitraeumeUeberKapazitaet > 0 ? "warning" : "good"} />
         <StatTile label="Ø Auslastung Personal"
-          title={"Gantt: Ø Auslastung des aktuellen Bauablaufs — Arbeit aller Tage ÷ (eingeplantes Personal × Std./Tag), eingeplant wie die Linie Perfekte Auslastung (Personal unter dem Kran + Personen ohne Kran).\nOptimiert: dieselbe Rechnung nach «Auslastung optimieren» (kritischer Pfad, Lücken füllen, aktuelle Zeiteinheit).\n\nDie Optimierung ist hier nur eine Vorschau — übernehmen in Tab Bauteile → Werkzeuge → «Auslastung optimieren»."}
+          title={"Gantt: Ø Auslastung des aktuellen Bauablaufs — Arbeit aller Tage ÷ (eingeplantes Personal × Std./Tag), eingeplant wie die Linie Perfekte Auslastung (Personal unter dem Kran + Personen ohne Kran).\nOptimiert: dieselbe Rechnung nach «Auslastung optimieren» mit den Einstellungen des Dialogs (Standard: Nach Gruppen, Lücken füllen, aktuelle Zeiteinheit).\n\nDie Optimierung ist hier nur eine Vorschau — übernehmen in Tab Bauteile → Werkzeuge → «Auslastung optimieren»."}
           wert={auslastungKennzahl ? (
             <>{fmtZahl(auslastungKennzahl.gantt * 100)} %
               <span style={{ fontSize: 11, fontWeight: 400, color: FARBEN.textSekundaer, marginLeft: 6 }}>Gantt</span>
