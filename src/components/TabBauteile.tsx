@@ -10,7 +10,7 @@ import { useClickOutside } from "../hooks/useClickOutside";
 import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
 import { LEERER_KALENDER, ersterArbeitstagAb } from "./kalenderHelpers";
 import { pruefeZeitplanBereitschaft, berechneZeitplanUebernahme, zeitplanAbweichendeTasks } from "./zeitplanUebernahmeHelpers";
-import { optimiereAuslastung, terminSignatur } from "./auslastungOptimieren";
+import { optimiereAuslastung, terminSignatur, optimierungUebernehmen } from "./auslastungOptimieren";
 import type { OptimierReihenfolge } from "./auslastungOptimieren";
 import type { Zeiteinheit } from "./zeitHelpers";
 import { feinerAls, ZEITEINHEIT_LABEL } from "./zeitHelpers";
@@ -72,6 +72,8 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   // modus "dauern" = nur berechnete Dauer übernehmen (früher eigener Menüpunkt "Berechnete Dauer übernehmen"): Reihenfolge und
   // Vorgänger bleiben, keine Personalplanung — siehe berechneZeitplanUebernahme
   const [auslastungVorschau, setAuslastungVorschau] = useState<{ modus: "optimieren" | "dauern"; reihenfolge: OptimierReihenfolge; luecken: boolean; ergebnisse: { einheit: Zeiteinheit; tasks: Task[] }[] } | null>(null);
+  // «Automatisch nachführen» im Dialog (SimProjekt.autoNachfuehren, siehe nachfuehren.ts) — gilt beim Übernehmen
+  const [autoNachfuehren, setAutoNachfuehren] = useState(false);
   const [neuInputOffen, setNeuInputOffen] = useState(false);
   const [neuTaskInput, setNeuTaskInput] = useState("");
   const [neuTyp, setNeuTyp] = useState<"task" | "gruppe">("task");
@@ -294,6 +296,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   // luecken: Tasks ohne Vorgänger dürfen früher beginnen, wenn Personal unter dem Kran sonst untätig wäre (nur mit Kranpersonal)
   function auslastungVorschauOeffnen(reihenfolge: OptimierReihenfolge = "kritischerPfad", luecken = true, modus: "optimieren" | "dauern" = "optimieren") {
     if (!aktiveSim || !zeitplanStatus?.bereit) { setZeitplanHinweisOffen(o => !o); return; }
+    if (!auslastungVorschau) setAutoNachfuehren(!!aktiveSim.autoNachfuehren);
     const aktuell: Zeiteinheit = aktiveSim.zeiteinheit ?? "tage";
     if (modus === "dauern") {
       setAuslastungVorschau({ modus, reihenfolge, luecken, ergebnisse: [{ einheit: aktuell,
@@ -305,17 +308,13 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
       tasks: optimiereAuslastung(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN, aktiveSim.kalender ?? LEERER_KALENDER, einheit, aktiveSim.kraene ?? [], reihenfolge, luecken) })) });
   }
   function auslastungUebernehmen(einheit: Zeiteinheit, tasks: Task[], optimiert = true) {
-    if (!aktiveSim) return;
-    // nur Termine, Vorgänger und Optimierungs-Stand in den aktuellen Stand übernehmen — Bauteile (auch aus der Simulation
-    // entfernte), Mengen usw. bleiben, wie sie jetzt sind, selbst wenn sich seit dem Öffnen der Vorschau etwas geändert hat
-    const neuById = new Map(tasks.map(t => [t.id, t]));
-    tasks = aktiveSim.tasks.map(t => {
-      const n = neuById.get(t.id);
-      if (!n || n === t) return t;
-      return { ...t, start: n.start, end: n.end, startZeit: n.startZeit, endZeit: n.endZeit,
-        predecessorId: n.predecessorId, lagDays: n.lagDays, weitereVorgaenger: n.weitereVorgaenger, optimierung: n.optimierung };
-    });
-    updateSim({ ...aktiveSim, tasks, zeiteinheit: einheit === "tage" ? undefined : einheit, optimiertStand: optimiert ? terminSignatur(tasks) : undefined });
+    if (!aktiveSim || !auslastungVorschau) return;
+    // nur Termine, Vorgänger, Optimierungs-Stand und Ablauf je Tag in den aktuellen Stand übernehmen — Bauteile (auch aus der
+    // Simulation entfernte), Mengen usw. bleiben, wie sie jetzt sind, selbst wenn sich seit dem Öffnen der Vorschau etwas geändert hat
+    tasks = optimierungUebernehmen(aktiveSim.tasks, tasks);
+    const auto = optimiert && autoNachfuehren ? { reihenfolge: auslastungVorschau.reihenfolge, luecken: auslastungVorschau.luecken } : undefined;
+    updateSim({ ...aktiveSim, tasks, zeiteinheit: einheit === "tage" ? undefined : einheit, optimiertStand: optimiert ? terminSignatur(tasks) : undefined,
+      autoNachfuehren: auto });
     setAuslastungVorschau(null);
   }
 
@@ -447,9 +446,10 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                           {zeitplanStatus.bereit
                             ? (mitKranPersonal
                               ? "Plant die Tasks so, dass das Personal unter jedem Kran (Tab Ressourcen → Kräne & Personal) möglichst voll arbeitet — Leute desselben Unternehmers als Allrounder, höchstens das Personal unter dem Kran (1–2 mehr nur, wenn sonst Leute untätig wären). Arbeitsablauf je Leistungsposition, Vorgänger und Wartetage bleiben massgebend. Mit Vorschau."
-                              : "Jeder Task bekommt seine berechnete Dauer; die Min. Personen jeder Leistungsposition arbeiten voll und nie an zwei Tasks gleichzeitig — Tasks mit derselben Leistungsposition laufen nacheinander. Vorgänger und Wartetage bleiben massgebend. Mit Vorschau.")
+                              : "Je Gewerk + Unternehmer arbeitet eine Kolonne voll, immer an einer Arbeit gleichzeitig und am selben Tag weiter zur nächsten; was im Arbeitstag keinen Platz hat, geht am nächsten Tag weiter. Vorgänger und Wartetage bleiben massgebend. Mit Vorschau.")
                             : "Klicken für Details, was dafür noch fehlt."}
                           {zeitplanStatus.bereit && " Im Dialog auch «Nur Dauern übernehmen»: berechnete Dauer je Task, Reihenfolge und Vorgänger bleiben."}
+                          {aktiveSim?.autoNachfuehren && <span style={{ display: "block", marginTop: 2, color: "var(--tc-blue)", fontWeight: 600 }}>Automatisch nachführen ist an — Änderungen werden sofort neu optimiert (ausschalten im Dialog).</span>}
                         </div>
                         {zeitplanAenderungen && (
                           <div style={{ fontSize: 10, color: "#d9622b", marginTop: 4, maxWidth: 320, whiteSpace: "normal" }}>
@@ -521,6 +521,10 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
         const neueVorgaenger = vorgaengerDiff.reduce((n, d) => n + d.neu, 0), wegVorgaenger = vorgaengerDiff.reduce((n, d) => n + d.weg, 0);
         const terminGeaendert = nachher.filter((t, i) => t.start !== vorher[i].start || t.end !== vorher[i].end || t.startZeit !== vorher[i].startZeit || t.endZeit !== vorher[i].endZeit);
         const geaendert = nachher.filter((t, i) => terminGeaendert.includes(t) || vorgaengerDiff[i].neu + vorgaengerDiff[i].weg > 0);
+        // Ablauf je Tag (Task.tagesArbeit) neu, ohne dass sich Termine ändern — z.B. erstes Optimieren mit dem Rechenkern
+        const ablaufNeu = nurDauern ? [] : nachher.filter((t, i) => !geaendert.includes(t) && JSON.stringify(t.tagesArbeit) !== JSON.stringify(vorher[i].tagesArbeit));
+        const autoGeaendert = !nurDauern && autoNachfuehren !== !!aktiveSim.autoNachfuehren;
+        const nichtsZuTun = geaendert.length === 0 && ablaufNeu.length === 0 && !autoGeaendert;
         const endeVorher = ende(vorher), endeNachher = ende(nachher);
         const tageDiff = endeVorher && endeNachher ? Math.round((new Date(endeNachher).getTime() - new Date(endeVorher).getTime()) / 86400000) : 0;
         const sd = aktiveSim.stammdaten ?? LEERE_STAMMDATEN, kal = aktiveSim.kalender ?? LEERER_KALENDER, kr = aktiveSim.kraene ?? [];
@@ -556,8 +560,10 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                 Das Personal unter jedem Kran (Tab Ressourcen → Kräne & Personal) arbeitet möglichst voll: Leute desselben Unternehmers
                 sind Allrounder und besetzen jede seiner kranpflichtigen Leistungspositionen, freie Leute verstärken laufende Arbeiten
                 (höchstens doppelte Min. Personen) — so werden Tasks kürzer und mehr laufen parallel. Je Kran arbeiten höchstens so viele Leute wie sein Personal, 1–2 mehr nur, wenn sonst Leute untätig wären.
-                Positionen ohne Personal unter dem Kran (nicht kranpflichtig, kein Unternehmer) arbeiten mit ihren Min. Personen als
-                feste Gruppe — diese Gruppe ist immer nur an einem Task gleichzeitig. Arbeitsablauf je Leistungsposition, Vorgänger und
+                Arbeiten ohne Personal unter dem Kran (nicht kranpflichtig, kein Unternehmer) macht je Gewerk + Unternehmer eine Kolonne
+                mit den Min. Personen der jeweiligen Arbeit — immer nur eine Arbeit gleichzeitig, am selben Tag weiter zur nächsten. Jeder
+                Tag leistet Std./Tag; was keinen Platz hat, geht am nächsten Tag weiter, höchstens 5 % der Arbeit eines Tasks werden am
+                selben Tag in Überstunden fertig. Arbeitsablauf je Leistungsposition, Vorgänger und
                 Wartetage bleiben massgebend. Tasks ohne Mengen, Gruppen und Meilensteine bleiben unverändert. Erneutes Optimieren
                 ergibt dasselbe Ergebnis (früher ergänzte Vorgänger werden neu bestimmt).
                 <label style={{ display: "flex", alignItems: "flex-start", gap: 6, marginTop: 8, cursor: "pointer" }}
@@ -567,12 +573,13 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                     bisher geplant (frühester Start zuerst) — sonst frühestens an ihrem bisherigen Start.</span>
                 </label>
               </>) : (<>
-                Jeder Task bekommt seine berechnete Dauer (Tab Kalkulation). Die Min. Personen jeder Leistungsposition aus Tab Ressourcen
-                (z.B. Schalung · WB) arbeiten voll und nie an zwei Tasks gleichzeitig — Tasks mit derselben Leistungsposition laufen
-                nacheinander, die Schritte innerhalb eines Tasks nach dem Arbeitsablauf je Leistungsposition. Vorgänger und Wartetage bleiben
-                massgebend; Tasks ohne Vorgänger beginnen frühestens an ihrem bisherigen Start. Tasks ohne Mengen, Gruppen und
-                Meilensteine bleiben unverändert. Mit Personal unter den Kränen (Tab Ressourcen → Kräne & Personal) wird stattdessen
-                auf das Kranpersonal optimiert.
+                Je Gewerk + Unternehmer arbeitet eine Kolonne mit den Min. Personen der jeweiligen Arbeit (Tab Ressourcen) — immer nur an
+                einer Arbeit gleichzeitig und am selben Tag weiter zur nächsten (z.B. Bewehrung Wand → Bewehrung Stütze, sobald diese
+                geschalt ist). Die Schritte innerhalb eines Tasks laufen nach dem Arbeitsablauf je Leistungsposition. Jeder Tag leistet
+                Std./Tag; was keinen Platz hat, geht am nächsten Tag weiter, höchstens 5 % der Arbeit eines Tasks werden am selben Tag in
+                Überstunden fertig. Vorgänger und Wartetage bleiben massgebend; Tasks ohne Vorgänger beginnen frühestens an ihrem bisherigen
+                Start. Tasks ohne Mengen, Gruppen und Meilensteine bleiben unverändert. Mit Personal unter den Kränen (Tab Ressourcen →
+                Kräne & Personal) arbeiten die Leute eines Unternehmers unter dem Kran zusätzlich als Allrounder.
               </>)}
               {!nurDauern && <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10, fontSize: 11 }}>
                 <span style={{ fontWeight: 600 }}>Reihenfolge:</span>
@@ -587,6 +594,16 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                   </button>
                 ))}
               </div>}
+              {!nurDauern && (
+                <label style={{ display: "flex", alignItems: "flex-start", gap: 6, marginTop: 10, cursor: "pointer" }}
+                  title="Gilt für diese Simulation, bis der Haken wieder entfernt wird. Jede Änderung samt Nachführen ist ein Schritt — «Rückgängig» nimmt beides zurück.">
+                  <input type="checkbox" checked={autoNachfuehren} style={{ marginTop: 3 }} onChange={e => setAutoNachfuehren(e.target.checked)} />
+                  <span><strong>Automatisch nachführen:</strong> Nach jeder Änderung (Termine, Mengen, Tab Ressourcen, Kräne & Personal) werden
+                    die betroffenen Tasks und ihre Nachfolger sofort mit diesen Einstellungen neu optimiert — die übrigen behalten ihren
+                    Ablauf. Von Hand verschobene Tasks beginnen frühestens am neuen Start, können aber später rutschen, wenn Personal oder
+                    Kran dann besetzt sind.</span>
+                </label>
+              )}
               {umstellen && (
                 <div style={{ marginTop: 10, padding: "8px 10px", background: "#fff7e6", border: "1px solid #f5d9a8" }}>
                   Arbeiten wechseln innerhalb eines Tages: Mit der Zeiteinheit <strong>«{ZEITEINHEIT_LABEL[vorschlag.einheit]}»</strong> beginnen
@@ -596,7 +613,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                 </div>
               )}
               <div style={{ marginTop: 10, padding: "8px 10px", background: "#f5f9ff", border: "1px solid #dbeafe" }}>
-                {geaendert.length === 0 ? (nurDauern ? "Der Bauablauf entspricht bereits der berechneten Dauer — nichts zu übernehmen." : "Der Bauablauf ist bereits optimal ausgelastet — nichts zu ändern.") : (<>
+                {geaendert.length === 0 ? (nurDauern ? "Der Bauablauf entspricht bereits der berechneten Dauer — nichts zu übernehmen." : <>Die Termine sind bereits optimal ausgelastet.{ablaufNeu.length > 0 && <> Der Ablauf je Tag wird für <strong>{ablaufNeu.length}</strong> Task{ablaufNeu.length === 1 ? "" : "s"} neu gespeichert — Tab AVOR zeigt ihn dann genau so.</>}{autoGeaendert && <> «Automatisch nachführen» wird {autoNachfuehren ? "eingeschaltet" : "ausgeschaltet"}.</>}</>) : (<>
                   <div><strong>{terminGeaendert.length}</strong> Task{terminGeaendert.length === 1 ? "" : "s"} erhalten neue Termine.</div>
                   {(neueVorgaenger > 0 || wegVorgaenger > 0) && (
                     <div title="Tasks, die auf freies Personal warten mussten, bekommen den Task als zusätzlichen Vorgänger, nach dem diese Leute frei wurden — so bleibt der Ablauf beim Ausrichten der Folge-Tasks erhalten. Eigene Vorgänger bleiben; automatisch ergänzte eines früheren Optimierens werden neu bestimmt.">
@@ -620,7 +637,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
               </div>
             </div>
             <div style={{ display: "flex", gap: 6, padding: "0 18px 18px" }}>
-              <button className="tc-btn-primary" style={{ flex: 1 }} disabled={geaendert.length === 0} onClick={() => auslastungUebernehmen(vorschlag.einheit, vorschlag.tasks, !nurDauern)}>
+              <button className="tc-btn-primary" style={{ flex: 1 }} disabled={nichtsZuTun} onClick={() => auslastungUebernehmen(vorschlag.einheit, vorschlag.tasks, !nurDauern)}>
                 {umstellen ? `Übernehmen und auf «${ZEITEINHEIT_LABEL[vorschlag.einheit]}» umstellen` : "Übernehmen"}
               </button>
               {umstellen && (

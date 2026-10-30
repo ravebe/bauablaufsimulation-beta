@@ -135,6 +135,10 @@ export interface SimProjekt {
    *  Kosten gleich, siehe dreiDZustandAufTagSetzen. Umschalten: Tab Abspielen → ⋮ → Optionen. */
   genauNachUhrzeit?: boolean;
   optimiertStand?: string; // Termin-Signatur nach "Auslastung optimieren" (terminSignatur) — solange gleich, gelten Abweichungen zur berechneten Dauer als gewollt
+  /** "Auslastung optimieren" → «Automatisch nachführen»: nach jeder Änderung (Termine, Mengen, Tab Ressourcen, Kräne & Personal)
+   *  werden die betroffenen Tasks und ihre Nachfolger mit diesen Einstellungen neu optimiert (nachfuehren.ts), die übrigen
+   *  behalten ihren Ablauf. Fehlt = aus. */
+  autoNachfuehren?: { reihenfolge: "kritischerPfad" | "startdatum" | "gantt"; luecken: boolean };
 }
 
 // TC API Typen

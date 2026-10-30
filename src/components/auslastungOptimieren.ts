@@ -11,7 +11,7 @@ import type { Kalender } from "./kalenderHelpers";
 import type { Zeiteinheit, Zeitpunkt } from "./zeitHelpers";
 import { startZeitpunkt, ARBEITSBEGINN_MIN, minZuZeit, zeitZuMin } from "./zeitHelpers";
 import { optimiereMitKranpersonal } from "./auslastungOptimierenKran";
-import type { OptimierReihenfolge } from "./auslastungOptimierenKran";
+import type { OptimierReihenfolge, OptimierOptionen } from "./auslastungOptimierenKran";
 export type { OptimierReihenfolge } from "./auslastungOptimierenKran";
 
 const zpText = (p: Zeitpunkt) => `${p.datum} ${minZuZeit(p.min)}`;
@@ -64,11 +64,11 @@ function nurNoetigeVorgaenger(basis: Task[], roh: Task[]): Task[] {
 /** Neue Termine aller Tasks nach "Auslastung optimieren" (gleiche Reihenfolge wie tasks), geplant mit optimiereMitKranpersonal
  *  (Pools je Kran und Unternehmer, wo Personal unter dem Kran erfasst ist, sonst Kolonnen je Gewerk + Unternehmer). Geplante
  *  Tasks merken sich in Task.optimierung ihren Start von vorher und die ergänzten Vorgänger (siehe optimierBasis) — erneutes
- *  Optimieren ergibt dasselbe Ergebnis. lueckenFuellen siehe optimiereMitKranpersonal. */
+ *  Optimieren ergibt dasselbe Ergebnis. lueckenFuellen und optionen (Nachführen) siehe optimiereMitKranpersonal. */
 export function optimiereAuslastung(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender, einheit: Zeiteinheit = "tage", kraene: Kran[] = [],
-  reihenfolge: OptimierReihenfolge = "kritischerPfad", lueckenFuellen = false): Task[] {
+  reihenfolge: OptimierReihenfolge = "kritischerPfad", lueckenFuellen = false, optionen: OptimierOptionen = {}): Task[] {
   const basis = tasks.map(optimierBasis);
-  const roh = optimiereMitKranpersonal(basis, stammdaten, kalender, einheit, kraene, reihenfolge, lueckenFuellen);
+  const roh = optimiereMitKranpersonal(basis, stammdaten, kalender, einheit, kraene, reihenfolge, lueckenFuellen, optionen);
   const geprueft = nurNoetigeVorgaenger(basis, roh);
   return tasks.map((t, i) => {
     const neu = geprueft[i];
@@ -76,6 +76,18 @@ export function optimiereAuslastung(tasks: Task[], stammdaten: Stammdaten, kalen
     const bisher = new Set(vorgaengerListe(basis[i]).map(v => v.id));
     const freigabe = t.optimierung && zpText(startZeitpunkt(t)) === t.optimierung.start ? t.optimierung.freigabe : zpText(startZeitpunkt(t));
     return { ...neu, optimierung: { freigabe, start: zpText(startZeitpunkt(neu)), vorgaenger: vorgaengerListe(neu).filter(v => !bisher.has(v.id)).map(v => v.id) } };
+  });
+}
+
+/** Ergebnis von "Auslastung optimieren" in den aktuellen Stand übernehmen: nur Termine, Vorgänger, Optimierungs-Stand und Ablauf je
+ *  Tag (Task.tagesArbeit) — Bauteile, Mengen usw. bleiben, wie sie jetzt sind. */
+export function optimierungUebernehmen(aktuell: Task[], ergebnis: Task[]): Task[] {
+  const neuById = new Map(ergebnis.map(t => [t.id, t]));
+  return aktuell.map(t => {
+    const n = neuById.get(t.id);
+    if (!n || n === t) return t;
+    return { ...t, start: n.start, end: n.end, startZeit: n.startZeit, endZeit: n.endZeit,
+      predecessorId: n.predecessorId, lagDays: n.lagDays, weitereVorgaenger: n.weitereVorgaenger, optimierung: n.optimierung, tagesArbeit: n.tagesArbeit };
   });
 }
 

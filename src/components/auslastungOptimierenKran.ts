@@ -27,7 +27,7 @@ import {
   vergleicheZeitpunkte, zeitFelder, rasteUhrzeit, MIN_PRO_ARBEITSTAG, ARBEITSBEGINN_MIN, schrittMinuten,
 } from "./zeitHelpers";
 import { kraeneDesTasks } from "./kranHelpers";
-import { tagesArbeitBasis } from "./avorHelpers";
+import { tagesArbeitBasis, gueltigeTagesArbeit } from "./avorHelpers";
 import { Zeitschritt, vergebeZeitschritt, slotsProTag, kranSchluessel, UEBERSTUNDEN_ANTEIL } from "./ablaufKern";
 import type { KernPhase, KernAufgabe } from "./ablaufKern";
 export { MAX_VERSTAERKUNG, MAX_UEBERZUG, UEBERSTUNDEN_ANTEIL } from "./ablaufKern";
@@ -85,14 +85,37 @@ function laufAnhaengen(z: TaskZ, tag: number, l: TagesLauf) {
   z.laeufe.set(tag, liste);
 }
 
+/** Nachführen (nachfuehren.ts): nur = nur diese Tasks neu planen — alle übrigen behalten Termine und gespeicherten Ablauf
+ *  (Task.tagesArbeit), der Personal, Kolonnen und Kranzeit belegt; untergrenze = diese Tasks beginnen frühestens an ihrem
+ *  aktuellen Start, auch wenn ihre Vorgänger früher erlauben würden (von Hand verschoben). */
+export interface OptimierOptionen { nur?: Set<string>; untergrenze?: Set<string> }
+
 /** lueckenFuellen: wäre Personal unter einem Kran sonst untätig, dürfen Tasks ohne Vorgänger früher als an ihrem bisherigen Start
  *  beginnen (frühester bisheriger Start zuerst) — nur mit Leuten aus dem Kran-Pool, nie über dem Personal des Krans. */
 export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender, einheit: Zeiteinheit, kraene: Kran[],
-  reihenfolge: OptimierReihenfolge = "kritischerPfad", lueckenFuellen = false): Task[] {
+  reihenfolge: OptimierReihenfolge = "kritischerPfad", lueckenFuellen = false, optionen: OptimierOptionen = {}): Task[] {
   const echte = tasks.map((t, i) => ({ t, i })).filter(({ t, i }) => !t.isGroup && !istGruppe(tasks, i) && !!t.start && !!t.end);
   if (echte.length === 0) return tasks;
   const byId = new Map(tasks.map(t => [t.id, t]));
   const std = stammdaten.arbeitszeitStdProTag;
+  const kraeneText = kranSchluessel(kraene);
+
+  // Nachführen: der gespeicherte Ablauf der Tasks, die nicht neu geplant werden, belegt Personal, Kolonnen und Kranzeit
+  const festJeTag = new Map<string, { phase: KernPhase; kranIds: string[]; lauf: TagesLauf }[]>();
+  if (optionen.nur) for (const { t } of echte) {
+    if (optionen.nur.has(t.id) || t.tagesArbeit?.kraene !== kraeneText) continue;
+    const tage = gueltigeTagesArbeit(t, stammdaten, kalender);
+    if (!tage) continue;
+    const phasen = new Map(schritteFuerTask(t, stammdaten).flatMap(s => s.phasen).map(p => [p.position, p]));
+    const kranIds = kraeneDesTasks(t, kraene);
+    for (const [iso, laeufe] of Object.entries(tage)) for (const l of laeufe) {
+      const p = phasen.get(l.pos);
+      if (!p) continue;
+      const phase: KernPhase = { position: p.position, gewerkKey: p.gewerkKey, unternehmer: p.unternehmer, kranpflichtig: p.kranpflichtig,
+        kolonne: Math.max(1, p.kolonne), kranAnteil: p.kranAnteil, rest: 0 };
+      festJeTag.set(iso, [...(festJeTag.get(iso) ?? []), { phase, kranIds, lauf: l }]);
+    }
+  }
 
   // Achse wie in auslastungOptimieren.ts: Arbeitsminuten ab Arbeitsbeginn des frühesten Starts
   const frueh = echte.map(({ t }) => startZeitpunkt(t)).reduce((a, b) => vergleicheZeitpunkte(a, b) <= 0 ? a : b);
@@ -120,7 +143,7 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
   // Zustand je planbarem Task
   const zustand = new Map<string, TaskZ>();
   for (const { t, i } of echte) {
-    if (t.meilenstein || !hatKalkulationsWerte(t, stammdaten)) continue;
+    if (t.meilenstein || !hatKalkulationsWerte(t, stammdaten) || (optionen.nur && !optionen.nur.has(t.id))) continue;
     const schritte: PhaseZ[][] = schritteFuerTask(t, stammdaten).map(s => s.phasen.map(p => ({
       position: p.position, gewerkKey: p.gewerkKey, unternehmer: p.unternehmer, kranpflichtig: p.kranpflichtig, kolonne: Math.max(1, p.kolonne),
       kranAnteil: p.kranAnteil, rest: p.personenstunden, gesamt: p.personenstunden, letzteLeute: 0,
@@ -155,7 +178,10 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
       const fs = folgeStartZeitpunkt(e, v.lagDays, kalender);
       if (!f || vergleicheZeitpunkte(fs, f) > 0) f = fs;
     }
-    return aufRaster(minutenVon(f ?? naechsteArbeitszeit(startZeitpunkt(z.t), kalender)));
+    const eigen = naechsteArbeitszeit(startZeitpunkt(z.t), kalender);
+    // von Hand verschoben (Nachführen): frühestens am eigenen Start, auch wenn die Vorgänger früher erlauben würden
+    if (f && optionen.untergrenze?.has(z.t.id) && vergleicheZeitpunkte(eigen, f) > 0) f = eigen;
+    return aufRaster(minutenVon(f ?? eigen));
   };
   let vorgaengerGeaendert = true; // frühester Start nur neu prüfen, wenn seit dem letzten Mal ein Task eingeplant wurde
   const freigaben = new Map<string, { id: string; end: Zeitpunkt }[]>(); // Pool/Kolonne → Tasks, die damit fertig wurden
@@ -231,7 +257,12 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
 
     const tag = Math.floor(slot / N);
     const s = slot - tag * N; // Zeitschritt im Tag
-    const zs = new Zeitschritt<TaskZ>(tagIso(tag), kraene, slotStd, true);
+    const iso = tagIso(tag);
+    const zs = new Zeitschritt<TaskZ>(iso, kraene, slotStd, true);
+    for (const f of festJeTag.get(iso) ?? []) {
+      const ueberlappung = Math.min((s + 1) * slotStd, f.lauf.bis) - Math.max(s * slotStd, f.lauf.von);
+      if (ueberlappung > EPS) zs.vorbelegen(f.phase, f.kranIds, f.lauf.leute, ueberlappung / slotStd);
+    }
     const vergabe = vergebeZeitschritt(zs, [...laufend, ...bereit].map(aufgabe), fueller.map(aufgabe));
 
     // Arbeit leisten
@@ -279,7 +310,6 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
     slot++;
   }
 
-  const kraeneText = kranSchluessel(kraene);
   return tasks.map(t => {
     const r = ergebnis.get(t.id);
     if (!r) return t;

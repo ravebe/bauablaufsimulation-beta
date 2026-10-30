@@ -2,12 +2,13 @@
 // Signatur von setState, für Komponenten wie TabProjekte) → jede Benutzeraktion ist rückgängig machbar,
 // letzte 15 Schritte je Sitzung. Laden/Konflikt-Auflösung (useCloudSync) setzen den Stand direkt und
 // leeren den Verlauf — sonst würde "Rückgängig" den Cloud-Stand durch einen älteren lokalen ersetzen.
-// Logik in undoVerlauf.ts.
+// Logik in undoVerlauf.ts. Ist bei einer Simulation «Automatisch nachführen» an, wird sie im selben Schritt nachgeführt.
 import { useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { SimProjekt } from "../types";
 import { LEERER_VERLAUF, aufzeichnen, gleicherStand, rueckgaengig, wiederholen } from "./undoVerlauf";
 import type { Verlauf } from "./undoVerlauf";
+import { simNachfuehren } from "../components/nachfuehren";
 
 export function useUndo(sims: SimProjekt[], setSims: Dispatch<SetStateAction<SimProjekt[]>>, userName: string) {
   const verlauf = useRef<Verlauf>(LEERER_VERLAUF);
@@ -21,7 +22,8 @@ export function useUndo(sims: SimProjekt[], setSims: Dispatch<SetStateAction<Sim
 
   function aendereSims(fn: (prev: SimProjekt[]) => SimProjekt[]) {
     const vorher = aktuell.current;
-    const nachher = fn(vorher);
+    // «Automatisch nachführen» (nachfuehren.ts): geänderte Simulationen gleich neu optimieren — im selben Schritt wie die Änderung
+    const nachher = fn(vorher).map(s => vorher.includes(s) ? s : simNachfuehren(s));
     if (gleicherStand(vorher, nachher)) return;
     verlauf.current = aufzeichnen(verlauf.current, vorher);
     aktuell.current = nachher;
