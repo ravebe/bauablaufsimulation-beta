@@ -30,7 +30,9 @@ function csvHerunterladen(inhalt: string, dateiname: string) {
   URL.revokeObjectURL(url);
 }
 
-interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; projectId?: string | null; api?: ApiInstance | null; sharedNadelTag?: React.MutableRefObject<number>; }
+interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; projectId?: string | null; api?: ApiInstance | null; sharedNadelTag?: React.MutableRefObject<number>;
+  /** Knopf «Zur Kranplanung» im Hinweis «Kran fehlt» → Tab Ressourcen → Kräne & Personal */
+  onZuKranplanung?: () => void; }
 
 function gestapelteSerien(tagWerte: TagWert[], labelFuer: (k: string) => string): { tage: string[]; serien: Serie[] } {
   const tage = tagWerte.map(t => t.tag);
@@ -50,7 +52,7 @@ function gestapelteSerien(tagWerte: TagWert[], labelFuer: (k: string) => string)
   return { tage, serien };
 }
 
-export default function TabAvor({ sim, updateSim, readOnly, projectId = null, api, sharedNadelTag }: Props) {
+export default function TabAvor({ sim, updateSim, readOnly, projectId = null, api, sharedNadelTag, onZuKranplanung }: Props) {
   const [mengenGewerkKey, setMengenGewerkKey] = useState<string>("beton");
   const [mengenKuerzel, setMengenKuerzel] = useState<string>(""); // "" = Total (alle Kürzel dieses Gewerks summiert), Default
   const [kranMetrik, setKranMetrik] = useState<"stunden" | "personal">("stunden");
@@ -473,7 +475,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
             <span title="Richtwerte zur Plausibilisierung, keine exakte Kalkulation" style={{ fontSize: 11, color: "var(--tc-text-3)", cursor: "help" }}>ⓘ</span>
           </div>
         }>
-        <KranLueckenHinweis luecken={luecken} kraene={kraene} />
+        <KranLueckenHinweis luecken={luecken} kraene={kraene} onZuKranplanung={onZuKranplanung} />
         {kraene.length === 0 && luecken.ohneKran.tage.length === 0 ? (
           <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>
             Noch keine Kräne angelegt — Tab Ressourcen → Kräne & Personal.

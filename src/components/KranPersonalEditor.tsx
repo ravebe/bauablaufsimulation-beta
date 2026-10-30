@@ -31,7 +31,8 @@ function maxSumme(kran: Kran): { summe: number; tag: string | null } {
 
 /** Warnung über der Kranoptik bzw. in Tab Ressourcen: kranpflichtige Arbeit ohne verfügbaren Kran und Kräne, an deren Tasks an
  *  manchen Tagen gearbeitet wird, ohne dass Personal unter dem Kran erfasst ist (siehe kranLuecken). */
-export function KranLueckenHinweis({ luecken, kraene }: { luecken: ReturnType<typeof kranLuecken>; kraene: SimProjekt["kraene"] }) {
+/** onZuKranplanung: Knopf «Zur Kranplanung» rechts im Balken — springt zu Tab Ressourcen → Kräne & Personal (nur ausserhalb davon) */
+export function KranLueckenHinweis({ luecken, kraene, onZuKranplanung }: { luecken: ReturnType<typeof kranLuecken>; kraene: SimProjekt["kraene"]; onZuKranplanung?: () => void }) {
   const datum = (iso: string) => iso.split("-").reverse().join(".");
   const zeitraeume = (tage: string[]) => {
     const z = tageAlsZeitraeume(tage);
@@ -39,16 +40,23 @@ export function KranLueckenHinweis({ luecken, kraene }: { luecken: ReturnType<ty
   };
   const ohnePersonal = [...luecken.ohnePersonal].map(([id, l]) => ({ name: (kraene ?? []).find(k => k.id === id)?.name ?? "Kran", l }));
   if (luecken.ohneKran.tage.length === 0 && ohnePersonal.length === 0) return null;
-  const stil: React.CSSProperties = { fontSize: 11, color: "#8a5a00", background: "#fff7e6", border: "1px solid #f5d9a8", padding: "6px 10px", marginBottom: 6 };
+  const stil: React.CSSProperties = { fontSize: 11, color: "#8a5a00", background: "#fff7e6", border: "1px solid #f5d9a8", padding: "6px 10px", marginBottom: 6,
+    display: "flex", alignItems: "center", gap: 8 };
+  const knopf = onZuKranplanung && (
+    <button type="button" className="tc-btn-secondary" onClick={onZuKranplanung} title="Zu Tab Ressourcen → Kräne & Personal"
+      style={{ marginLeft: "auto", flexShrink: 0, fontSize: 11, padding: "2px 8px", whiteSpace: "nowrap" }}>Zur Kranplanung →</button>
+  );
   return (<>
     {luecken.ohneKran.tage.length > 0 && (
       <div style={stil} title="Diese Arbeiten brauchen einen Kran (kranpflichtige Leistungsposition), aber an diesen Tagen ist keiner der Kräne des Tasks verfügbar bzw. dem Task ist kein Kran zugewiesen. Kran in Tab Ressourcen → Kräne & Personal ergänzen oder seine Verfügbarkeit (von/bis) anpassen, bei mehreren Kränen in Tab Kalkulation → Kräne zuweisen.">
-        ⚠ <strong>Kran fehlt:</strong> {luecken.ohneKran.taskIds.length} Task{luecken.ohneKran.taskIds.length === 1 ? "" : "s"} mit kranpflichtiger Arbeit ohne verfügbaren Kran ({zeitraeume(luecken.ohneKran.tage)})
+        <span>⚠ <strong>Kran fehlt:</strong> {luecken.ohneKran.taskIds.length} Task{luecken.ohneKran.taskIds.length === 1 ? "" : "s"} mit kranpflichtiger Arbeit ohne verfügbaren Kran ({zeitraeume(luecken.ohneKran.tage)})</span>
+        {knopf}
       </div>
     )}
     {ohnePersonal.map(({ name, l }) => (
       <div key={name} style={stil} title="An diesen Tagen ist der Kran verfügbar und es gibt Arbeit an seinen Tasks, aber kein Personal unter dem Kran (Tab Ressourcen → Kräne & Personal, von/bis der Unternehmer). Auslastung optimieren plant dort ohne Personalgrenze.">
-        ⚠ <strong>{name} ohne Personal:</strong> Arbeit an {l.taskIds.length} Task{l.taskIds.length === 1 ? "" : "s"}, aber kein Personal unter dem Kran ({zeitraeume(l.tage)})
+        <span>⚠ <strong>{name} ohne Personal:</strong> Arbeit an {l.taskIds.length} Task{l.taskIds.length === 1 ? "" : "s"}, aber kein Personal unter dem Kran ({zeitraeume(l.tage)})</span>
+        {knopf}
       </div>
     ))}
   </>);

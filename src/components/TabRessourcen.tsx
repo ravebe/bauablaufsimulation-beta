@@ -22,6 +22,8 @@ import PunkteMenu from "./PunkteMenu";
 interface Props {
   sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; api?: ApiInstance | null;
   selektion?: number[]; aktivesModellId?: string | null; projectId?: string | null;
+  /** Sprung aus Tab AVOR («Zur Kranplanung»): bei jeder Erhöhung «Kräne & Personal» aufklappen und dorthin scrollen */
+  kranplanungSignal?: number;
 }
 
 const NEUE_RATE: Rate = { kuerzel: "", bezeichnung: "", leistungswertHProEinheit: null, anzahlPersonen: 1, chfProEinheit: null };
@@ -42,7 +44,7 @@ const TOTAL_BREITE = 110; // Mengen-Summe je Kürzel, rot bei fehlenden/fehlerha
 const ENTFERNEN_BREITE = 26; // ×-Button, ganz am Zeilenende
 const LS_RATEN_COLW = "4d-ressourcen-raten-colw";
 
-export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion = [], aktivesModellId = null, projectId = null }: Props) {
+export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion = [], aktivesModellId = null, projectId = null, kranplanungSignal = 0 }: Props) {
   const [ladeErgebnis, setLadeErgebnis] = useState<string | null>(null);
   const [importFehler, setImportFehler] = useState<string | null>(null);
   // Ergebnis von "Mengen berechnen": fett grün/orange/rot, beim nächsten Klick irgendwo wieder grau (wie Tab Kalkulation)
@@ -70,6 +72,14 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   const einheitFocusRef = useRef<Record<number, string>>({});
   const lsRatenColwKey = nsKey(LS_RATEN_COLW, projectId);
   const { eingeklappt, toggle: toggleEingeklappt } = useEingeklappt(projectId, "ressourcen");
+  // Sprung aus Tab AVOR («Zur Kranplanung»): Kräne & Personal aufklappen und hinscrollen (nach dem Umschalten des Tabs)
+  const kranplanungRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!kranplanungSignal) return;
+    if (eingeklappt["kraene"]) toggleEingeklappt("kraene");
+    const id = setTimeout(() => kranplanungRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+    return () => clearTimeout(id);
+  }, [kranplanungSignal]); // eslint-disable-line react-hooks/exhaustive-deps
   const [ratenColW, setRatenColW] = useState<Record<RatenSpalte, number>>(() => {
     try {
       const raw = localStorage.getItem(lsRatenColwKey);
@@ -779,6 +789,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                 if (ri >= 0) rateAendern(gi, ri, patch);
               }} />
           </CockpitAbschnitt>
+          <div ref={kranplanungRef} />
           <CockpitAbschnitt titel="Kräne & Personal" eingeklappt={!!eingeklappt["kraene"]} onToggle={() => toggleEingeklappt("kraene")}>
             <KranPersonalEditor sim={sim} updateSim={updateSim} readOnly={readOnly}
               bekannteUnternehmer={unternehmerDerRaten} alleUnternehmer={alleUnternehmer} />

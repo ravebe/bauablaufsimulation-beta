@@ -40,6 +40,9 @@ export default function App() {
   const [tabGruppe, setTabGruppe] = useState<TabGruppe>("haupt");
   const lastHauptTab = useRef<Tab>("projekte");
   const lastErweitertTab = useRef<Tab>("ressourcen");
+  // «Zur Kranplanung» (Tab AVOR → Hinweis Kran fehlt): zu Tab Ressourcen, dort Kräne & Personal aufklappen und hinscrollen
+  const [kranplanungSignal, setKranplanungSignal] = useState(0);
+  const zuKranplanung = () => { setTabGruppe("erweitert"); setAktTab("ressourcen"); setKranplanungSignal(n => n + 1); };
   useEffect(() => {
     if (HAUPT_TABS.includes(aktTab)) lastHauptTab.current = aktTab;
     else lastErweitertTab.current = aktTab;
@@ -437,12 +440,14 @@ export default function App() {
         </div>
         <div className="tc-tab-pane" style={{ display: aktTab === "ressourcen" ? "block" : "none" }}>
           <FehlerGrenze bereich="Tab Ressourcen">
-            <TabRessourcen sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} api={api} selektion={selektion} aktivesModellId={aktivesModellId} projectId={projectId} />
+            <TabRessourcen sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} api={api} selektion={selektion} aktivesModellId={aktivesModellId} projectId={projectId}
+              kranplanungSignal={kranplanungSignal} />
           </FehlerGrenze>
         </div>
         <div className="tc-tab-pane" style={{ display: aktTab === "avor" ? "block" : "none" }}>
           <FehlerGrenze bereich="Tab AVOR">
-            <TabAvor sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} projectId={projectId} api={api} sharedNadelTag={sharedNadelTag} />
+            <TabAvor sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} projectId={projectId} api={api} sharedNadelTag={sharedNadelTag}
+              onZuKranplanung={zuKranplanung} />
           </FehlerGrenze>
         </div>
         <div className="tc-tab-pane" style={{ display: aktTab === "kosten" ? "block" : "none" }}>
