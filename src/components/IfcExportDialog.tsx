@@ -15,6 +15,7 @@ import { batchConvertToObjectIds } from "../hooks/useApi";
 import { ladeTcDatei, ladeTcVersionHoch, tcDateiInfo } from "../hooks/tcDateien";
 import { erzeuge4dIfc } from "./ifcExport";
 import type { IfcExportErgebnis } from "./ifcExport";
+import Hinweis from "./Hinweis";
 
 interface Props {
   sim: SimProjekt;
@@ -165,13 +166,13 @@ export default function IfcExportDialog({ sim, updateSim, api, geladeneModelle, 
         </div>
 
         <div style={{ padding: "14px 18px" }}>
-          <div style={{ fontSize: 11, color: "var(--tc-text-2)", lineHeight: 1.5, marginBottom: 12 }}>
+          <Hinweis style={{ marginBottom: 12 }}><div style={{ fontSize: 11, color: "var(--tc-text-2)", lineHeight: 1.5 }}>
             Ergänzt die Original-IFC je Modell um den Bauablauf dieser Simulation (Terminplan, Vorgänge, Termine,
             Vorgänger, Hierarchie, Bauteil-Zuordnung, Kalender) — Schema IFC4 oder IFC2X3 wird automatisch erkannt.
             Jedes zugeordnete Bauteil erhält zusätzlich das Property Set <b>Bauablauf_4D</b>.
             <br /><b>In Connect übernehmen</b> lädt die Datei als neue Version des Modells hoch — die Simulation bleibt so lange auf der bisherigen
             Version, bis Connect die neue konvertiert hat und du beim Modell mit ⟳ aktualisierst. <b>Herunterladen</b> speichert sie als <b>…_4D.ifc</b>.
-          </div>
+          </div></Hinweis>
 
           {modellIds.length === 0 && (
             <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>Diese Simulation hat noch keine Modelle bzw. Bauteile.</div>

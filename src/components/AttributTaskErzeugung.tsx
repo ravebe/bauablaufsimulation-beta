@@ -6,6 +6,7 @@ import { ausgeschlosseneGuids } from "./ausschlussHelpers";
 import type { ApiInstance } from "../hooks/useApi";
 import { getModellObjekte, ladeObjektAttribute, ladeAttributListe, type AttrItem } from "./modelHelpers";
 import Schwebend from "./Schwebend";
+import Hinweis from "./Hinweis";
 
 interface Props {
   api: ApiInstance | null;
@@ -237,8 +238,10 @@ export default function AttributTaskErzeugung({ api, sim, onUpdate, done }: Prop
 
           <div style={{ color: "var(--tc-text-3)", marginBottom: 6, fontSize: 10 }}>
             Wähle ein Attribut für den Tasknamen sowie mindestens ein weiteres Attribut zur Gruppierung.
-            Für jede vorkommende Werte-Kombination wird ein eigener Task erzeugt; nur Bauteile mit Werten
-            für alle gewählten Attribute werden zugeordnet. Je mehr Attribute gewählt sind, desto mehr (kleinere) Tasks entstehen.
+            <Hinweis>
+              Für jede vorkommende Werte-Kombination wird ein eigener Task erzeugt; nur Bauteile mit Werten
+              für alle gewählten Attribute werden zugeordnet. Je mehr Attribute gewählt sind, desto mehr (kleinere) Tasks entstehen.
+            </Hinweis>
           </div>
 
           {attrLaedt && <div style={{ fontSize: 10, color: "var(--tc-text-3)", marginBottom: 6 }}>⟳ Attribute laden…</div>}

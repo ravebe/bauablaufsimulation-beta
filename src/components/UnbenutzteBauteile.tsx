@@ -7,6 +7,7 @@ import type { ApiInstance } from "../hooks/useApi";
 import { bauteileAusschliessen, bauteileWiederAufnehmen, unbenutzteListen } from "./ausschlussHelpers";
 import { bekannteKlasse, guidsZuBatch, ladeObjektAttribute } from "./modelHelpers";
 import type { ObjWerte } from "./modelHelpers";
+import Hinweis from "./Hinweis";
 
 export type UnbenutztArt = "offen" | "entfernt";
 
@@ -101,9 +102,11 @@ export function UnbenutzteDetail({ api, sim, alleGuids, art, selGuids, readOnly,
       </div>
 
       <div className="detail-block" style={{ fontSize: 10, color: "var(--tc-text-2)", lineHeight: 1.5 }}>
-        {art === "offen"
-          ? "Bauteile der Modelle, die noch keinem Task zugeordnet sind. Entfernte Bauteile werden beim Aktivieren der Simulation ausgeblendet und nirgends gerechnet."
-          : "Diese Bauteile sind ausgeblendet und werden nicht gerechnet. Wieder aufgenommen kommen sie zurück in ihren bisherigen Task (falls es ihn noch gibt)."}
+        <Hinweis>
+          {art === "offen"
+            ? "Bauteile der Modelle, die noch keinem Task zugeordnet sind. Entfernte Bauteile werden beim Aktivieren der Simulation ausgeblendet und nirgends gerechnet."
+            : "Diese Bauteile sind ausgeblendet und werden nicht gerechnet. Wieder aufgenommen kommen sie zurück in ihren bisherigen Task (falls es ihn noch gibt)."}
+        </Hinweis>
       </div>
 
       {meldung && <div className="alert ok" style={{ margin: "0 8px 6px", fontSize: 10 }}>{meldung}</div>}

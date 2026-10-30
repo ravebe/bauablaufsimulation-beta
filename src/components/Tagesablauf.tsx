@@ -19,6 +19,7 @@ import { endZeitpunkt, folgeStartZeitpunkt } from "./zeitHelpers";
 import { fmtZahl } from "./zahlFormat";
 import { UEBERSTUNDEN_ANTEIL } from "./ablaufKern";
 import { FARBEN } from "./cockpitCharts";
+import Hinweis from "./Hinweis";
 
 const MAX_TASKS = 12;
 const MAX_WARTENDE = 6;
@@ -117,15 +118,17 @@ export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeG
           {ueberzogen && <span style={{ color: FARBEN.status.critical, fontWeight: 600 }}> ({fmtZahl(plan.dauer - std)} h nach Arbeitsende)</span>}</>} />
       {!zu.ablauf && (<>
         <div style={{ color: FARBEN.textSekundaer, marginBottom: 6, lineHeight: 1.5 }}>
-          Die Arbeit des Tages laut Gantt, verteilt auf das Personal: {mitKranPersonal
-            ? "das Personal unter dem Kran arbeitet als Team (Allrounder) — jede Arbeit mindestens mit ihren Min. Personen, freie Leute verstärken bis aufs Doppelte; ohne Kran je Gewerk + Unternehmer eine Kolonne mit den Min. Personen der jeweiligen Arbeit, die von Arbeit zu Arbeit geht."
-            : "je Gewerk + Unternehmer eine Kolonne mit den Min. Personen der jeweiligen Arbeit, immer nur an einer Arbeit gleichzeitig — sie geht von Arbeit zu Arbeit."}
-          {" "}Kranpflichtige Arbeiten gehen nur so schnell, wie der Kran nachkommt (Kranzeit %). Schritte eines Tasks nacheinander. Balken = {fmtZahl(std)} h Arbeitstag.
-          {" "}{veraltet.length === 0 && zeilen.every(z => z.quelle === "optimiert")
+          {veraltet.length === 0 && zeilen.every(z => z.quelle === "optimiert")
             ? "Ablauf aus «Auslastung optimieren» — genau so geplant."
             : zeilen.some(z => z.quelle === "optimiert")
             ? "Tasks aus «Auslastung optimieren» genau so wie dort geplant, die übrigen mit denselben Regeln auf das freie Personal verteilt."
             : "Noch nicht optimiert: die Arbeit jedes Tasks ist gleichmässig auf seine Tage im Gantt verteilt."}
+          <Hinweis>
+            Die Arbeit des Tages laut Gantt, verteilt auf das Personal: {mitKranPersonal
+              ? "das Personal unter dem Kran arbeitet als Team (Allrounder) — jede Arbeit mindestens mit ihren Min. Personen, freie Leute verstärken bis aufs Doppelte; ohne Kran je Gewerk + Unternehmer eine Kolonne mit den Min. Personen der jeweiligen Arbeit, die von Arbeit zu Arbeit geht."
+              : "je Gewerk + Unternehmer eine Kolonne mit den Min. Personen der jeweiligen Arbeit, immer nur an einer Arbeit gleichzeitig — sie geht von Arbeit zu Arbeit."}
+            {" "}Kranpflichtige Arbeiten gehen nur so schnell, wie der Kran nachkommt (Kranzeit %). Schritte eines Tasks nacheinander. Balken = {fmtZahl(std)} h Arbeitstag.
+          </Hinweis>
         </div>
         {veraltet.length > 0 && (
           <div style={{ marginBottom: 6, padding: "4px 8px", background: "#fff6e0", border: `1px solid ${FARBEN.status.warning}`, color: "#6b4a00", lineHeight: 1.5 }}>
