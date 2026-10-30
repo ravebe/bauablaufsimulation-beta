@@ -8,6 +8,7 @@ import { LEERE_STAMMDATEN, effektiveArbeitszeit, mitArbeitszeit, GEWERKE_KATALOG
 import { StatTile, CockpitAbschnitt, useEingeklappt } from "./cockpitCharts";
 import KranPersonalEditor from "./KranPersonalEditor";
 import ArbeitsablaufEditor from "./ArbeitsablaufEditor";
+import AblaufRegelnEditor from "./AblaufRegelnEditor";
 import { fmtZahl } from "./zahlFormat";
 import type { Arbeitszeit } from "./zeitHelpers";
 import { pruefeArbeitszeit, arbeitszeitStunden } from "./zeitHelpers";
@@ -800,6 +801,12 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
           </CockpitAbschnitt>
         </div>
       )}
+      <div style={{ marginTop: stammdaten.gewerke.length > 0 ? 0 : 22 }}>
+        <CockpitAbschnitt titel="Ablaufregeln" eingeklappt={!!eingeklappt["ablaufregeln"]} onToggle={() => toggleEingeklappt("ablaufregeln")}
+          hinweis={<>«Erst A fertig, dann B» — z.B. Elemente erst versetzen, wenn die Platte darunter fertig ist, oder die Kanalisation einer Etappe vor ihrem Magerbeton. A und B wählen Tasks nach Gruppe, Bauteilart, Kategorie, Unternehmer oder Name (mehrere Bedingungen = alle müssen zutreffen, mehrere Werte = einer genügt). Bezug: überall, nur in derselben Gruppe (z.B. selbe Etappe) oder Gruppe darunter (Reihenfolge der Gruppen wie im Dialog Auslastung optimieren → Nach Gruppen, z.B. UG → EG → OG; auf den Ebenen darüber dieselbe Gruppe). Die Regeln setzen nach jeder Änderung automatische Vorgänger (blau, Tooltip «Ablaufregel») — nur die nötigen — und gelten so beim Optimieren, Nachführen und Ausrichten. Zu früh beginnende Tasks rücken nach hinten. Von Hand gesetzte Vorgänger bleiben; Regel ausschalten oder löschen entfernt ihre Vorgänger. Über ⋮ als Datei exportieren und in einer anderen Simulation importieren.</>}>
+          <AblaufRegelnEditor sim={sim} updateSim={updateSim} readOnly={!!readOnly} />
+        </CockpitAbschnitt>
+      </div>
     </div>
   );
 }

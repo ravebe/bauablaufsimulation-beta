@@ -58,6 +58,9 @@ export interface Task {
   /** Vorgänger, die «Auto-Vorgänger» (autoVorgaenger.ts) gesetzt hat — erneutes Ausführen ersetzt nur diese. Zusammen mit
    *  optimierung.vorgaenger die automatischen Vorgänger (blau); alle übrigen sind von Hand gesetzt (schwarz) und bleiben. */
   autoVorgaenger?: string[];
+  /** Vorgänger aus den Ablaufregeln (SimProjekt.ablaufRegeln, ablaufRegeln.ts) — nach jeder Änderung neu bestimmt, blau wie die
+   *  übrigen automatischen. Regel ausschalten oder löschen entfernt sie wieder. */
+  regelVorgaenger?: string[];
   /** Ablauf aus "Auslastung optimieren" (auslastungOptimierenKran.ts): je Arbeitstag, wer an welcher Leistungsposition von wann
    *  bis wann arbeitet (TagesLauf). Tab AVOR zeigt und rechnet genau diesen Ablauf. Gilt nur, solange Termine (termin =
    *  terminSchluessel), Mengen/Leistungspositionen (basis) und Kräne & Personal (kraene) gleich sind — sonst verteilt Tab AVOR
@@ -145,6 +148,26 @@ export interface SimProjekt {
   /** "Auslastung optimieren" → Reihenfolge «Nach Gruppen» (gruppenReihenfolge.ts): wer zuerst Personal bekommt — Stufe für Stufe
    *  (Gruppenebenen des Gantts, Bauteilart) in der hier festgelegten Reihenfolge der Werte. */
   gruppenReihenfolge?: GruppenReihenfolge;
+  /** Ablaufregeln (Tab Ressourcen, ablaufRegeln.ts): «erst A fertig, dann B» — ergeben automatische Vorgänger (Task.regelVorgaenger). */
+  ablaufRegeln?: AblaufRegel[];
+}
+
+/** Ablaufregel: Tasks der Auswahl «nach» beginnen erst, wenn alle passenden Tasks der Auswahl «vor» fertig sind (+ Wartetage).
+ *  Auswahl = Bedingungen, die alle zutreffen müssen (leer = alle Tasks); je Bedingung genügt einer der Werte (Name: enthält).
+ *  bezug: "ueberall" = ohne Einschränkung; "gleich" = nur innerhalb derselben Gruppe auf Gliederungsebene ebene (und darüber);
+ *  "darunter" = A liegt in der Gruppe direkt vor der Gruppe von B auf Ebene ebene (Reihenfolge wie im Dialog «Nach Gruppen», z.B.
+ *  UG → EG → OG), auf den Ebenen darüber in derselben Gruppe. */
+export type RegelFeld = "gruppe" | "kuerzel" | "kategorie" | "unternehmer" | "name";
+export interface RegelBedingung { feld: RegelFeld; ebene?: number; werte: string[] }
+export interface AblaufRegel {
+  id: string;
+  name: string;
+  aktiv: boolean;
+  vor: RegelBedingung[];
+  nach: RegelBedingung[];
+  bezug: "ueberall" | "gleich" | "darunter";
+  ebene?: number;
+  wartetage: number;
 }
 
 // TC API Typen
@@ -605,16 +628,16 @@ export function mitVorgaengern(t: Task, liste: VorgaengerLink[]): Task {
 /** Automatisch gesetzte Vorgänger eines Tasks (blau): von «Auto-Vorgänger» oder von «Auslastung optimieren» ergänzt. Alle übrigen
  *  sind von Hand gesetzt (schwarz) — keine Automatik ändert oder entfernt sie. */
 export function automatischeVorgaenger(t: Task): Set<string> {
-  return new Set([...(t.autoVorgaenger ?? []), ...(t.optimierung?.vorgaenger ?? [])]);
+  return new Set([...(t.autoVorgaenger ?? []), ...(t.optimierung?.vorgaenger ?? []), ...(t.regelVorgaenger ?? [])]);
 }
 export const VORGAENGER_FARBE = { manuell: "#333", automatisch: "#2d7dbd" };
 
 /** Tooltip der Vorgänger-Spalte: jeder Vorgänger mit Herkunft */
 export function vorgaengerTitel(t: Task, nummern: Map<string, string>): string {
-  const auto = new Set(t.autoVorgaenger ?? []), opt = new Set(t.optimierung?.vorgaenger ?? []);
+  const auto = new Set(t.autoVorgaenger ?? []), opt = new Set(t.optimierung?.vorgaenger ?? []), regel = new Set(t.regelVorgaenger ?? []);
   return "Vorgänger: " + vorgaengerListe(t).map(v => `${nummern.get(v.id) ?? "?"}${v.lagDays ? (v.lagDays > 0 ? `+${v.lagDays}` : `${v.lagDays}`) : ""}`
-    + (auto.has(v.id) ? " (automatisch, Auto-Vorgänger)" : opt.has(v.id) ? " (automatisch, Optimieren)" : " (von Hand)")).join(", ")
-    + "\nBlau = automatisch gesetzt (wird bei Auto-Vorgänger bzw. Optimieren neu bestimmt), schwarz = von Hand (bleibt immer).";
+    + (regel.has(v.id) ? " (automatisch, Ablaufregel)" : auto.has(v.id) ? " (automatisch, Auto-Vorgänger)" : opt.has(v.id) ? " (automatisch, Optimieren)" : " (von Hand)")).join(", ")
+    + "\nBlau = automatisch gesetzt (wird bei Auto-Vorgänger, Optimieren bzw. aus den Ablaufregeln neu bestimmt), schwarz = von Hand (bleibt immer).";
 }
 
 /** Nach einer Bearbeitung von Hand: nur Vorgänger, die unverändert geblieben sind (gleicher Task, gleiche Wartetage), behalten
@@ -623,7 +646,8 @@ function herkunftNachBearbeitung(alt: Task, neu: Task): Task {
   const vorher = vorgaengerListe(alt);
   const gleich = new Set(vorgaengerListe(neu).filter(v => vorher.some(a => a.id === v.id && a.lagDays === v.lagDays)).map(v => v.id));
   const auto = (alt.autoVorgaenger ?? []).filter(id => gleich.has(id));
-  return { ...neu, autoVorgaenger: auto.length ? auto : undefined,
+  const regel = (alt.regelVorgaenger ?? []).filter(id => gleich.has(id));
+  return { ...neu, autoVorgaenger: auto.length ? auto : undefined, regelVorgaenger: regel.length ? regel : undefined,
     optimierung: alt.optimierung ? { ...alt.optimierung, vorgaenger: alt.optimierung.vorgaenger.filter(id => gleich.has(id)) } : undefined };
 }
 

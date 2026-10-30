@@ -9,6 +9,7 @@ import type { SimProjekt } from "../types";
 import { LEERER_VERLAUF, aufzeichnen, gleicherStand, rueckgaengig, wiederholen } from "./undoVerlauf";
 import type { Verlauf } from "./undoVerlauf";
 import { simNachfuehren } from "../components/nachfuehren";
+import { simRegelnAnwenden } from "../components/ablaufRegeln";
 
 export function useUndo(sims: SimProjekt[], setSims: Dispatch<SetStateAction<SimProjekt[]>>, userName: string) {
   const verlauf = useRef<Verlauf>(LEERER_VERLAUF);
@@ -22,8 +23,9 @@ export function useUndo(sims: SimProjekt[], setSims: Dispatch<SetStateAction<Sim
 
   function aendereSims(fn: (prev: SimProjekt[]) => SimProjekt[]) {
     const vorher = aktuell.current;
-    // «Automatisch nachführen» (nachfuehren.ts): geänderte Simulationen gleich neu optimieren — im selben Schritt wie die Änderung
-    const nachher = fn(vorher).map(s => vorher.includes(s) ? s : simNachfuehren(s));
+    // Ablaufregeln (ablaufRegeln.ts) neu anwenden und «Automatisch nachführen» (nachfuehren.ts): geänderte Simulationen gleich
+    // neu optimieren — im selben Schritt wie die Änderung
+    const nachher = fn(vorher).map(s => vorher.includes(s) ? s : simNachfuehren(simRegelnAnwenden(s)));
     if (gleicherStand(vorher, nachher)) return;
     verlauf.current = aufzeichnen(verlauf.current, vorher);
     aktuell.current = nachher;

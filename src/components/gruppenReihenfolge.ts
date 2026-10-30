@@ -8,7 +8,7 @@ import { istGruppe, getOutlineLevel } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
 
 /** Gruppen-Namen je Gliederungsebene der Übergruppen eines Tasks (Ebene → Name) */
-function gruppenJeTask(tasks: Task[]): Map<string, Map<number, string>> {
+export function gruppenJeTask(tasks: Task[]): Map<string, Map<number, string>> {
   const ergebnis = new Map<string, Map<number, string>>();
   const stapel: { name: string; level: number }[] = [];
   tasks.forEach((t, i) => {

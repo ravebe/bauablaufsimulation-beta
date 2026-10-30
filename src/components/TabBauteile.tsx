@@ -26,6 +26,7 @@ import { useSelektionFokus } from "./listenScroll";
 import Schwebend from "./Schwebend";
 import Hinweis from "./Hinweis";
 import { autoVorgaengerSetzen } from "./autoVorgaenger";
+import { regelWirkt } from "./ablaufRegeln";
 import type { AutoVorgaengerModus } from "./autoVorgaenger";
 import { gruppenReihenfolgeAbgleichen } from "./gruppenReihenfolge";
 import GruppenReihenfolgeEditor from "./GruppenReihenfolgeEditor";
@@ -340,7 +341,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   function vorgaengerEntfernen() {
     if (!aktiveSim) return;
     updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => vorgaengerListe(t).length === 0 ? t : {
-      ...mitVorgaengern(t, []), autoVorgaenger: undefined, optimierung: t.optimierung ? { ...t.optimierung, vorgaenger: [] } : undefined }) });
+      ...mitVorgaengern(t, []), autoVorgaenger: undefined, regelVorgaenger: undefined, optimierung: t.optimierung ? { ...t.optimierung, vorgaenger: [] } : undefined }) });
   }
 
   // "Auto-Vorgänger" (autoVorgaenger.ts) — nach Gantt-Reihenfolge oder nach den aktuellen Terminen; ersetzt nur die Vorgänger eines
@@ -540,7 +541,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
               </div>
               <div style={{ padding: "0 16px 12px", fontSize: 12, color: "var(--tc-text-2)", lineHeight: 1.5 }}>
                 {entfernen
-                  ? <>Bei <strong>{anzahl}</strong> Task{anzahl === 1 ? "" : "s"} werden alle Vorgänger entfernt — von Hand gesetzte, Auto-Vorgänger und vom Optimieren ergänzte. Die Termine bleiben, wie sie sind.</>
+                  ? <>Bei <strong>{anzahl}</strong> Task{anzahl === 1 ? "" : "s"} werden alle Vorgänger entfernt — von Hand gesetzte, Auto-Vorgänger und vom Optimieren ergänzte. Die Termine bleiben, wie sie sind.{aktiveSim.ablaufRegeln?.some(regelWirkt) && <> Vorgänger aus den Ablaufregeln (Tab Ressourcen) werden gleich wieder gesetzt — dafür die Regeln ausschalten.</>}</>
                   : <>Jeder Nachfolger beginnt am Tag nach dem Ende seines Vorgängers plus Wartetage; die Dauer in Arbeitstagen bleibt. Betrifft <strong>{anzahl}</strong> Task{anzahl === 1 ? "" : "s"} mit Vorgängern und deren Nachfolger.</>}
               </div>
               <div style={{ borderTop: "1px solid var(--tc-border-light)", padding: "10px 16px 12px", background: "#f5f9ff" }}>
