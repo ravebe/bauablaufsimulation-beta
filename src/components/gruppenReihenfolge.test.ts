@@ -1,0 +1,72 @@
+import { describe, it, expect } from "vitest";
+import type { Task, Kran, GruppenReihenfolge } from "../types";
+import type { Stammdaten } from "./stammdatenHelpers";
+import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
+import { gruppenStruktur, gruppenReihenfolgeAbgleichen, rangJeTask } from "./gruppenReihenfolge";
+import { optimiereAuslastung } from "./auslastungOptimieren";
+
+const KAL = { feiertage: [], ferien: [] };
+const gruppe = (id: string, name: string, outlineLevel: number): Task =>
+  ({ id, name, start: "2026-11-09", end: "2026-11-20", typ: "neubau", objektGuids: [], isGroup: true, outlineLevel });
+const task = (id: string, kuerzel: string, p: Partial<Task> = {}): Task =>
+  ({ id, name: id, start: "2026-11-09", end: "2026-11-09", typ: "neubau", objektGuids: [], outlineLevel: 3, bauteilKuerzel: kuerzel,
+    mengen: { sch: 32 }, kraene: ["k1"], ...p });
+// 8 h/Tag; Schalung Wand W und Decke D: Bau AG, Min. 4, 1 h/m² — 4 Leute unter dem Kran → immer nur eine Arbeit gleichzeitig
+const stammdaten = { ...LEERE_STAMMDATEN, arbeitszeitStdProTag: 8, gewerke: [{ key: "sch", label: "Schalung", einheit: "m2", raten: ["W", "D"].map(k => ({
+  kuerzel: k, bezeichnung: k === "W" ? "Wand" : "Decke", leistungswertHProEinheit: 1, anzahlPersonen: 4, chfProEinheit: null, unternehmer: "Bau AG",
+  kranpflichtig: true, kranzeitProzent: 25 })) }] } as Stammdaten;
+const kraene: Kran[] = [{ id: "k1", name: "Kran 1", personal: [{ id: "1", unternehmer: "Bau AG", personen: 4 }] }];
+const termine = (ts: Task[]) => ts.filter(t => !t.isGroup).map(t => `${t.id} ${t.start}`);
+
+// Etappe A: UG (Wand, Decke), EG (Wand)
+const gantt = (p: Partial<Record<string, Partial<Task>>> = {}): Task[] => [
+  gruppe("eA", "Etappe A", 1), gruppe("ug", "UG", 2), task("UG-W", "W", p["UG-W"]), task("UG-D", "D", p["UG-D"]),
+  gruppe("eg", "EG", 2), task("EG-W", "W", p["EG-W"]),
+];
+
+describe("Reihenfolge nach Gruppen", () => {
+  it("erkennt die Stufen: Gruppenebenen in Gantt-Reihenfolge, zuletzt die Bauteilart", () => {
+    expect(gruppenStruktur(gantt())).toEqual([
+      { quelle: "gruppe", ebene: 1, werte: ["Etappe A"], aktiv: true },
+      { quelle: "gruppe", ebene: 2, werte: ["UG", "EG"], aktiv: true },
+      { quelle: "kuerzel", werte: ["W", "D"], aktiv: true },
+    ]);
+  });
+
+  it("gespeicherte Reihenfolge bleibt, neue Werte kommen hinten dazu, verschwundene fallen weg", () => {
+    const gespeichert: GruppenReihenfolge = { stufen: [
+      { quelle: "kuerzel", werte: ["D", "X", "W"], aktiv: true }, { quelle: "gruppe", ebene: 2, werte: ["EG"], aktiv: false }] };
+    expect(gruppenReihenfolgeAbgleichen(gespeichert, gantt()).stufen).toEqual([
+      { quelle: "kuerzel", werte: ["D", "W"], aktiv: true },
+      { quelle: "gruppe", ebene: 2, werte: ["EG", "UG"], aktiv: false },
+      { quelle: "gruppe", ebene: 1, werte: ["Etappe A"], aktiv: true },
+    ]);
+  });
+
+  it("Rang: Tasks ausserhalb der Gruppen zuerst", () => {
+    const ts = [task("MB", "W", { outlineLevel: 1 }), ...gantt()];
+    const r = rangJeTask(ts, { stufen: gruppenStruktur(ts) });
+    expect(r.get("MB")).toEqual([-1, -1, 0]);
+    expect(r.get("EG-W")).toEqual([0, 1, 0]);
+  });
+
+  it("Personal geht der Reihe nach: Geschoss UG vor EG, darin Decke vor Wand (statt kritischem Pfad)", () => {
+    const ts = gantt();
+    const g: GruppenReihenfolge = { stufen: [
+      { quelle: "gruppe", ebene: 2, werte: ["UG", "EG"], aktiv: true }, { quelle: "kuerzel", werte: ["D", "W"], aktiv: true }] };
+    expect(termine(optimiereAuslastung(ts, stammdaten, KAL, "tage", kraene, "gruppen", false, { gruppen: g })))
+      .toEqual(["UG-W 2026-11-10", "UG-D 2026-11-09", "EG-W 2026-11-11"]);
+    // EG vor UG
+    const umgekehrt: GruppenReihenfolge = { stufen: [{ ...g.stufen[0], werte: ["EG", "UG"] }, g.stufen[1]] };
+    expect(termine(optimiereAuslastung(ts, stammdaten, KAL, "tage", kraene, "gruppen", false, { gruppen: umgekehrt })))
+      .toEqual(["UG-W 2026-11-11", "UG-D 2026-11-10", "EG-W 2026-11-09"]);
+  });
+
+  it("weich: hat das vordere Geschoss gerade keine Arbeit, geht das Personal ins nächste", () => {
+    // UG-Wand darf erst ab 10.11. beginnen (z.B. Wartetage) → am 9.11. arbeiten die Leute im EG
+    const ts = gantt({ "UG-W": { start: "2026-11-10", end: "2026-11-10" }, "UG-D": { predecessorId: "UG-W", lagDays: 0 } });
+    const g: GruppenReihenfolge = { stufen: [{ quelle: "gruppe", ebene: 2, werte: ["UG", "EG"], aktiv: true }] };
+    expect(termine(optimiereAuslastung(ts, stammdaten, KAL, "tage", kraene, "gruppen", false, { gruppen: g })))
+      .toEqual(["UG-W 2026-11-10", "UG-D 2026-11-11", "EG-W 2026-11-09"]);
+  });
+});

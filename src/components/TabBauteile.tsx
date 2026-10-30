@@ -1,7 +1,7 @@
 // TabBauteile.tsx — Orchestrator mit Selektions-Tracking + Gantt-Toggle
 import { useState, useEffect, useRef } from "react";
 import { lsSet } from "../hooks/lokalSpeicher";
-import type { SimProjekt, Task , VorgaengerLink } from "../types";
+import type { SimProjekt, Task , VorgaengerLink, GruppenReihenfolge } from "../types";
 import { parseDateUniversal, istGruppe, getKinder, getOutlineLevel, kaskadiereNachfolger, richteKettenNeuAus, vorgaengerZiele, setzeVorgaenger,
   taskVerschieben as verschiebeTaskBlock, nsKey, vorgaengerListe, zirkelPfad } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
@@ -25,6 +25,8 @@ import GanttChart from "./GanttChart";
 import { useSelektionFokus } from "./listenScroll";
 import Schwebend from "./Schwebend";
 import Hinweis from "./Hinweis";
+import { gruppenReihenfolgeAbgleichen } from "./gruppenReihenfolge";
+import GruppenReihenfolgeEditor from "./GruppenReihenfolgeEditor";
 import PunkteMenu from "./PunkteMenu";
 import { exportEintraege } from "./exportEintraege";
 import { useFreieTageAusblenden } from "../hooks/useFreieTageAusblenden";
@@ -72,7 +74,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   // je Zeiteinheit (aktuelle + feinere) ein Ergebnis — feinere erlauben Nachfolger am selben Tag, siehe auslastungVorschauOeffnen
   // modus "dauern" = nur berechnete Dauer übernehmen (früher eigener Menüpunkt "Berechnete Dauer übernehmen"): Reihenfolge und
   // Vorgänger bleiben, keine Personalplanung — siehe berechneZeitplanUebernahme
-  const [auslastungVorschau, setAuslastungVorschau] = useState<{ modus: "optimieren" | "dauern"; reihenfolge: OptimierReihenfolge; luecken: boolean; ergebnisse: { einheit: Zeiteinheit; tasks: Task[] }[] } | null>(null);
+  const [auslastungVorschau, setAuslastungVorschau] = useState<{ modus: "optimieren" | "dauern"; reihenfolge: OptimierReihenfolge; luecken: boolean; gruppen: GruppenReihenfolge; ergebnisse: { einheit: Zeiteinheit; tasks: Task[] }[] } | null>(null);
   // «Automatisch nachführen» im Dialog (SimProjekt.autoNachfuehren, siehe nachfuehren.ts) — gilt beim Übernehmen
   const [autoNachfuehren, setAutoNachfuehren] = useState(false);
   const [neuInputOffen, setNeuInputOffen] = useState(false);
@@ -295,18 +297,22 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   // Gerechnet wird in der aktuellen Zeiteinheit und in jeder feineren (Halbtage, Uhrzeit): darin dürfen Arbeiten innerhalb eines
   // Tages wechseln und Nachfolger noch am selben Tag beginnen. Ist das Bauende damit früher, schlägt die Vorschau die Umstellung vor.
   // luecken: Tasks ohne Vorgänger dürfen früher beginnen, wenn Personal unter dem Kran sonst untätig wäre (nur mit Kranpersonal)
-  function auslastungVorschauOeffnen(reihenfolge: OptimierReihenfolge = "kritischerPfad", luecken = true, modus: "optimieren" | "dauern" = "optimieren") {
+  // gruppen: Reihenfolge «Nach Gruppen» (gruppenReihenfolge.ts) — gespeicherte mit dem aktuellen Gantt abgeglichen, im Dialog änderbar
+  function auslastungVorschauOeffnen(reihenfolge: OptimierReihenfolge = "kritischerPfad", luecken = true, modus: "optimieren" | "dauern" = "optimieren",
+    gruppen?: GruppenReihenfolge) {
     if (!aktiveSim || !zeitplanStatus?.bereit) { setZeitplanHinweisOffen(o => !o); return; }
     if (!auslastungVorschau) setAutoNachfuehren(!!aktiveSim.autoNachfuehren);
+    gruppen ??= auslastungVorschau?.gruppen ?? gruppenReihenfolgeAbgleichen(aktiveSim.gruppenReihenfolge, aktiveSim.tasks);
     const aktuell: Zeiteinheit = aktiveSim.zeiteinheit ?? "tage";
     if (modus === "dauern") {
-      setAuslastungVorschau({ modus, reihenfolge, luecken, ergebnisse: [{ einheit: aktuell,
+      setAuslastungVorschau({ modus, reihenfolge, luecken, gruppen, ergebnisse: [{ einheit: aktuell,
         tasks: berechneZeitplanUebernahme(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN, aktiveSim.kalender ?? LEERER_KALENDER, aktiveSim.zeiteinheit) }] });
       return;
     }
     const einheiten = [aktuell, ...(["halbtage", "stunden"] as const).filter(e => feinerAls(e, aktuell))];
-    setAuslastungVorschau({ modus, reihenfolge, luecken, ergebnisse: einheiten.map(einheit => ({ einheit,
-      tasks: optimiereAuslastung(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN, aktiveSim.kalender ?? LEERER_KALENDER, einheit, aktiveSim.kraene ?? [], reihenfolge, luecken) })) });
+    setAuslastungVorschau({ modus, reihenfolge, luecken, gruppen, ergebnisse: einheiten.map(einheit => ({ einheit,
+      tasks: optimiereAuslastung(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN, aktiveSim.kalender ?? LEERER_KALENDER, einheit, aktiveSim.kraene ?? [],
+        reihenfolge, luecken, { gruppen }) })) });
   }
   function auslastungUebernehmen(einheit: Zeiteinheit, tasks: Task[], optimiert = true) {
     if (!aktiveSim || !auslastungVorschau) return;
@@ -315,7 +321,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
     tasks = optimierungUebernehmen(aktiveSim.tasks, tasks);
     const auto = optimiert && autoNachfuehren ? { reihenfolge: auslastungVorschau.reihenfolge, luecken: auslastungVorschau.luecken } : undefined;
     updateSim({ ...aktiveSim, tasks, zeiteinheit: einheit === "tage" ? undefined : einheit, optimiertStand: optimiert ? terminSignatur(tasks) : undefined,
-      autoNachfuehren: auto });
+      autoNachfuehren: auto, ...(optimiert && auslastungVorschau.reihenfolge === "gruppen" ? { gruppenReihenfolge: auslastungVorschau.gruppen } : {}) });
     setAuslastungVorschau(null);
   }
 
@@ -441,7 +447,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                     <div>
                       <button
                         style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", borderTop: "0.5px solid #eef1f4", textAlign: "left", cursor: "pointer" }}
-                        onClick={() => { auslastungVorschauOeffnen(); if (zeitplanStatus.bereit) setWerkzeugOffen(false); }}>
+                        onClick={() => { auslastungVorschauOeffnen(aktiveSim.autoNachfuehren?.reihenfolge, aktiveSim.autoNachfuehren?.luecken ?? true); if (zeitplanStatus.bereit) setWerkzeugOffen(false); }}>
                         <div style={{ fontSize: 11, fontWeight: 500, color: zeitplanStatus.bereit ? "var(--tc-text)" : "#9aa5b0" }}>Auslastung optimieren</div>
                         {!zeitplanStatus.bereit && <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 2 }}>Klicken für Details, was dafür noch fehlt.</div>}
                         {aktiveSim?.autoNachfuehren && <div style={{ fontSize: 9, marginTop: 2, color: "var(--tc-blue)", fontWeight: 600, whiteSpace: "normal", maxWidth: 320 }}>Automatisch nachführen ist an — Änderungen werden sofort neu optimiert (ausschalten im Dialog).</div>}
@@ -524,7 +530,8 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
         // Ablauf je Tag (Task.tagesArbeit) neu, ohne dass sich Termine ändern — z.B. erstes Optimieren mit dem Rechenkern
         const ablaufNeu = nurDauern ? [] : nachher.filter((t, i) => !geaendert.includes(t) && JSON.stringify(t.tagesArbeit) !== JSON.stringify(vorher[i].tagesArbeit));
         const autoGeaendert = !nurDauern && autoNachfuehren !== !!aktiveSim.autoNachfuehren;
-        const nichtsZuTun = geaendert.length === 0 && ablaufNeu.length === 0 && !autoGeaendert;
+        const gruppenGeaendert = !nurDauern && reihenfolge === "gruppen" && JSON.stringify(auslastungVorschau.gruppen) !== JSON.stringify(aktiveSim.gruppenReihenfolge);
+        const nichtsZuTun = geaendert.length === 0 && ablaufNeu.length === 0 && !autoGeaendert && !gruppenGeaendert;
         const endeVorher = ende(vorher), endeNachher = ende(nachher);
         const tageDiff = endeVorher && endeNachher ? Math.round((new Date(endeNachher).getTime() - new Date(endeVorher).getTime()) / 86400000) : 0;
         const sd = aktiveSim.stammdaten ?? LEERE_STAMMDATEN, kal = aktiveSim.kalender ?? LEERER_KALENDER, kr = aktiveSim.kraene ?? [];
@@ -589,9 +596,10 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                   Kräne & Personal) arbeiten die Leute eines Unternehmers unter dem Kran zusätzlich als Allrounder.
                 </Hinweis>
               )}
-              {!nurDauern && <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10, fontSize: 11 }}>
+              {!nurDauern && <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, marginTop: 10, fontSize: 11 }}>
                 <span style={{ fontWeight: 600 }}>Reihenfolge:</span>
                 {([["kritischerPfad", "Kritischer Pfad", "Wenn mehrere Arbeiten möglich sind, bekommen zuerst die Tasks mit der längsten Restkette (meiste Arbeit danach) das Personal — kürzestes Bauprogramm"],
+                  ["gruppen", "Nach Gruppen", "Zuerst nach den Gruppen des Gantts (z.B. Etappe, Geschoss) und der Bauteilart (z.B. Boden → Wände → Stützen → Decken) in der unten festgelegten Reihenfolge, bei Gleichstand der kritische Pfad — weich: hat die vordere Gruppe gerade keine Arbeit, geht das Personal zur nächsten"],
                   ["startdatum", "Startdatum", "Wenn mehrere Arbeiten möglich sind, bekommen die Tasks mit dem frühesten aktuellen Start zuerst das Personal (bei gleichem Datum die Gantt-Reihenfolge) — z.B. wenn das Gantt nach Etappen statt nach Datum aufgebaut ist"],
                   ["gantt", "Gantt-Reihenfolge", "Wenn mehrere Arbeiten möglich sind, bekommen die Tasks in der Reihenfolge des Gantts das Personal — geordnetes Arbeiten, z.B. Achse für Achse"]] as const).map(([r, label, title]) => (
                   <button key={r} title={title} onClick={() => auslastungVorschauOeffnen(r, luecken)}
@@ -602,6 +610,10 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                   </button>
                 ))}
               </div>}
+              {!nurDauern && reihenfolge === "gruppen" && (
+                <GruppenReihenfolgeEditor wert={auslastungVorschau.gruppen} stammdaten={aktiveSim.stammdaten ?? LEERE_STAMMDATEN}
+                  onChange={g => auslastungVorschauOeffnen(reihenfolge, luecken, modus, g)} />
+              )}
               {!nurDauern && (<>
                 <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10, cursor: "pointer" }}>
                   <input type="checkbox" checked={autoNachfuehren} onChange={e => setAutoNachfuehren(e.target.checked)} />

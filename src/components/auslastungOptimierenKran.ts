@@ -16,7 +16,8 @@
 //    (bisherige Vorgänger bleiben) — so bleibt der neue Ablauf beim Ausrichten der Folge-Tasks erhalten.
 //  - Den Ablauf jedes Tages (wer von wann bis wann an welcher Arbeit) merkt sich der Task (Task.tagesArbeit) — Tab AVOR zeigt und
 //    rechnet genau diesen Ablauf, solange Termine, Mengen, Stammdaten und Kräne & Personal unverändert sind.
-import type { Task, Kran, TagesLauf } from "../types";
+import type { Task, Kran, TagesLauf, GruppenReihenfolge } from "../types";
+import { rangJeTask, vergleicheRang } from "./gruppenReihenfolge";
 import { istGruppe, vorgaengerListe, mitVorgaengern, terminSchluessel } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { dauerBerechnetTask, hatKalkulationsWerte, schritteFuerTask } from "./stammdatenHelpers";
@@ -35,8 +36,9 @@ const EPS = 1e-6;
 
 /** Welche Tasks zuerst Personal bekommen, wenn mehrere gleichzeitig möglich sind: "kritischerPfad" = längste Restkette zuerst
  *  (kürzestes Bauprogramm), "startdatum" = frühester aktueller Start zuerst (wenn das Gantt z.B. nach Etappen statt nach Datum
- *  sortiert ist), "gantt" = Reihenfolge im Gantt (geordnetes Arbeiten, z.B. Achse für Achse). */
-export type OptimierReihenfolge = "kritischerPfad" | "startdatum" | "gantt";
+ *  sortiert ist), "gantt" = Reihenfolge im Gantt (geordnetes Arbeiten, z.B. Achse für Achse), "gruppen" = Stufe für Stufe nach
+ *  Gruppen und Bauteilart (gruppenReihenfolge.ts, OptimierOptionen.gruppen), bei Gleichstand der kritische Pfad. */
+export type OptimierReihenfolge = "kritischerPfad" | "startdatum" | "gantt" | "gruppen";
 
 /** Restkette je Task in Tagen: eigene berechnete Dauer + längste Restkette seiner Nachfolger (nur unter den übergebenen Tasks). */
 export function restkettenJeTask(zuPlanen: Task[], stammdaten: Stammdaten, einheit: Zeiteinheit): Map<string, number> {
@@ -87,8 +89,8 @@ function laufAnhaengen(z: TaskZ, tag: number, l: TagesLauf) {
 
 /** Nachführen (nachfuehren.ts): nur = nur diese Tasks neu planen — alle übrigen behalten Termine und gespeicherten Ablauf
  *  (Task.tagesArbeit), der Personal, Kolonnen und Kranzeit belegt; untergrenze = diese Tasks beginnen frühestens an ihrem
- *  aktuellen Start, auch wenn ihre Vorgänger früher erlauben würden (von Hand verschoben). */
-export interface OptimierOptionen { nur?: Set<string>; untergrenze?: Set<string> }
+ *  aktuellen Start, auch wenn ihre Vorgänger früher erlauben würden (von Hand verschoben). gruppen = Reihenfolge «Nach Gruppen». */
+export interface OptimierOptionen { nur?: Set<string>; untergrenze?: Set<string>; gruppen?: GruppenReihenfolge }
 
 /** lueckenFuellen: wäre Personal unter einem Kran sonst untätig, dürfen Tasks ohne Vorgänger früher als an ihrem bisherigen Start
  *  beginnen (frühester bisheriger Start zuerst) — nur mit Leuten aus dem Kran-Pool, nie über dem Personal des Krans. */
@@ -215,8 +217,12 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
   };
 
   const offen = [...zustand.values()];
+  const rang = reihenfolge === "gruppen" && optionen.gruppen ? rangJeTask(tasks, optionen.gruppen) : null;
   const prio = reihenfolge === "gantt"
     ? (a: TaskZ, b: TaskZ) => a.i - b.i
+    : rang
+    ? (a: TaskZ, b: TaskZ) => vergleicheRang(rang.get(a.t.id), rang.get(b.t.id)) || b.restkette - a.restkette
+      || vergleicheZeitpunkte(startZeitpunkt(a.t), startZeitpunkt(b.t)) || a.i - b.i
     : reihenfolge === "startdatum"
     ? (a: TaskZ, b: TaskZ) => vergleicheZeitpunkte(startZeitpunkt(a.t), startZeitpunkt(b.t)) || a.i - b.i
     : (a: TaskZ, b: TaskZ) => b.restkette - a.restkette || vergleicheZeitpunkte(startZeitpunkt(a.t), startZeitpunkt(b.t)) || a.i - b.i;

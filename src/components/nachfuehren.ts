@@ -14,6 +14,7 @@ import { gueltigeTagesArbeit } from "./avorHelpers";
 import { kranSchluessel } from "./ablaufKern";
 import { optimiereAuslastung, optimierungUebernehmen, terminSignatur } from "./auslastungOptimieren";
 import { pruefeZeitplanBereitschaft } from "./zeitplanUebernahmeHelpers";
+import { gruppenReihenfolgeAbgleichen } from "./gruppenReihenfolge";
 
 /** Tasks, die neu geplant werden müssen: planbar, aber ohne gültigen Ablauf — plus alle ihre Nachfolger (über alle Stufen). */
 export function nachzufuehrendeTasks(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender, kraene: Kran[]): Set<string> {
@@ -44,7 +45,8 @@ export function simNachfuehren(sim: SimProjekt): SimProjekt {
   if (nur.size === 0) return sim;
   // von Hand verschoben (Start anders als beim Optimieren): frühestens am neuen Start
   const untergrenze = new Set(sim.tasks.filter(t => nur.has(t.id) && t.optimierung && zpText(t) !== t.optimierung.start).map(t => t.id));
-  const ergebnis = optimiereAuslastung(sim.tasks, stammdaten, kalender, sim.zeiteinheit ?? "tage", kraene, e.reihenfolge, e.luecken, { nur, untergrenze });
+  const ergebnis = optimiereAuslastung(sim.tasks, stammdaten, kalender, sim.zeiteinheit ?? "tage", kraene, e.reihenfolge, e.luecken,
+    { nur, untergrenze, gruppen: e.reihenfolge === "gruppen" ? gruppenReihenfolgeAbgleichen(sim.gruppenReihenfolge, sim.tasks) : undefined });
   const tasks = optimierungUebernehmen(sim.tasks, ergebnis);
   return { ...sim, tasks, optimiertStand: terminSignatur(tasks) };
 }

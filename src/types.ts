@@ -138,7 +138,10 @@ export interface SimProjekt {
   /** "Auslastung optimieren" → «Automatisch nachführen»: nach jeder Änderung (Termine, Mengen, Tab Ressourcen, Kräne & Personal)
    *  werden die betroffenen Tasks und ihre Nachfolger mit diesen Einstellungen neu optimiert (nachfuehren.ts), die übrigen
    *  behalten ihren Ablauf. Fehlt = aus. */
-  autoNachfuehren?: { reihenfolge: "kritischerPfad" | "startdatum" | "gantt"; luecken: boolean };
+  autoNachfuehren?: { reihenfolge: "kritischerPfad" | "startdatum" | "gantt" | "gruppen"; luecken: boolean };
+  /** "Auslastung optimieren" → Reihenfolge «Nach Gruppen» (gruppenReihenfolge.ts): wer zuerst Personal bekommt — Stufe für Stufe
+   *  (Gruppenebenen des Gantts, Bauteilart) in der hier festgelegten Reihenfolge der Werte. */
+  gruppenReihenfolge?: GruppenReihenfolge;
 }
 
 // TC API Typen
@@ -562,6 +565,12 @@ export function istZirkular(tasks: Task[], taskId: string, predId: string): bool
   }
   return false;
 }
+
+/** Eine Stufe der Reihenfolge «Nach Gruppen»: quelle "gruppe" = Gruppen der Gliederungsebene ebene (Name, z.B. «Etappe A» oder
+ *  «UG» — gleichnamige Gruppen zählen gleich), "kuerzel" = Bauteilart (Bauteil-Kürzel des Tasks); werte = Reihenfolge, zuerst
+ *  = bekommt zuerst Personal; aktiv = Stufe wird berücksichtigt. */
+export interface PrioStufe { quelle: "gruppe" | "kuerzel"; ebene?: number; werte: string[]; aktiv: boolean }
+export interface GruppenReihenfolge { stufen: PrioStufe[] }
 
 /** Ein Stück Arbeit eines Tages (Task.tagesArbeit): Leistungsposition pos, von/bis in Stunden ab Arbeitsbeginn (bis über Std./Tag
  *  = Überstunden), leute = Besetzung, ph = geleistete Personenstunden, kran = Verstärkung durch die Kranzeit begrenzt. */
