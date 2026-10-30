@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { GruppenReihenfolge, PrioStufe } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
-import { stufenTitel, wertLabel } from "./gruppenReihenfolge";
+import { stufenTitel, wertTitel } from "./gruppenReihenfolge";
 import Hinweis from "./Hinweis";
 
 const verschieben = <T,>(liste: T[], von: number, nach: number): T[] => {
@@ -50,12 +50,12 @@ export default function GruppenReihenfolgeEditor({ wert, stammdaten, onChange }:
                 onDragOver={e => { if (ziehe?.si === si) e.preventDefault(); }}
                 onDrop={e => { e.preventDefault(); if (ziehe?.si === si) stufeSetzen(si, { ...s, werte: verschieben(s.werte, ziehe.wi, wi) }); setZiehe(null); }}
                 onDragEnd={() => setZiehe(null)}
-                title="Ziehen, um die Reihenfolge zu ändern"
+                title={wertTitel(s, w, stammdaten)}
                 style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "1px 4px", background: "#fff", cursor: "grab",
                   border: `1px solid ${ziehe?.si === si && ziehe.wi === wi ? "var(--tc-blue)" : "var(--tc-border)"}`, whiteSpace: "nowrap" }}>
                 <button type="button" style={{ ...knopf, border: "none", padding: 0 }} disabled={wi === 0} title="Nach vorne"
                   onClick={() => stufeSetzen(si, { ...s, werte: verschieben(s.werte, wi, wi - 1) })}>‹</button>
-                <span style={{ color: "var(--tc-text-3)" }}>{wi + 1}.</span> {wertLabel(s, w, stammdaten)}
+                <span style={{ color: "var(--tc-text-3)" }}>{wi + 1}.</span> {w}
                 <button type="button" style={{ ...knopf, border: "none", padding: 0 }} disabled={wi === s.werte.length - 1} title="Nach hinten"
                   onClick={() => stufeSetzen(si, { ...s, werte: verschieben(s.werte, wi, wi + 1) })}>›</button>
               </span>

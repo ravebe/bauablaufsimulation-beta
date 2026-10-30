@@ -6,6 +6,7 @@
 import type { Task, GruppenReihenfolge, PrioStufe } from "../types";
 import { istGruppe, getOutlineLevel } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
+import { ablaufText } from "./stammdatenHelpers";
 
 /** Gruppen-Namen je Gliederungsebene der Übergruppen eines Tasks (Ebene → Name) */
 export function gruppenJeTask(tasks: Task[]): Map<string, Map<number, string>> {
@@ -94,8 +95,8 @@ export function vergleicheRang(a: number[] | undefined, b: number[] | undefined)
 export function stufenTitel(s: PrioStufe): string {
   return s.quelle === "kuerzel" ? "Bauteilart" : `Gruppenebene ${s.ebene}`;
 }
-export function wertLabel(s: PrioStufe, wert: string, stammdaten: Stammdaten): string {
-  if (s.quelle !== "kuerzel") return wert;
-  const bez = stammdaten.gewerke.flatMap(g => g.raten).find(r => r.kuerzel === wert)?.bezeichnung;
-  return bez ? `${wert} · ${bez}` : wert;
+/** Tooltip eines Werts: bei der Bauteilart der Arbeitsablauf des Kürzels aus Tab Ressourcen (z.B. «Schalung → Bewehrung → Beton») */
+export function wertTitel(s: PrioStufe, wert: string, stammdaten: Stammdaten): string {
+  const ablauf = s.quelle === "kuerzel" ? ablaufText(stammdaten, wert) : "";
+  return (ablauf ? `${wert}: ${ablauf}\n` : "") + "Ziehen, um die Reihenfolge zu ändern";
 }

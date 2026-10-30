@@ -378,6 +378,20 @@ export function parseSchritt(text: string | undefined): SchrittAnteil[] | null {
   return [...ergebnis.entries()].map(([schritt, anteil]) => ({ schritt, anteil })).sort((a, b) => a.schritt - b.schritt);
 }
 
+/** Ablauf eines Kürzels als lesbarer Text, z.B. "Schalung 50 % → Bewehrung → Schalung 50 % → Beton". */
+export function ablaufText(stammdaten: Stammdaten, kuerzel: string): string {
+  const jeSchritt = new Map<number, string[]>();
+  for (const g of gewerkeFuerKuerzel(stammdaten, kuerzel)) {
+    const rate = rateFuerKuerzel(g, kuerzel);
+    for (const s of schritteFuerRate(stammdaten, g.key, rate)) {
+      const liste = jeSchritt.get(s.schritt) ?? [];
+      liste.push(s.anteil < 1 - 1e-9 ? `${g.label} ${fmtZahl(s.anteil * 100)} %` : g.label);
+      jeSchritt.set(s.schritt, liste);
+    }
+  }
+  return [...jeSchritt.entries()].sort((a, b) => a[0] - b[0]).map(([, l]) => l.join(" + ")).join(" → ");
+}
+
 /** Schritte wieder als Eingabetext: "3" bzw. "1:70/4:30" */
 export function schrittText(teile: SchrittAnteil[]): string {
   if (teile.length === 1) return String(teile[0].schritt);

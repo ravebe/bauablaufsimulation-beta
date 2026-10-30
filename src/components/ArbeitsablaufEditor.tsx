@@ -4,26 +4,11 @@
 // Verschieben ohne Tippen: Positionen anklicken (Ctrl = dazu/weg, Shift = Bereich), dann ▲ / ▼ rechts = einen Schritt früher/später.
 import { useEffect, useState } from "react";
 import type { Rate, Stammdaten } from "./stammdatenHelpers";
-import { alleKuerzel, gewerkeFuerKuerzel, rateFuerKuerzel, parseSchritt, schritteFuerRate, schrittVerschieben } from "./stammdatenHelpers";
-import { fmtZahl } from "./zahlFormat";
+import { alleKuerzel, gewerkeFuerKuerzel, rateFuerKuerzel, parseSchritt, schritteFuerRate, schrittVerschieben, ablaufText } from "./stammdatenHelpers";
 
 interface Props { stammdaten: Stammdaten; readOnly?: boolean; onRateAendern: (gewerkKey: string, kuerzel: string, patch: Partial<Rate>) => void;
   /** mehrere Positionen in einem Schritt ändern (ein Rückgängig-Schritt) — fehlt: je Position onRateAendern */
   onRatenAendern?: (aenderungen: { gewerkKey: string; kuerzel: string; patch: Partial<Rate> }[]) => void }
-
-/** Ablauf eines Kürzels als lesbarer Text, z.B. "Schalung 50 % → Bewehrung → Schalung 50 % → Beton". */
-export function ablaufText(stammdaten: Stammdaten, kuerzel: string): string {
-  const jeSchritt = new Map<number, string[]>();
-  for (const g of gewerkeFuerKuerzel(stammdaten, kuerzel)) {
-    const rate = rateFuerKuerzel(g, kuerzel);
-    for (const s of schritteFuerRate(stammdaten, g.key, rate)) {
-      const liste = jeSchritt.get(s.schritt) ?? [];
-      liste.push(s.anteil < 1 - 1e-9 ? `${g.label} ${fmtZahl(s.anteil * 100)} %` : g.label);
-      jeSchritt.set(s.schritt, liste);
-    }
-  }
-  return [...jeSchritt.entries()].sort((a, b) => a[0] - b[0]).map(([, l]) => l.join(" + ")).join(" → ");
-}
 
 const auswahlKey = (kuerzel: string, gewerkKey: string) => `${kuerzel}|${gewerkKey}`;
 const pfeil: React.CSSProperties = { border: "1px solid var(--tc-border)", background: "#fff", cursor: "pointer", fontSize: 10, padding: "0 5px", lineHeight: "18px", color: "var(--tc-text-2)" };
