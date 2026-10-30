@@ -24,7 +24,7 @@ export default function GruppenReihenfolgeEditor({ wert, stammdaten, onChange }:
     return <div style={{ marginTop: 6, fontSize: 11, color: "var(--tc-text-3)" }}>Das Gantt hat noch keine Gruppen und keine Bauteil-Kürzel — es gilt der kritische Pfad.</div>;
   }
   return (
-    <div style={{ marginTop: 8, padding: "8px 10px", background: "#f7f9fb", border: "1px solid var(--tc-border-light)", fontSize: 11 }}>
+    <div style={{ marginTop: 6, padding: "8px 10px", background: "#fff", border: "1px solid var(--tc-border-light)", fontSize: 11 }}>
       <Hinweis>
         Wer weiter vorne steht, bekommt zuerst Personal — Stufe für Stufe von oben nach unten (z.B. zuerst Etappe, dann Geschoss, dann
         Bauteilart), bei Gleichstand der kritische Pfad. Weich: ist in der vorderen Gruppe gerade nichts möglich (Vorgänger, Wartetage,

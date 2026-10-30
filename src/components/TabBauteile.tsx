@@ -529,142 +529,171 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
         const sd = aktiveSim.stammdaten ?? LEERE_STAMMDATEN, kal = aktiveSim.kalender ?? LEERER_KALENDER, kr = aktiveSim.kraene ?? [];
         const auslastungVorher = durchschnittlicheAuslastung(vorher, kr, sd, kal), auslastungNachher = durchschnittlicheAuslastung(nachher, kr, sd, kal);
         const prozent = (v: number | null) => v == null ? "–" : `${fmtZahl(v * 100)} %`;
+        const abschnitt: React.CSSProperties = { fontSize: 10, fontWeight: 700, letterSpacing: ".5px", color: "var(--tc-text-3)", margin: "14px 0 6px" };
+        const wahl = (aktiv: boolean): React.CSSProperties => ({ fontSize: 12, fontWeight: 600, padding: "6px 8px", cursor: "pointer", minWidth: 0,
+          border: `1px solid ${aktiv ? "var(--tc-blue)" : "var(--tc-border)"}`, background: aktiv ? "var(--tc-blue-bg)" : "#fff",
+          color: aktiv ? "var(--tc-blue)" : "var(--tc-text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" });
+        const optionZeile: React.CSSProperties = { display: "flex", alignItems: "center", flexWrap: "wrap", gap: "4px 8px", padding: "8px 10px",
+          border: "1px solid var(--tc-border-light)", background: "#fff", marginBottom: 6 };
+        // Ergebnis-Kachel: Wert vorher → nachher, grün = besser, orange = schlechter
+        const kachel = (titel: string, inhalt: React.ReactNode, title?: string) => (
+          <div title={title} style={{ padding: "6px 10px", background: "#fff", border: "1px solid #dbe4ee", minWidth: 0 }}>
+            <div style={{ fontSize: 10, color: "var(--tc-text-3)", fontWeight: 600 }}>{titel}</div>
+            <div style={{ fontSize: 12, color: "var(--tc-text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{inhalt}</div>
+          </div>
+        );
+        const besser = (gut: boolean) => ({ color: gut ? "#2e8b57" : "#d9622b" });
+        const keineHoehereAuslastung = !nurDauern && auslastungVorher != null && auslastungNachher != null && auslastungNachher <= auslastungVorher + 0.005 && endeNachher >= endeVorher;
         return (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}
           onClick={() => setAuslastungVorschau(null)}>
-          <div style={{ background: "#fff", borderRadius: 8, overflow: "hidden", width: 460, maxWidth: "92vw", boxShadow: "0 8px 30px rgba(0,0,0,.25)", fontFamily: "var(--tc-font)" }}
+          <div style={{ background: "#fff", borderRadius: 8, overflow: "hidden", width: "min(560px, 100%)", maxHeight: "100%", display: "flex", flexDirection: "column",
+            boxShadow: "0 8px 30px rgba(0,0,0,.25)", fontFamily: "var(--tc-font)" }}
             onClick={e => e.stopPropagation()}>
-            <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--tc-border-light)", fontSize: 16, fontWeight: 700, color: "var(--tc-text)" }}>
-              Auslastung optimieren
-            </div>
-            <div style={{ padding: "16px 18px", fontSize: 12, color: "var(--tc-text-2)", lineHeight: 1.6 }}>
-              <div style={{ display: "flex", gap: 0, marginBottom: 10 }}>
+            {/* Kopf: bleibt immer sichtbar */}
+            <div style={{ padding: "12px 16px 10px", borderBottom: "1px solid var(--tc-border-light)", flexShrink: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "var(--tc-text)", flex: 1 }}>Auslastung optimieren</div>
+                <button className="tc-btn-ghost" style={{ fontSize: 14, padding: "2px 8px" }} onClick={() => setAuslastungVorschau(null)} title="Schliessen">✕</button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
                 {([["optimieren", "Optimieren", "Personal und Kranzeit planen: Reihenfolge, parallele Arbeiten und Verstärkung so, dass das Personal möglichst voll arbeitet"],
                   ["dauern", "Nur Dauern übernehmen", "Jeder Task bekommt seine berechnete Dauer aus Tab Kalkulation, Folge-Tasks rücken entlang der Vorgänger nach — Reihenfolge und Vorgänger bleiben, keine Personalplanung"]] as const).map(([m, label, title]) => (
-                  <button key={m} title={title} onClick={() => auslastungVorschauOeffnen(reihenfolge, luecken, m)}
-                    style={{ flex: 1, fontSize: 12, fontWeight: 600, padding: "5px 8px", cursor: "pointer",
-                      border: `1px solid ${modus === m ? "var(--tc-blue)" : "var(--tc-border)"}`,
-                      background: modus === m ? "var(--tc-blue-bg)" : "#fff", color: modus === m ? "var(--tc-blue)" : "var(--tc-text-2)" }}>
-                    {label}
-                  </button>
+                  <button key={m} title={title} onClick={() => auslastungVorschauOeffnen(reihenfolge, luecken, m)} style={wahl(modus === m)}>{label}</button>
                 ))}
               </div>
-              {nurDauern ? (<>
-                <Hinweis>
-                  Jeder Task bekommt seine berechnete Dauer aus Tab Kalkulation (Menge × Leistungswert ÷ Min. Personen). Folge-Tasks rücken
-                  entlang der bestehenden Vorgänger nach, Tasks ohne Vorgänger bleiben an ihrem Start. Reihenfolge und Vorgänger bleiben —
-                  es wird nicht geprüft, ob Personal oder Kranzeit reichen. Gut, wenn das Gantt bewusst von Hand geordnet ist und nur die
-                  Dauern zu den Mengen passen sollen.
-                </Hinweis>
-                {ausOptimierung && <div style={{ marginTop: 6, color: "#8a5a00" }}>Die Termine stammen aus «Optimieren» — Übernehmen ersetzt die Optimierung.</div>}
-              </>) : mitKranPersonal ? (<>
-                <Hinweis>
-                  Das Personal unter jedem Kran (Tab Ressourcen → Kräne & Personal) arbeitet möglichst voll: Leute desselben Unternehmers
-                  sind Allrounder und besetzen jede seiner kranpflichtigen Leistungspositionen, freie Leute verstärken laufende Arbeiten
-                  (höchstens doppelte Min. Personen) — so werden Tasks kürzer und mehr laufen parallel. Je Kran arbeiten höchstens so viele Leute wie sein Personal, 1–2 mehr nur, wenn sonst Leute untätig wären.
-                  Arbeiten ohne Personal unter dem Kran (nicht kranpflichtig, kein Unternehmer) macht je Gewerk + Unternehmer eine Kolonne
-                  mit den Min. Personen der jeweiligen Arbeit — immer nur eine Arbeit gleichzeitig, am selben Tag weiter zur nächsten. Jeder
-                  Tag leistet Std./Tag; was keinen Platz hat, geht am nächsten Tag weiter, höchstens 5 % der Arbeit eines Tasks werden am
-                  selben Tag in Überstunden fertig. Arbeitsablauf je Leistungsposition, Vorgänger und
-                  Wartetage bleiben massgebend. Tasks ohne Mengen, Gruppen und Meilensteine bleiben unverändert. Erneutes Optimieren
-                  ergibt dasselbe Ergebnis (früher ergänzte Vorgänger werden neu bestimmt).
-                </Hinweis>
-                <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, cursor: "pointer" }}>
-                  <input type="checkbox" checked={luecken} onChange={e => auslastungVorschauOeffnen(reihenfolge, e.target.checked)} />
-                  <strong>Lücken füllen</strong>
-                </label>
-                <Hinweis style={{ paddingLeft: 20 }}>
-                  Wäre Personal unter dem Kran untätig, beginnen Tasks ohne Vorgänger früher als bisher geplant (frühester Start zuerst) —
-                  sonst frühestens an ihrem bisherigen Start, und das Personal bleibt so lange untätig.
-                </Hinweis>
-              </>) : (
-                <Hinweis>
-                  Je Gewerk + Unternehmer arbeitet eine Kolonne mit den Min. Personen der jeweiligen Arbeit (Tab Ressourcen) — immer nur an
-                  einer Arbeit gleichzeitig und am selben Tag weiter zur nächsten (z.B. Bewehrung Wand → Bewehrung Stütze, sobald diese
-                  geschalt ist). Die Schritte innerhalb eines Tasks laufen nach dem Arbeitsablauf je Leistungsposition. Jeder Tag leistet
-                  Std./Tag; was keinen Platz hat, geht am nächsten Tag weiter, höchstens 5 % der Arbeit eines Tasks werden am selben Tag in
-                  Überstunden fertig. Vorgänger und Wartetage bleiben massgebend; Tasks ohne Vorgänger beginnen frühestens an ihrem bisherigen
-                  Start. Tasks ohne Mengen, Gruppen und Meilensteine bleiben unverändert. Mit Personal unter den Kränen (Tab Ressourcen →
-                  Kräne & Personal) arbeiten die Leute eines Unternehmers unter dem Kran zusätzlich als Allrounder.
-                </Hinweis>
-              )}
-              {!nurDauern && <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, marginTop: 10, fontSize: 11 }}>
-                <span style={{ fontWeight: 600 }}>Reihenfolge:</span>
-                {([["kritischerPfad", "Kritischer Pfad", "Wenn mehrere Arbeiten möglich sind, bekommen zuerst die Tasks mit der längsten Restkette (meiste Arbeit danach) das Personal — kürzestes Bauprogramm"],
-                  ["gruppen", "Nach Gruppen", "Zuerst nach den Gruppen des Gantts (z.B. Etappe, Geschoss) und der Bauteilart (z.B. Boden → Wände → Stützen → Decken) in der unten festgelegten Reihenfolge, bei Gleichstand der kritische Pfad — weich: hat die vordere Gruppe gerade keine Arbeit, geht das Personal zur nächsten"],
-                  ["startdatum", "Startdatum", "Wenn mehrere Arbeiten möglich sind, bekommen die Tasks mit dem frühesten aktuellen Start zuerst das Personal (bei gleichem Datum die Gantt-Reihenfolge) — z.B. wenn das Gantt nach Etappen statt nach Datum aufgebaut ist"],
-                  ["gantt", "Gantt-Reihenfolge", "Wenn mehrere Arbeiten möglich sind, bekommen die Tasks in der Reihenfolge des Gantts das Personal — geordnetes Arbeiten, z.B. Achse für Achse"]] as const).map(([r, label, title]) => (
-                  <button key={r} title={title} onClick={() => auslastungVorschauOeffnen(r, luecken)}
-                    style={{ fontSize: 11, fontWeight: 600, padding: "3px 8px", cursor: "pointer",
-                      border: `1px solid ${reihenfolge === r ? "var(--tc-blue)" : "var(--tc-border)"}`,
-                      background: reihenfolge === r ? "var(--tc-blue-bg)" : "#fff", color: reihenfolge === r ? "var(--tc-blue)" : "var(--tc-text-2)" }}>
-                    {label}
-                  </button>
-                ))}
-              </div>}
-              {!nurDauern && reihenfolge === "gruppen" && (
-                <GruppenReihenfolgeEditor wert={auslastungVorschau.gruppen} stammdaten={aktiveSim.stammdaten ?? LEERE_STAMMDATEN}
-                  onChange={g => auslastungVorschauOeffnen(reihenfolge, luecken, modus, g)} />
-              )}
-              {!nurDauern && (<>
-                <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10, cursor: "pointer" }}>
-                  <input type="checkbox" checked={autoNachfuehren} onChange={e => setAutoNachfuehren(e.target.checked)} />
-                  <strong>Automatisch nachführen</strong>
-                </label>
-                <Hinweis style={{ paddingLeft: 20 }}>
-                  Nach jeder Änderung (Termine, Mengen, Tab Ressourcen, Kräne & Personal) werden die betroffenen Tasks und ihre Nachfolger
-                  sofort mit diesen Einstellungen neu optimiert — die übrigen behalten ihren Ablauf. Von Hand verschobene Tasks beginnen
-                  frühestens am neuen Start, können aber später rutschen, wenn Personal oder Kran dann besetzt sind. Gilt für diese
-                  Simulation, bis der Haken wieder entfernt wird; jede Änderung samt Nachführen ist ein Schritt — «Rückgängig» nimmt beides
-                  zurück.
-                </Hinweis>
+              <Hinweis style={{ marginTop: 6 }}>
+                <div style={{ fontSize: 11, color: "var(--tc-text-2)", lineHeight: 1.55 }}>
+                  {nurDauern ? <>
+                    Jeder Task bekommt seine berechnete Dauer aus Tab Kalkulation (Menge × Leistungswert ÷ Min. Personen). Folge-Tasks rücken
+                    entlang der bestehenden Vorgänger nach, Tasks ohne Vorgänger bleiben an ihrem Start. Reihenfolge und Vorgänger bleiben —
+                    es wird nicht geprüft, ob Personal oder Kranzeit reichen. Gut, wenn das Gantt bewusst von Hand geordnet ist und nur die
+                    Dauern zu den Mengen passen sollen.
+                  </> : mitKranPersonal ? <>
+                    Das Personal unter jedem Kran (Tab Ressourcen → Kräne & Personal) arbeitet möglichst voll: Leute desselben Unternehmers
+                    sind Allrounder und besetzen jede seiner kranpflichtigen Leistungspositionen, freie Leute verstärken laufende Arbeiten
+                    (höchstens doppelte Min. Personen) — so werden Tasks kürzer und mehr laufen parallel. Je Kran arbeiten höchstens so viele
+                    Leute wie sein Personal, 1–2 mehr nur, wenn sonst Leute untätig wären. Arbeiten ohne Personal unter dem Kran (nicht
+                    kranpflichtig, kein Unternehmer) macht je Gewerk + Unternehmer eine Kolonne mit den Min. Personen der jeweiligen Arbeit —
+                    immer nur eine Arbeit gleichzeitig, am selben Tag weiter zur nächsten. Jeder Tag leistet Std./Tag; was keinen Platz hat,
+                    geht am nächsten Tag weiter, höchstens 5 % der Arbeit eines Tasks werden am selben Tag in Überstunden fertig.
+                    Arbeitsablauf je Leistungsposition, Vorgänger und Wartetage bleiben massgebend. Tasks ohne Mengen, Gruppen und
+                    Meilensteine bleiben unverändert. Erneutes Optimieren ergibt dasselbe Ergebnis (früher ergänzte Vorgänger werden neu bestimmt).
+                  </> : <>
+                    Je Gewerk + Unternehmer arbeitet eine Kolonne mit den Min. Personen der jeweiligen Arbeit (Tab Ressourcen) — immer nur an
+                    einer Arbeit gleichzeitig und am selben Tag weiter zur nächsten (z.B. Bewehrung Wand → Bewehrung Stütze, sobald diese
+                    geschalt ist). Die Schritte innerhalb eines Tasks laufen nach dem Arbeitsablauf je Leistungsposition. Jeder Tag leistet
+                    Std./Tag; was keinen Platz hat, geht am nächsten Tag weiter, höchstens 5 % der Arbeit eines Tasks werden am selben Tag in
+                    Überstunden fertig. Vorgänger und Wartetage bleiben massgebend; Tasks ohne Vorgänger beginnen frühestens an ihrem bisherigen
+                    Start. Tasks ohne Mengen, Gruppen und Meilensteine bleiben unverändert. Mit Personal unter den Kränen (Tab Ressourcen →
+                    Kräne & Personal) arbeiten die Leute eines Unternehmers unter dem Kran zusätzlich als Allrounder.
+                  </>}
+                </div>
+              </Hinweis>
+            </div>
+
+            {/* Einstellungen: scrollt, wenn der Platz nicht reicht */}
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "0 16px 12px", fontSize: 12, color: "var(--tc-text-2)", lineHeight: 1.5, background: "#fafbfc" }}>
+              {nurDauern ? (
+                ausOptimierung && <div style={{ marginTop: 12, padding: "8px 10px", background: "#fff7e6", border: "1px solid #f5d9a8", color: "#8a5a00" }}>
+                  Die Termine stammen aus «Optimieren» — Übernehmen ersetzt die Optimierung.</div>
+              ) : (<>
+                <div style={abschnitt}>REIHENFOLGE</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))" }}>
+                  {([["kritischerPfad", "Kritischer Pfad", "Wenn mehrere Arbeiten möglich sind, bekommen zuerst die Tasks mit der längsten Restkette (meiste Arbeit danach) das Personal — kürzestes Bauprogramm"],
+                    ["gruppen", "Nach Gruppen", "Zuerst nach den Gruppen des Gantts (z.B. Etappe, Geschoss) und der Bauteilart (z.B. Boden → Wände → Stützen → Decken) in der unten festgelegten Reihenfolge, bei Gleichstand der kritische Pfad — weich: hat die vordere Gruppe gerade keine Arbeit, geht das Personal zur nächsten"],
+                    ["startdatum", "Startdatum", "Wenn mehrere Arbeiten möglich sind, bekommen die Tasks mit dem frühesten aktuellen Start zuerst das Personal (bei gleichem Datum die Gantt-Reihenfolge) — z.B. wenn das Gantt nach Etappen statt nach Datum aufgebaut ist"],
+                    ["gantt", "Gantt-Reihenfolge", "Wenn mehrere Arbeiten möglich sind, bekommen die Tasks in der Reihenfolge des Gantts das Personal — geordnetes Arbeiten, z.B. Achse für Achse"]] as const).map(([r, label, title]) => (
+                    <button key={r} title={title} onClick={() => auslastungVorschauOeffnen(r, luecken)} style={wahl(reihenfolge === r)}>{label}</button>
+                  ))}
+                </div>
+                {reihenfolge === "gruppen" && (
+                  <GruppenReihenfolgeEditor wert={auslastungVorschau.gruppen} stammdaten={aktiveSim.stammdaten ?? LEERE_STAMMDATEN}
+                    onChange={g => auslastungVorschauOeffnen(reihenfolge, luecken, modus, g)} />
+                )}
+
+                <div style={abschnitt}>OPTIONEN</div>
+                {mitKranPersonal && (
+                  <div style={optionZeile}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontWeight: 600, color: "var(--tc-text)" }}>
+                      <input type="checkbox" checked={luecken} onChange={e => auslastungVorschauOeffnen(reihenfolge, e.target.checked)} />
+                      Lücken füllen
+                    </label>
+                    <Hinweis inZeile style={{ marginLeft: "auto" }}>
+                      Wäre Personal unter dem Kran untätig, beginnen Tasks ohne Vorgänger früher als bisher geplant (frühester Start zuerst) —
+                      sonst frühestens an ihrem bisherigen Start, und das Personal bleibt so lange untätig.
+                    </Hinweis>
+                  </div>
+                )}
+                <div style={optionZeile}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontWeight: 600, color: "var(--tc-text)" }}>
+                    <input type="checkbox" checked={autoNachfuehren} onChange={e => setAutoNachfuehren(e.target.checked)} />
+                    Automatisch nachführen
+                  </label>
+                  <Hinweis inZeile style={{ marginLeft: "auto" }}>
+                    Nach jeder Änderung (Termine, Mengen, Tab Ressourcen, Kräne & Personal) werden die betroffenen Tasks und ihre Nachfolger
+                    sofort mit diesen Einstellungen neu optimiert — die übrigen behalten ihren Ablauf. Von Hand verschobene Tasks beginnen
+                    frühestens am neuen Start, können aber später rutschen, wenn Personal oder Kran dann besetzt sind. Gilt für diese
+                    Simulation, bis der Haken wieder entfernt wird; jede Änderung samt Nachführen ist ein Schritt — «Rückgängig» nimmt beides
+                    zurück.
+                  </Hinweis>
+                </div>
               </>)}
               {umstellen && (
-                <div style={{ marginTop: 10, padding: "8px 10px", background: "#fff7e6", border: "1px solid #f5d9a8" }}>
+                <div style={{ marginTop: 10, padding: "8px 10px", background: "#fff7e6", border: "1px solid #f5d9a8", color: "#6b4a00" }}>
                   Arbeiten wechseln innerhalb eines Tages: Mit der Zeiteinheit <strong>«{ZEITEINHEIT_LABEL[vorschlag.einheit]}»</strong> beginnen
                   Nachfolger noch am selben Tag — Bauende {datum(endeNachher)} statt {datum(ende(aktuellesErgebnis.tasks))} mit
                   «{ZEITEINHEIT_LABEL[aktuellesErgebnis.einheit]}». Beim Übernehmen wird die Zeiteinheit der Simulation auf
                   «{ZEITEINHEIT_LABEL[vorschlag.einheit]}» umgestellt.
                 </div>
               )}
-              <div style={{ marginTop: 10, padding: "8px 10px", background: "#f5f9ff", border: "1px solid #dbeafe" }}>
-                {geaendert.length === 0 ? (nurDauern ? "Der Bauablauf entspricht bereits der berechneten Dauer — nichts zu übernehmen." : <>Die Termine sind bereits optimal ausgelastet.{ablaufNeu.length > 0 && <> Der Ablauf je Tag wird für <strong>{ablaufNeu.length}</strong> Task{ablaufNeu.length === 1 ? "" : "s"} neu gespeichert — Tab AVOR zeigt ihn dann genau so.</>}{autoGeaendert && <> «Automatisch nachführen» wird {autoNachfuehren ? "eingeschaltet" : "ausgeschaltet"}.</>}</>) : (<>
-                  <div><strong>{terminGeaendert.length}</strong> Task{terminGeaendert.length === 1 ? "" : "s"} erhalten neue Termine.</div>
-                  {(neueVorgaenger > 0 || wegVorgaenger > 0) && (
-                    <div title="Tasks, die auf freies Personal warten mussten, bekommen den Task als zusätzlichen Vorgänger, nach dem diese Leute frei wurden — so bleibt der Ablauf beim Ausrichten der Folge-Tasks erhalten. Eigene Vorgänger bleiben; automatisch ergänzte eines früheren Optimierens werden neu bestimmt.">
-                      <strong>{neueVorgaenger}</strong> Vorgänger werden ergänzt{wegVorgaenger > 0 && <>, <strong>{wegVorgaenger}</strong> früher ergänzte entfallen</>} (eigene bleiben).</div>
-                  )}
-                  <div>Bauende: {datum(endeVorher)} → <strong>{datum(endeNachher)}</strong>
-                    {tageDiff !== 0 && <span style={{ color: tageDiff > 0 ? "#d9622b" : "#2e8b57" }}> ({tageDiff > 0 ? "+" : ""}{tageDiff} Kalendertage)</span>}</div>
-                  <div title="Arbeit aller Tage ÷ (eingeplantes Personal × Std./Tag) — eingeplant wie die Linie Perfekte Auslastung in Tab AVOR (Personal unter dem Kran + Personen ohne Kran)">
-                    Ø Auslastung Personal: {prozent(auslastungVorher)} → <strong>{prozent(auslastungNachher)}</strong></div>
-                  {!nurDauern && auslastungVorher != null && auslastungNachher != null && auslastungNachher <= auslastungVorher + 0.005 && endeNachher >= endeVorher && (
-                    <div style={{ marginTop: 4, color: "#8a5a00" }}>
-                      Keine höhere Auslastung möglich.
-                      <Hinweis>
-                        Es sind nicht genug Arbeiten gleichzeitig frei — Vorgänger und Wartetage
-                        {luecken || !mitKranPersonal ? "" : ", bisherige Starttermine (→ «Lücken füllen»)"} halten das Personal zurück.
-                        Die Tagesangaben in Tab AVOR zeigen, an welchen Tagen Leute untätig sind.
-                      </Hinweis>
-                    </div>
-                  )}
-                </>)}
-              </div>
-              <div style={{ marginTop: 10 }}>
-                Danach lässt sich das mit „Rückgängig“ oben in der Kopfzeile zurücknehmen (letzte 15 Schritte, bis zum Neuladen).
-              </div>
             </div>
-            <div style={{ display: "flex", gap: 6, padding: "0 18px 18px" }}>
-              <button className="tc-btn-primary" style={{ flex: 1 }} disabled={nichtsZuTun} onClick={() => auslastungUebernehmen(vorschlag.einheit, vorschlag.tasks, !nurDauern)}>
-                {umstellen ? `Übernehmen und auf «${ZEITEINHEIT_LABEL[vorschlag.einheit]}» umstellen` : "Übernehmen"}
-              </button>
-              {umstellen && (
-                <button className="tc-btn-secondary" title="Ohne Umstellung der Zeiteinheit — Nachfolger beginnen dann erst am nächsten Tag/Halbtag"
-                  onClick={() => auslastungUebernehmen(aktuellesErgebnis.einheit, aktuellesErgebnis.tasks, !nurDauern)}>
-                  Mit «{ZEITEINHEIT_LABEL[aktuellesErgebnis.einheit]}»
+
+            {/* Ergebnis + Knöpfe: bleiben immer sichtbar */}
+            <div style={{ borderTop: "1px solid var(--tc-border-light)", padding: "10px 16px 12px", flexShrink: 0, background: "#f5f9ff" }}>
+              {geaendert.length === 0 ? (
+                <div style={{ fontSize: 12, color: "var(--tc-text-2)", marginBottom: 10 }}>
+                  {nurDauern ? "Der Bauablauf entspricht bereits der berechneten Dauer — nichts zu übernehmen." : <>Die Termine sind bereits optimal ausgelastet.
+                    {ablaufNeu.length > 0 && <> Der Ablauf je Tag wird für <strong>{ablaufNeu.length}</strong> Task{ablaufNeu.length === 1 ? "" : "s"} neu gespeichert — Tab AVOR zeigt ihn dann genau so.</>}
+                    {autoGeaendert && <> «Automatisch nachführen» wird {autoNachfuehren ? "eingeschaltet" : "ausgeschaltet"}.</>}
+                    {gruppenGeaendert && <> Die Reihenfolge nach Gruppen wird gespeichert.</>}</>}
+                </div>
+              ) : (<>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 6, marginBottom: 8 }}>
+                  {kachel("Neue Termine", <><strong>{terminGeaendert.length}</strong> Task{terminGeaendert.length === 1 ? "" : "s"}</>)}
+                  {kachel("Bauende", <>{datum(endeVorher)} → <strong>{datum(endeNachher)}</strong>
+                    {tageDiff !== 0 && <span style={besser(tageDiff < 0)}> ({tageDiff > 0 ? "+" : ""}{tageDiff} T.)</span>}</>, "Kalendertage Unterschied in Klammern")}
+                  {kachel("Ø Auslastung Personal", <>{prozent(auslastungVorher)} → <strong style={auslastungVorher != null && auslastungNachher != null && Math.abs(auslastungNachher - auslastungVorher) > 0.0005 ? besser(auslastungNachher > auslastungVorher) : undefined}>{prozent(auslastungNachher)}</strong></>,
+                    "Arbeit aller Tage ÷ (eingeplantes Personal × Std./Tag) — eingeplant wie die Linie Perfekte Auslastung in Tab AVOR (Personal unter dem Kran + Personen ohne Kran)")}
+                  {(neueVorgaenger > 0 || wegVorgaenger > 0) && kachel("Vorgänger", <><strong>+{neueVorgaenger}</strong>{wegVorgaenger > 0 && <> / −{wegVorgaenger}</>} automatisch</>,
+                    "Tasks, die auf freies Personal warten mussten, bekommen den Task als zusätzlichen Vorgänger, nach dem diese Leute frei wurden — so bleibt der Ablauf beim Ausrichten der Folge-Tasks erhalten. Eigene (von Hand gesetzte) Vorgänger bleiben; automatisch ergänzte eines früheren Optimierens werden neu bestimmt.")}
+                </div>
+                {keineHoehereAuslastung && (
+                  <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "2px 8px", marginBottom: 8, fontSize: 12, color: "#8a5a00" }}>
+                    <span>Keine höhere Auslastung möglich.</span>
+                    <Hinweis inZeile>
+                      Es sind nicht genug Arbeiten gleichzeitig frei — Vorgänger und Wartetage
+                      {luecken || !mitKranPersonal ? "" : ", bisherige Starttermine (→ «Lücken füllen»)"} halten das Personal zurück.
+                      Die Tagesangaben in Tab AVOR zeigen, an welchen Tagen Leute untätig sind.
+                    </Hinweis>
+                  </div>
+                )}
+              </>)}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                <button className="tc-btn-primary" style={{ flex: "1 1 180px" }} disabled={nichtsZuTun}
+                  title="Lässt sich mit «Rückgängig» oben in der Kopfzeile zurücknehmen (letzte 15 Schritte, bis zum Neuladen)"
+                  onClick={() => auslastungUebernehmen(vorschlag.einheit, vorschlag.tasks, !nurDauern)}>
+                  {umstellen ? `Übernehmen und auf «${ZEITEINHEIT_LABEL[vorschlag.einheit]}» umstellen` : "Übernehmen"}
                 </button>
-              )}
-              <button className="tc-btn-secondary" onClick={() => setAuslastungVorschau(null)}>Abbrechen</button>
+                {umstellen && (
+                  <button className="tc-btn-secondary" title="Ohne Umstellung der Zeiteinheit — Nachfolger beginnen dann erst am nächsten Tag/Halbtag"
+                    onClick={() => auslastungUebernehmen(aktuellesErgebnis.einheit, aktuellesErgebnis.tasks, !nurDauern)}>
+                    Mit «{ZEITEINHEIT_LABEL[aktuellesErgebnis.einheit]}»
+                  </button>
+                )}
+                <button className="tc-btn-secondary" onClick={() => setAuslastungVorschau(null)}>Abbrechen</button>
+              </div>
+              <div style={{ marginTop: 6, fontSize: 10, color: "var(--tc-text-3)" }}>Rückgängig oben in der Kopfzeile (letzte 15 Schritte).</div>
             </div>
           </div>
         </div>
