@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { lsSet } from "../hooks/lokalSpeicher";
 import type { SimProjekt, Task , VorgaengerLink, GruppenReihenfolge } from "../types";
 import { parseDateUniversal, istGruppe, getKinder, getOutlineLevel, kaskadiereNachfolger, richteKettenNeuAus, vorgaengerZiele, setzeVorgaenger,
-  taskVerschieben as verschiebeTaskBlock, nsKey, vorgaengerListe, zirkelPfad } from "../types";
+  taskVerschieben as verschiebeTaskBlock, nsKey, vorgaengerListe } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { getEchteBauteile, clearEchteBauteileCache } from "./modelHelpers";
 import { useClickOutside } from "../hooks/useClickOutside";
@@ -25,6 +25,8 @@ import GanttChart from "./GanttChart";
 import { useSelektionFokus } from "./listenScroll";
 import Schwebend from "./Schwebend";
 import Hinweis from "./Hinweis";
+import { autoVorgaengerSetzen } from "./autoVorgaenger";
+import type { AutoVorgaengerModus } from "./autoVorgaenger";
 import { gruppenReihenfolgeAbgleichen } from "./gruppenReihenfolge";
 import GruppenReihenfolgeEditor from "./GruppenReihenfolgeEditor";
 import PunkteMenu from "./PunkteMenu";
@@ -69,6 +71,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   const [suchQuery, setSuchQuery] = useState("");
   const [plusMenuOffen, setPlusMenuOffen] = useState(false);
   const [werkzeugOffen, setWerkzeugOffen] = useState(false);
+  const [autoVorgaengerOffen, setAutoVorgaengerOffen] = useState(false); // Werkzeuge → Auto-Vorgänger: Varianten zeigen
   const [zeitplanHinweisOffen, setZeitplanHinweisOffen] = useState(false);
   // "Auslastung optimieren": Vorschau der neuen Termine, erst nach Bestätigung übernommen
   // je Zeiteinheit (aktuelle + feinere) ein Ergebnis — feinere erlauben Nachfolger am selben Tag, siehe auslastungVorschauOeffnen
@@ -332,37 +335,12 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
     updateSim({ ...aktiveSim, tasks: richteKettenNeuAus(aktiveSim.tasks, aktiveSim.kalender ?? LEERER_KALENDER) });
   }
 
-  // "Auto-Vorgänger" — verkettet Tasks und Gruppen jeweils streng der Anzeige-Reihenfolge nach
-  // (Task 2 ← Task 1, Task 3 ← Task 2, …), Gruppen dabei als eigene, separate Kette von Gruppen
-  // untereinander (nicht mit den Tasks vermischt — eine Gruppe trägt kein eigenes Start-/Enddatum,
-  // siehe berechneZeitplanUebernahme(), das würde die Terminkaskade sonst mit veralteten Werten füttern).
-  // Nur Tasks/Gruppen ohne jeden Vorgänger werden ergänzt — bestehende Vorgänger bleiben unangetastet;
-  // eine Verknüpfung, die einen Zirkelbezug ergäbe, wird übersprungen.
-  function autoVorgaenger() {
+  // "Auto-Vorgänger" (autoVorgaenger.ts) — nach Gantt-Reihenfolge oder nach den aktuellen Terminen; ersetzt nur die Vorgänger eines
+  // früheren Auto-Vorgänger, von Hand gesetzte und vom Optimieren ergänzte bleiben
+  function autoVorgaenger(modus: AutoVorgaengerModus) {
     if (!aktiveSim) return;
-    const tasks = aktiveSim.tasks;
-    // Gruppen nur mit ihren Geschwistern (gleiche Ebene, gleiche Übergruppe) verketten — nie eine Untergruppe an die eigene
-    // Übergruppe; Tasks der Reihe nach
-    const gruppenPaare: [string, string][] = [];
-    const letzteJeEbene = new Map<number, string>();
-    tasks.forEach((t, i) => {
-      if (!istGruppe(tasks, i)) return;
-      const level = getOutlineLevel(t);
-      for (const l of [...letzteJeEbene.keys()]) if (l > level) letzteJeEbene.delete(l);
-      const vorher = letzteJeEbene.get(level);
-      if (vorher) gruppenPaare.push([t.id, vorher]);
-      letzteJeEbene.set(level, t.id);
-    });
-    const echteIds = tasks.filter((_, i) => !istGruppe(tasks, i)).map(t => t.id);
-    const taskPaare: [string, string][] = echteIds.slice(1).map((id, i) => [id, echteIds[i]]);
-    let neueTasks = tasks;
-    for (const [id, predId] of [...gruppenPaare, ...taskPaare]) {
-      const t = neueTasks.find(x => x.id === id);
-      if (!t || vorgaengerListe(t).length > 0) continue;
-      if (zirkelPfad(neueTasks, id, predId)) continue;
-      neueTasks = neueTasks.map(x => x.id === id ? { ...x, predecessorId: predId } : x);
-    }
-    if (neueTasks === tasks) return;
+    const neueTasks = autoVorgaengerSetzen(aktiveSim.tasks, modus);
+    if (JSON.stringify(neueTasks) === JSON.stringify(aktiveSim.tasks)) return;
     updateSim({ ...aktiveSim, tasks: neueTasks });
   }
 
@@ -424,14 +402,28 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
               {werkzeugOffen && (
                 <Schwebend style={{ background: "#fff", border: "0.5px solid var(--tc-border)", borderRadius: 5, boxShadow: "0 2px 8px rgba(0,0,0,.12)", minWidth: 230 }}>
                   {aktiveSim.tasks.length > 1 && (
-                    <button
-                      style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
-                      onClick={() => { autoVorgaenger(); setWerkzeugOffen(false); }}>
-                      <div style={{ fontSize: 11, fontWeight: 500, color: "var(--tc-text)" }}>Auto-Vorgänger</div>
-                      <Hinweis style={{ marginTop: 2 }}><div style={{ fontSize: 9, color: "var(--tc-text-3)", whiteSpace: "normal", maxWidth: 320 }}>
-                        Verkettet Tasks und Gruppen automatisch der Reihenfolge nach: Task 2 erhält Task 1 als Vorgänger, Task 3 erhält Task 2 usw. — Gruppen bekommen dieselbe Verkettung untereinander. Nur Tasks ohne Vorgänger werden ergänzt; bestehende Vorgänger bleiben erhalten.
-                      </div></Hinweis>
-                    </button>
+                    <div style={{ borderBottom: "0.5px solid #eef1f4" }}>
+                      <button
+                        style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", cursor: "pointer" }}
+                        onClick={() => setAutoVorgaengerOffen(o => !o)}>
+                        <div style={{ fontSize: 11, fontWeight: 500, color: "var(--tc-text)" }}>Auto-Vorgänger {autoVorgaengerOffen ? "▾" : "▸"}</div>
+                        <Hinweis style={{ marginTop: 2 }}><div style={{ fontSize: 9, color: "var(--tc-text-3)", whiteSpace: "normal", maxWidth: 320 }}>
+                          Verknüpft Tasks und Gruppen automatisch — wahlweise der Gantt-Reihenfolge nach (Task 2 ← Task 1, Task 3 ← Task 2 …, alles
+                          nacheinander) oder nach den aktuellen Terminen (jeder Task bekommt den Task, der als letzter vor seinem Start endet;
+                          was gleichzeitig läuft, bleibt parallel; Tasks ohne Termine der Gantt-Reihenfolge nach). Gruppen nur mit ihren
+                          Geschwistern. Automatische Vorgänger erscheinen blau und werden beim erneuten Ausführen neu bestimmt; von Hand
+                          gesetzte (schwarz) und Tasks mit Vorgängern vom Optimieren bleiben unverändert.
+                        </div></Hinweis>
+                      </button>
+                      {autoVorgaengerOffen && (
+                        <div style={{ display: "flex", gap: 4, padding: "0 14px 8px" }}>
+                          {([["gantt", "Nach Gantt-Reihenfolge"], ["daten", "Nach aktuellen Terminen"]] as const).map(([m, label]) => (
+                            <button key={m} className="tc-btn-secondary" style={{ flex: 1, fontSize: 10, padding: "4px 6px" }}
+                              onClick={() => { autoVorgaenger(m); setAutoVorgaengerOffen(false); setWerkzeugOffen(false); }}>{label}</button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   )}
                   {aktiveSim.tasks.some(t => t.predecessorId) && (
                     <button

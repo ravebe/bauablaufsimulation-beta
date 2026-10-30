@@ -7,7 +7,7 @@ import { LEERER_KALENDER } from "./kalenderHelpers";
 import type { VorgaengerLink } from "../types";
 import { startZeitpunkt, endZeitpunkt, fmtZeitZusatz } from "./zeitHelpers";
 import { formatDatum, normalizeDatum, zeitraumVerschieben, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, getKinder,
-  berechneNummern, gueltigeVorgaenger, kaskadiereNachfolger, vorgaengerListe, vorgaengerZiele, setzeVorgaenger, vorgaengerText, vorgaengerEingabe, parseWartetage, parseVorgaengerText,
+  berechneNummern, gueltigeVorgaenger, kaskadiereNachfolger, vorgaengerListe, vorgaengerZiele, setzeVorgaenger, vorgaengerTitel, automatischeVorgaenger, VORGAENGER_FARBE, vorgaengerEingabe, parseWartetage, parseVorgaengerText,
   massgebenderVorgaenger, vorgaengerKandidaten, letzterVorgaengerEintrag, ersetzeLetztenVorgaengerEintrag,
   taskVerschieben as verschiebeTaskBlock, sucheSortiereTasks, nsKey, TASK_TYP_LISTE, TASK_TYP_LABEL, TASK_TYP_FARBE } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
@@ -612,7 +612,7 @@ export default function TabTasks({ api, projectId = null, aktiveSim, aktivTask, 
                   {task.predecessorId && (() => {
                     const mehrere = vorgaengerListe(task).length > 1;
                     const m = mehrere ? massgebenderVorgaenger(aktiveSim.tasks, task, aktiveSim.kalender) : task.predecessorId;
-                    return <span style={{ color: "#999", fontStyle: "italic" }} title={`Vorgänger: ${vorgaengerText(task, nummern)}`}> | {nummern.get(m ?? "") ?? "?"}{mehrere ? "+" : ""}</span>;
+                    return <span style={{ color: automatischeVorgaenger(task).has(m ?? "") ? VORGAENGER_FARBE.automatisch : VORGAENGER_FARBE.manuell, fontStyle: "italic" }} title={vorgaengerTitel(task, nummern)}> | {nummern.get(m ?? "") ?? "?"}{mehrere ? "+" : ""}</span>;
                   })()}
                   {predPickerTaskId === task.id && (() => {
                     const predUebernehmen = () => {

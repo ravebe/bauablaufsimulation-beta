@@ -55,6 +55,9 @@ export interface Task {
    *  diese Vorgänger neu bestimmt und, solange der Start unverändert ist, gilt wieder freigabe — erneutes Optimieren liefert so
    *  dasselbe Ergebnis, statt den Ablauf weiter zu verschieben. */
   optimierung?: { freigabe: string; start: string; vorgaenger: string[] };
+  /** Vorgänger, die «Auto-Vorgänger» (autoVorgaenger.ts) gesetzt hat — erneutes Ausführen ersetzt nur diese. Zusammen mit
+   *  optimierung.vorgaenger die automatischen Vorgänger (blau); alle übrigen sind von Hand gesetzt (schwarz) und bleiben. */
+  autoVorgaenger?: string[];
   /** Ablauf aus "Auslastung optimieren" (auslastungOptimierenKran.ts): je Arbeitstag, wer an welcher Leistungsposition von wann
    *  bis wann arbeitet (TagesLauf). Tab AVOR zeigt und rechnet genau diesen Ablauf. Gilt nur, solange Termine (termin =
    *  terminSchluessel), Mengen/Leistungspositionen (basis) und Kräne & Personal (kraene) gleich sind — sonst verteilt Tab AVOR
@@ -599,6 +602,31 @@ export function mitVorgaengern(t: Task, liste: VorgaengerLink[]): Task {
 }
 
 /** Text wie in MS Project: "26, 27+2" (Nummer, bei Wartetagen +n bzw. -n). */
+/** Automatisch gesetzte Vorgänger eines Tasks (blau): von «Auto-Vorgänger» oder von «Auslastung optimieren» ergänzt. Alle übrigen
+ *  sind von Hand gesetzt (schwarz) — keine Automatik ändert oder entfernt sie. */
+export function automatischeVorgaenger(t: Task): Set<string> {
+  return new Set([...(t.autoVorgaenger ?? []), ...(t.optimierung?.vorgaenger ?? [])]);
+}
+export const VORGAENGER_FARBE = { manuell: "#333", automatisch: "#2d7dbd" };
+
+/** Tooltip der Vorgänger-Spalte: jeder Vorgänger mit Herkunft */
+export function vorgaengerTitel(t: Task, nummern: Map<string, string>): string {
+  const auto = new Set(t.autoVorgaenger ?? []), opt = new Set(t.optimierung?.vorgaenger ?? []);
+  return "Vorgänger: " + vorgaengerListe(t).map(v => `${nummern.get(v.id) ?? "?"}${v.lagDays ? (v.lagDays > 0 ? `+${v.lagDays}` : `${v.lagDays}`) : ""}`
+    + (auto.has(v.id) ? " (automatisch, Auto-Vorgänger)" : opt.has(v.id) ? " (automatisch, Optimieren)" : " (von Hand)")).join(", ")
+    + "\nBlau = automatisch gesetzt (wird bei Auto-Vorgänger bzw. Optimieren neu bestimmt), schwarz = von Hand (bleibt immer).";
+}
+
+/** Nach einer Bearbeitung von Hand: nur Vorgänger, die unverändert geblieben sind (gleicher Task, gleiche Wartetage), behalten
+ *  ihre automatische Herkunft — alles andere gilt ab jetzt als von Hand gesetzt. */
+function herkunftNachBearbeitung(alt: Task, neu: Task): Task {
+  const vorher = vorgaengerListe(alt);
+  const gleich = new Set(vorgaengerListe(neu).filter(v => vorher.some(a => a.id === v.id && a.lagDays === v.lagDays)).map(v => v.id));
+  const auto = (alt.autoVorgaenger ?? []).filter(id => gleich.has(id));
+  return { ...neu, autoVorgaenger: auto.length ? auto : undefined,
+    optimierung: alt.optimierung ? { ...alt.optimierung, vorgaenger: alt.optimierung.vorgaenger.filter(id => gleich.has(id)) } : undefined };
+}
+
 export function vorgaengerText(t: Task, nummern: Map<string, string>): string {
   return vorgaengerListe(t).map(v => `${nummern.get(v.id) ?? "?"}${v.lagDays ? (v.lagDays > 0 ? `+${v.lagDays}` : `${v.lagDays}`) : ""}`).join(", ");
 }
@@ -798,7 +826,7 @@ export function setzeVorgaenger(tasks: Task[], ziele: string[], liste: Vorgaenge
     const gueltig = new Set(gueltigeVorgaenger(erg, id).map(t => t.id));
     const eigene = liste.filter(v => gueltig.has(v.id));
     if (liste.length > 0 && eigene.length === 0) continue;
-    erg = erg.map(t => t.id === id ? mitVorgaengern(t, eigene) : t);
+    erg = erg.map(t => t.id === id ? herkunftNachBearbeitung(t, mitVorgaengern(t, eigene)) : t);
     const neu = erg.find(t => t.id === id);
     const start = neu ? vorgaengerStart(erg, neu, kalender) : null;
     if (start) erg = verschiebeAufStart(erg, id, start, kalender);

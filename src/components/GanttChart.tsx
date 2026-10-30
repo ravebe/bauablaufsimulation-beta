@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, useLayoutEffect, useCallback, useMemo } fr
 import { lsGet, lsSet } from "../hooks/lokalSpeicher";
 import { createPortal } from "react-dom";
 import type { Task, VorgaengerLink } from "../types";
-import { vorgaengerKandidaten, vorgaengerZiele, vorgaengerListe, vorgaengerText, vorgaengerEingabe, parseWartetage, parseVorgaengerText, massgebenderVorgaenger, letzterVorgaengerEintrag, ersetzeLetztenVorgaengerEintrag, zeitraumVerschieben, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks, nsKey, TASK_TYP_FARBE } from "../types";
+import { vorgaengerKandidaten, vorgaengerZiele, vorgaengerListe, vorgaengerTitel, automatischeVorgaenger, VORGAENGER_FARBE, vorgaengerEingabe, parseWartetage, parseVorgaengerText, massgebenderVorgaenger, letzterVorgaengerEintrag, ersetzeLetztenVorgaengerEintrag, zeitraumVerschieben, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, gueltigeVorgaenger, sucheSortiereTasks, nsKey, TASK_TYP_FARBE } from "../types";
 import type { Kalender } from "./kalenderHelpers";
 import { istArbeitstag, LEERER_KALENDER, getKW, arbeitstageZwischen, arbeitsBloecke } from "./kalenderHelpers";
 import DatePicker from "./DatePicker";
@@ -640,7 +640,7 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
                       {t.predecessorId && (() => {
                         const mehrere = vorgaengerListe(t).length > 1;
                         const m = mehrere ? massgebenderVorgaenger(tasks, t, kalender) : t.predecessorId;
-                        return <span style={{ color: "#999", fontStyle: "italic" }} title={`Vorgänger: ${vorgaengerText(t, nummern)}`}> | {nummern.get(m ?? "") ?? "?"}{mehrere ? "+" : ""}</span>;
+                        return <span style={{ color: automatischeVorgaenger(t).has(m ?? "") ? VORGAENGER_FARBE.automatisch : VORGAENGER_FARBE.manuell, fontStyle: "italic" }} title={vorgaengerTitel(t, nummern)}> | {nummern.get(m ?? "") ?? "?"}{mehrere ? "+" : ""}</span>;
                       })()}
                       {predPickerTaskId === t.id && (() => {
                         const predUebernehmen = () => {

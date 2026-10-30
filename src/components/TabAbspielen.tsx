@@ -3,7 +3,7 @@ import { lsSet } from "../hooks/lokalSpeicher";
 import { createPortal } from "react-dom";
 import type { SimProjekt, Task } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
-import { formatDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, nsKey, sucheSortiereTasks, TASK_TYP_FARBE, TASK_TYP_LABEL, vorgaengerListe, vorgaengerText, massgebenderVorgaenger } from "../types";
+import { formatDatum, parseDateUniversal, getOutlineLevel, istGruppe, gruppenDaten, berechneNummern, nsKey, sucheSortiereTasks, TASK_TYP_FARBE, TASK_TYP_LABEL, vorgaengerListe, vorgaengerTitel, automatischeVorgaenger, VORGAENGER_FARBE, massgebenderVorgaenger } from "../types";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import { dauerTage, fmtDauer, startPos, endPos, datumZeitBeiPos, schrittTage } from "./zeitHelpers";
 import GanttChart from "./GanttChart";
@@ -661,7 +661,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
                 {task.predecessorId && (() => {
                   const mehrere = vorgaengerListe(task).length > 1;
                   const m = mehrere ? massgebenderVorgaenger(allTasks, task, kalender) : task.predecessorId;
-                  return <span style={{ color: "#999", fontStyle: "italic" }} title={`Vorgänger: ${vorgaengerText(task, nummern)}`}> | {nummern.get(m ?? "") ?? "?"}{mehrere ? "+" : ""}</span>;
+                  return <span style={{ color: automatischeVorgaenger(task).has(m ?? "") ? VORGAENGER_FARBE.automatisch : VORGAENGER_FARBE.manuell, fontStyle: "italic" }} title={vorgaengerTitel(task, nummern)}> | {nummern.get(m ?? "") ?? "?"}{mehrere ? "+" : ""}</span>;
                 })()}
               </span>
               <span style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0, lineHeight: 1.3,
