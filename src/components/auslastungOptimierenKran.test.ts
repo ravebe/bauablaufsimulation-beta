@@ -180,6 +180,15 @@ describe("Auslastung optimieren mit Kranpersonal", () => {
     expect(termine(optimiereAuslastung([task("A", { mengen: { sch: 36 } })], stammdaten, KAL, "tage", k))).toEqual(["A 2026-11-09–2026-11-10"]);
   });
 
+  it("keine neue Leistungsposition nach Arbeitsende: bleibt nur eine noch nicht begonnene Arbeit, geht sie auf den nächsten Tag", () => {
+    // Schalung 32 h füllt den Tag, danach 1 h Bewehrung (3 % der Arbeit) — beginnt nicht in Überstunden, sondern am 10.11.
+    const k = kran([{ unternehmer: "Bau AG", personen: 4 }]);
+    const [a] = optimiereAuslastung([task("A", { mengen: { sch: 32, bew: 1 } })], stammdaten, KAL, "tage", k);
+    expect(termine([a])).toEqual(["A 2026-11-09–2026-11-10"]);
+    expect(a.tagesArbeit?.tage["2026-11-09"]?.map(l => l.pos)).toEqual(["sch::W"]);
+    expect(a.tagesArbeit?.tage["2026-11-10"]?.map(l => `${l.pos} ${l.von}–${l.bis}`)).toEqual(["bew::W 0–0.5"]);
+  });
+
   it("merkt sich den Ablauf je Tag: Tab AVOR rechnet und zeigt genau diesen statt gleichmässig über die Tage", () => {
     const k = kran([{ unternehmer: "Bau AG", personen: 4 }]);
     const [a] = optimiereAuslastung([task("A", { mengen: { sch: 40 } })], stammdaten, KAL, "tage", k); // 32 h + 8 h

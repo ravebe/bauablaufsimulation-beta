@@ -289,11 +289,14 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
       if (z.schritt >= z.schritte.length) abschliessen(z, z.erste!, z.letzte);
     }
     // Tagesende: bleibt einem laufenden Task nur noch wenig Arbeit, wird er heute in Überstunden fertig (statt einen Tag mehr) —
-    // seine restlichen Arbeiten nach Arbeitsende, Schritte nacheinander, mit der zuletzt eingesetzten Besetzung
+    // seine restlichen Arbeiten nach Arbeitsende, mit der zuletzt eingesetzten Besetzung. Nur Arbeiten, die heute schon laufen:
+    // eine neue Leistungsposition (z.B. Beton nach der Bewehrung) beginnt nie nach Arbeitsende, sondern am nächsten Tag.
     if (s === N - 1) {
       for (const z of offen) {
         if (z.fertig || z.erste === null || z.gesamt <= EPS) continue;
-        const rest = z.schritte.flat().reduce((sum, p) => sum + p.rest, 0);
+        const offenePhasen = z.schritte.flat().filter(p => p.rest > EPS);
+        if (offenePhasen.some(p => p.letzteLeute === 0)) continue; // noch nicht begonnen → nächster Tag
+        const rest = offenePhasen.reduce((sum, p) => sum + p.rest, 0);
         if (rest > UEBERSTUNDEN_ANTEIL * z.gesamt + EPS) continue;
         let ab = std;
         for (let i = z.schritt; i < z.schritte.length; i++) {
