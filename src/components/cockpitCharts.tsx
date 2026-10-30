@@ -324,6 +324,8 @@ interface TimeSeriesProps {
   /** Statt detailUnten: Angaben zum angeklickten Tag UNTER dem Diagramm, oben bleibt die Legende — die Tagesangaben-Tabelle wird
    *  mitgegeben und frei platziert (Tab AVOR → Personalauslastung: Tagesablauf, darunter die Tabelle zugeklappt) */
   detailUnterDiagramm?: (idx: number, tabelle: React.ReactNode) => React.ReactNode;
+  /** Direkt unter dem Diagramm, vor detailUnterDiagramm — z.B. der Schieber für die Höhe (ChartResizeHandle) */
+  griff?: React.ReactNode;
   kalender?: Kalender; // für Wochenend-/Feiertag-Schattierung; ohne wird nur Sa/So schattiert
   /** Arbeitsfreie Sa/So aus der Zeitachse entfernen — Wochen dann durch eine feine graue Linie getrennt (Tab AVOR ⋮) */
   ohneWochenenden?: boolean;
@@ -338,7 +340,7 @@ interface TimeSeriesProps {
 
 const ML = 44, MR = 8, MT = 16, MB = 20;
 
-export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = "", hoehe = 180, formatWert, zusatz, zusatzSerie, zusatzTotal, totalZeile, weitereLinien = [], markierteTage, markerIdx, markerLabel = "Heute", onTagKlick, detailSpalten, onMarkerEntfernen, detailUnten, detailUnterDiagramm, kalender, ohneWochenenden = false,
+export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = "", hoehe = 180, formatWert, zusatz, zusatzSerie, zusatzTotal, totalZeile, weitereLinien = [], markierteTage, markerIdx, markerLabel = "Heute", onTagKlick, detailSpalten, onMarkerEntfernen, detailUnten, detailUnterDiagramm, griff, kalender, ohneWochenenden = false,
   pxProTag: pxProTagProp, onPxProTagChange: onPxProTagChangeProp, scrollTag: scrollTagProp, onScrollChange: onScrollChangeProp }: TimeSeriesProps) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [outerRef, viewportW] = useMeasuredWidth<HTMLDivElement>(1000);
@@ -574,6 +576,7 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
         })()}
         <ZoomControls onZoomIn={() => zoomBy(1.3)} onZoomOut={() => zoomBy(1 / 1.3)} />
       </div>
+      {griff}
       {detailUnterDiagramm && detailSpalten && detailIdx != null && detailUnterDiagramm(detailIdx,
         <DetailTabelle kopf={tage[detailIdx].split("-").reverse().join(".")} spalten={detailSpalten} zeilen={detailZeilen} onSchliessen={onMarkerEntfernen} />)}
     </div>

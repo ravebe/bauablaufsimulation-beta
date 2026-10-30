@@ -29,7 +29,8 @@ export interface TagesplanPhase {
  *  oder Kräne & Personal geändert → gleichmässig verteilt und neu gerechnet; "gleichmaessig" = nie optimiert */
 export interface TagesplanTask { t: Task; phasen: TagesplanPhase[]; von: number; bis: number; arbeit: number; quelle: "optimiert" | "veraltet" | "gleichmaessig" }
 /** Arbeit nach Arbeitsende: Personenstunden je Unternehmer ("" = Position ohne Unternehmer), Kranstunden je Kran-Id */
-export interface Ueberstunden { jeUnternehmer: Map<string, number>; jeKran: Map<string, number> }
+/** jeUnternehmerDauer: wie lange die Leute des Unternehmers nach Arbeitsende noch arbeiten (h, längste Arbeit) — Überstunden je Person */
+export interface Ueberstunden { jeUnternehmer: Map<string, number>; jeKran: Map<string, number>; jeUnternehmerDauer: Map<string, number> }
 export const unternehmerLabel = (u: string) => u || "ohne Unternehmer";
 /** Gleichzeitig arbeitende Personen: anzahl = Höchstzahl des Tages, um = Zeitpunkt (h ab Arbeitsbeginn), jeGewerkAnSpitze = wie sie
  *  sich in diesem Moment auf die Gewerke verteilen (Summe = anzahl), maxJeGewerk = Höchstzahl jedes Gewerks für sich (zu irgendeiner Zeit) */
@@ -76,13 +77,14 @@ export function tagesplan(iso: string, tasks: Task[], stammdaten: Stammdaten, ka
   const kraeneText = kranSchluessel(kraene);
   const pruefung = new Zeitschritt<SimTask>(iso, kraene, slotStd, false); // nur zum Nachschlagen von Pools und verfügbaren Kränen
 
-  const ueberstunden: Ueberstunden = { jeUnternehmer: new Map(), jeKran: new Map() };
+  const ueberstunden: Ueberstunden = { jeUnternehmer: new Map(), jeKran: new Map(), jeUnternehmerDauer: new Map() };
   /** Teil von [von, bis) nach Arbeitsende als Überstunden: Personenstunden des Unternehmers, Kranstunden der heutigen Kräne */
   const ueberstundenBuchen = (p: KernPhase, kranIdsHeute: string[], von: number, bis: number, leute: number) => {
     const nach = bis - Math.max(von, std);
     if (nach <= EPS) return;
     const u = ueberstunden.jeUnternehmer;
     u.set(p.unternehmer, (u.get(p.unternehmer) ?? 0) + leute * nach);
+    ueberstunden.jeUnternehmerDauer.set(p.unternehmer, Math.max(ueberstunden.jeUnternehmerDauer.get(p.unternehmer) ?? 0, bis - std));
     for (const id of kranIdsHeute) {
       ueberstunden.jeKran.set(id, (ueberstunden.jeKran.get(id) ?? 0) + leute / Math.max(1, p.kolonne) * p.kranAnteil / kranIdsHeute.length * nach);
     }

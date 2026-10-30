@@ -243,21 +243,25 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
     : z.art === "serie" ? planFuer(idx).jeGewerk.get(z.key)?.bis ?? 0 : 0;
   const ueberzug = (z: DetailZeile, idx: number) => fertigUm(z, idx) > std + 1e-6;
   // Überstunden über das ganze Projekt: Personenstunden nach Arbeitsende je Unternehmer, Kranstunden je Kran, mit Anzahl Tage
+  // je Unternehmer: stunden = Personenstunden aller seiner Leute, jePerson = wie lange seine Leute nach Arbeitsende arbeiten (je Tag
+  // die längste Arbeit, über alle Tage summiert); je Kran: stunden = Kranstunden
+  type UeberstundenZeile = { stunden: number; jePerson: number; tage: number };
   const ueberstundenTotal = (() => {
-    const u = new Map<string, { stunden: number; tage: number }>(), k = new Map<string, { stunden: number; tage: number }>();
-    const add = (m: Map<string, { stunden: number; tage: number }>, key: string, h: number) => {
+    const u = new Map<string, UeberstundenZeile>(), k = new Map<string, UeberstundenZeile>();
+    const add = (m: Map<string, UeberstundenZeile>, key: string, h: number, dauer: number) => {
       if (h <= 1e-6) return;
-      const e = m.get(key) ?? { stunden: 0, tage: 0 };
-      m.set(key, { stunden: e.stunden + h, tage: e.tage + 1 });
+      const e = m.get(key) ?? { stunden: 0, jePerson: 0, tage: 0 };
+      m.set(key, { stunden: e.stunden + h, jePerson: e.jePerson + dauer, tage: e.tage + 1 });
     };
     let tage = 0;
     for (const p of plaene) {
       if (p.dauer > std + 1e-6) tage++;
-      for (const [key, h] of p.ueberstunden.jeUnternehmer) add(u, key, h);
-      for (const [key, h] of p.ueberstunden.jeKran) add(k, key, h);
+      for (const [key, h] of p.ueberstunden.jeUnternehmer) add(u, key, h, p.ueberstunden.jeUnternehmerDauer.get(key) ?? 0);
+      for (const [key, h] of p.ueberstunden.jeKran) add(k, key, h, h);
     }
-    const sortiert = (m: Map<string, { stunden: number; tage: number }>) => [...m].sort((a, b) => b[1].stunden - a[1].stunden);
-    return { tage, jeUnternehmer: sortiert(u), jeKran: sortiert(k) };
+    const sortiert = (m: Map<string, UeberstundenZeile>) => [...m].sort((a, b) => b[1].stunden - a[1].stunden);
+    const jeUnternehmer = sortiert(u);
+    return { tage, jeUnternehmer, jeKran: sortiert(k), allePersonen: jeUnternehmer.reduce((s, [, e]) => s + e.stunden, 0) };
   })();
   /** Personenstunden einer Zeile (Total, Gewerk; «Andere» = alle Gewerke, die nicht einzeln gezeigt werden) */
   const einzeln = new Set(personalSerien.serien.map(s => s.key));
@@ -282,15 +286,15 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
       erklaerung: `Arbeit des Tages in Personenstunden = Menge × Leistungswert der an diesem Tag laufenden Tasks — nach «Auslastung optimieren» so, wie es die Arbeit auf die Tage verteilt hat, sonst gleichmässig über die Dauer des Tasks im Gantt.`,
       wert: (z, i) => { const a = arbeitVon(z, i); return a == null ? "" : fmtZahl(a); } },
     { titel: "Im Einsatz [Pers.]",
-      erklaerung: "So viele Personen arbeiten laut Tagesablauf (unten) gleichzeitig — mit den Min. Personen jeder Arbeit und der Verstärkung durch freie Leute unter dem Kran.\nTotal = Höchstzahl des Tages (oberer Rand der Fläche im Diagramm). Gewerk = so viele davon in diesem Moment (Fläche im Diagramm); arbeitet ein Gewerk zu einer anderen Zeit mit mehr Leuten, steht seine eigene Höchstzahl in Klammern (max …).\nLiegt die Fläche über der Linie Eingeplant, braucht der Tag mehr Leute gleichzeitig, als eingeplant sind.",
-      wert: (z, i) => {
-        if (z.art === "linie" || z.art === "referenz") return "";
-        const max = maxImEinsatz(z, i);
-        return z.art === "serie" && max > z.wert + 1e-9 ? `${fmtZahl(z.wert)} (max ${fmtZahl(max)})` : fmtZahl(z.wert);
-      },
-      zellenTitel: (z, i) => z.art === "total" && planFuer(i).imEinsatz.anzahl > 0
-        ? `Höchstens ${fmtZahl(planFuer(i).imEinsatz.anzahl)} Personen gleichzeitig, ab ${fmtZahl(planFuer(i).imEinsatz.um)} h nach Arbeitsbeginn (Tagesablauf unten).`
-        : undefined },
+      erklaerung: "So viele Personen arbeiten laut Tagesablauf höchstens gleichzeitig — mit den Min. Personen jeder Arbeit und der Verstärkung durch freie Leute unter dem Kran.\nTotal = Höchstzahl des ganzen Tages (oberer Rand der Fläche im Diagramm).\nGewerk = seine eigene Höchstzahl. Die Gewerke haben ihre Spitze meist nicht zur selben Zeit — darum ergeben sie zusammen mehr als das Total. Die Farben im Diagramm zeigen, wie sich die Leute im Moment der grössten Besetzung auf die Gewerke verteilen (Tooltip der Zelle).\nLiegt die Fläche über der Linie Eingeplant, braucht der Tag mehr Leute gleichzeitig, als eingeplant sind.",
+      wert: (z, i) => z.art === "linie" || z.art === "referenz" ? "" : fmtZahl(maxImEinsatz(z, i)),
+      zellenTitel: (z, i) => {
+        const p = planFuer(i).imEinsatz;
+        if (p.anzahl <= 0) return undefined;
+        if (z.art === "total") return `Höchstens ${fmtZahl(p.anzahl)} Personen gleichzeitig, ab ${fmtZahl(p.um)} h nach Arbeitsbeginn (Tagesablauf).`;
+        if (z.art !== "serie") return undefined;
+        return `Höchstens ${fmtZahl(maxImEinsatz(z, i))} Personen gleichzeitig in diesem Gewerk.\nIm Moment der grössten Besetzung des Tages (ab ${fmtZahl(p.um)} h): ${fmtZahl(z.wert)} — so hoch ist seine Farbe im Diagramm.`;
+      } },
     { titel: "Eingeplant [Pers.]",
       erklaerung: mitKranPersonal
         ? "Total (= Linie Eingeplant): Personal unter den verfügbaren Kränen (Tab Ressourcen → Kräne & Personal) + Personen ohne Kran.\nGewerk: «unter Kran» = arbeitet mit dem Personal des Krans (Allrounder, teilen sich die Arbeit aller Gewerke unter dem Kran — darum keine eigene Zahl); eine Zahl = seine Kolonnen ohne Kran (nicht kranpflichtig, Task ohne Kran …): je Unternehmer eine Kolonne mit den grössten Min. Personen ihrer Arbeiten an diesem Tag.\nDie Zahlen der Gewerke ergeben zusammen den Teil «ohne» im Total."
@@ -431,35 +435,60 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
             zu={{ ablauf: !!eingeklappt["tagesablauf"], tabelle: !eingeklappt["tagesangabenOffen"], erklaerung: !eingeklappt["erklaerungOffen"] }}
             onToggle={w => toggleEingeklappt(w === "ablauf" ? "tagesablauf" : w === "tabelle" ? "tagesangabenOffen" : "erklaerungOffen")} />}
           markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick} onMarkerEntfernen={markerEntfernen}
-          pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
-        <ChartResizeHandle hoehe={hoehePersonal} setHoehe={setHoehePersonal} />
+          pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag}
+          griff={<ChartResizeHandle hoehe={hoehePersonal} setHoehe={setHoehePersonal} />} />
         {ueberstundenTotal.tage > 0 && (
           <div style={{ marginTop: 8, padding: "8px 10px", background: "#eceef0", border: "1px solid #d6dade", fontSize: 11, color: FARBEN.textSekundaer, lineHeight: 1.6 }}>
-            <div onClick={() => toggleEingeklappt("ueberstunden")} style={{ display: "flex", alignItems: "baseline", gap: 6, cursor: "pointer", userSelect: "none" }}>
-              <span style={{ display: "inline-block", transform: `scaleX(1.4) rotate(${eingeklappt["ueberstunden"] ? -90 : 0}deg)`, transition: "transform .15s", fontSize: 8, color: FARBEN.textMuted }}>▼</span>
+            {/* standardmässig zu — gemerkt wird «offen» */}
+            <div onClick={() => toggleEingeklappt("ueberstundenOffen")} style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: 6, cursor: "pointer", userSelect: "none" }}>
+              <span style={{ display: "inline-block", transform: `scaleX(1.4) rotate(${eingeklappt["ueberstundenOffen"] ? 0 : -90}deg)`, transition: "transform .15s", fontSize: 8, color: FARBEN.textMuted }}>▼</span>
               <span style={{ fontWeight: 600, color: FARBEN.status.critical }}>Überstunden total</span>
-              <span>— an {ueberstundenTotal.tage} Tag{ueberstundenTotal.tage === 1 ? "" : "en"} ist die Arbeit erst nach Arbeitsende fertig (rot im Diagramm)</span>
+              <strong style={{ color: FARBEN.status.critical }}>{fmtZahl(ueberstundenTotal.allePersonen)} h</strong>
+              <span>alle Personen — an {ueberstundenTotal.tage} Tag{ueberstundenTotal.tage === 1 ? "" : "en"} ist die Arbeit erst nach Arbeitsende fertig (rot im Diagramm)</span>
             </div>
-            {!eingeklappt["ueberstunden"] && (
+            {eingeklappt["ueberstundenOffen"] && (
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 32px", marginTop: 4 }}>
-                {([["Unternehmer", "Personenstunden", ueberstundenTotal.jeUnternehmer, unternehmerLabel],
-                   ["Kran", "Kranstunden", ueberstundenTotal.jeKran, (id: string) => kranById.get(id)?.name ?? "Kran"]] as const).map(([titel, einheit, liste, label]) => liste.length > 0 && (
-                  <table key={titel} style={{ borderCollapse: "collapse", fontVariantNumeric: "tabular-nums" }}
-                    title={titel === "Kran" ? "Kranstunden nach Arbeitsende: so lange ist der Kran laut Tagesablauf nach Std./Tag noch belegt, summiert über alle Tage" : "Personenstunden nach Arbeitsende laut Tagesablauf (Unternehmer der Leistungsposition, Tab Ressourcen), summiert über alle Tage"}>
+                {ueberstundenTotal.jeUnternehmer.length > 0 && (
+                  <table style={{ borderCollapse: "collapse", fontVariantNumeric: "tabular-nums" }}>
                     <thead><tr style={{ borderBottom: `1px solid ${FARBEN.gridline}`, color: FARBEN.textMuted }}>
-                      <th style={{ textAlign: "left", padding: "1px 12px 1px 0", fontWeight: 600 }}>{titel}</th>
-                      <th style={{ textAlign: "right", padding: "1px 12px", fontWeight: 600 }}>{einheit}</th>
+                      <th style={{ textAlign: "left", padding: "1px 12px 1px 0", fontWeight: 600 }}>Unternehmer</th>
+                      <th style={{ textAlign: "right", padding: "1px 12px", fontWeight: 600 }} title="Wie lange die Leute des Unternehmers nach Arbeitsende noch arbeiten — je Tag die längste Arbeit, über alle Tage summiert">je Person</th>
+                      <th style={{ textAlign: "right", padding: "1px 12px", fontWeight: 600 }} title="Personenstunden nach Arbeitsende aller seiner Leute, summiert über alle Tage">alle Personen</th>
                       <th style={{ textAlign: "right", padding: "1px 0 1px 12px", fontWeight: 600 }}>Tage</th>
                     </tr></thead>
-                    <tbody>{liste.map(([key, e]) => (
+                    <tbody>{ueberstundenTotal.jeUnternehmer.map(([key, e]) => (
                       <tr key={key}>
-                        <td style={{ padding: "1px 12px 1px 0", color: FARBEN.textPrimaer }}>{label(key)}</td>
+                        <td style={{ padding: "1px 12px 1px 0", color: FARBEN.textPrimaer }}>{unternehmerLabel(key)}</td>
+                        <td style={{ textAlign: "right", padding: "1px 12px" }}>{fmtZahl(e.jePerson)} h</td>
+                        <td style={{ textAlign: "right", padding: "1px 12px", color: FARBEN.status.critical, fontWeight: 600 }}>{fmtZahl(e.stunden)} h</td>
+                        <td style={{ textAlign: "right", padding: "1px 0 1px 12px" }}>{e.tage}</td>
+                      </tr>
+                    ))}
+                    <tr style={{ borderTop: `1px solid ${FARBEN.gridline}`, fontWeight: 700 }}>
+                      <td style={{ padding: "1px 12px 1px 0", color: FARBEN.textPrimaer }}>Total</td>
+                      <td />
+                      <td style={{ textAlign: "right", padding: "1px 12px", color: FARBEN.status.critical }}>{fmtZahl(ueberstundenTotal.allePersonen)} h</td>
+                      <td style={{ textAlign: "right", padding: "1px 0 1px 12px" }}>{ueberstundenTotal.tage}</td>
+                    </tr></tbody>
+                  </table>
+                )}
+                {ueberstundenTotal.jeKran.length > 0 && (
+                  <table style={{ borderCollapse: "collapse", fontVariantNumeric: "tabular-nums" }}
+                    title="Kranstunden nach Arbeitsende: so lange ist der Kran laut Tagesablauf nach Std./Tag noch belegt, summiert über alle Tage">
+                    <thead><tr style={{ borderBottom: `1px solid ${FARBEN.gridline}`, color: FARBEN.textMuted }}>
+                      <th style={{ textAlign: "left", padding: "1px 12px 1px 0", fontWeight: 600 }}>Kran</th>
+                      <th style={{ textAlign: "right", padding: "1px 12px", fontWeight: 600 }}>Kranstunden</th>
+                      <th style={{ textAlign: "right", padding: "1px 0 1px 12px", fontWeight: 600 }}>Tage</th>
+                    </tr></thead>
+                    <tbody>{ueberstundenTotal.jeKran.map(([key, e]) => (
+                      <tr key={key}>
+                        <td style={{ padding: "1px 12px 1px 0", color: FARBEN.textPrimaer }}>{kranById.get(key)?.name ?? "Kran"}</td>
                         <td style={{ textAlign: "right", padding: "1px 12px", color: FARBEN.status.critical, fontWeight: 600 }}>{fmtZahl(e.stunden)} h</td>
                         <td style={{ textAlign: "right", padding: "1px 0 1px 12px" }}>{e.tage}</td>
                       </tr>
                     ))}</tbody>
                   </table>
-                ))}
+                )}
               </div>
             )}
           </div>

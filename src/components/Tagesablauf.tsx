@@ -180,39 +180,38 @@ export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeG
           );
         })}
         {zeilen.length > MAX_TASKS && <div style={{ color: FARBEN.textMuted }}>… und {zeilen.length - MAX_TASKS} weitere Tasks</div>}
-        <div style={{ marginTop: 6, color: FARBEN.textSekundaer, lineHeight: 1.6 }}>
-          <div><strong>Arbeit:</strong> {zeilen.length} Task{zeilen.length === 1 ? "" : "s"} zusammen {fmtZahl(arbeit)} Personenstunden (Spalte Arbeit).</div>
-          <div><strong>Im Einsatz:</strong> höchstens <strong>{fmtZahl(plan.imEinsatz.anzahl)} Personen</strong> gleichzeitig, ab {fmtZahl(plan.imEinsatz.um)} h nach
-            Arbeitsbeginn (Spalte Im Einsatz, oberer Rand der Fläche im Diagramm).</div>
-          {eingeplant && (<div>
-            <strong>Eingeplant:</strong> {mitKranPersonal
-              ? <>{fmtZahl(eingeplant.kranPersonal)} Personen unter dem Kran{eingeplant.kolonnen > 0 ? ` + ${fmtZahl(eingeplant.kolonnen)} Personen ohne Kran` : ""}</>
-              : <>je Gewerk + Unternehmer eine Kolonne mit den grössten Min. Personen ihrer Arbeiten an diesem Tag</>} = <strong>{fmtZahl(eingeplant.total)} Personen</strong>,
-            davon <strong>{fmtZahl(eingeplant.total - plan.imEinsatz.anzahl)}</strong> zu keiner Zeit im Einsatz (Spalte Frei).
-            Auslastung = {fmtZahl(arbeit)} h ÷ ({fmtZahl(eingeplant.total)} × {fmtZahl(std)} h) = {eingeplant.total > 0 ? `${fmtZahl(arbeit / std / eingeplant.total * 100)} %` : "–"} der bezahlten Zeit.
-          </div>)}
-          <div style={{ color: ueberzogen ? FARBEN.status.critical : undefined, fontWeight: ueberzogen ? 600 : undefined }}>
-            <strong>Dauer:</strong> Die Arbeit des Tages ist nach {fmtZahl(plan.dauer)} h fertig{ueberzogen ? ` — ${fmtZahl(plan.dauer - std)} h nach Arbeitsende` : ""} (Spalte Dauer).
-          </div>
-          {(ueberU.length > 0 || ueberK.length > 0) && (
-            <div style={{ color: FARBEN.status.critical }}>
-              <strong>Überstunden:</strong> {ueberU.map(([u, h]) => `${unternehmerLabel(u)} ${fmtZahl(h)} Personenstunden`).join(", ")}
-              {ueberK.length > 0 && <>{ueberU.length > 0 ? "; " : ""}{ueberK.map(([id, h]) => `${kranName(id)} ${fmtZahl(h)} Kranstunden`).join(", ")}</>}
-              {" "}nach Arbeitsende.
-            </div>
-          )}
-        </div>
       </>)}
     </div>
     {tabellenKasten}
-    {gruende && (
-      <div style={{ margin: "0 0 10px", padding: "8px 10px", background: "#eceef0", border: "1px solid #d6dade", fontSize: 11, color: FARBEN.textSekundaer, lineHeight: 1.6 }}>
-        <KastenKopf titel="Erklärung & Optimierung" zu={zu.erklaerung} onToggle={() => onToggle("erklaerung")}
-          info={<>— {[ueberzogen && "warum der Tag überzieht", zuWenigArbeit && "warum nicht mehr Personen arbeiten"].filter(Boolean).join(", ")}</>} />
-        {!zu.erklaerung && (<>
-          {ueberzogen && <Ueberzug iso={iso} plan={plan} std={std} tasks={tasks} stammdaten={stammdaten} kalender={kalender}
+    <div style={{ margin: "0 0 10px", padding: "8px 10px", background: "#eceef0", border: "1px solid #d6dade", fontSize: 11, color: FARBEN.textSekundaer, lineHeight: 1.6 }}>
+      <KastenKopf titel="Erklärung & Optimierung" zu={zu.erklaerung} onToggle={() => onToggle("erklaerung")}
+        info={<>— {["Arbeit, Im Einsatz, Eingeplant, Dauer", ueberzogen && "warum der Tag überzieht", zuWenigArbeit && "warum das Personal nicht ausgelastet ist"].filter(Boolean).join(", ")}</>} />
+      {!zu.erklaerung && (<>
+          <div style={{ marginTop: 4, marginBottom: (ueberzogen || zuWenigArbeit) ? 8 : 0, paddingBottom: (ueberzogen || zuWenigArbeit) ? 6 : 0, borderBottom: (ueberzogen || zuWenigArbeit) ? "1px solid #d6dade" : undefined }}>
+            <div><strong>Arbeit:</strong> {zeilen.length} Task{zeilen.length === 1 ? "" : "s"} zusammen {fmtZahl(arbeit)} Personenstunden (Spalte Arbeit).</div>
+            <div><strong>Im Einsatz:</strong> höchstens <strong>{fmtZahl(plan.imEinsatz.anzahl)} Personen</strong> gleichzeitig, ab {fmtZahl(plan.imEinsatz.um)} h nach
+              Arbeitsbeginn (Spalte Im Einsatz, oberer Rand der Fläche im Diagramm).</div>
+            {eingeplant && (<div>
+              <strong>Eingeplant:</strong> {mitKranPersonal
+                ? <>{fmtZahl(eingeplant.kranPersonal)} Personen unter dem Kran{eingeplant.kolonnen > 0 ? ` + ${fmtZahl(eingeplant.kolonnen)} Personen ohne Kran` : ""}</>
+                : <>je Gewerk + Unternehmer eine Kolonne mit den grössten Min. Personen ihrer Arbeiten an diesem Tag</>} = <strong>{fmtZahl(eingeplant.total)} Personen</strong>,
+              davon <strong>{fmtZahl(eingeplant.total - plan.imEinsatz.anzahl)}</strong> zu keiner Zeit im Einsatz (Spalte Frei).
+              Auslastung = {fmtZahl(arbeit)} h ÷ ({fmtZahl(eingeplant.total)} × {fmtZahl(std)} h) = {eingeplant.total > 0 ? `${fmtZahl(arbeit / std / eingeplant.total * 100)} %` : "–"} der bezahlten Zeit.
+            </div>)}
+            <div style={{ color: ueberzogen ? FARBEN.status.critical : undefined, fontWeight: ueberzogen ? 600 : undefined }}>
+              <strong>Dauer:</strong> Die Arbeit des Tages ist nach {fmtZahl(plan.dauer)} h fertig{ueberzogen ? ` — ${fmtZahl(plan.dauer - std)} h nach Arbeitsende` : ""} (Spalte Dauer).
+            </div>
+            {(ueberU.length > 0 || ueberK.length > 0) && (
+              <div style={{ color: FARBEN.status.critical }}>
+                <strong>Überstunden:</strong> {ueberU.map(([u, h]) => `${unternehmerLabel(u)} ${fmtZahl(h)} Personenstunden`).join(", ")}
+                {ueberK.length > 0 && <>{ueberU.length > 0 ? "; " : ""}{ueberK.map(([id, h]) => `${kranName(id)} ${fmtZahl(h)} Kranstunden`).join(", ")}</>}
+                {" "}nach Arbeitsende.
+              </div>
+            )}
+          </div>
+          {ueberzogen && gruende && <Ueberzug iso={iso} plan={plan} std={std} tasks={tasks} stammdaten={stammdaten} kalender={kalender}
             kranUeber={gruende.kranVoll.filter(k => k.stunden > std + 1e-6)} />}
-          {zuWenigArbeit && eingeplant && (() => {
+          {zuWenigArbeit && eingeplant && gruende && (() => {
             const { kranVoll, wartend } = gruende;
             const arten = new Set(wartend.map(w => w.art));
             const frei = eingeplant.total - plan.imEinsatz.anzahl;
@@ -237,9 +236,8 @@ export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeG
               </div>
             );
           })()}
-        </>)}
-      </div>
-    )}
+      </>)}
+    </div>
   </>);
 }
 
