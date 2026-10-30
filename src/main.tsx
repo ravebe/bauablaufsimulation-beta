@@ -21,6 +21,16 @@ document.addEventListener("wheel", () => {
   if (el instanceof HTMLInputElement && el.type === "number" && !el.classList.contains("pfeile-immer")) el.blur();
 }, { passive: true, capture: true });
 
+// Mehrfachauswahl mit Shift/Ctrl/Cmd-Klick (Tasks, Bauteile, Zeilen in allen Tabs): der Browser soll dabei keinen Text blau
+// markieren. Das Standardverhalten von mousedown verhindern — die Klick-Handler laufen trotzdem. Eingabefelder und ziehbare
+// Elemente (Drag & Drop) bleiben unberührt.
+document.addEventListener("mousedown", e => {
+  if (!(e.shiftKey || e.ctrlKey || e.metaKey) || e.button !== 0) return;
+  const el = e.target instanceof Element ? e.target : null;
+  if (el?.closest("input, textarea, select, [contenteditable=''], [contenteditable='true'], [draggable='true']")) return;
+  e.preventDefault();
+}, { capture: true });
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <FehlerGrenze bereich="der Extension">
