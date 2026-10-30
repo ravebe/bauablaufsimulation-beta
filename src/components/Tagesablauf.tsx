@@ -32,8 +32,10 @@ interface Props {
   /** Ablauf des Tages (tagesplan) — derselbe wie in der Spalte Dauer */
   plan: Tagesplan;
   /** Zugeklappt: Tagesablauf / Erklärung & Optimierung (in Tab AVOR je Projekt gemerkt) */
-  zu: { ablauf: boolean; erklaerung: boolean };
-  onToggle: (welcher: "ablauf" | "erklaerung") => void;
+  zu: { ablauf: boolean; tabelle: boolean; erklaerung: boolean };
+  /** Tagesangaben-Tabelle (aus dem Diagramm) — erscheint als zuklappbarer Kasten zwischen Tagesablauf und Erklärung */
+  tabelle?: React.ReactNode;
+  onToggle: (welcher: "ablauf" | "tabelle" | "erklaerung") => void;
 }
 
 const datumText = (iso: string) => iso.split("-").reverse().join(".");
@@ -91,11 +93,18 @@ function wartegruende(iso: string, tasks: Task[], stammdaten: Stammdaten, kalend
   return { kranVoll, wartend };
 }
 
-export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeGewerk, eingeplant, mitKranPersonal, kraene, plan, zu, onToggle }: Props) {
+export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeGewerk, eingeplant, mitKranPersonal, kraene, plan, zu, tabelle, onToggle }: Props) {
   const std = stammdaten.arbeitszeitStdProTag;
   const gewerkLabel = new Map(stammdaten.gewerke.map(g => [g.key, g.label]));
   const zeilen = plan.tasks;
-  if (zeilen.length === 0) return null;
+  const tabellenKasten = tabelle && (
+    <div style={{ margin: "0 0 6px", padding: "8px 10px", background: "#fff", border: `1px solid ${FARBEN.gridline}`, fontSize: 11 }}>
+      <KastenKopf titel={`Tagesangaben ${iso.split("-").reverse().join(".")}`} zu={zu.tabelle} onToggle={() => onToggle("tabelle")}
+        info={<>— Arbeit, Im Einsatz, Eingeplant, Frei, Dauer und Auslastung je Gewerk</>} />
+      {!zu.tabelle && <div style={{ marginTop: 4 }}>{tabelle}</div>}
+    </div>
+  );
+  if (zeilen.length === 0) return tabellenKasten || null;
 
   const arbeit = plan.arbeit;
   const skala = Math.max(std, plan.dauer); // Balkenbreite: Arbeitstag, oder länger, wenn die Arbeit überzieht
@@ -195,6 +204,7 @@ export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeG
         </div>
       </>)}
     </div>
+    {tabellenKasten}
     {gruende && (
       <div style={{ margin: "0 0 10px", padding: "8px 10px", background: "#eceef0", border: "1px solid #d6dade", fontSize: 11, color: FARBEN.textSekundaer, lineHeight: 1.6 }}>
         <KastenKopf titel="Erklärung & Optimierung" zu={zu.erklaerung} onToggle={() => onToggle("erklaerung")}

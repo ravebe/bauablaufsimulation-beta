@@ -424,10 +424,12 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
           markierteTage={{ label: `Arbeit nach Arbeitsende (Dauer über ${fmtZahl(std)} h)`, farbe: FARBEN.status.critical,
             titel: i => plaene[i] && plaene[i].dauer > std + 1e-6 ? `Arbeit fertig erst nach ${fmtZahl(plaene[i].dauer)} h — ${fmtZahl(plaene[i].dauer - std)} h nach Arbeitsende` : null }}
           formatWert={fmtZahl} kalender={kalender} ohneWochenenden={ohneWochenenden} hoehe={hoehePersonal} detailSpalten={personalSpalten}
-          detailUnten={i => <Tagesablauf iso={personalSerien.tage[i]} tasks={tasks} stammdaten={stammdaten} kalender={kalender} farbeJeGewerk={farbeJeGewerk}
-            eingeplant={eingeplantJeTag.get(personalSerien.tage[i])} mitKranPersonal={mitKranPersonal} kraene={kraene} plan={planFuer(i)}
-            zu={{ ablauf: !!eingeklappt["tagesablauf"], erklaerung: !!eingeklappt["tagesablaufErklaerung"] }}
-            onToggle={w => toggleEingeklappt(w === "ablauf" ? "tagesablauf" : "tagesablaufErklaerung")} />}
+          // unter dem Diagramm: Tagesablauf, darunter Tagesangaben-Tabelle und Erklärung & Optimierung (beide standardmässig zu —
+          // gemerkt wird «offen», damit ohne Einstellung «zu» gilt)
+          detailUnterDiagramm={(i, tabelle) => <Tagesablauf iso={personalSerien.tage[i]} tasks={tasks} stammdaten={stammdaten} kalender={kalender} farbeJeGewerk={farbeJeGewerk}
+            eingeplant={eingeplantJeTag.get(personalSerien.tage[i])} mitKranPersonal={mitKranPersonal} kraene={kraene} plan={planFuer(i)} tabelle={tabelle}
+            zu={{ ablauf: !!eingeklappt["tagesablauf"], tabelle: !eingeklappt["tagesangabenOffen"], erklaerung: !eingeklappt["erklaerungOffen"] }}
+            onToggle={w => toggleEingeklappt(w === "ablauf" ? "tagesablauf" : w === "tabelle" ? "tagesangabenOffen" : "erklaerungOffen")} />}
           markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick} onMarkerEntfernen={markerEntfernen}
           pxProTag={zoom.pxProTag} onPxProTagChange={zoom.setPxProTag} scrollTag={zoom.scrollTag} onScrollChange={zoom.setScrollTag} />
         <ChartResizeHandle hoehe={hoehePersonal} setHoehe={setHoehePersonal} />

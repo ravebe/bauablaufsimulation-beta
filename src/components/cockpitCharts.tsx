@@ -321,6 +321,9 @@ interface TimeSeriesProps {
   onMarkerEntfernen?: () => void;
   /** Zusätzlicher Inhalt unter der Tagesangaben-Tabelle, über dem Diagramm (z.B. Tagesablauf in Tab AVOR) */
   detailUnten?: (idx: number) => React.ReactNode;
+  /** Statt detailUnten: Angaben zum angeklickten Tag UNTER dem Diagramm, oben bleibt die Legende — die Tagesangaben-Tabelle wird
+   *  mitgegeben und frei platziert (Tab AVOR → Personalauslastung: Tagesablauf, darunter die Tabelle zugeklappt) */
+  detailUnterDiagramm?: (idx: number, tabelle: React.ReactNode) => React.ReactNode;
   kalender?: Kalender; // für Wochenend-/Feiertag-Schattierung; ohne wird nur Sa/So schattiert
   /** Arbeitsfreie Sa/So aus der Zeitachse entfernen — Wochen dann durch eine feine graue Linie getrennt (Tab AVOR ⋮) */
   ohneWochenenden?: boolean;
@@ -335,7 +338,7 @@ interface TimeSeriesProps {
 
 const ML = 44, MR = 8, MT = 16, MB = 20;
 
-export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = "", hoehe = 180, formatWert, zusatz, zusatzSerie, zusatzTotal, totalZeile, weitereLinien = [], markierteTage, markerIdx, markerLabel = "Heute", onTagKlick, detailSpalten, onMarkerEntfernen, detailUnten, kalender, ohneWochenenden = false,
+export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = "", hoehe = 180, formatWert, zusatz, zusatzSerie, zusatzTotal, totalZeile, weitereLinien = [], markierteTage, markerIdx, markerLabel = "Heute", onTagKlick, detailSpalten, onMarkerEntfernen, detailUnten, detailUnterDiagramm, kalender, ohneWochenenden = false,
   pxProTag: pxProTagProp, onPxProTagChange: onPxProTagChangeProp, scrollTag: scrollTagProp, onScrollChange: onScrollChangeProp }: TimeSeriesProps) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [outerRef, viewportW] = useMeasuredWidth<HTMLDivElement>(1000);
@@ -436,7 +439,7 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
 
   return (
     <div ref={outerRef} style={{ position: "relative" }}>
-      {detailSpalten && detailIdx != null ? (<>
+      {detailSpalten && detailIdx != null && !detailUnterDiagramm ? (<>
         <DetailTabelle kopf={tage[detailIdx].split("-").reverse().join(".")} spalten={detailSpalten} zeilen={detailZeilen} onSchliessen={onMarkerEntfernen} />
         {detailUnten?.(detailIdx)}
       </>) : zeigeLegende && (
@@ -571,6 +574,8 @@ export function TimeSeriesChart({ tage, serien, modus, referenzlinie, einheit = 
         })()}
         <ZoomControls onZoomIn={() => zoomBy(1.3)} onZoomOut={() => zoomBy(1 / 1.3)} />
       </div>
+      {detailUnterDiagramm && detailSpalten && detailIdx != null && detailUnterDiagramm(detailIdx,
+        <DetailTabelle kopf={tage[detailIdx].split("-").reverse().join(".")} spalten={detailSpalten} zeilen={detailZeilen} onSchliessen={onMarkerEntfernen} />)}
     </div>
   );
 }
