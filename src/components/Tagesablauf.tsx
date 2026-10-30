@@ -172,14 +172,16 @@ export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeG
         })}
         {zeilen.length > MAX_TASKS && <div style={{ color: FARBEN.textMuted }}>… und {zeilen.length - MAX_TASKS} weitere Tasks</div>}
         <div style={{ marginTop: 6, color: FARBEN.textSekundaer, lineHeight: 1.6 }}>
-          <div><strong>Arbeit:</strong> {zeilen.length} Task{zeilen.length === 1 ? "" : "s"} zusammen {fmtZahl(arbeit)} Personenstunden = {fmtZahl(arbeit / std)} Personen × {fmtZahl(std)} h (Spalten Arbeit und Benötigt).</div>
-          {eingeplant && (mitKranPersonal ? (
-            <div><strong>Eingeplant:</strong> {fmtZahl(eingeplant.kranPersonal)} Personen unter dem Kran
-              {eingeplant.kolonnen > 0 ? ` + ${fmtZahl(eingeplant.kolonnen)} Personen ohne Kran` : ""} = <strong>{fmtZahl(eingeplant.total)} Personen</strong>,
-              davon frei {fmtZahl(Math.max(0, eingeplant.total - arbeit / std))}. Auslastung = {fmtZahl(arbeit / std)} ÷ {fmtZahl(eingeplant.total)} = {eingeplant.total > 0 ? `${fmtZahl(arbeit / std / eingeplant.total * 100)} %` : "–"}.</div>
-          ) : (
-            <div><strong>Eingeplant:</strong> je Gewerk + Unternehmer eine Kolonne mit den grössten Min. Personen ihrer Arbeiten an diesem Tag, zusammen <strong>{fmtZahl(eingeplant.total)} Personen</strong>.</div>
-          ))}
+          <div><strong>Arbeit:</strong> {zeilen.length} Task{zeilen.length === 1 ? "" : "s"} zusammen {fmtZahl(arbeit)} Personenstunden (Spalte Arbeit).</div>
+          <div><strong>Im Einsatz:</strong> höchstens <strong>{fmtZahl(plan.imEinsatz.anzahl)} Personen</strong> gleichzeitig, ab {fmtZahl(plan.imEinsatz.um)} h nach
+            Arbeitsbeginn (Spalte Im Einsatz, oberer Rand der Fläche im Diagramm).</div>
+          {eingeplant && (<div>
+            <strong>Eingeplant:</strong> {mitKranPersonal
+              ? <>{fmtZahl(eingeplant.kranPersonal)} Personen unter dem Kran{eingeplant.kolonnen > 0 ? ` + ${fmtZahl(eingeplant.kolonnen)} Personen ohne Kran` : ""}</>
+              : <>je Gewerk + Unternehmer eine Kolonne mit den grössten Min. Personen ihrer Arbeiten an diesem Tag</>} = <strong>{fmtZahl(eingeplant.total)} Personen</strong>,
+            davon <strong>{fmtZahl(eingeplant.total - plan.imEinsatz.anzahl)}</strong> zu keiner Zeit im Einsatz (Spalte Frei).
+            Auslastung = {fmtZahl(arbeit)} h ÷ ({fmtZahl(eingeplant.total)} × {fmtZahl(std)} h) = {eingeplant.total > 0 ? `${fmtZahl(arbeit / std / eingeplant.total * 100)} %` : "–"} der bezahlten Zeit.
+          </div>)}
           <div style={{ color: ueberzogen ? FARBEN.status.critical : undefined, fontWeight: ueberzogen ? 600 : undefined }}>
             <strong>Dauer:</strong> Die Arbeit des Tages ist nach {fmtZahl(plan.dauer)} h fertig{ueberzogen ? ` — ${fmtZahl(plan.dauer - std)} h nach Arbeitsende` : ""} (Spalte Dauer).
           </div>
@@ -203,10 +205,10 @@ export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeG
           {zuWenigArbeit && eingeplant && (() => {
             const { kranVoll, wartend } = gruende;
             const arten = new Set(wartend.map(w => w.art));
-            const frei = eingeplant.total - arbeit / std;
+            const frei = eingeplant.total - plan.imEinsatz.anzahl;
             return (
               <div style={ueberzogen ? { marginTop: 8, paddingTop: 6, borderTop: "1px solid #d6dade" } : undefined}>
-                <div style={{ fontWeight: 600, color: "#8a5a00" }}>Warum arbeiten nicht mehr Personen? (rund {fmtZahl(frei)} Personen ohne Arbeit)</div>
+                <div style={{ fontWeight: 600, color: "#8a5a00" }}>Warum ist das Personal nicht ausgelastet? ({fmtZahl(arbeit / std / eingeplant.total * 100)} % der bezahlten Zeit{frei > 0 ? `, ${fmtZahl(frei)} Personen zu keiner Zeit im Einsatz` : ""})</div>
                 {kranVoll.map(k => (
                   <div key={k.name}>• <strong>{k.name} ist ausgelastet:</strong> {fmtZahl(k.stunden)} h von {fmtZahl(std)} h Kranzeit belegt
                     ({k.tasks.slice(0, 3).join(", ")}{k.tasks.length > 3 ? " …" : ""}) — weitere kranpflichtige Arbeiten haben keinen Platz unter dem Kran.</div>

@@ -31,7 +31,29 @@ export interface TagesplanTask { t: Task; phasen: TagesplanPhase[]; von: number;
 /** Arbeit nach Arbeitsende: Personenstunden je Unternehmer ("" = Position ohne Unternehmer), Kranstunden je Kran-Id */
 export interface Ueberstunden { jeUnternehmer: Map<string, number>; jeKran: Map<string, number> }
 export const unternehmerLabel = (u: string) => u || "ohne Unternehmer";
-export interface Tagesplan { tasks: TagesplanTask[]; dauer: number; arbeit: number; jeGewerk: Map<string, { von: number; bis: number }>; ueberstunden: Ueberstunden }
+/** Gleichzeitig arbeitende Personen: anzahl = Höchstzahl des Tages, um = Zeitpunkt (h ab Arbeitsbeginn), jeGewerkAnSpitze = wie sie
+ *  sich in diesem Moment auf die Gewerke verteilen (Summe = anzahl), maxJeGewerk = Höchstzahl jedes Gewerks für sich (zu irgendeiner Zeit) */
+export interface ImEinsatz { anzahl: number; um: number; jeGewerkAnSpitze: Map<string, number>; maxJeGewerk: Map<string, number> }
+export interface Tagesplan { tasks: TagesplanTask[]; dauer: number; arbeit: number; jeGewerk: Map<string, { von: number; bis: number }>; ueberstunden: Ueberstunden;
+  arbeitJeGewerk: Map<string, number>; imEinsatz: ImEinsatz }
+
+/** Höchstzahl gleichzeitig arbeitender Personen aus den Arbeitsstücken des Tages (von/bis in h, leute, Gewerk) */
+function imEinsatzAus(stuecke: { von: number; bis: number; leute: number; gewerk: string }[]): ImEinsatz {
+  const aktivUm = (t: number, gewerk?: string) => stuecke.filter(s => s.von <= t + 1e-9 && s.bis > t + 1e-9 && (!gewerk || s.gewerk === gewerk));
+  let anzahl = 0, um = 0;
+  for (const t of new Set(stuecke.map(s => s.von))) {
+    const n = aktivUm(t).reduce((sum, s) => sum + s.leute, 0);
+    if (n > anzahl || (n === anzahl && t < um)) { anzahl = n; um = t; }
+  }
+  const jeGewerkAnSpitze = new Map<string, number>();
+  for (const s of aktivUm(um)) jeGewerkAnSpitze.set(s.gewerk, (jeGewerkAnSpitze.get(s.gewerk) ?? 0) + s.leute);
+  const maxJeGewerk = new Map<string, number>();
+  for (const s of stuecke) {
+    const n = aktivUm(s.von, s.gewerk).reduce((sum, x) => sum + x.leute, 0);
+    if (n > (maxJeGewerk.get(s.gewerk) ?? 0)) maxJeGewerk.set(s.gewerk, n);
+  }
+  return { anzahl, um, jeGewerkAnSpitze, maxJeGewerk };
+}
 
 /** Aufwand je Tag und Phase eines Tasks — je Task nur einmal gerechnet, wenn der Tagesplan für viele Tage gebraucht wird */
 export type AufwandQuelle = (t: Task) => Map<string, PhasenAufwand[]>;
@@ -69,6 +91,9 @@ export function tagesplan(iso: string, tasks: Task[], stammdaten: Stammdaten, ka
   const plan: TagesplanTask[] = [];
   const sim: SimTask[] = [];
   const fest: { phase: KernPhase; kranIds: string[]; lauf: TagesLauf }[] = [];
+  // Arbeitsstücke des Tages (wer von wann bis wann) — für «Im Einsatz»; aufeinanderfolgende Zeitschritte derselben Arbeit zusammen
+  const stuecke: { von: number; bis: number; leute: number; gewerk: string }[] = [];
+  const letztesStueck = new Map<SimPhase, { von: number; bis: number; leute: number; gewerk: string }>();
   const geordnet = tasks.map((t, i) => ({ t, i })).sort((a, b) =>
     (a.t.start + (a.t.startZeit ?? "")).localeCompare(b.t.start + (b.t.startZeit ?? "")) || a.i - b.i);
   for (const { t } of geordnet) {
@@ -93,6 +118,7 @@ export function tagesplan(iso: string, tasks: Task[], stammdaten: Stammdaten, ka
           p.von = Math.min(p.von, l.von); p.bis = Math.max(p.bis, l.bis); p.personen = Math.max(p.personen, l.leute);
           if (l.kran) p.kranBegrenzt = true;
           fest.push({ phase: kern, kranIds, lauf: l });
+          stuecke.push({ von: l.von, bis: l.bis, leute: l.leute, gewerk: kern.gewerkKey });
           ueberstundenBuchen(kern, pruefung.kraeneHeute(kern, kranIds), l.von, l.bis, l.leute);
         }
       } else {
@@ -123,6 +149,9 @@ export function tagesplan(iso: string, tasks: Task[], stammdaten: Stammdaten, ka
       p.tp.personen = Math.max(p.tp.personen, v.leute);
       if (v.kranBegrenzt) p.tp.kranBegrenzt = true;
       ueberstundenBuchen(p, v.kranIds, von, ende, v.leute);
+      const letztes = letztesStueck.get(p);
+      if (letztes && letztes.leute === v.leute && Math.abs(letztes.bis - von) < EPS) letztes.bis = ende;
+      else { const neu = { von, bis: ende, leute: v.leute, gewerk: p.gewerkKey }; stuecke.push(neu); letztesStueck.set(p, neu); }
     }
     for (const x of offen) while (x.schritt < x.schritte.length && x.schritte[x.schritt].every(p => p.rest <= EPS)) x.schritt++;
   }
@@ -140,5 +169,7 @@ export function tagesplan(iso: string, tasks: Task[], stammdaten: Stammdaten, ka
     dauer = Math.max(dauer, tp.bis);
     arbeit += tp.arbeit;
   }
-  return { tasks: plan, dauer, arbeit, jeGewerk, ueberstunden };
+  const arbeitJeGewerk = new Map<string, number>();
+  for (const tp of plan) for (const p of tp.phasen) arbeitJeGewerk.set(p.gewerkKey, (arbeitJeGewerk.get(p.gewerkKey) ?? 0) + p.arbeit);
+  return { tasks: plan, dauer, arbeit, jeGewerk, ueberstunden, arbeitJeGewerk, imEinsatz: imEinsatzAus(stuecke) };
 }

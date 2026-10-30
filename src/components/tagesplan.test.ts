@@ -43,6 +43,20 @@ describe("Tagesplan", () => {
     expect(p.ueberstunden.jeKran.size).toBe(0);
   });
 
+  it("Im Einsatz: Höchstzahl gleichzeitig arbeitender Personen, mit Zeitpunkt und Verteilung auf die Gewerke", () => {
+    // parallel: zwei Arbeiten mit je 4 Leuten → 8 gleichzeitig
+    const parallel = tagesplan(TAG, [task("A", { mengen: { bet: 16 } }), task("B", { mengen: { bet: 16 } })], sd(25), KAL, kran(8));
+    expect(parallel.imEinsatz.anzahl).toBe(8);
+    expect(parallel.imEinsatz.um).toBe(0);
+    expect(parallel.imEinsatz.jeGewerkAnSpitze.get("bet")).toBe(8);
+    expect(parallel.arbeitJeGewerk.get("bet")).toBeCloseTo(32);
+    // nacheinander (ohne Kran-Pool: eine Kolonne je Gewerk + Unternehmer) → nie mehr als 4 gleichzeitig
+    const nacheinander = tagesplan(TAG, [task("A", { mengen: { bet: 12 } }), task("B", { mengen: { bet: 16 } })], sd(25), KAL, []);
+    expect(nacheinander.dauer).toBeCloseTo(7);
+    expect(nacheinander.imEinsatz.anzahl).toBe(4);
+    expect(nacheinander.imEinsatz.maxJeGewerk.get("bet")).toBe(4);
+  });
+
   it("zwei Arbeiten teilen sich das Team und den Kran", () => {
     const p = tagesplan(TAG, [task("A", { mengen: { bet: 16 } }), task("B", { mengen: { bet: 16 } })], sd(25), KAL, kran(8));
     expect(p.tasks.map(t => t.phasen[0].personen)).toEqual([4, 4]); // je Min. 4, keine Leute übrig
