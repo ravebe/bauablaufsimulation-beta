@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { lsSet } from "../hooks/lokalSpeicher";
 import type { SimProjekt, Task , VorgaengerLink, GruppenReihenfolge } from "../types";
 import { parseDateUniversal, istGruppe, getKinder, getOutlineLevel, kaskadiereNachfolger, richteKettenNeuAus, vorgaengerZiele, setzeVorgaenger,
-  taskVerschieben as verschiebeTaskBlock, nsKey, vorgaengerListe } from "../types";
+  taskVerschieben as verschiebeTaskBlock, nsKey, vorgaengerListe, mitVorgaengern } from "../types";
 import type { ApiInstance } from "../hooks/useApi";
 import { getEchteBauteile, clearEchteBauteileCache } from "./modelHelpers";
 import { useClickOutside } from "../hooks/useClickOutside";
@@ -72,6 +72,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   const [plusMenuOffen, setPlusMenuOffen] = useState(false);
   const [werkzeugOffen, setWerkzeugOffen] = useState(false);
   const [autoVorgaengerOffen, setAutoVorgaengerOffen] = useState(false); // Werkzeuge → Auto-Vorgänger: Varianten zeigen
+  const [werkzeugBestaetigung, setWerkzeugBestaetigung] = useState<"ausrichten" | "entfernen" | null>(null); // Rückfrage vor dem Ausführen
   const [zeitplanHinweisOffen, setZeitplanHinweisOffen] = useState(false);
   // "Auslastung optimieren": Vorschau der neuen Termine, erst nach Bestätigung übernommen
   // je Zeiteinheit (aktuelle + feinere) ein Ergebnis — feinere erlauben Nachfolger am selben Tag, siehe auslastungVorschauOeffnen
@@ -335,6 +336,13 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
     updateSim({ ...aktiveSim, tasks: richteKettenNeuAus(aktiveSim.tasks, aktiveSim.kalender ?? LEERER_KALENDER) });
   }
 
+  // "Vorgänger entfernen" — alle Vorgänger aller Tasks (von Hand gesetzte, Auto-Vorgänger und vom Optimieren ergänzte); Termine bleiben
+  function vorgaengerEntfernen() {
+    if (!aktiveSim) return;
+    updateSim({ ...aktiveSim, tasks: aktiveSim.tasks.map(t => vorgaengerListe(t).length === 0 ? t : {
+      ...mitVorgaengern(t, []), autoVorgaenger: undefined, optimierung: t.optimierung ? { ...t.optimierung, vorgaenger: [] } : undefined }) });
+  }
+
   // "Auto-Vorgänger" (autoVorgaenger.ts) — nach Gantt-Reihenfolge oder nach den aktuellen Terminen; ersetzt nur die Vorgänger eines
   // früheren Auto-Vorgänger, von Hand gesetzte und vom Optimieren ergänzte bleiben
   function autoVorgaenger(modus: AutoVorgaengerModus) {
@@ -426,17 +434,26 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                       )}
                     </div>
                   )}
-                  {aktiveSim.tasks.some(t => t.predecessorId) && (
+                  {aktiveSim.tasks.some(t => t.predecessorId) && (<>
                     <button
                       style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
-                      onClick={() => { folgeTasksNeuAusrichten(); setWerkzeugOffen(false); }}>
+                      onClick={() => { setWerkzeugBestaetigung("ausrichten"); setWerkzeugOffen(false); }}>
                       <Hinweis kopf={<div style={{ fontSize: 11, fontWeight: 500, color: "var(--tc-text)" }}>Folge-Tasks neu ausrichten</div>}>
                         <div style={{ maxWidth: 300 }}>
-                        Jeder Nachfolger beginnt am Tag nach dem Ende seines Vorgängers plus Wartetage (Kalendertage, auch Wochenende/Feiertage/Ferien zählen als Wartezeit); fällt der Start auf einen freien Tag, rückt er auf den nächsten Arbeitstag. Die Dauer in Arbeitstagen bleibt.
+                        Jeder Nachfolger beginnt am Tag nach dem Ende seines Vorgängers plus Wartetage (Kalendertage, auch Wochenende/Feiertage/Ferien zählen als Wartezeit); fällt der Start auf einen freien Tag, rückt er auf den nächsten Arbeitstag. Die Dauer in Arbeitstagen bleibt. Mit Rückfrage.
                         </div>
                       </Hinweis>
                     </button>
-                  )}
+                    <button
+                      style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
+                      onClick={() => { setWerkzeugBestaetigung("entfernen"); setWerkzeugOffen(false); }}>
+                      <Hinweis kopf={<div style={{ fontSize: 11, fontWeight: 500, color: "var(--tc-text)" }}>Vorgänger entfernen</div>}>
+                        <div style={{ maxWidth: 300 }}>
+                        Entfernt alle Vorgänger aller Tasks — von Hand gesetzte, Auto-Vorgänger und vom Optimieren ergänzte. Die Termine bleiben, wie sie sind. Mit Rückfrage.
+                        </div>
+                      </Hinweis>
+                    </button>
+                  </>)}
                   {zeitplanStatus && (
                     <div>
                       <button
@@ -507,6 +524,40 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
         ]} />
         </div>
       </div>
+
+      {werkzeugBestaetigung && aktiveSim && (() => {
+        const entfernen = werkzeugBestaetigung === "entfernen";
+        const anzahl = aktiveSim.tasks.filter(t => vorgaengerListe(t).length > 0).length;
+        const schliessen = () => setWerkzeugBestaetigung(null);
+        return (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}
+            onClick={schliessen}>
+            <div style={{ background: "#fff", borderRadius: 8, overflow: "hidden", width: "min(420px, 100%)", boxShadow: "0 8px 30px rgba(0,0,0,.25)", fontFamily: "var(--tc-font)" }}
+              onClick={e => e.stopPropagation()}>
+              <div style={{ padding: "12px 16px 10px", display: "flex", alignItems: "flex-start", gap: 8 }}>
+                <div style={{ flex: 1, fontSize: 16, fontWeight: 700, color: "var(--tc-text)" }}>{entfernen ? "Vorgänger entfernen" : "Folge-Tasks neu ausrichten"}</div>
+                <button className="tc-btn-ghost" style={{ fontSize: 14, padding: "2px 8px" }} onClick={schliessen} title="Schliessen">✕</button>
+              </div>
+              <div style={{ padding: "0 16px 12px", fontSize: 12, color: "var(--tc-text-2)", lineHeight: 1.5 }}>
+                {entfernen
+                  ? <>Bei <strong>{anzahl}</strong> Task{anzahl === 1 ? "" : "s"} werden alle Vorgänger entfernt — von Hand gesetzte, Auto-Vorgänger und vom Optimieren ergänzte. Die Termine bleiben, wie sie sind.</>
+                  : <>Jeder Nachfolger beginnt am Tag nach dem Ende seines Vorgängers plus Wartetage; die Dauer in Arbeitstagen bleibt. Betrifft <strong>{anzahl}</strong> Task{anzahl === 1 ? "" : "s"} mit Vorgängern und deren Nachfolger.</>}
+              </div>
+              <div style={{ borderTop: "1px solid var(--tc-border-light)", padding: "10px 16px 12px", background: "#f5f9ff" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  <button className="tc-btn-primary" style={{ flex: "1 1 180px" }} autoFocus
+                    title="Lässt sich mit «Rückgängig» oben in der Kopfzeile zurücknehmen (letzte 15 Schritte, bis zum Neuladen)"
+                    onClick={() => { if (entfernen) vorgaengerEntfernen(); else folgeTasksNeuAusrichten(); schliessen(); }}>
+                    {entfernen ? "Entfernen" : "Ausrichten"}
+                  </button>
+                  <button className="tc-btn-secondary" onClick={schliessen}>Abbrechen</button>
+                </div>
+                <div style={{ marginTop: 6, fontSize: 10, color: "var(--tc-text-3)" }}>Rückgängig oben in der Kopfzeile (letzte 15 Schritte).</div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {auslastungVorschau && aktiveSim && (() => {
         const ende = (ts: Task[]) => ts.reduce((m, t) => (!t.isGroup && t.end && t.end > m ? t.end : m), "");
