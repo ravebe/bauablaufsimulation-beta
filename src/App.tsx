@@ -46,6 +46,9 @@ export default function App() {
   // «Zur Kranoptik» (Tab Ressourcen → Kräne & Personal): zu Tab AVOR, dort die Kranoptik aufklappen und hinscrollen
   const [kranoptikSignal, setKranoptikSignal] = useState(0);
   const zuKranoptik = () => { setTabGruppe("erweitert"); setAktTab("avor"); setKranoptikSignal(n => n + 1); };
+  // «bearbeiten →» (Dialog Auslastung optimieren → Nach Gruppen): zu Tab Ressourcen → Bauablauf → 2. Reihenfolge
+  const [bauablaufSignal, setBauablaufSignal] = useState(0);
+  const zuBauablauf = () => { setTabGruppe("erweitert"); setAktTab("ressourcen"); setBauablaufSignal(n => n + 1); };
   useEffect(() => {
     if (HAUPT_TABS.includes(aktTab)) lastHauptTab.current = aktTab;
     else lastErweitertTab.current = aktTab;
@@ -419,6 +422,7 @@ export default function App() {
               sharedNadelTag={sharedNadelTag}
               sichtbar={aktTab === "bauteile"}
               onIfcExport={aktiveIfcExport}
+              onZuBauablauf={zuBauablauf}
             />
           </FehlerGrenze>
         </div>
@@ -444,7 +448,7 @@ export default function App() {
         <div className="tc-tab-pane" style={{ display: aktTab === "ressourcen" ? "block" : "none" }}>
           <FehlerGrenze bereich="Tab Ressourcen">
             <TabRessourcen sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} api={api} selektion={selektion} aktivesModellId={aktivesModellId} projectId={projectId}
-              kranplanungSignal={kranplanungSignal} onZuKranoptik={zuKranoptik} />
+              kranplanungSignal={kranplanungSignal} bauablaufSignal={bauablaufSignal} onZuKranoptik={zuKranoptik} />
           </FehlerGrenze>
         </div>
         <div className="tc-tab-pane" style={{ display: aktTab === "avor" ? "block" : "none" }}>

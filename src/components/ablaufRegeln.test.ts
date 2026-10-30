@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { Task, AblaufRegel } from "../types";
 import { vorgaengerListe, automatischeVorgaenger, setzeVorgaenger } from "../types";
-import { regelnAnwenden, regelnAlsJson, parseRegelnJson } from "./ablaufRegeln";
+import { regelnAnwenden, regelnAlsJson, parseRegelnJson, parseBauablaufJson } from "./ablaufRegeln";
 
 const task = (id: string, start: string, end: string, p: Partial<Task> = {}): Task =>
   ({ id, name: id, start, end, typ: "neubau", objektGuids: [], ...p });
@@ -100,5 +100,14 @@ describe("Ablaufregeln", () => {
     const regeln = [platteDarunter, regel({ id: "x", name: "Kanal", nach: [{ feld: "name", werte: ["Magerbeton"] }], wartetage: 3 })];
     expect(parseRegelnJson(regelnAlsJson(regeln))).toEqual(regeln.map(r => ({ ...r, ebene: r.bezug === "ueberall" ? undefined : r.ebene })));
     expect(() => parseRegelnJson(JSON.stringify({ gewerke: [] }))).toThrow();
+  });
+
+  it("Bauablauf-Datei: Reihenfolge der Gruppen und Regeln zusammen, alte Regel-Dateien (ohne Reihenfolge) bleiben lesbar", () => {
+    const gruppenReihenfolge = { stufen: [{ quelle: "gruppe" as const, ebene: 2, werte: ["UG", "EG"], aktiv: true }, { quelle: "kuerzel" as const, werte: ["DE", "ST"], aktiv: false }] };
+    const datei = parseBauablaufJson(regelnAlsJson([platteDarunter], gruppenReihenfolge));
+    expect(datei.gruppenReihenfolge).toEqual(gruppenReihenfolge);
+    expect(datei.regeln.map(r => r.id)).toEqual(["platte"]);
+    const alt = JSON.stringify({ format: "bauablauf-ablaufregeln", version: 1, regeln: [platteDarunter] });
+    expect(parseBauablaufJson(alt)).toEqual({ regeln: parseRegelnJson(alt) });
   });
 });

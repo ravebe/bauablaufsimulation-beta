@@ -29,7 +29,7 @@ import { autoVorgaengerSetzen } from "./autoVorgaenger";
 import { regelWirkt } from "./ablaufRegeln";
 import type { AutoVorgaengerModus } from "./autoVorgaenger";
 import { gruppenReihenfolgeAbgleichen } from "./gruppenReihenfolge";
-import GruppenReihenfolgeEditor from "./GruppenReihenfolgeEditor";
+import { stufenTitel } from "./gruppenReihenfolge";
 import PunkteMenu from "./PunkteMenu";
 import { exportEintraege } from "./exportEintraege";
 import { useFreieTageAusblenden } from "../hooks/useFreieTageAusblenden";
@@ -49,9 +49,11 @@ interface Props {
   sichtbar?: boolean;
   /** IFC-4D-Export der aktiven Simulation (Dialog in App.tsx) */
   onIfcExport?: () => void;
+  /** zu Tab Ressourcen → Bauablauf → 2. Reihenfolge der Gruppen und Bauteilarten (dort wird sie bearbeitet) */
+  onZuBauablauf?: () => void;
 }
 
-export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveSim, updateSim, aktivesModellId, taskSort, readOnly, sharedNadelTag, sichtbar, onIfcExport }: Props) {
+export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveSim, updateSim, aktivesModellId, taskSort, readOnly, sharedNadelTag, sichtbar, onIfcExport, onZuBauablauf }: Props) {
   const [freieTageAus, setFreieTageAus] = useFreieTageAusblenden(projectId);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [totalObjekte, setTotalObjekte] = useState<number | null>(null);
@@ -302,12 +304,11 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   // Gerechnet wird in der aktuellen Zeiteinheit und in jeder feineren (Halbtage, Uhrzeit): darin dürfen Arbeiten innerhalb eines
   // Tages wechseln und Nachfolger noch am selben Tag beginnen. Ist das Bauende damit früher, schlägt die Vorschau die Umstellung vor.
   // luecken: Tasks ohne Vorgänger dürfen früher beginnen, wenn Personal unter dem Kran sonst untätig wäre (nur mit Kranpersonal)
-  // gruppen: Reihenfolge «Nach Gruppen» (gruppenReihenfolge.ts) — gespeicherte mit dem aktuellen Gantt abgeglichen, im Dialog änderbar
-  function auslastungVorschauOeffnen(reihenfolge: OptimierReihenfolge = "gruppen", luecken = true, modus: "optimieren" | "dauern" = "optimieren",
-    gruppen?: GruppenReihenfolge) {
+  // gruppen: Reihenfolge «Nach Gruppen» (gruppenReihenfolge.ts) — aus Tab Ressourcen → Bauablauf, mit dem aktuellen Gantt abgeglichen
+  function auslastungVorschauOeffnen(reihenfolge: OptimierReihenfolge = "gruppen", luecken = true, modus: "optimieren" | "dauern" = "optimieren") {
     if (!aktiveSim || !zeitplanStatus?.bereit) { setZeitplanHinweisOffen(o => !o); return; }
     if (!auslastungVorschau) setAutoNachfuehren(!!aktiveSim.autoNachfuehren);
-    gruppen ??= auslastungVorschau?.gruppen ?? gruppenReihenfolgeAbgleichen(aktiveSim.gruppenReihenfolge, aktiveSim.tasks);
+    const gruppen = gruppenReihenfolgeAbgleichen(aktiveSim.gruppenReihenfolge, aktiveSim.tasks);
     const aktuell: Zeiteinheit = aktiveSim.zeiteinheit ?? "tage";
     if (modus === "dauern") {
       setAuslastungVorschau({ modus, reihenfolge, luecken, gruppen, ergebnisse: [{ einheit: aktuell,
@@ -326,7 +327,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
     tasks = optimierungUebernehmen(aktiveSim.tasks, tasks);
     const auto = optimiert && autoNachfuehren ? { reihenfolge: auslastungVorschau.reihenfolge, luecken: auslastungVorschau.luecken } : undefined;
     updateSim({ ...aktiveSim, tasks, zeiteinheit: einheit === "tage" ? undefined : einheit, optimiertStand: optimiert ? terminSignatur(tasks) : undefined,
-      autoNachfuehren: auto, ...(optimiert && auslastungVorschau.reihenfolge === "gruppen" ? { gruppenReihenfolge: auslastungVorschau.gruppen } : {}) });
+      autoNachfuehren: auto });
     setAuslastungVorschau(null);
   }
 
@@ -582,8 +583,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
         // Ablauf je Tag (Task.tagesArbeit) neu, ohne dass sich Termine ändern — z.B. erstes Optimieren mit dem Rechenkern
         const ablaufNeu = nurDauern ? [] : nachher.filter((t, i) => !geaendert.includes(t) && JSON.stringify(t.tagesArbeit) !== JSON.stringify(vorher[i].tagesArbeit));
         const autoGeaendert = !nurDauern && autoNachfuehren !== !!aktiveSim.autoNachfuehren;
-        const gruppenGeaendert = !nurDauern && reihenfolge === "gruppen" && JSON.stringify(auslastungVorschau.gruppen) !== JSON.stringify(aktiveSim.gruppenReihenfolge);
-        const nichtsZuTun = geaendert.length === 0 && ablaufNeu.length === 0 && !autoGeaendert && !gruppenGeaendert;
+        const nichtsZuTun = geaendert.length === 0 && ablaufNeu.length === 0 && !autoGeaendert;
         const endeVorher = ende(vorher), endeNachher = ende(nachher);
         const tageDiff = endeVorher && endeNachher ? Math.round((new Date(endeNachher).getTime() - new Date(endeVorher).getTime()) / 86400000) : 0;
         const sd = aktiveSim.stammdaten ?? LEERE_STAMMDATEN, kal = aktiveSim.kalender ?? LEERER_KALENDER, kr = aktiveSim.kraene ?? [];
@@ -659,7 +659,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
               ) : (<>
                 <div style={abschnitt}>REIHENFOLGE</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))" }}>
-                  {([["gruppen", "Nach Gruppen", "Zuerst nach den Gruppen des Gantts (z.B. Etappe, Geschoss) und der Bauteilart (z.B. Boden → Wände → Stützen → Decken) in der unten festgelegten Reihenfolge, bei Gleichstand der kritische Pfad — weich: hat die vordere Gruppe gerade keine Arbeit, geht das Personal zur nächsten"],
+                  {([["gruppen", "Nach Gruppen", "Zuerst nach den Gruppen des Gantts (z.B. Etappe, Geschoss) und der Bauteilart (z.B. Boden → Wände → Stützen → Decken) in der Reihenfolge aus Tab Ressourcen → Bauablauf, bei Gleichstand der kritische Pfad — weich: hat die vordere Gruppe gerade keine Arbeit, geht das Personal zur nächsten"],
                     ["kritischerPfad", "Kritischer Pfad", "Wenn mehrere Arbeiten möglich sind, bekommen zuerst die Tasks mit der längsten Restkette (meiste Arbeit danach) das Personal — kürzestes Bauprogramm"],
                     ["startdatum", "Startdatum", "Wenn mehrere Arbeiten möglich sind, bekommen die Tasks mit dem frühesten aktuellen Start zuerst das Personal (bei gleichem Datum die Gantt-Reihenfolge) — z.B. wenn das Gantt nach Etappen statt nach Datum aufgebaut ist"],
                     ["gantt", "Gantt-Reihenfolge", "Wenn mehrere Arbeiten möglich sind, bekommen die Tasks in der Reihenfolge des Gantts das Personal — geordnetes Arbeiten, z.B. Achse für Achse"]] as const).map(([r, label, title]) => (
@@ -667,8 +667,23 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                   ))}
                 </div>
                 {reihenfolge === "gruppen" && (
-                  <GruppenReihenfolgeEditor wert={auslastungVorschau.gruppen} stammdaten={aktiveSim.stammdaten ?? LEERE_STAMMDATEN}
-                    onChange={g => auslastungVorschauOeffnen(reihenfolge, luecken, modus, g)} />
+                  // bearbeitet wird die Reihenfolge an einem Ort: Tab Ressourcen → Bauablauf → 2. (gilt auch für «Gruppe darunter» der Ablaufregeln)
+                  <div style={{ marginTop: 6, padding: "6px 10px", background: "#fff", border: "1px solid var(--tc-border-light)", fontSize: 11, display: "flex", alignItems: "flex-start", gap: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0, lineHeight: 1.6 }}>
+                      {auslastungVorschau.gruppen.stufen.filter(s => s.aktiv).length === 0
+                        ? <span style={{ color: "var(--tc-text-3)" }}>Keine Stufe aktiv — es gilt der kritische Pfad.</span>
+                        : auslastungVorschau.gruppen.stufen.filter(s => s.aktiv).map(s => (
+                          <div key={`${s.quelle}-${s.ebene ?? ""}`} style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={s.werte.join(" → ")}>
+                            <span style={{ color: "var(--tc-text-3)" }}>{stufenTitel(s)}:</span> {s.werte.join(" → ")}
+                          </div>
+                        ))}
+                    </div>
+                    {onZuBauablauf && (
+                      <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "2px 8px", flexShrink: 0 }}
+                        title="Reihenfolge der Gruppen und Bauteilarten in Tab Ressourcen → Bauablauf bearbeiten (gilt auch für «Gruppe darunter» der Ablaufregeln)"
+                        onClick={() => { setAuslastungVorschau(null); onZuBauablauf(); }}>bearbeiten →</button>
+                    )}
+                  </div>
                 )}
 
                 <div style={abschnitt}>OPTIONEN</div>
@@ -715,7 +730,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                   {nurDauern ? "Der Bauablauf entspricht bereits der berechneten Dauer — nichts zu übernehmen." : <>Die Termine sind bereits optimal ausgelastet.
                     {ablaufNeu.length > 0 && <> Der Ablauf je Tag wird für <strong>{ablaufNeu.length}</strong> Task{ablaufNeu.length === 1 ? "" : "s"} neu gespeichert — Tab AVOR zeigt ihn dann genau so.</>}
                     {autoGeaendert && <> «Automatisch nachführen» wird {autoNachfuehren ? "eingeschaltet" : "ausgeschaltet"}.</>}
-                    {gruppenGeaendert && <> Die Reihenfolge nach Gruppen wird gespeichert.</>}</>}
+</>}
                 </div>
               ) : (<>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 6, marginBottom: 8 }}>

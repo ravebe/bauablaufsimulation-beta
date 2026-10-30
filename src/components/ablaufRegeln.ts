@@ -315,20 +315,33 @@ export function bezugText(r: AblaufRegel): string {
   return r.bezug === "ueberall" ? "überall" : r.bezug === "gleich" ? `in derselben Gruppe (Ebene ${r.ebene ?? 1})` : `Gruppe darunter (Ebene ${r.ebene ?? 1})`;
 }
 
-// === Export/Import (wie Tab Ressourcen: Datei zum Übertragen in andere Simulationen/Projekte) ===
+// === Export/Import «Bauablauf» (Tab Ressourcen → Bauablauf: Reihenfolge der Gruppen und Bauteilarten + Ablaufregeln) — Datei zum
+// Übertragen in andere Simulationen/Projekte, wie die Ressourcen. Version 1 enthielt nur die Regeln und bleibt lesbar.
 const FORMAT = "bauablauf-ablaufregeln";
 
-export function regelnAlsJson(regeln: AblaufRegel[]): string {
-  return JSON.stringify({ format: FORMAT, version: 1, regeln }, null, 2);
+export function regelnAlsJson(regeln: AblaufRegel[], gruppenReihenfolge?: GruppenReihenfolge): string {
+  return JSON.stringify({ format: FORMAT, version: 2, regeln, ...(gruppenReihenfolge ? { gruppenReihenfolge } : {}) }, null, 2);
 }
 
 const FELDER: RegelFeld[] = ["gruppe", "kuerzel", "kategorie", "unternehmer", "name"];
 
-/** Parst eine exportierte Ablaufregeln-Datei und prüft die Struktur — ungültige Bedingungen werden weggelassen. */
+/** Parst eine exportierte Bauablauf-Datei: Regeln und (ab Version 2) die Reihenfolge der Gruppen und Bauteilarten. */
+export function parseBauablaufJson(text: string): { regeln: AblaufRegel[]; gruppenReihenfolge?: GruppenReihenfolge } {
+  const raw = JSON.parse(text);
+  const stufen = Array.isArray(raw?.gruppenReihenfolge?.stufen) ? raw.gruppenReihenfolge.stufen as unknown[] : null;
+  const gruppenReihenfolge: GruppenReihenfolge | undefined = stufen ? { stufen: stufen
+    .filter((s): s is Record<string, unknown> => !!s && typeof s === "object" && (s as { quelle?: unknown }).quelle !== undefined)
+    .filter(s => (s.quelle === "gruppe" || s.quelle === "kuerzel") && Array.isArray(s.werte))
+    .map(s => ({ quelle: s.quelle as "gruppe" | "kuerzel", ...(s.quelle === "gruppe" ? { ebene: Number(s.ebene) || 1 } : {}),
+      werte: (s.werte as unknown[]).map(String), aktiv: s.aktiv !== false })) } : undefined;
+  return { regeln: parseRegelnJson(text), ...(gruppenReihenfolge ? { gruppenReihenfolge } : {}) };
+}
+
+/** Parst die Regeln einer exportierten Bauablauf-/Ablaufregeln-Datei und prüft die Struktur — ungültige Bedingungen werden weggelassen. */
 export function parseRegelnJson(text: string): AblaufRegel[] {
   const raw = JSON.parse(text);
   const liste = Array.isArray(raw) ? raw : raw?.regeln;
-  if (!Array.isArray(liste) || (!Array.isArray(raw) && raw.format !== FORMAT)) throw new Error("Ungültiges Format — keine Ablaufregeln-Datei");
+  if (!Array.isArray(liste) || (!Array.isArray(raw) && raw.format !== FORMAT)) throw new Error("Ungültiges Format — keine Bauablauf-Datei");
   const bedingungen = (x: unknown): RegelBedingung[] => (Array.isArray(x) ? x : [])
     .filter(b => b && FELDER.includes(b.feld) && Array.isArray(b.werte))
     .map(b => ({ feld: b.feld, ...(b.feld === "gruppe" ? { ebene: Number(b.ebene) || 1 } : {}), werte: b.werte.map(String), ...(b.nicht ? { nicht: true } : {}) }));

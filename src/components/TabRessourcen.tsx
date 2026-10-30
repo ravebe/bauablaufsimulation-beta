@@ -9,6 +9,10 @@ import { StatTile, CockpitAbschnitt, useEingeklappt } from "./cockpitCharts";
 import KranPersonalEditor from "./KranPersonalEditor";
 import ArbeitsablaufEditor from "./ArbeitsablaufEditor";
 import AblaufRegelnEditor from "./AblaufRegelnEditor";
+import GruppenReihenfolgeEditor from "./GruppenReihenfolgeEditor";
+import Hinweis from "./Hinweis";
+import { gruppenReihenfolgeAbgleichen } from "./gruppenReihenfolge";
+import { regelnAlsJson, parseBauablaufJson } from "./ablaufRegeln";
 import EntwurfInput from "./EntwurfInput";
 import { fmtZahl } from "./zahlFormat";
 import type { Arbeitszeit } from "./zeitHelpers";
@@ -26,6 +30,7 @@ interface Props {
   selektion?: number[]; aktivesModellId?: string | null; projectId?: string | null;
   /** Sprung aus Tab AVOR («Zur Kranplanung»): bei jeder Erhöhung «Kräne & Personal» aufklappen und dorthin scrollen */
   kranplanungSignal?: number;
+  bauablaufSignal?: number; // Sprung zu Bauablauf → 2. Reihenfolge (aus dem Dialog Auslastung optimieren)
   /** Knopf «Zur Kranoptik» (Kräne & Personal) → Tab AVOR */
   onZuKranoptik?: () => void;
 }
@@ -48,7 +53,7 @@ const TOTAL_BREITE = 110; // Mengen-Summe je Kürzel, rot bei fehlenden/fehlerha
 const ENTFERNEN_BREITE = 26; // ×-Button, ganz am Zeilenende
 const LS_RATEN_COLW = "4d-ressourcen-raten-colw";
 
-export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion = [], aktivesModellId = null, projectId = null, kranplanungSignal = 0, onZuKranoptik }: Props) {
+export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion = [], aktivesModellId = null, projectId = null, kranplanungSignal = 0, bauablaufSignal = 0, onZuKranoptik }: Props) {
   const [ladeErgebnis, setLadeErgebnis] = useState<string | null>(null);
   const [importFehler, setImportFehler] = useState<string | null>(null);
   // Ergebnis von "Mengen berechnen": fett grün/orange/rot, beim nächsten Klick irgendwo wieder grau (wie Tab Kalkulation)
@@ -78,6 +83,16 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   const { eingeklappt, toggle: toggleEingeklappt } = useEingeklappt(projectId, "ressourcen");
   // Sprung aus Tab AVOR («Zur Kranplanung»): Kräne & Personal aufklappen und hinscrollen (nach dem Umschalten des Tabs)
   const kranplanungRef = useRef<HTMLDivElement>(null);
+  // Sprung aus dem Dialog Auslastung optimieren («bearbeiten»): Bauablauf → 2. Reihenfolge aufklappen und hinscrollen
+  const bauablaufRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!bauablaufSignal) return;
+    if (eingeklappt["gruppen"]) toggleEingeklappt("gruppen");
+    const id = setTimeout(() => bauablaufRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+    return () => clearTimeout(id);
+  }, [bauablaufSignal]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [bauablaufFehler, setBauablaufFehler] = useState<string | null>(null);
+  const bauablaufImportRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (!kranplanungSignal) return;
     if (eingeklappt["kraene"]) toggleEingeklappt("kraene");
@@ -158,6 +173,27 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
       setImportFehler(e instanceof Error ? e.message : "Import fehlgeschlagen");
     } finally {
       if (importInputRef.current) importInputRef.current.value = "";
+    }
+  }
+
+  // Bauablauf (Reihenfolge der Gruppen und Bauteilarten + Ablaufregeln) als Datei, siehe ablaufRegeln.ts
+  function bauablaufExportieren() {
+    const url = URL.createObjectURL(new Blob([regelnAlsJson(sim!.ablaufRegeln ?? [], gruppenReihenfolgeAbgleichen(sim!.gruppenReihenfolge, sim!.tasks))], { type: "application/json" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = `${sim!.name}_Bauablauf.json`; a.click();
+    URL.revokeObjectURL(url);
+  }
+  async function bauablaufImportieren(file: File) {
+    setBauablaufFehler(null);
+    try {
+      const { regeln, gruppenReihenfolge } = parseBauablaufJson(await file.text());
+      if (((sim!.ablaufRegeln?.length ?? 0) > 0 || (gruppenReihenfolge && sim!.gruppenReihenfolge)) &&
+        !confirm(`Bestehender Bauablauf (${gruppenReihenfolge ? "Reihenfolge der Gruppen und " : ""}${sim!.ablaufRegeln?.length ?? 0} Ablaufregeln) wird durch den Import ersetzt. Fortfahren?`)) return;
+      updateSim({ ...sim!, ablaufRegeln: regeln.length ? regeln : undefined, ...(gruppenReihenfolge ? { gruppenReihenfolge } : {}) });
+    } catch (e) {
+      setBauablaufFehler(e instanceof Error ? e.message : "Import fehlgeschlagen");
+    } finally {
+      if (bauablaufImportRef.current) bauablaufImportRef.current.value = "";
     }
   }
 
@@ -785,21 +821,6 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
       <datalist id={UNTERNEHMER_LISTE_ID}>{alleUnternehmer.map(u => <option key={u} value={u} />)}</datalist>
       {stammdaten.gewerke.length > 0 && (
         <div style={{ marginTop: 22 }}>
-          <CockpitAbschnitt titel="Arbeitsablauf je Leistungsposition" eingeklappt={!!eingeklappt["ablauf"]} onToggle={() => toggleEingeklappt("ablauf")}>
-            <ArbeitsablaufEditor stammdaten={stammdaten} readOnly={readOnly}
-              onRateAendern={(gewerkKey, kuerzel, patch) => {
-                const gi = stammdaten.gewerke.findIndex(g => g.key === gewerkKey);
-                const ri = gi >= 0 ? stammdaten.gewerke[gi].raten.findIndex(r => r.kuerzel === kuerzel) : -1;
-                if (ri >= 0) rateAendern(gi, ri, patch);
-              }}
-              onRatenAendern={aenderungen => speichern({
-                ...stammdaten,
-                gewerke: stammdaten.gewerke.map(g => ({ ...g, raten: g.raten.map(r => {
-                  const a = aenderungen.find(x => x.gewerkKey === g.key && x.kuerzel === r.kuerzel);
-                  return a ? { ...r, ...a.patch } : r;
-                }) })),
-              })} />
-          </CockpitAbschnitt>
           <div ref={kranplanungRef} />
           <CockpitAbschnitt titel="Kräne & Personal" eingeklappt={!!eingeklappt["kraene"]} onToggle={() => toggleEingeklappt("kraene")}
             hinweis={<>Je Kran die Verfügbarkeit und darunter das Personal je Unternehmer. Die Summe ist die Höchstzahl der Leute, die pro Tag unter diesem Kran an kranpflichtigen Arbeiten arbeiten (beim Optimieren höchstens 1–2 mehr, wenn sonst Leute untätig wären). Leute desselben Unternehmers sind Allrounder und besetzen jede seiner Leistungspositionen an Tasks dieses Krans (Kran-Zuweisung in Tab Kalkulation, bei nur einem Kran automatisch). Von/bis leer = ganze Verfügbarkeit des Krans.</>}
@@ -809,9 +830,53 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
           </CockpitAbschnitt>
         </div>
       )}
-      <div style={{ marginTop: stammdaten.gewerke.length > 0 ? 0 : 22 }}>
-        <CockpitAbschnitt titel="Ablaufregeln" eingeklappt={!!eingeklappt["ablaufregeln"]} onToggle={() => toggleEingeklappt("ablaufregeln")}
-          hinweis={<>«Erst A fertig, dann B» — z.B. Elemente erst versetzen, wenn die Platte darunter fertig ist, oder die Kanalisation einer Etappe vor ihrem Magerbeton. A und B wählen Tasks nach Gruppe, Bauteilart, Kategorie, Unternehmer oder Name (mehrere Bedingungen = alle müssen zutreffen, mehrere Werte = einer genügt). Bezug: überall, nur in derselben Gruppe (z.B. selbe Etappe) oder Gruppe darunter (Reihenfolge der Gruppen wie im Dialog Auslastung optimieren → Nach Gruppen, z.B. UG → EG → OG; auf den Ebenen darüber dieselbe Gruppe). Die Regeln setzen nach jeder Änderung automatische Vorgänger (blau, Tooltip «Ablaufregel») — nur die nötigen — und gelten so beim Optimieren, Nachführen und Ausrichten. Zu früh beginnende Tasks rücken nach hinten. Von Hand gesetzte Vorgänger bleiben; Regel ausschalten oder löschen entfernt ihre Vorgänger. Über ⋮ als Datei exportieren und in einer anderen Simulation importieren.</>}>
+      {/* Bauablauf: alles zur Reihenfolge an einem Ort — 1. innerhalb eines Bauteils, 2. Reihenfolge der Gruppen und Bauteilarten
+          (weich: Vorrang beim Optimieren; zugleich unten → oben für «Gruppe darunter»), 3. Ablaufregeln (zwingend, ergeben Vorgänger) */}
+      <div style={{ marginTop: 22, paddingTop: 12, borderTop: "1px solid var(--tc-border)" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 10 }}>
+          <Hinweis style={{ flex: 1, minWidth: 0 }} kopf={<span style={{ fontSize: 13, fontWeight: 700, color: "var(--tc-text)" }}>Bauablauf</span>}>
+            Alles zur Reihenfolge an einem Ort, in drei Stufen: <b>1.</b> innerhalb eines Bauteils (zwingend), <b>2.</b> Reihenfolge der
+            Gruppen und Bauteilarten (Vorrang beim Optimieren — wer zuerst Personal bekommt — und zugleich unten → oben für «Gruppe
+            darunter» in den Regeln), <b>3.</b> Ablaufregeln (zwingend zwischen Tasks, ergeben Vorgänger). Wie gerechnet wird
+            (Optimieren / Nur Dauern, Reihenfolge, Lücken füllen, Automatisch nachführen), steht im Dialog Auslastung optimieren
+            (Tab Bauteile → 🔧). ⋮ = Stufe 2 und 3 als Datei exportieren/importieren; der Arbeitsablauf wird mit der Ressourcen-Datei übertragen.
+          </Hinweis>
+          <PunkteMenu title="Bauablauf exportieren / importieren" abschnitte={[
+            { titel: "Export", eintraege: [{ label: "JSON", onClick: bauablaufExportieren, title: "Reihenfolge der Gruppen und Bauteilarten + Ablaufregeln als Datei — für andere Simulationen oder Projekte" }] },
+            ...(!readOnly ? [{ titel: "Import", eintraege: [{ label: "JSON", onClick: () => bauablaufImportRef.current?.click(), title: "Aus einer exportierten Bauablauf-Datei übernehmen (ersetzt Reihenfolge und Regeln)" }] }] : []),
+          ]} />
+        </div>
+        <input ref={bauablaufImportRef} type="file" accept=".json" style={{ display: "none" }}
+          onChange={e => e.target.files?.[0] && bauablaufImportieren(e.target.files[0])} />
+        {bauablaufFehler && <div className="alert err" style={{ marginBottom: 10 }}>! {bauablaufFehler}</div>}
+        {stammdaten.gewerke.length > 0 && (<>
+            <CockpitAbschnitt titel="1. Innerhalb eines Bauteils — Arbeitsablauf je Leistungsposition" eingeklappt={!!eingeklappt["ablauf"]} onToggle={() => toggleEingeklappt("ablauf")}
+              hinweis={<>Zwingend: in welcher Reihenfolge die Leistungspositionen an einem Task arbeiten (z.B. Schalung → Bewehrung → Beton). Gilt für berechnete Dauer, Personal je Tag und Optimierung. Wird mit der Ressourcen-Datei übertragen.</>}>
+              <ArbeitsablaufEditor stammdaten={stammdaten} readOnly={readOnly}
+                onRateAendern={(gewerkKey, kuerzel, patch) => {
+                  const gi = stammdaten.gewerke.findIndex(g => g.key === gewerkKey);
+                  const ri = gi >= 0 ? stammdaten.gewerke[gi].raten.findIndex(r => r.kuerzel === kuerzel) : -1;
+                  if (ri >= 0) rateAendern(gi, ri, patch);
+                }}
+                onRatenAendern={aenderungen => speichern({
+                  ...stammdaten,
+                  gewerke: stammdaten.gewerke.map(g => ({ ...g, raten: g.raten.map(r => {
+                    const a = aenderungen.find(x => x.gewerkKey === g.key && x.kuerzel === r.kuerzel);
+                    return a ? { ...r, ...a.patch } : r;
+                  }) })),
+                })} />
+            </CockpitAbschnitt>
+        </>)}
+        <div ref={bauablaufRef} />
+        <CockpitAbschnitt titel="2. Reihenfolge der Gruppen und Bauteilarten" eingeklappt={!!eingeklappt["gruppen"]} onToggle={() => toggleEingeklappt("gruppen")}
+          hinweis={<>Weich: wer beim Optimieren mit Reihenfolge «Nach Gruppen» zuerst Personal bekommt — Stufe für Stufe von oben nach unten (z.B. zuerst Etappe, dann Geschoss, dann Bauteilart), bei Gleichstand der kritische Pfad. Ist in der vorderen Gruppe gerade nichts möglich, arbeiten die Leute schon in der nächsten. Die Reihenfolge der Werte einer Gruppenebene gilt zugleich als unten → oben für den Bezug «Gruppe darunter» der Ablaufregeln (z.B. UG → EG → 1.OG). Gleichnamige Gruppen zählen gleich (z.B. «UG» in jeder Etappe); Tasks ausserhalb der Gruppen kommen zuerst. Wirkt beim nächsten Optimieren.</>}>
+          <div style={readOnly ? { pointerEvents: "none", opacity: 0.7 } : undefined}>
+            <GruppenReihenfolgeEditor wert={gruppenReihenfolgeAbgleichen(sim.gruppenReihenfolge, sim.tasks)} stammdaten={stammdaten}
+              onChange={g => updateSim({ ...sim!, gruppenReihenfolge: g })} />
+          </div>
+        </CockpitAbschnitt>
+        <CockpitAbschnitt titel="3. Ablaufregeln (zwingend)" eingeklappt={!!eingeklappt["ablaufregeln"]} onToggle={() => toggleEingeklappt("ablaufregeln")}
+          hinweis={<>«Erst A fertig, dann B» — z.B. Elemente erst versetzen, wenn die Platte darunter fertig ist, oder die Kanalisation einer Etappe vor ihrem Magerbeton. A und B wählen Tasks nach Gruppe, Bauteilart, Kategorie, Unternehmer oder Name (mehrere Bedingungen = alle müssen zutreffen, mehrere Werte = einer genügt; «ausser» = keiner darf zutreffen). Bezug: überall, nur in derselben Gruppe (z.B. selbe Etappe) oder Gruppe darunter (unten → oben wie in Stufe 2, auf den Ebenen darüber dieselbe Gruppe). Die Regeln setzen nach jeder Änderung automatische Vorgänger (blau, Tooltip «Ablaufregel») — nur die nötigen — und gelten so beim Optimieren, Nachführen und Ausrichten. Zu früh beginnende Tasks rücken nach hinten. Von Hand gesetzte Vorgänger bleiben; Regel ausschalten oder löschen entfernt ihre Vorgänger.</>}>
           <AblaufRegelnEditor sim={sim} updateSim={updateSim} readOnly={!!readOnly} />
         </CockpitAbschnitt>
       </div>

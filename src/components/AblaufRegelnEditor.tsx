@@ -1,13 +1,12 @@
-// AblaufRegelnEditor.tsx — Tab Ressourcen → Ablaufregeln: «erst A fertig, dann B» je Simulation (SimProjekt.ablaufRegeln), Export/Import
-// als Datei wie die Ressourcen. Daraus setzt ablaufRegeln.ts nach jeder Änderung automatische Vorgänger (blau).
-import { useMemo, useRef, useState } from "react";
+// AblaufRegelnEditor.tsx — Tab Ressourcen → Bauablauf → 3. Ablaufregeln: «erst A fertig, dann B» je Simulation (SimProjekt.ablaufRegeln);
+// Export/Import im Kopf des Bauablaufs (TabRessourcen.tsx). Daraus setzt ablaufRegeln.ts nach jeder Änderung automatische Vorgänger (blau).
+import { useMemo, useState } from "react";
 import type { AblaufRegel, RegelBedingung, RegelFeld, SimProjekt } from "../types";
 import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import { gruppenReihenfolgeAbgleichen } from "./gruppenReihenfolge";
-import { regelnAnwenden, regelWirkt, regelOptionen, auswahlText, bezugText, regelnAlsJson, parseRegelnJson, REGEL_FELD_LABEL } from "./ablaufRegeln";
+import { regelnAnwenden, regelWirkt, regelOptionen, auswahlText, bezugText, REGEL_FELD_LABEL } from "./ablaufRegeln";
 import type { RegelOptionen } from "./ablaufRegeln";
-import PunkteMenu from "./PunkteMenu";
 
 const feldStil: React.CSSProperties = { fontSize: 11, padding: "2px 4px", border: "1px solid #d4dce4", fontFamily: "inherit", background: "#fff" };
 const knopf: React.CSSProperties = { border: "1px solid var(--tc-border)", background: "#fff", cursor: "pointer", fontSize: 10, padding: "0 5px", lineHeight: "18px", color: "var(--tc-text-2)" };
@@ -24,44 +23,14 @@ export default function AblaufRegelnEditor({ sim, updateSim, readOnly }: Props) 
   const wirkung = useMemo(() => regelnAnwenden(sim.tasks, regeln, stammdaten, reihenfolge, sim.kalender ?? LEERER_KALENDER),
     [sim.tasks, regeln, stammdaten, reihenfolge, sim.kalender]);
   const [offen, setOffen] = useState<string | null>(null);
-  const [importFehler, setImportFehler] = useState<string | null>(null);
-  const importRef = useRef<HTMLInputElement>(null);
 
   const speichern = (neu: AblaufRegel[]) => updateSim({ ...sim, ablaufRegeln: neu.length ? neu : undefined });
   const aendern = (id: string, patch: Partial<AblaufRegel>) => speichern(regeln.map(r => r.id === id ? { ...r, ...patch } : r));
   const hinzufuegen = (r: Omit<AblaufRegel, "id">) => { const id = neueId(); speichern([...regeln, { ...r, id }]); setOffen(id); };
   const unterste = optionen.ebenen.length ? optionen.ebenen[optionen.ebenen.length - 1].ebene : 1;
 
-  function exportieren() {
-    const url = URL.createObjectURL(new Blob([regelnAlsJson(regeln)], { type: "application/json" }));
-    const a = document.createElement("a");
-    a.href = url; a.download = `${sim.name}_Ablaufregeln.json`; a.click();
-    URL.revokeObjectURL(url);
-  }
-  async function importieren(file: File) {
-    setImportFehler(null);
-    try {
-      const neu = parseRegelnJson(await file.text());
-      if (regeln.length > 0 && !confirm(`Bestehende Ablaufregeln (${regeln.length}) werden durch den Import ersetzt. Fortfahren?`)) return;
-      speichern(neu);
-    } catch (e) {
-      setImportFehler(e instanceof Error ? e.message : "Import fehlgeschlagen");
-    } finally {
-      if (importRef.current) importRef.current.value = "";
-    }
-  }
-
   return (
     <div style={{ fontSize: 11 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", marginTop: -4, marginBottom: 4 }}>
-        <PunkteMenu title="Ablaufregeln exportieren / importieren" abschnitte={[
-          ...(regeln.length ? [{ titel: "Export", eintraege: [{ label: "JSON", onClick: exportieren, title: "Alle Ablaufregeln als Datei — für andere Simulationen oder Projekte" }] }] : []),
-          ...(!readOnly ? [{ titel: "Import", eintraege: [{ label: "JSON", onClick: () => importRef.current?.click(), title: "Ablaufregeln aus einer exportierten Datei übernehmen (ersetzt die bestehenden)" }] }] : []),
-        ]} />
-      </div>
-      <input ref={importRef} type="file" accept=".json" style={{ display: "none" }} onChange={e => e.target.files?.[0] && importieren(e.target.files[0])} />
-      {importFehler && <div className="alert err" style={{ marginBottom: 8 }}>! {importFehler}</div>}
-
       {regeln.length === 0 && <div style={{ color: "var(--tc-text-3)", marginBottom: 8 }}>Noch keine Ablaufregeln.</div>}
       {regeln.map((r, i) => {
         const istOffen = offen === r.id;

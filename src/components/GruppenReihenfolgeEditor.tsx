@@ -1,10 +1,10 @@
-// GruppenReihenfolgeEditor.tsx — Dialog "Auslastung optimieren" → Reihenfolge «Nach Gruppen»: Stufen (Gruppenebenen des Gantts,
-// Bauteilart) ein-/ausschalten und ordnen, je Stufe die Werte ordnen (ziehen oder ‹ ›). Was vorne steht, bekommt zuerst Personal.
+// GruppenReihenfolgeEditor.tsx — Tab Ressourcen → Bauablauf → 2. Reihenfolge der Gruppen und Bauteilarten: Stufen (Gruppenebenen des
+// Gantts, Bauteilart) ein-/ausschalten und ordnen, je Stufe die Werte ordnen (ziehen oder ‹ ›). Was vorne steht, bekommt beim
+// Optimieren «Nach Gruppen» zuerst Personal; die Werte einer Gruppenebene gelten zugleich als unten → oben für «Gruppe darunter».
 import { useState } from "react";
 import type { GruppenReihenfolge, PrioStufe } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { stufenTitel, wertTitel } from "./gruppenReihenfolge";
-import Hinweis from "./Hinweis";
 
 const verschieben = <T,>(liste: T[], von: number, nach: number): T[] => {
   if (nach < 0 || nach >= liste.length || von === nach) return liste;
@@ -24,14 +24,8 @@ export default function GruppenReihenfolgeEditor({ wert, stammdaten, onChange }:
     return <div style={{ marginTop: 6, fontSize: 11, color: "var(--tc-text-3)" }}>Das Gantt hat noch keine Gruppen und keine Bauteil-Kürzel — es gilt der kritische Pfad.</div>;
   }
   return (
-    <div style={{ marginTop: 6, padding: "8px 10px", background: "#fff", border: "1px solid var(--tc-border-light)", fontSize: 11 }}>
-      <Hinweis kopf={<span style={{ fontWeight: 600, color: "var(--tc-text)" }}>Reihenfolge nach Gruppen</span>}>
-        Wer weiter vorne steht, bekommt zuerst Personal — Stufe für Stufe von oben nach unten (z.B. zuerst Etappe, dann Geschoss, dann
-        Bauteilart), bei Gleichstand der kritische Pfad. Weich: ist in der vorderen Gruppe gerade nichts möglich (Vorgänger, Wartetage,
-        Kran), arbeiten die Leute schon in der nächsten — so gehen sie von selbst zur nächsten Bauteilart, ins nächste Geschoss oder in
-        die nächste Etappe, sobald sie keine Arbeit mehr haben. Gleichnamige Gruppen zählen gleich (z.B. «UG» in jeder Etappe). Tasks
-        ausserhalb der Gruppen (z.B. Magerbetonsohle zuoberst) kommen zuerst. Werte ziehen oder mit ‹ › verschieben.
-      </Hinweis>
+    <div style={{ padding: "6px 10px 8px", background: "#fff", border: "1px solid var(--tc-border-light)", fontSize: 11 }}>
+      <div style={{ color: "var(--tc-text-3)", marginBottom: 2 }}>Werte ziehen oder mit ‹ › verschieben, Stufen mit ▲ ▼ ordnen, Haken = Stufe beim Optimieren berücksichtigen.</div>
       {wert.stufen.map((s, si) => (
         <div key={`${s.quelle}-${s.ebene ?? ""}`} style={{ marginTop: 6, opacity: s.aktiv ? 1 : 0.5 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
