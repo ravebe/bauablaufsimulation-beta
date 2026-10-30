@@ -1,23 +1,20 @@
-// tagesplan.ts — Wie die Arbeit eines Tages laut Gantt tatsächlich abläuft (Tab AVOR → Tagesablauf und Spalte "Dauer"): die Arbeit
-// jedes Tasks an diesem Tag (aufwandJeTagUndPhaseFuerTask) wird in Viertelstunden auf das Personal verteilt — mit denselben Regeln
-// wie "Auslastung optimieren" (auslastungOptimierenKran.ts):
-//  - Personal unter dem Kran (Tab Ressourcen → Kräne & Personal) ist je Unternehmer ein Team von Allroundern: jede Arbeit bekommt
-//    zuerst ihre Min. Personen, übrige Leute verstärken bis auf die doppelten Min. Personen.
-//  - Positionen ohne Personal unter dem Kran arbeiten mit ihren Min. Personen, dieselbe Position nie an zwei Tasks gleichzeitig.
-//  - Kranzeit: eine kranpflichtige Arbeit belegt den Kran mit Personen ÷ Min. Personen × Kranzeit % — mehr Leute machen eine Arbeit
-//    nur schneller, solange der Kran nachkommt.
-//  - Schritte eines Tasks nacheinander (Arbeitsablauf je Leistungsposition), Tasks in der Reihenfolge ihres Starts.
+// tagesplan.ts — Wie die Arbeit eines Tages abläuft (Tab AVOR → Tagesablauf, Spalte "Dauer", Überstunden):
+//  - Tasks, die "Auslastung optimieren" geplant hat und die seither unverändert sind (Task.tagesArbeit gültig, gleiche Kräne &
+//    Personal): genau der dort gerechnete Ablauf — wer von wann bis wann mit wie vielen Leuten an welcher Arbeit.
+//  - Alle anderen Tasks: ihre Arbeit des Tages (aufwandJeTagUndPhaseFuerTask, gleichmässig über ihre Tage im Gantt) wird mit dem
+//    gemeinsamen Rechenkern (ablaufKern.ts) — denselben Regeln und Zeitschritten wie "Auslastung optimieren" — auf das Personal
+//    verteilt, das die geplanten Tasks übrig lassen. Schritte eines Tasks nacheinander, Tasks in der Reihenfolge ihres Starts.
 //  - Überstunden: was nach Arbeitsende (Std./Tag) noch gearbeitet wird — Personenstunden je Unternehmer, Kranstunden je Kran.
-import type { Task, Kran } from "../types";
+import type { Task, Kran, TagesLauf } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
 import type { Kalender } from "./kalenderHelpers";
-import { aufwandJeTagUndPhaseFuerTask } from "./avorHelpers";
+import { aufwandJeTagUndPhaseFuerTask, gueltigeTagesArbeit } from "./avorHelpers";
 import type { PhasenAufwand } from "./avorHelpers";
-import { kraeneDesTasks, istKranVerfuegbarAn, kranPersonalAmTag } from "./kranHelpers";
+import { kraeneDesTasks } from "./kranHelpers";
+import { Zeitschritt, vergebeZeitschritt, slotsProTag, kranSchluessel } from "./ablaufKern";
+import type { KernPhase } from "./ablaufKern";
 
-const SLOT = 0.25; // Stunden
 const MAX_TAGE = 5; // Schutz: so weit über den Arbeitstag hinaus wird gerechnet
-const MAX_VERSTAERKUNG = 2;
 const EPS = 1e-9;
 
 export interface TagesplanPhase {
@@ -28,7 +25,9 @@ export interface TagesplanPhase {
   unterKran: boolean; // aus dem Personal unter dem Kran besetzt
   kranBegrenzt: boolean; // mehr Leute wären frei gewesen, aber die Kranzeit reichte nicht
 }
-export interface TagesplanTask { t: Task; phasen: TagesplanPhase[]; von: number; bis: number; arbeit: number }
+/** quelle: "optimiert" = Ablauf aus «Auslastung optimieren»; "veraltet" = dort geplant, seither aber Termine, Mengen, Stammdaten
+ *  oder Kräne & Personal geändert → gleichmässig verteilt und neu gerechnet; "gleichmaessig" = nie optimiert */
+export interface TagesplanTask { t: Task; phasen: TagesplanPhase[]; von: number; bis: number; arbeit: number; quelle: "optimiert" | "veraltet" | "gleichmaessig" }
 /** Arbeit nach Arbeitsende: Personenstunden je Unternehmer ("" = Position ohne Unternehmer), Kranstunden je Kran-Id */
 export interface Ueberstunden { jeUnternehmer: Map<string, number>; jeKran: Map<string, number> }
 export const unternehmerLabel = (u: string) => u || "ohne Unternehmer";
@@ -45,111 +44,92 @@ export function aufwandCache(stammdaten: Stammdaten, kalender: Kalender): Aufwan
   };
 }
 
-interface PhaseZ {
-  p: TagesplanPhase; rest: number; kolonne: number; position: string; kranAnteil: number;
-  poolKey: string | null; poolGroesse: number; kraene: string[]; unternehmer: string;
-}
+interface SimPhase extends KernPhase { tp: TagesplanPhase }
+interface SimTask { schritte: SimPhase[][]; schritt: number; kranIds: string[] }
 
 export function tagesplan(iso: string, tasks: Task[], stammdaten: Stammdaten, kalender: Kalender, kraene: Kran[], aufwand?: AufwandQuelle): Tagesplan {
-  const kranById = new Map(kraene.map(k => [k.id, k]));
-  const kraeneHeute = kraene.filter(k => istKranVerfuegbarAn(k, iso));
-  const poolGroessen = new Map<string, number>();
-  for (const k of kraeneHeute) for (const [u, n] of kranPersonalAmTag(k, iso)) poolGroessen.set(`${k.id}|${u}`, n);
+  const std = stammdaten.arbeitszeitStdProTag || 8;
+  const N = slotsProTag();
+  const slotStd = std / N;
+  const kraeneText = kranSchluessel(kraene);
+  const pruefung = new Zeitschritt<SimTask>(iso, kraene, slotStd, false); // nur zum Nachschlagen von Pools und verfügbaren Kränen
 
-  // je Task die Schritte des Tages
-  const plan: { tp: TagesplanTask; schritte: PhaseZ[][]; schritt: number }[] = [];
+  const ueberstunden: Ueberstunden = { jeUnternehmer: new Map(), jeKran: new Map() };
+  /** Teil von [von, bis) nach Arbeitsende als Überstunden: Personenstunden des Unternehmers, Kranstunden der heutigen Kräne */
+  const ueberstundenBuchen = (p: KernPhase, kranIdsHeute: string[], von: number, bis: number, leute: number) => {
+    const nach = bis - Math.max(von, std);
+    if (nach <= EPS) return;
+    const u = ueberstunden.jeUnternehmer;
+    u.set(p.unternehmer, (u.get(p.unternehmer) ?? 0) + leute * nach);
+    for (const id of kranIdsHeute) {
+      ueberstunden.jeKran.set(id, (ueberstunden.jeKran.get(id) ?? 0) + leute / Math.max(1, p.kolonne) * p.kranAnteil / kranIdsHeute.length * nach);
+    }
+  };
+
+  const plan: TagesplanTask[] = [];
+  const sim: SimTask[] = [];
+  const fest: { phase: KernPhase; kranIds: string[]; lauf: TagesLauf }[] = [];
   const geordnet = tasks.map((t, i) => ({ t, i })).sort((a, b) =>
     (a.t.start + (a.t.startZeit ?? "")).localeCompare(b.t.start + (b.t.startZeit ?? "")) || a.i - b.i);
   for (const { t } of geordnet) {
     const liste = (aufwand ? aufwand(t) : aufwandJeTagUndPhaseFuerTask(t, stammdaten, kalender)).get(iso)?.filter(a => a.personenstunden > EPS) ?? [];
     if (liste.length === 0) continue;
-    const kranIds = kraeneDesTasks(t, kraene).filter(id => { const k = kranById.get(id); return !!k && istKranVerfuegbarAn(k, iso); });
-    const jeSchritt = new Map<number, PhaseZ[]>();
-    const tp: TagesplanTask = { t, phasen: [], von: Infinity, bis: 0, arbeit: 0 };
+    const kranIds = kraeneDesTasks(t, kraene);
+    const gespeichert = gueltigeTagesArbeit(t, stammdaten, kalender);
+    const laeufe = gespeichert && t.tagesArbeit!.kraene === kraeneText ? gespeichert[iso] : undefined;
+    const tp: TagesplanTask = { t, phasen: [], von: Infinity, bis: 0, arbeit: 0, quelle: laeufe ? "optimiert" : t.tagesArbeit ? "veraltet" : "gleichmaessig" };
+    plan.push(tp);
+    const jeSchritt = new Map<number, SimPhase[]>();
     for (const a of liste) {
-      const kr = a.phase.kranpflichtig ? kranIds : [];
-      const poolKey = kr.map(id => `${id}|${a.phase.unternehmer}`).find(key => a.phase.unternehmer && (poolGroessen.get(key) ?? 0) > 0) ?? null;
+      const kern: KernPhase = { position: a.phase.position, gewerkKey: a.phase.gewerkKey, unternehmer: a.phase.unternehmer ?? "",
+        kranpflichtig: a.phase.kranpflichtig, kolonne: Math.max(1, a.phase.kolonne), kranAnteil: a.phase.kranAnteil, rest: a.personenstunden };
       const p: TagesplanPhase = { gewerkKey: a.phase.gewerkKey, kuerzel: a.phase.position.split("::")[1] ?? "", arbeit: a.personenstunden,
-        von: Infinity, bis: 0, personen: 0, minPersonen: a.phase.kolonne, unterKran: !!poolKey, kranBegrenzt: false };
+        von: Infinity, bis: 0, personen: 0, minPersonen: a.phase.kolonne, unterKran: !!pruefung.poolDer(kern, kranIds), kranBegrenzt: false };
       tp.phasen.push(p);
       tp.arbeit += a.personenstunden;
-      const z: PhaseZ = { p, rest: a.personenstunden, kolonne: Math.max(1, a.phase.kolonne), position: a.phase.position, kranAnteil: a.phase.kranAnteil,
-        poolKey, poolGroesse: poolKey ? poolGroessen.get(poolKey)! : 0, kraene: kr, unternehmer: a.phase.unternehmer ?? "" };
-      jeSchritt.set(a.schritt, [...(jeSchritt.get(a.schritt) ?? []), z]);
+      if (laeufe) {
+        // geplanter Ablauf: so übernehmen, wie "Auslastung optimieren" ihn gerechnet hat
+        for (const l of laeufe.filter(x => x.pos === a.phase.position)) {
+          p.von = Math.min(p.von, l.von); p.bis = Math.max(p.bis, l.bis); p.personen = Math.max(p.personen, l.leute);
+          if (l.kran) p.kranBegrenzt = true;
+          fest.push({ phase: kern, kranIds, lauf: l });
+          ueberstundenBuchen(kern, pruefung.kraeneHeute(kern, kranIds), l.von, l.bis, l.leute);
+        }
+      } else {
+        jeSchritt.set(a.schritt, [...(jeSchritt.get(a.schritt) ?? []), { ...kern, tp: p }]);
+      }
     }
-    plan.push({ tp, schritte: [...jeSchritt.entries()].sort((x, y) => x[0] - y[0]).map(([, ps]) => ps), schritt: 0 });
+    if (!laeufe) sim.push({ schritte: [...jeSchritt.entries()].sort((x, y) => x[0] - y[0]).map(([, ps]) => ps), schritt: 0, kranIds });
   }
 
-  const std = stammdaten.arbeitszeitStdProTag || 8;
-  const ueberstunden: Ueberstunden = { jeUnternehmer: new Map(), jeKran: new Map() };
-  const maxSlots = Math.ceil(std * MAX_TAGE / SLOT);
-  for (let slot = 0; slot < maxSlots; slot++) {
-    const offen = plan.filter(x => x.schritt < x.schritte.length);
-    if (offen.length === 0) break;
-    const t0 = slot * SLOT;
-    const kranZeit = new Map(kraeneHeute.map(k => [k.id, 1]));
-    const poolFrei = new Map(poolGroessen);
-    const positionBelegt = new Set<string>();
-    const vergabe: { z: PhaseZ; leute: number }[] = [];
-    const belegung = (z: PhaseZ, leute: number) => z.kraene.length > 0 ? leute / z.kolonne * z.kranAnteil / z.kraene.length : 0;
-    const kranPlatz = (z: PhaseZ) => z.kraene.length === 0 || z.kranAnteil <= 0 ? Infinity
-      : Math.floor(Math.min(...z.kraene.map(id => kranZeit.get(id) ?? 0)) / belegung(z, 1) + 1e-6);
-    const kranAbziehen = (z: PhaseZ, leute: number) => { for (const id of z.kraene) kranZeit.set(id, (kranZeit.get(id) ?? 0) - belegung(z, leute)); };
-
-    // 1) Mindestbesetzung je laufender Arbeit
-    for (const x of offen) for (const z of x.schritte[x.schritt]) {
-      if (z.rest <= EPS) continue;
-      const sinnvoll = Math.max(1, Math.ceil(z.rest / SLOT - EPS));
-      if (z.poolKey) {
-        const mindest = Math.min(z.kolonne, z.poolGroesse, sinnvoll);
-        if ((poolFrei.get(z.poolKey) ?? 0) < mindest) continue;
-        if (kranPlatz(z) < mindest) { z.p.kranBegrenzt = true; continue; }
-        poolFrei.set(z.poolKey, poolFrei.get(z.poolKey)! - mindest);
-        kranAbziehen(z, mindest);
-        vergabe.push({ z, leute: mindest });
-      } else {
-        if (positionBelegt.has(z.position)) continue;
-        if (kranPlatz(z) < z.kolonne) { z.p.kranBegrenzt = true; continue; }
-        positionBelegt.add(z.position);
-        kranAbziehen(z, z.kolonne);
-        vergabe.push({ z, leute: z.kolonne });
-      }
+  // übrige Tasks mit dem Rechenkern auf das Personal verteilen, das die geplanten übrig lassen
+  for (let slot = 0; slot < N * MAX_TAGE && sim.some(x => x.schritt < x.schritte.length); slot++) {
+    const von = slot * slotStd, bis = von + slotStd;
+    const zs = new Zeitschritt<SimTask>(iso, kraene, slotStd, false);
+    for (const f of fest) {
+      const ueberlappung = Math.min(bis, f.lauf.bis) - Math.max(von, f.lauf.von);
+      if (ueberlappung > EPS) zs.vorbelegen(f.phase, f.kranIds, f.lauf.leute, ueberlappung / slotStd);
     }
-    // 2) übrige Leute des Teams verstärken (grösster Rest zuerst), höchstens doppelte Min. Personen und soweit der Kran nachkommt
-    for (const v of [...vergabe].filter(v => v.z.poolKey).sort((a, b) => b.z.rest - a.z.rest)) {
-      const frei = poolFrei.get(v.z.poolKey!) ?? 0;
-      const wunsch = Math.min(frei, MAX_VERSTAERKUNG * v.z.kolonne - v.leute, Math.max(1, Math.ceil(v.z.rest / SLOT - EPS)) - v.leute);
-      if (wunsch <= 0) continue;
-      const extra = Math.min(wunsch, kranPlatz(v.z));
-      if (extra < wunsch) v.z.p.kranBegrenzt = true;
-      if (extra <= 0) continue;
-      v.leute += extra;
-      poolFrei.set(v.z.poolKey!, frei - extra);
-      kranAbziehen(v.z, extra);
-    }
-    // 3) Arbeit leisten
+    const offen = sim.filter(x => x.schritt < x.schritte.length);
+    const vergabe = vergebeZeitschritt(zs, offen.map(x => ({ ref: x, phasen: x.schritte[x.schritt], kranIds: x.kranIds })));
+    for (const p of zs.kranWartend) (p as SimPhase).tp.kranBegrenzt = true;
     for (const v of vergabe) {
-      const vorher = v.z.rest;
-      v.z.rest = Math.max(0, vorher - v.leute * SLOT);
-      const p = v.z.p;
-      const ende = t0 + Math.min(SLOT, vorher / v.leute);
-      p.von = Math.min(p.von, t0);
-      p.bis = Math.max(p.bis, ende);
-      // Überstunden: der Teil dieser Viertelstunde nach Arbeitsende
-      const nachArbeitsende = ende - Math.max(t0, std);
-      if (nachArbeitsende > EPS) {
-        const u = ueberstunden.jeUnternehmer;
-        u.set(v.z.unternehmer, (u.get(v.z.unternehmer) ?? 0) + v.leute * nachArbeitsende);
-        for (const id of v.z.kraene) ueberstunden.jeKran.set(id, (ueberstunden.jeKran.get(id) ?? 0) + belegung(v.z, v.leute) * nachArbeitsende);
-      }
-      p.personen = Math.max(p.personen, v.leute);
+      const p = v.p as SimPhase;
+      const arbeit = Math.min(p.rest, v.leute * slotStd);
+      p.rest -= arbeit;
+      const ende = von + arbeit / v.leute;
+      p.tp.von = Math.min(p.tp.von, von);
+      p.tp.bis = Math.max(p.tp.bis, ende);
+      p.tp.personen = Math.max(p.tp.personen, v.leute);
+      if (v.kranBegrenzt) p.tp.kranBegrenzt = true;
+      ueberstundenBuchen(p, v.kranIds, von, ende, v.leute);
     }
-    for (const x of offen) while (x.schritt < x.schritte.length && x.schritte[x.schritt].every(z => z.rest <= EPS)) x.schritt++;
+    for (const x of offen) while (x.schritt < x.schritte.length && x.schritte[x.schritt].every(p => p.rest <= EPS)) x.schritt++;
   }
 
   const jeGewerk = new Map<string, { von: number; bis: number }>();
   let dauer = 0, arbeit = 0;
-  for (const { tp } of plan) {
+  for (const tp of plan) {
     for (const p of tp.phasen) {
       if (!isFinite(p.von)) { p.von = 0; p.bis = 0; } // nicht geschafft (Schutzgrenze)
       tp.von = Math.min(tp.von, p.von); tp.bis = Math.max(tp.bis, p.bis);
@@ -160,5 +140,5 @@ export function tagesplan(iso: string, tasks: Task[], stammdaten: Stammdaten, ka
     dauer = Math.max(dauer, tp.bis);
     arbeit += tp.arbeit;
   }
-  return { tasks: plan.map(x => x.tp), dauer, arbeit, jeGewerk, ueberstunden };
+  return { tasks: plan, dauer, arbeit, jeGewerk, ueberstunden };
 }

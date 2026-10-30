@@ -1,6 +1,6 @@
 // Tagesablauf.tsx — Tab AVOR → Personalauslastung, nach Klick auf einen Tag unter der Tabelle: wie die Arbeit dieses Tages abläuft.
 // Je laufendem Task ein Balken über den Arbeitstag mit seinen Arbeiten zur jeweiligen Zeit (Gewerk, Personen, Stunden) aus dem
-// Tagesplan (tagesplan.ts: Team unter dem Kran, Min. Personen, Kranzeit) — derselbe wie die Spalte Dauer der Tabelle. Darunter die
+// Tagesplan (tagesplan.ts: Ablauf aus «Auslastung optimieren» bzw. derselbe Rechenkern) — derselbe wie die Spalte Dauer. Darunter die
 // Summen, die zur Tabelle führen, und die Überstunden des Tages je Unternehmer und Kran. Darunter in einem eigenen grauen Kasten
 // "Erklärung & Optimierung": überzieht der Tag, warum (Kranzeit, Arbeit des Gantts gleichmässig auf die Tage des Tasks verteilt,
 // später Start); ist das eingeplante Personal nicht ausgelastet, was die übrigen Arbeiten zurückhält (Kranzeit, Vorgänger mit
@@ -17,6 +17,7 @@ import type { EingeplantTag } from "./kranHelpers";
 import { kraeneDesTasks, istKranVerfuegbarAn } from "./kranHelpers";
 import { endZeitpunkt, folgeStartZeitpunkt } from "./zeitHelpers";
 import { fmtZahl } from "./zahlFormat";
+import { UEBERSTUNDEN_ANTEIL } from "./ablaufKern";
 import { FARBEN } from "./cockpitCharts";
 
 const MAX_TASKS = 12;
@@ -103,6 +104,7 @@ export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeG
   const ueberU = [...plan.ueberstunden.jeUnternehmer].filter(([, h]) => h > 1e-6).sort((a, b) => b[1] - a[1]);
   const ueberK = [...plan.ueberstunden.jeKran].filter(([, h]) => h > 1e-6).sort((a, b) => b[1] - a[1]);
   const kranName = (id: string) => kraene.find(k => k.id === id)?.name ?? "Kran";
+  const veraltet = zeilen.filter(z => z.quelle === "veraltet");
 
   const auslastung = eingeplant && eingeplant.total > 0 ? arbeit / std / eingeplant.total : null;
   const zuWenigArbeit = auslastung != null && auslastung < AUSLASTUNG_HINWEIS;
@@ -116,10 +118,22 @@ export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeG
       {!zu.ablauf && (<>
         <div style={{ color: FARBEN.textSekundaer, marginBottom: 6, lineHeight: 1.5 }}>
           Die Arbeit des Tages laut Gantt, verteilt auf das Personal: {mitKranPersonal
-            ? "das Personal unter dem Kran arbeitet als Team (Allrounder) — jede Arbeit mindestens mit ihren Min. Personen, freie Leute verstärken bis aufs Doppelte; Positionen ohne Kran mit ihren Min. Personen."
-            : "jede Leistungsposition mit ihren Min. Personen, dieselbe Position nie an zwei Tasks gleichzeitig."}
+            ? "das Personal unter dem Kran arbeitet als Team (Allrounder) — jede Arbeit mindestens mit ihren Min. Personen, freie Leute verstärken bis aufs Doppelte; ohne Kran je Gewerk + Unternehmer eine Kolonne mit den Min. Personen der jeweiligen Arbeit, die von Arbeit zu Arbeit geht."
+            : "je Gewerk + Unternehmer eine Kolonne mit den Min. Personen der jeweiligen Arbeit, immer nur an einer Arbeit gleichzeitig — sie geht von Arbeit zu Arbeit."}
           {" "}Kranpflichtige Arbeiten gehen nur so schnell, wie der Kran nachkommt (Kranzeit %). Schritte eines Tasks nacheinander. Balken = {fmtZahl(std)} h Arbeitstag.
+          {" "}{veraltet.length === 0 && zeilen.every(z => z.quelle === "optimiert")
+            ? "Ablauf aus «Auslastung optimieren» — genau so geplant."
+            : zeilen.some(z => z.quelle === "optimiert")
+            ? "Tasks aus «Auslastung optimieren» genau so wie dort geplant, die übrigen mit denselben Regeln auf das freie Personal verteilt."
+            : "Noch nicht optimiert: die Arbeit jedes Tasks ist gleichmässig auf seine Tage im Gantt verteilt."}
         </div>
+        {veraltet.length > 0 && (
+          <div style={{ marginBottom: 6, padding: "4px 8px", background: "#fff6e0", border: `1px solid ${FARBEN.status.warning}`, color: "#6b4a00", lineHeight: 1.5 }}>
+            ⚠ {veraltet.length === 1 ? `«${veraltet[0].t.name}» wurde` : `${veraltet.length} Tasks wurden`} seit «Auslastung optimieren» geändert
+            (Termine, Mengen, Tab Ressourcen oder Kräne & Personal) — die Arbeit ist darum gleichmässig auf die Tage im Gantt verteilt und
+            hier neu gerechnet. Für einen passenden Ablauf neu optimieren: Tab Bauteile → Werkzeuge → «Auslastung optimieren».
+          </div>
+        )}
         {sichtbar.map(z => {
           // parallele Arbeiten eines Tasks übereinander (Spuren)
           const spuren: TagesplanPhase[][] = [];
@@ -130,7 +144,9 @@ export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeG
           const hoehe = 18;
           return (
             <div key={z.t.id} style={{ display: "grid", gridTemplateColumns: "minmax(110px, 180px) 1fr 64px", alignItems: "center", columnGap: 8, marginBottom: 3 }}>
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: FARBEN.textPrimaer }} title={z.t.name}>{z.t.name}</span>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: FARBEN.textPrimaer }}
+                title={`${z.t.name}\n${z.quelle === "optimiert" ? "Ablauf aus «Auslastung optimieren»" : z.quelle === "veraltet" ? "Seit «Auslastung optimieren» geändert — gleichmässig verteilt, neu gerechnet" : "Nicht optimiert — gleichmässig auf seine Tage im Gantt verteilt"}`}>
+                {z.quelle === "veraltet" && <span style={{ color: FARBEN.status.warning }}>⚠ </span>}{z.t.name}</span>
               <div style={{ position: "relative", height: hoehe, background: "#eef1f4" }}>
                 {ueberzogen && <div style={{ position: "absolute", left: `${std / skala * 100}%`, top: -3, bottom: -3, borderLeft: `2px solid ${FARBEN.status.critical}` }}
                   title={`Arbeitsende (${fmtZahl(std)} h)`} />}
@@ -159,7 +175,7 @@ export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeG
               {eingeplant.kolonnen > 0 ? ` + ${fmtZahl(eingeplant.kolonnen)} Personen ohne Kran` : ""} = <strong>{fmtZahl(eingeplant.total)} Personen</strong>,
               davon frei {fmtZahl(Math.max(0, eingeplant.total - arbeit / std))}. Auslastung = {fmtZahl(arbeit / std)} ÷ {fmtZahl(eingeplant.total)} = {eingeplant.total > 0 ? `${fmtZahl(arbeit / std / eingeplant.total * 100)} %` : "–"}.</div>
           ) : (
-            <div><strong>Eingeplant:</strong> Summe der Min. Personen der an diesem Tag aktiven Leistungspositionen = <strong>{fmtZahl(eingeplant.total)} Personen</strong>.</div>
+            <div><strong>Eingeplant:</strong> je Gewerk + Unternehmer eine Kolonne mit den grössten Min. Personen ihrer Arbeiten an diesem Tag, zusammen <strong>{fmtZahl(eingeplant.total)} Personen</strong>.</div>
           ))}
           <div style={{ color: ueberzogen ? FARBEN.status.critical : undefined, fontWeight: ueberzogen ? 600 : undefined }}>
             <strong>Dauer:</strong> Die Arbeit des Tages ist nach {fmtZahl(plan.dauer)} h fertig{ueberzogen ? ` — ${fmtZahl(plan.dauer - std)} h nach Arbeitsende` : ""} (Spalte Dauer).
@@ -212,45 +228,53 @@ export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeG
   </>);
 }
 
-/** Warum die Arbeit des Tages erst nach Arbeitsende fertig wird: das Gantt verteilt die Arbeit eines Tasks gleichmässig auf seine
- *  Tage und kennt keine Uhrzeiten — liegen an einem Tag mehr Arbeiten, als Kran und Personal schaffen, wird es später. Je Task, der
- *  nach Arbeitsende fertig wird: sein Anteil an diesem Tag und ob er erst spät beginnen kann. */
+/** Warum die Arbeit des Tages erst nach Arbeitsende fertig wird. Geplant von «Auslastung optimieren»: der Rest eines Tasks (höchstens
+ *  UEBERSTUNDEN_ANTEIL seiner Arbeit) wird am selben Tag fertig. Sonst verteilt das Gantt die Arbeit eines Tasks gleichmässig auf
+ *  seine Tage — liegen an einem Tag mehr Arbeiten, als Kran und Personal schaffen, wird es später. Je Task, der nach Arbeitsende
+ *  fertig wird: sein Anteil an diesem Tag und ob er erst spät beginnen kann. */
 function Ueberzug({ iso, plan, std, tasks, stammdaten, kalender, kranUeber }: {
   iso: string; plan: Tagesplan; std: number; tasks: Task[]; stammdaten: Stammdaten; kalender: Kalender;
   kranUeber: { name: string; stunden: number; tasks: string[] }[];
 }) {
   const spaet = plan.tasks.filter(z => z.bis > std + 1e-6);
+  const geplant = spaet.filter(z => z.quelle === "optimiert");
+  const ungeplant = spaet.filter(z => z.quelle !== "optimiert");
   const byId = new Map(tasks.map(t => [t.id, t]));
   return (
     <div>
       <div style={{ fontWeight: 600, color: FARBEN.status.critical }}>Warum wird die Arbeit erst nach {fmtZahl(plan.dauer)} h fertig?</div>
-      <div>Das Gantt plant ganze Tage: die Arbeit eines Tasks verteilt sich gleichmässig auf alle seine Tage im Gantt (ausser nach «Auslastung
-        optimieren», solange seine Termine unverändert sind — dann so, wie es dort im Arbeitstag Platz hatte). Laufen an diesem
-        Tag mehr Arbeiten, als {kranUeber.length > 0 ? "der Kran" : "das Personal"} im Arbeitstag schafft, zeigt der Tagesablauf, wie lange es wirklich dauert —
-        er verschiebt nichts auf den nächsten Tag.</div>
-      {kranUeber.map(k => (
-        <div key={k.name}>• <strong>{k.name} ist überbelegt:</strong> die kranpflichtigen Arbeiten brauchen {fmtZahl(k.stunden)} h Kranzeit,
-          der Arbeitstag hat {fmtZahl(std)} h ({k.tasks.slice(0, 4).join(", ")}{k.tasks.length > 4 ? " …" : ""}). Mehr Personal hilft nicht — die Arbeiten müssen nacheinander unter den Kran.</div>
-      ))}
-      {spaet.map(z => {
-        const t = byId.get(z.t.id) ?? z.t;
-        const jeTag = aufwandJeTagFuerTask(t, stammdaten, kalender);
-        let total = 0;
-        for (const a of jeTag.values()) for (const h of Object.values(a)) total += h;
-        const tage = jeTag.size;
-        return (
-          <div key={z.t.id} style={{ paddingLeft: 10 }}>
-            – <strong>{z.t.name}</strong>: heute {fmtZahl(z.arbeit)} Personenstunden{total > 0 ? ` (${fmtZahl(z.arbeit / total * 100)} % seiner Arbeit, der Task läuft im Gantt an ${tage} Tag${tage === 1 ? "" : "en"})` : ""}
-            {z.von > 0.01 ? ` — ${t.start === iso ? "beginnt laut Gantt heute, " : ""}kann aber erst nach ${fmtZahl(z.von)} h anfangen, weil Kran/Personal vorher mit früher begonnenen Tasks belegt sind` : ""}
-            {" "}→ fertig nach {fmtZahl(z.bis)} h.
-          </div>
-        );
-      })}
-      <div style={{ marginTop: 4 }}><strong>Was sich von Hand verbessern lässt:</strong></div>
-      {spaet.some(z => z.von > 0.01) && <div style={{ paddingLeft: 10 }}>– Tasks, die erst spät anfangen können, im Gantt einen Tag später beginnen lassen (z.B. ein Wartetag mehr beim Vorgänger) — ihre Arbeit fällt dann auf Tage mit freier Kranzeit.</div>}
-      <div style={{ paddingLeft: 10 }}>– Tasks mit Überzug im Gantt um einen Tag verlängern — ihre Arbeit je Tag wird kleiner.</div>
-      {kranUeber.length > 0 && <div style={{ paddingLeft: 10 }}>– Kranzeit % in Tab Ressourcen prüfen (z.B. Bewehrung oder Beton mit Pumpe brauchen den Kran nicht die ganze Zeit) oder einen zweiten Kran einplanen.</div>}
-      <div style={{ paddingLeft: 10 }}>– «Auslastung optimieren» ausführen: es verteilt die Arbeit so auf die Tage, dass Personal und Kran im Arbeitstag fertig werden — was keinen Platz hat, geht am nächsten Tag weiter; höchstens 5 % der Arbeit eines Tasks werden noch am selben Tag in Überstunden fertig.</div>
+      {geplant.length > 0 && (
+        <div>• <strong>So geplant:</strong> {geplant.map(z => `«${z.t.name}»`).join(", ")} {geplant.length === 1 ? "hat" : "haben"} am Tagesende nur noch
+          höchstens {fmtZahl(UEBERSTUNDEN_ANTEIL * 100)} % {geplant.length === 1 ? "seiner" : "ihrer"} Arbeit übrig — «Auslastung optimieren» lässt
+          {geplant.length === 1 ? " ihn" : " sie"} darum heute in Überstunden fertig werden, statt einen weiteren Tag zu belegen.</div>
+      )}
+      {ungeplant.length > 0 && (<>
+        <div>Die Arbeit von Tasks, die nicht (mehr) optimiert sind, verteilt sich gleichmässig auf alle ihre Tage im Gantt. Laufen an diesem
+          Tag mehr Arbeiten, als {kranUeber.length > 0 ? "der Kran" : "das Personal"} im Arbeitstag schafft, zeigt der Tagesablauf, wie lange es wirklich
+          dauert — er verschiebt nichts auf den nächsten Tag.</div>
+        {kranUeber.map(k => (
+          <div key={k.name}>• <strong>{k.name} ist überbelegt:</strong> die kranpflichtigen Arbeiten brauchen {fmtZahl(k.stunden)} h Kranzeit,
+            der Arbeitstag hat {fmtZahl(std)} h ({k.tasks.slice(0, 4).join(", ")}{k.tasks.length > 4 ? " …" : ""}). Mehr Personal hilft nicht — die Arbeiten müssen nacheinander unter den Kran.</div>
+        ))}
+        {ungeplant.map(z => {
+          const t = byId.get(z.t.id) ?? z.t;
+          const jeTag = aufwandJeTagFuerTask(t, stammdaten, kalender);
+          let total = 0;
+          for (const a of jeTag.values()) for (const h of Object.values(a)) total += h;
+          const tage = jeTag.size;
+          return (
+            <div key={z.t.id} style={{ paddingLeft: 10 }}>
+              – <strong>{z.t.name}</strong>: heute {fmtZahl(z.arbeit)} Personenstunden{total > 0 ? ` (${fmtZahl(z.arbeit / total * 100)} % seiner Arbeit, der Task läuft im Gantt an ${tage} Tag${tage === 1 ? "" : "en"})` : ""}
+              {z.von > 0.01 ? ` — ${t.start === iso ? "beginnt laut Gantt heute, " : ""}kann aber erst nach ${fmtZahl(z.von)} h anfangen, weil Kran/Personal vorher mit früher begonnenen Tasks belegt sind` : ""}
+              {" "}→ fertig nach {fmtZahl(z.bis)} h.
+            </div>
+          );
+        })}
+        <div style={{ marginTop: 4 }}><strong>Was sich verbessern lässt:</strong></div>
+        <div style={{ paddingLeft: 10 }}>– «Auslastung optimieren» ausführen (Tab Bauteile → Werkzeuge): es verteilt die Arbeit so auf die Tage, dass Personal und Kran im Arbeitstag fertig werden — was keinen Platz hat, geht am nächsten Tag weiter; höchstens {fmtZahl(UEBERSTUNDEN_ANTEIL * 100)} % der Arbeit eines Tasks werden noch am selben Tag in Überstunden fertig.</div>
+        {kranUeber.length > 0 && <div style={{ paddingLeft: 10 }}>– Kranzeit % in Tab Ressourcen prüfen (z.B. Bewehrung oder Beton mit Pumpe brauchen den Kran nicht die ganze Zeit) oder einen zweiten Kran einplanen.</div>}
+        <div style={{ paddingLeft: 10 }}>– Von Hand: Tasks mit Überzug im Gantt um einen Tag verlängern{ungeplant.some(z => z.von > 0.01) ? " oder Tasks, die erst spät anfangen können, einen Tag später beginnen lassen" : ""}.</div>
+      </>)}
     </div>
   );
 }

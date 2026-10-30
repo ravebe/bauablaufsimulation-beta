@@ -10,6 +10,9 @@ import { projektzeitraum, kranstundenJeTagFuerTask, aufwandJeTagUndPhaseFuerTask
 import type { Stammdaten } from "./stammdatenHelpers";
 import { istMengeKranpflichtig } from "./stammdatenHelpers";
 
+/** Kolonne ohne Kran-Pool: je Gewerk + Unternehmer eine (Rechenkern ablaufKern.ts und Eingeplant) */
+export const kolonnenSchluessel = (gewerkKey: string, unternehmer: string) => `kolonne|${gewerkKey}|${unternehmer}`;
+
 function toIso(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
@@ -206,19 +209,20 @@ export interface OhnePool { position: string; label: string; kolonne: number; gr
  *  einplant (Min. Personen seiner Positionen ohne Kran) — die Zeilen der Tagesangaben in Tab AVOR ergeben so das Total. */
 export interface EingeplantTag { kranPersonal: number; kolonnen: number; total: number; ohnePool: OhnePool[]; jeGewerk: Record<string, { unterKran: boolean; ohneKran: number }> }
 
-/** Eingeplantes Personal je Tag (Linie "Perfekte Auslastung" und Total "Eingeplant" in Tab AVOR):
- *  - Kranpersonal: je an diesem Tag verfügbaren Kran das Personal seiner Unternehmer (Tab Ressourcen → Kräne & Personal) plus die
- *    Kolonnen kranpflichtiger Positionen an Tasks dieses Krans, die nicht aus seinem Pool kommen (Unternehmer ohne Personal unter
- *    dem Kran) — zusammen höchstens das Personal des Krans, wie in "Auslastung optimieren". Auch an Tagen ohne Arbeit, damit nicht
- *    ausgelastetes Personal sichtbar wird.
+/** Eingeplantes Personal je Tag (Linie "Perfekte Auslastung" und Total "Eingeplant" in Tab AVOR) — dieselben Leute wie im
+ *  Rechenkern (ablaufKern.ts):
+ *  - Kranpersonal: je an diesem Tag verfügbaren Kran das Personal seiner Unternehmer (Tab Ressourcen → Kräne & Personal); ohne
+ *    Personal die Kolonnen kranpflichtiger Arbeiten an Tasks dieses Krans, die nicht aus einem Pool kommen. Auch an Tagen ohne
+ *    Arbeit, damit nicht ausgelastetes Personal sichtbar wird.
  *  - Kolonnen ohne Kran: nicht kranpflichtige Positionen und Tasks ohne Kran (bei nur einem Kran gelten alle Tasks als seine) —
- *    ihre Kolonne aus Tab Ressourcen, je Position und Tag einmal.
+ *    je Gewerk + Unternehmer eine Kolonne, je Tag einmal mit den grössten Min. Personen ihrer Positionen an diesem Tag. Arbeitet
+ *    dieselbe Kolonne am Tag auch unter einem Kran, zählt sie dort.
  *  ohnePool nennt je Tag die Positionen, die nicht aus einem Kran-Pool besetzt werden, mit Grund. */
 export function eingeplantesPersonalJeTag(tasks: Task[], kraene: Kran[], stammdaten: Stammdaten, kalender: Kalender, tage: string[]): Map<string, EingeplantTag> {
   const kranById = new Map(kraene.map(k => [k.id, k]));
   const gewerkLabel = new Map(stammdaten.gewerke.map(g => [g.key, g.label]));
-  const ausserhalbJeTag = new Map<string, Map<string, number>>(); // Tag → Leistungsposition → Kolonne (ohne Kran)
-  const unterKranJeTag = new Map<string, Map<string, Map<string, number>>>(); // Tag → Kran → Leistungsposition → Kolonne
+  // Tag → Kolonne (Gewerk + Unternehmer) → grösste Min. Personen und Kran, unter dem sie arbeitet (null = ohne Kran)
+  const kolonnenJeTag = new Map<string, Map<string, { gewerkKey: string; personen: number; kranId: string | null }>>();
   const ohnePoolJeTag = new Map<string, Map<string, OhnePool>>();
   const unterKranGewerkeJeTag = new Map<string, Set<string>>(); // Tag → Gewerke, die unter einem Kran arbeiten
   for (const t of tasks) {
@@ -228,7 +232,7 @@ export function eingeplantesPersonalJeTag(tasks: Task[], kraene: Kran[], stammda
         if (!(a.personenstunden > 1e-9)) continue;
         const kraeneHeute = a.phase.kranpflichtig ? kranIds.filter(id => istKranVerfuegbarAn(kranById.get(id)!, iso)) : [];
         const unterKranMerken = () => { const g = unterKranGewerkeJeTag.get(iso) ?? new Set<string>(); g.add(a.phase.gewerkKey); unterKranGewerkeJeTag.set(iso, g); };
-        if (kraeneHeute.some(id => (kranPersonalAmTag(kranById.get(id)!, iso).get(a.phase.unternehmer) ?? 0) > 0)) { unterKranMerken(); continue; } // aus dem Pool
+        if (a.phase.unternehmer && kraeneHeute.some(id => (kranPersonalAmTag(kranById.get(id)!, iso).get(a.phase.unternehmer) ?? 0) > 0)) { unterKranMerken(); continue; } // aus dem Pool
         const grund = !a.phase.kranpflichtig ? "nicht kranpflichtig"
           : kranIds.length === 0 ? "Task ohne Kran (Tab Kalkulation → Kräne)"
           : kraeneHeute.length === 0 ? "Kran an diesem Tag nicht verfügbar"
@@ -239,37 +243,32 @@ export function eingeplantesPersonalJeTag(tasks: Task[], kraene: Kran[], stammda
         ohne.set(a.phase.position, { position: a.phase.position, label: `${gewerkLabel.get(a.phase.gewerkKey) ?? a.phase.gewerkKey} · ${kuerzel}`,
           kolonne: a.phase.kolonne, grund, unterKran: kraeneHeute.length > 0 });
         ohnePoolJeTag.set(iso, ohne);
-        if (kraeneHeute.length > 0) {
-          unterKranMerken();
-          const jeKran = unterKranJeTag.get(iso) ?? new Map<string, Map<string, number>>();
-          const jePos = jeKran.get(kraeneHeute[0]) ?? new Map<string, number>();
-          jePos.set(a.phase.position, a.phase.kolonne);
-          jeKran.set(kraeneHeute[0], jePos);
-          unterKranJeTag.set(iso, jeKran);
-        } else {
-          const jePos = ausserhalbJeTag.get(iso) ?? new Map<string, number>();
-          jePos.set(a.phase.position, a.phase.kolonne);
-          ausserhalbJeTag.set(iso, jePos);
-        }
+        if (kraeneHeute.length > 0) unterKranMerken();
+        const jeKolonne = kolonnenJeTag.get(iso) ?? new Map<string, { gewerkKey: string; personen: number; kranId: string | null }>();
+        const key = kolonnenSchluessel(a.phase.gewerkKey, a.phase.unternehmer);
+        const bisher = jeKolonne.get(key);
+        jeKolonne.set(key, { gewerkKey: a.phase.gewerkKey, personen: Math.max(bisher?.personen ?? 0, a.phase.kolonne), kranId: bisher?.kranId ?? kraeneHeute[0] ?? null });
+        kolonnenJeTag.set(iso, jeKolonne);
       }
     }
   }
-  const summe = (m: Map<string, number> | undefined) => [...(m?.values() ?? [])].reduce((s, v) => s + v, 0);
   const ergebnis = new Map<string, EingeplantTag>();
   for (const iso of tage) {
+    const jeKolonne = [...(kolonnenJeTag.get(iso)?.values() ?? [])];
     let kranPersonal = 0;
     if (istArbeitstag(iso, kalender)) for (const k of kraene) {
       if (!istKranVerfuegbarAn(k, iso)) continue;
-      // Personal unter dem Kran ist die Grenze; Min. Personen ohne Pool an seinen Tasks zählen darin (ohne Personal: keine Grenze)
+      // Personal unter dem Kran ist die Grenze; Kolonnen ohne Pool an seinen Tasks zählen darin (ohne Personal: keine Grenze)
       const pool = kranPersonalTotalAmTag(k, iso);
-      kranPersonal += pool > 0 ? pool : summe(unterKranJeTag.get(iso)?.get(k.id));
+      kranPersonal += pool > 0 ? pool : jeKolonne.filter(c => c.kranId === k.id).reduce((s, c) => s + c.personen, 0);
     }
-    const kolonnen = summe(ausserhalbJeTag.get(iso));
+    const ausserhalb = jeKolonne.filter(c => c.kranId === null);
+    const kolonnen = ausserhalb.reduce((s, c) => s + c.personen, 0);
     const jeGewerk: EingeplantTag["jeGewerk"] = {};
     for (const g of unterKranGewerkeJeTag.get(iso) ?? []) jeGewerk[g] = { unterKran: true, ohneKran: 0 };
-    for (const [position, n] of ausserhalbJeTag.get(iso) ?? []) {
-      const g = position.split("::")[0];
-      jeGewerk[g] = { unterKran: jeGewerk[g]?.unterKran ?? false, ohneKran: (jeGewerk[g]?.ohneKran ?? 0) + n };
+    for (const c of ausserhalb) {
+      const g = c.gewerkKey;
+      jeGewerk[g] = { unterKran: jeGewerk[g]?.unterKran ?? false, ohneKran: (jeGewerk[g]?.ohneKran ?? 0) + c.personen };
     }
     ergebnis.set(iso, { kranPersonal, kolonnen, total: kranPersonal + kolonnen, ohnePool: [...(ohnePoolJeTag.get(iso)?.values() ?? [])], jeGewerk });
   }

@@ -20,7 +20,7 @@ const stammdaten: Stammdaten = {
 } as Stammdaten;
 const termine = (ts: Task[]) => ts.map(t => `${t.id} ${t.start}–${t.end}`);
 
-describe("Auslastung optimieren: eine Kolonne je Leistungsposition", () => {
+describe("Auslastung optimieren ohne Kranpersonal: eine Kolonne je Gewerk + Unternehmer", () => {
   it("drei parallele Wände (nur Schalung WB, je 1 Tag) laufen nacheinander", () => {
     const ts = ["A", "B", "C"].map(id => task(id, "2026-11-09", "2026-11-11", { bauteilKuerzel: "WB", mengen: { sch: 32 } }));
     expect(termine(optimiereAuslastung(ts, stammdaten, KAL))).toEqual([
@@ -28,12 +28,14 @@ describe("Auslastung optimieren: eine Kolonne je Leistungsposition", () => {
     ]);
   });
 
-  it("verschiedene Leistungspositionen (Wand- und Deckenschalung) bleiben parallel", () => {
+  it("eine Kolonne je Gewerk + Unternehmer: Wand- und Deckenschalung derselben Unternehmung nacheinander, verschiedener parallel", () => {
     const ts = [
       task("W", "2026-11-09", "2026-11-12", { bauteilKuerzel: "WB", mengen: { sch: 32 } }),
       task("D", "2026-11-09", "2026-11-12", { bauteilKuerzel: "DB", mengen: { sch: 32 } }),
     ];
-    expect(termine(optimiereAuslastung(ts, stammdaten, KAL))).toEqual(["W 2026-11-09–2026-11-09", "D 2026-11-09–2026-11-09"]);
+    expect(termine(optimiereAuslastung(ts, stammdaten, KAL))).toEqual(["W 2026-11-09–2026-11-09", "D 2026-11-10–2026-11-10"]);
+    const zweiFirmen = { ...stammdaten, gewerke: stammdaten.gewerke.map(g => ({ ...g, raten: g.raten.map(r => ({ ...r, unternehmer: r.kuerzel === "DB" ? "Decken AG" : "Wand AG" })) })) } as Stammdaten;
+    expect(termine(optimiereAuslastung(ts, zweiFirmen, KAL))).toEqual(["W 2026-11-09–2026-11-09", "D 2026-11-09–2026-11-09"]);
   });
 
   it("Gewerke überlappen: Wand B wird geschalt, während Wand A betoniert wird", () => {

@@ -55,10 +55,11 @@ export interface Task {
    *  diese Vorgänger neu bestimmt und, solange der Start unverändert ist, gilt wieder freigabe — erneutes Optimieren liefert so
    *  dasselbe Ergebnis, statt den Ablauf weiter zu verschieben. */
   optimierung?: { freigabe: string; start: string; vorgaenger: string[] };
-  /** Verteilung der Arbeit auf die Tage aus "Auslastung optimieren" (auslastungOptimierenKran.ts): anteile[Datum][Leistungsposition]
-   *  = Anteil an der Arbeit dieser Position (Summe je Position 1). Gilt nur, solange die Termine gleich sind (termin =
-   *  terminSchluessel) — sonst verteilt Tab AVOR die Arbeit wieder gleichmässig auf die Tage des Tasks. */
-  tagesArbeit?: { termin: string; anteile: Record<string, Record<string, number>> };
+  /** Ablauf aus "Auslastung optimieren" (auslastungOptimierenKran.ts): je Arbeitstag, wer an welcher Leistungsposition von wann
+   *  bis wann arbeitet (TagesLauf). Tab AVOR zeigt und rechnet genau diesen Ablauf. Gilt nur, solange Termine (termin =
+   *  terminSchluessel), Mengen/Leistungspositionen (basis) und Kräne & Personal (kraene) gleich sind — sonst verteilt Tab AVOR
+   *  die Arbeit wieder gleichmässig auf die Tage des Tasks und rechnet den Tag mit demselben Rechenkern (ablaufKern.ts) neu. */
+  tagesArbeit?: { termin: string; basis: string; kraene: string; tage: Record<string, TagesLauf[]> };
   attrGruppe?: Record<string, string>; // Attribut-Werte-Kombination (pset||name → Wert), die diesen Task bei der Attribut-Task-Erzeugung ergeben hat — dient beim erneuten Generieren dazu, denselben Task (inkl. Termine) wiederzuerkennen statt neu anzulegen, siehe AttributTaskErzeugung.tsx
 }
 
@@ -557,6 +558,10 @@ export function istZirkular(tasks: Task[], taskId: string, predId: string): bool
   }
   return false;
 }
+
+/** Ein Stück Arbeit eines Tages (Task.tagesArbeit): Leistungsposition pos, von/bis in Stunden ab Arbeitsbeginn (bis über Std./Tag
+ *  = Überstunden), leute = Besetzung, ph = geleistete Personenstunden, kran = Verstärkung durch die Kranzeit begrenzt. */
+export interface TagesLauf { pos: string; von: number; bis: number; leute: number; ph: number; kran?: boolean }
 
 /** Termine eines Tasks als Text — Task.tagesArbeit gilt nur, solange er gleich bleibt */
 export const terminSchluessel = (t: Pick<Task, "start" | "end" | "startZeit" | "endZeit">) => `${t.start} ${t.startZeit ?? ""}|${t.end} ${t.endZeit ?? ""}`;

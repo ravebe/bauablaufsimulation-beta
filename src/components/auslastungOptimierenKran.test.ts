@@ -180,16 +180,54 @@ describe("Auslastung optimieren mit Kranpersonal", () => {
     expect(termine(optimiereAuslastung([task("A", { mengen: { sch: 36 } })], stammdaten, KAL, "tage", k))).toEqual(["A 2026-11-09–2026-11-10"]);
   });
 
-  it("merkt sich die Arbeit je Tag: Tab AVOR rechnet damit statt gleichmässig über die Tage", () => {
+  it("merkt sich den Ablauf je Tag: Tab AVOR rechnet und zeigt genau diesen statt gleichmässig über die Tage", () => {
     const k = kran([{ unternehmer: "Bau AG", personen: 4 }]);
     const [a] = optimiereAuslastung([task("A", { mengen: { sch: 40 } })], stammdaten, KAL, "tage", k); // 32 h + 8 h
-    expect(a.tagesArbeit?.anteile).toEqual({ "2026-11-09": { "sch::W": 0.8 }, "2026-11-10": { "sch::W": 0.2 } });
+    expect(a.tagesArbeit?.tage).toEqual({
+      "2026-11-09": [{ pos: "sch::W", von: 0, bis: 8, leute: 4, ph: 32 }],
+      "2026-11-10": [{ pos: "sch::W", von: 0, bis: 2, leute: 4, ph: 8 }],
+    });
     const jeTag = aufwandJeTagFuerTask(a, stammdaten, KAL);
     expect(jeTag.get("2026-11-09")?.sch).toBeCloseTo(32);
     expect(jeTag.get("2026-11-10")?.sch).toBeCloseTo(8);
+    const plan = tagesplan("2026-11-10", [a], stammdaten, KAL, k);
+    expect(plan.tasks[0].quelle).toBe("optimiert");
+    expect(plan.dauer).toBeCloseTo(2);
     // Termin von Hand geändert → wieder gleichmässig verteilt
     const verschoben = aufwandJeTagFuerTask({ ...a, end: "2026-11-11" }, stammdaten, KAL);
     expect(verschoben.get("2026-11-09")?.sch).toBeCloseTo(40 / 3);
+    // Menge geändert → Ablauf gilt nicht mehr
+    expect(aufwandJeTagFuerTask({ ...a, mengen: { sch: 48 } }, stammdaten, KAL).get("2026-11-09")?.sch).toBeCloseTo(24);
+    // Kräne & Personal geändert → Arbeit je Tag bleibt, der Tag wird mit dem Rechenkern neu gerechnet
+    const neuerKran = kran([{ unternehmer: "Bau AG", personen: 8 }]);
+    expect(tagesplan("2026-11-09", [a], stammdaten, KAL, neuerKran).tasks[0].quelle).toBe("veraltet");
+    expect(tagesplan("2026-11-09", [a], stammdaten, KAL, neuerKran).dauer).toBeCloseTo(4); // 32 h mit 8 Leuten
+  });
+
+  it("Tagesablauf gemischt: geplante Tasks behalten ihren Ablauf, neue bekommen nur das übrige Personal", () => {
+    const k = kran([{ unternehmer: "Bau AG", personen: 4 }]);
+    const [a] = optimiereAuslastung([task("A", { mengen: { sch: 32 } })], stammdaten, KAL, "tage", k); // 4 Leute den ganzen Tag
+    const b = task("B", { mengen: { sch: 8 }, start: "2026-11-09", end: "2026-11-09" }); // neu, nicht optimiert
+    const plan = tagesplan("2026-11-09", [a, b], stammdaten, KAL, k);
+    expect(plan.tasks.map(z => z.quelle)).toEqual(["optimiert", "gleichmaessig"]);
+    expect(plan.tasks[0].bis).toBeCloseTo(8);
+    expect(plan.tasks[1].von).toBeCloseTo(8); // wartet, bis die Leute von A frei sind
+    expect(plan.dauer).toBeCloseTo(10);
+  });
+
+  it("ohne Kran: je Gewerk + Unternehmer eine Kolonne, die am selben Tag von Arbeit zu Arbeit geht", () => {
+    // Wand W und Stütze S: Schalung (Bau AG, Min. 4, 8 h = 2 h), dann Bewehrung (Eisen GmbH, Min. 2, 4 h = 2 h)
+    const sd = { ...stammdaten, gewerke: stammdaten.gewerke.map(g => ({ ...g, raten: [...g.raten, ...g.raten.map(r => ({ ...r, kuerzel: "S" }))]
+      .map(r => ({ ...r, kranpflichtig: false })) })) } as Stammdaten;
+    const ts = [task("W", { mengen: { sch: 8, bew: 4 }, kraene: [] }), task("S", { mengen: { sch: 8, bew: 4 }, kraene: [], bauteilKuerzel: "S" })];
+    const neu = optimiereAuslastung(ts, sd, KAL, "tage", []);
+    expect(termine(neu)).toEqual(["W 2026-11-09–2026-11-09", "S 2026-11-09–2026-11-09"]);
+    // Bewehrung der Stütze erst, wenn sie geschalt ist und die Eisenleger mit der Wand fertig sind
+    const tag = neu.map(t => t.tagesArbeit?.tage["2026-11-09"]);
+    expect(tag[0]).toEqual([{ pos: "sch::W", von: 0, bis: 2, leute: 4, ph: 8 }, { pos: "bew::W", von: 2, bis: 4, leute: 2, ph: 4 }]);
+    expect(tag[1]).toEqual([{ pos: "sch::S", von: 2, bis: 4, leute: 4, ph: 8 }, { pos: "bew::S", von: 4, bis: 6, leute: 2, ph: 4 }]);
+    // 5 % Überstunden gelten auch ohne Kran: 33 h mit Min. 4 = 8.25 h → heute fertig
+    expect(termine(optimiereAuslastung([task("A", { mengen: { sch: 33 }, kraene: [] })], sd, KAL, "tage", []))).toEqual(["A 2026-11-09–2026-11-09"]);
   });
 
   it("nach dem Optimieren überzieht kein Tag im Tagesablauf: der Kran ist der Engpass, die Arbeit geht am nächsten Tag weiter", () => {

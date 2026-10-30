@@ -1,6 +1,6 @@
 // avorHelpers.ts — Tagesreihen für den Tab AVOR (Personal-/Kranauslastung, Mengen-Filter,
 // Ertragsoptik), berechnet aus Tasks + Stammdaten + Arbeitstage-Kalender. Reine Funktionen, kein UI.
-import type { Task } from "../types";
+import type { Task, TagesLauf } from "../types";
 import { parseDateUniversal, terminSchluessel } from "../types";
 import type { Kalender } from "./kalenderHelpers";
 import { istArbeitstag } from "./kalenderHelpers";
@@ -36,6 +36,24 @@ function laeuftAn(t: Task, iso: string): boolean {
   return !t.isGroup && !!t.bauteilKuerzel && !!t.mengen && iso >= t.start && iso <= t.end;
 }
 
+/** Leistungspositionen eines Tasks mit Arbeit, Min. Personen, Unternehmer, Kranzeit und Ablauf sowie Std./Tag als Text — ein
+ *  gespeicherter Ablauf (Task.tagesArbeit) gilt nur, solange er gleich bleibt (Mengen oder Tab Ressourcen geändert → ungültig). */
+export function tagesArbeitBasis(t: Task, stammdaten: Stammdaten): string {
+  const text = JSON.stringify([stammdaten.arbeitszeitStdProTag, schritteFuerTask(t, stammdaten).map(s => [s.schritt, s.phasen.map(p =>
+    [p.position, p.unternehmer, p.kranpflichtig, p.kolonne, Math.round(p.kranAnteil * 1e6), Math.round(p.personenstunden * 1e6)])])]);
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
+/** Gespeicherter Ablauf aus "Auslastung optimieren", wenn er noch gilt: gleiche Termine, gleiche Leistungspositionen/Mengen, alle
+ *  Tage Arbeitstage — sonst null. */
+export function gueltigeTagesArbeit(t: Task, stammdaten: Stammdaten, kalender: Kalender): Record<string, TagesLauf[]> | null {
+  const ta = t.tagesArbeit;
+  if (!ta?.tage || ta.termin !== terminSchluessel(t) || ta.basis !== tagesArbeitBasis(t, stammdaten)) return null;
+  return Object.keys(ta.tage).every(iso => istArbeitstag(iso, kalender)) ? ta.tage : null;
+}
+
 /** Aufwand eines Tasks an einem Tag in einer Phase (Schritt + Leistungsposition), siehe aufwandJeTagUndPhaseFuerTask. */
 export interface PhasenAufwand { schritt: number; phase: TaskPhase; personenstunden: number }
 
@@ -59,22 +77,20 @@ export function aufwandJeTagUndPhaseFuerTask(t: Task, stammdaten: Stammdaten, ka
   const berechnet = schritte.reduce((s, x) => s + x.tage, 0);
   if (berechnet <= 0) return ergebnis;
 
-  // Verteilung aus "Auslastung optimieren" — nur, wenn sie zu den Terminen und zu allen Phasen passt
-  const verteilt = t.tagesArbeit?.termin === terminSchluessel(t) ? t.tagesArbeit.anteile : null;
+  // Ablauf aus "Auslastung optimieren" — nur, wenn er zu Terminen, Mengen und Leistungspositionen passt
+  const verteilt = gueltigeTagesArbeit(t, stammdaten, kalender);
   if (verteilt) {
-    const tage = Object.keys(verteilt).sort();
-    const summe = (pos: string) => tage.reduce((s, iso) => s + (verteilt[iso][pos] ?? 0), 0);
-    if (schritte.every(s => s.phasen.every(p => Math.abs(summe(p.position) - 1) < 1e-3))) {
-      for (const iso of tage) {
-        const liste: PhasenAufwand[] = [];
-        for (const s of schritte) for (const p of s.phasen) {
-          const anteil = verteilt[iso][p.position] ?? 0;
-          if (anteil > 1e-9) liste.push({ schritt: s.schritt, phase: p, personenstunden: p.personenstunden * anteil });
-        }
-        if (liste.length > 0) ergebnis.set(iso, liste);
+    for (const iso of Object.keys(verteilt).sort()) {
+      const jePos = new Map<string, number>();
+      for (const l of verteilt[iso]) jePos.set(l.pos, (jePos.get(l.pos) ?? 0) + l.ph);
+      const liste: PhasenAufwand[] = [];
+      for (const s of schritte) for (const p of s.phasen) {
+        const ph = jePos.get(p.position) ?? 0;
+        if (ph > 1e-9) liste.push({ schritt: s.schritt, phase: p, personenstunden: ph });
       }
-      return ergebnis;
+      if (liste.length > 0) ergebnis.set(iso, liste);
     }
+    return ergebnis;
   }
 
   // Arbeitstage des Tasks mit ihrem Anteil (ganzer Tag = 1, Halbtag = 0.5)
@@ -133,65 +149,30 @@ export function personalJeTagFuerTask(t: Task, stammdaten: Stammdaten, kalender:
   return ergebnis;
 }
 
-/** Eingeplantes Personal je Tag und Gewerk = Kolonnen aus Tab Ressourcen. Jede Leistungsposition (Gewerk + Kürzel) zählt
- *  an einem Tag nur einmal, auch wenn mehrere Tasks mit ihr parallel laufen — es ist dieselbe Kolonne (z.B. drei Wände WB
- *  am selben Tag → einmal die 6 Personen der Wandschalung, nicht 18). Verschiedene Leistungspositionen eines Gewerks
- *  (z.B. Wand- und Deckenschalung) addieren sich. kolonnen = Anzahl verschiedener Leistungspositionen, personen = Summe
- *  ihrer Kolonnengrössen. Grundlage für Arbeitszeit/Auslastung im Tooltip und die Linie "Perfekte Auslastung". */
+/** Eingeplantes Personal je Tag und Gewerk ohne Kranpersonal = Kolonnen wie im Rechenkern (ablaufKern.ts): je Gewerk + Unternehmer
+ *  eine Kolonne, die immer nur an einer Arbeit gleichzeitig arbeitet und von Arbeit zu Arbeit geht. Sie zählt an einem Tag nur
+ *  einmal, mit den grössten Min. Personen der Leistungspositionen, an denen sie an diesem Tag arbeitet (z.B. Wandschalung 4 und
+ *  Deckenschalung 6 derselben Unternehmung → 6 Personen, nicht 10). Verschiedene Unternehmer eines Gewerks addieren sich.
+ *  kolonnen = Anzahl Kolonnen, personen = Summe ihrer Grössen. Grundlage für Eingeplant/Auslastung und "Perfekte Auslastung". */
 export function kolonnenJeTag(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender): Map<string, Record<string, { kolonnen: number; personen: number }>> {
-  const positionenJeTag = new Map<string, Map<string, Map<string, number>>>(); // Tag → Gewerk → Kürzel → Kolonne
+  const jeTag = new Map<string, Map<string, Map<string, number>>>(); // Tag → Gewerk → Unternehmer → grösste Min. Personen
   for (const t of tasks) {
-    for (const [iso, aufwand] of aufwandJeTagFuerTask(t, stammdaten, kalender)) {
-      const jeGewerk = positionenJeTag.get(iso) ?? new Map<string, Map<string, number>>();
-      for (const [k, ph] of Object.entries(aufwand)) {
-        if (!(ph > 1e-9)) continue;
-        const gewerk = stammdaten.gewerke.find(g => g.key === k);
-        const kolonne = gewerk ? rateFuer(gewerk, t.bauteilKuerzel!)?.anzahlPersonen ?? 0 : 0;
-        if (!kolonne) continue;
-        const jeKuerzel = jeGewerk.get(k) ?? new Map<string, number>();
-        jeKuerzel.set(t.bauteilKuerzel!, kolonne);
-        jeGewerk.set(k, jeKuerzel);
+    for (const [iso, liste] of aufwandJeTagUndPhaseFuerTask(t, stammdaten, kalender)) {
+      const jeGewerk = jeTag.get(iso) ?? new Map<string, Map<string, number>>();
+      for (const a of liste) {
+        if (!(a.personenstunden > 1e-9) || !a.phase.kolonne) continue;
+        const jeUnternehmer = jeGewerk.get(a.phase.gewerkKey) ?? new Map<string, number>();
+        jeUnternehmer.set(a.phase.unternehmer, Math.max(jeUnternehmer.get(a.phase.unternehmer) ?? 0, a.phase.kolonne));
+        jeGewerk.set(a.phase.gewerkKey, jeUnternehmer);
       }
-      positionenJeTag.set(iso, jeGewerk);
+      jeTag.set(iso, jeGewerk);
     }
   }
   const ergebnis = new Map<string, Record<string, { kolonnen: number; personen: number }>>();
-  for (const [iso, jeGewerk] of positionenJeTag) {
+  for (const [iso, jeGewerk] of jeTag) {
     const werte: Record<string, { kolonnen: number; personen: number }> = {};
-    for (const [k, jeKuerzel] of jeGewerk) werte[k] = { kolonnen: jeKuerzel.size, personen: [...jeKuerzel.values()].reduce((s, v) => s + v, 0) };
+    for (const [k, jeU] of jeGewerk) werte[k] = { kolonnen: jeU.size, personen: [...jeU.values()].reduce((s, v) => s + v, 0) };
     ergebnis.set(iso, werte);
-  }
-  return ergebnis;
-}
-
-/** Belegte Zeit je Tag [h] — wie lange der Arbeitstag mit dem eingeplanten Personal dauert (Total-Zeile der
- *  Personalauslastung). Innerhalb eines Tasks laufen die Schritte nacheinander (Schalung → Bewehrung → Beton, siehe
- *  Arbeitsablauf je Kürzel), also Summe ihrer Dauern (Arbeit ÷ Kolonne, im selben Schritt die längste Phase); verschiedene
- *  Tasks laufen parallel, also das Maximum. Arbeitet dieselbe
- *  Kolonne (Leistungsposition) an mehreren Tasks, braucht sie die Summe — der Tag dauert mindestens so lange. */
-export function tagesdauerJeTag(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender): Map<string, number> {
-  const kettenJeTag = new Map<string, number>(); // längste Task-Kette des Tages
-  const kolonneJeTag = new Map<string, Map<string, number>>(); // Tag → Leistungsposition → Stunden der Kolonne
-  for (const t of tasks) {
-    for (const [iso, liste] of aufwandJeTagUndPhaseFuerTask(t, stammdaten, kalender)) {
-      // Schritte nacheinander (Summe), Phasen eines Schritts gleichzeitig (längste zählt)
-      const jeSchritt = new Map<number, number>();
-      for (const a of liste) {
-        if (!(a.personenstunden > 1e-9)) continue;
-        const stunden = a.personenstunden / a.phase.kolonne;
-        jeSchritt.set(a.schritt, Math.max(jeSchritt.get(a.schritt) ?? 0, stunden));
-        const jePosition = kolonneJeTag.get(iso) ?? new Map<string, number>();
-        jePosition.set(a.phase.position, (jePosition.get(a.phase.position) ?? 0) + stunden);
-        kolonneJeTag.set(iso, jePosition);
-      }
-      const kette = [...jeSchritt.values()].reduce((s, v) => s + v, 0);
-      kettenJeTag.set(iso, Math.max(kettenJeTag.get(iso) ?? 0, kette));
-    }
-  }
-  const ergebnis = new Map<string, number>();
-  for (const [iso, kette] of kettenJeTag) {
-    const kolonneMax = Math.max(0, ...(kolonneJeTag.get(iso)?.values() ?? []));
-    ergebnis.set(iso, Math.max(kette, kolonneMax));
   }
   return ergebnis;
 }
