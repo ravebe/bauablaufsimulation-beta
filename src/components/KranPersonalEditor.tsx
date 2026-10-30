@@ -5,14 +5,16 @@
 import { useState } from "react";
 import type { SimProjekt, Kran, KranPersonal } from "../types";
 import { istGruppe } from "../types";
-import { neuerKran, kranAusTasksEntfernen, kraeneDesTasks, kranPersonalAmTag, RICHTWERT_PERSONEN_PRO_KRAN, kranLuecken, tageAlsZeitraeume } from "./kranHelpers";
+import { neuerKran, kranAusTasksEntfernen, kraeneDesTasks, kranPersonalAmTag, RICHTWERT_PERSONEN_PRO_KRAN, kranLuecken, tageAlsZeitraeume, kranVerlaengernVorschlag, kranVerlaengern } from "./kranHelpers";
 import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import Hinweis from "./Hinweis";
 
 interface Props { sim: SimProjekt; updateSim: (s: SimProjekt) => void; readOnly?: boolean; bekannteUnternehmer: string[];
   /** zur Auswahl: alle Unternehmer (Leistungspositionen und Kräne) */
-  alleUnternehmer: string[] }
+  alleUnternehmer: string[];
+  /** Knopf «Zur Kranoptik» im Hinweis «Kran fehlt» → Tab AVOR */
+  onZuKranoptik?: () => void }
 
 const feld: React.CSSProperties = { fontSize: 11, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" };
 
@@ -30,9 +32,13 @@ function maxSumme(kran: Kran): { summe: number; tag: string | null } {
 }
 
 /** Warnung über der Kranoptik bzw. in Tab Ressourcen: kranpflichtige Arbeit ohne verfügbaren Kran und Kräne, an deren Tasks an
- *  manchen Tagen gearbeitet wird, ohne dass Personal unter dem Kran erfasst ist (siehe kranLuecken). */
-/** onZuKranplanung: Knopf «Zur Kranplanung» rechts im Balken — springt zu Tab Ressourcen → Kräne & Personal (nur ausserhalb davon) */
-export function KranLueckenHinweis({ luecken, kraene, onZuKranplanung }: { luecken: ReturnType<typeof kranLuecken>; kraene: SimProjekt["kraene"]; onZuKranplanung?: () => void }) {
+ *  manchen Tagen gearbeitet wird, ohne dass Personal unter dem Kran erfasst ist (siehe kranLuecken).
+ *  Knöpfe rechts im Balken: onZuKranplanung «Zur Kranplanung» (aus Tab AVOR → Tab Ressourcen), onZuKranoptik «Zur Kranoptik» (aus Tab
+ *  Ressourcen → Tab AVOR), verlaengern = «Kran fehlt» direkt beheben (Kran verlängern, siehe kranVerlaengernVorschlag) */
+export function KranLueckenHinweis({ luecken, kraene, onZuKranplanung, onZuKranoptik, verlaengern }: {
+  luecken: ReturnType<typeof kranLuecken>; kraene: SimProjekt["kraene"]; onZuKranplanung?: () => void; onZuKranoptik?: () => void;
+  verlaengern?: { label: string; title: string; onClick: () => void };
+}) {
   const datum = (iso: string) => iso.split("-").reverse().join(".");
   const zeitraeume = (tage: string[]) => {
     const z = tageAlsZeitraeume(tage);
@@ -41,22 +47,28 @@ export function KranLueckenHinweis({ luecken, kraene, onZuKranplanung }: { lueck
   const ohnePersonal = [...luecken.ohnePersonal].map(([id, l]) => ({ name: (kraene ?? []).find(k => k.id === id)?.name ?? "Kran", l }));
   if (luecken.ohneKran.tage.length === 0 && ohnePersonal.length === 0) return null;
   const stil: React.CSSProperties = { fontSize: 11, color: "#8a5a00", background: "#fff7e6", border: "1px solid #f5d9a8", padding: "6px 10px", marginBottom: 6,
-    display: "flex", alignItems: "center", gap: 8 };
-  const knopf = onZuKranplanung && (
-    <button type="button" className="tc-btn-secondary" onClick={onZuKranplanung} title="Zu Tab Ressourcen → Kräne & Personal"
-      style={{ marginLeft: "auto", flexShrink: 0, fontSize: 11, padding: "2px 8px", whiteSpace: "nowrap" }}>Zur Kranplanung →</button>
+    display: "flex", alignItems: "center", flexWrap: "wrap", gap: "4px 8px" };
+  const knopfStil: React.CSSProperties = { flexShrink: 0, fontSize: 11, padding: "2px 8px", whiteSpace: "nowrap" };
+  const navigation = (
+    <span style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
+      {onZuKranplanung && <button type="button" className="tc-btn-secondary" onClick={onZuKranplanung} title="Zu Tab Ressourcen → Kräne & Personal" style={knopfStil}>Zur Kranplanung →</button>}
+      {onZuKranoptik && <button type="button" className="tc-btn-secondary" onClick={onZuKranoptik} title="Zu Tab AVOR → Kranoptik" style={knopfStil}>Zur Kranoptik →</button>}
+    </span>
   );
   return (<>
     {luecken.ohneKran.tage.length > 0 && (
       <div style={stil} title="Diese Arbeiten brauchen einen Kran (kranpflichtige Leistungsposition), aber an diesen Tagen ist keiner der Kräne des Tasks verfügbar bzw. dem Task ist kein Kran zugewiesen. Kran in Tab Ressourcen → Kräne & Personal ergänzen oder seine Verfügbarkeit (von/bis) anpassen, bei mehreren Kränen in Tab Kalkulation → Kräne zuweisen.">
         <span>⚠ <strong>Kran fehlt:</strong> {luecken.ohneKran.taskIds.length} Task{luecken.ohneKran.taskIds.length === 1 ? "" : "s"} mit kranpflichtiger Arbeit ohne verfügbaren Kran ({zeitraeume(luecken.ohneKran.tage)})</span>
-        {knopf}
+        <span style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {verlaengern && <button type="button" className="tc-btn-primary" onClick={verlaengern.onClick} title={verlaengern.title} style={knopfStil}>{verlaengern.label}</button>}
+          {navigation}
+        </span>
       </div>
     )}
     {ohnePersonal.map(({ name, l }) => (
       <div key={name} style={stil} title="An diesen Tagen ist der Kran verfügbar und es gibt Arbeit an seinen Tasks, aber kein Personal unter dem Kran (Tab Ressourcen → Kräne & Personal, von/bis der Unternehmer). Auslastung optimieren plant dort ohne Personalgrenze.">
         <span>⚠ <strong>{name} ohne Personal:</strong> Arbeit an {l.taskIds.length} Task{l.taskIds.length === 1 ? "" : "s"}, aber kein Personal unter dem Kran ({zeitraeume(l.tage)})</span>
-        {knopf}
+        {navigation}
       </div>
     ))}
   </>);
@@ -88,7 +100,7 @@ function UnternehmerFeld({ wert, alle, disabled, unbekannt, onChange }: { wert: 
   );
 }
 
-export default function KranPersonalEditor({ sim, updateSim, readOnly, bekannteUnternehmer, alleUnternehmer }: Props) {
+export default function KranPersonalEditor({ sim, updateSim, readOnly, bekannteUnternehmer, alleUnternehmer, onZuKranoptik }: Props) {
   const kraene = sim.kraene ?? [];
   const speichern = (neu: Kran[]) => updateSim({ ...sim, kraene: neu });
   const kranAendern = (id: string, patch: Partial<Kran>) => speichern(kraene.map(k => k.id === id ? { ...k, ...patch } : k));
@@ -110,7 +122,18 @@ export default function KranPersonalEditor({ sim, updateSim, readOnly, bekannteU
           Tab Kalkulation, bei nur einem Kran automatisch). Von/bis leer = ganze Verfügbarkeit des Krans.
         </div>
       </Hinweis>
-      <KranLueckenHinweis luecken={kranLuecken(sim.tasks, kraene, sim.stammdaten ?? LEERE_STAMMDATEN, sim.kalender ?? LEERER_KALENDER)} kraene={kraene} />
+      {(() => {
+        const luecken = kranLuecken(sim.tasks, kraene, sim.stammdaten ?? LEERE_STAMMDATEN, sim.kalender ?? LEERER_KALENDER);
+        const v = readOnly ? null : kranVerlaengernVorschlag(sim.tasks, kraene, luecken.ohneKran);
+        const kran = v && kraene.find(k => k.id === v.kranId);
+        const d = (iso: string) => iso.split("-").reverse().join(".");
+        const verlaengern = v && kran ? {
+          label: v.von && v.bis ? `${kran.name}: ${d(v.von)}–${d(v.bis)} verfügbar` : v.bis ? `${kran.name} bis ${d(v.bis)} verlängern` : `${kran.name} ab ${d(v.von!)} verfügbar`,
+          title: `Verfügbarkeit von ${kran.name} so anpassen, dass die betroffenen Tasks einen Kran haben — Personal-Zeilen, die genau am bisherigen ${v.bis ? "Ende" : "Anfang"} ${v.bis ? "aufhören" : "anfangen"}, werden mit angepasst. Rückgängig oben in der Kopfzeile.`,
+          onClick: () => speichern(kranVerlaengern(kraene, v)),
+        } : undefined;
+        return <KranLueckenHinweis luecken={luecken} kraene={kraene} onZuKranoptik={onZuKranoptik} verlaengern={verlaengern} />;
+      })()}
       {kraene.length === 0 && <div style={{ fontSize: 11, color: "var(--tc-text-3)", marginBottom: 8 }}>Noch keine Kräne angelegt.</div>}
       {kraene.map(kran => {
         const { summe, tag } = maxSumme(kran);

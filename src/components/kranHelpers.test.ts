@@ -4,7 +4,7 @@ import { LEERER_KALENDER } from "./kalenderHelpers";
 import type { Stammdaten } from "./stammdatenHelpers";
 import {
   zeitrasterBuckets, kranAktivInBucket, istKranVerfuegbarAn, kranVerfuegbareArbeitstage, neuerKran,
-  kranAnteil, kranAusTasksEntfernen, kranstundenProKranUndBucket, kranLuecken,
+  kranAnteil, kranAusTasksEntfernen, kranstundenProKranUndBucket, kranLuecken, kranVerlaengernVorschlag, kranVerlaengern,
 } from "./kranHelpers";
 
 function task(start: string, end: string): Task {
@@ -148,5 +148,30 @@ describe("kranstundenProKranUndBucket", () => {
     const nichtKranpflichtig: Stammdaten = { ...stammdaten, gewerke: [{ ...stammdaten.gewerke[0], raten: [{ ...stammdaten.gewerke[0].raten[0], kranpflichtig: false }] }] };
     const { serien } = kranstundenProKranUndBucket([taskWoche], [k1, k2], nichtKranpflichtig, LEERER_KALENDER, "woche");
     expect(serien.every(s => s.bedarf.every(v => v === 0))).toBe(true);
+  });
+});
+
+describe("Kran fehlt direkt beheben (Kran verlängern)", () => {
+  const t = (id: string, kraene?: string[]): Task => ({ id, name: id, start: "2026-12-14", end: "2026-12-22", typ: "neubau", objektGuids: [], kraene });
+  const k1: Kran = { id: "k1", name: "Kran 1", verfuegbarVon: "2026-10-05", verfuegbarBis: "2026-12-12",
+    personal: [{ id: "p1", unternehmer: "Baumeister", personen: 10, von: "2026-10-05", bis: "2026-12-12" }, { id: "p2", unternehmer: "Eisen", personen: 2, bis: "2026-11-30" }] };
+  const luecke = { tage: ["2026-12-14", "2026-12-22"], taskIds: ["A", "B"] };
+
+  it("ein Kran: bis zum letzten fehlenden Tag verlängern, Personal-Zeilen am alten Ende mit", () => {
+    const v = kranVerlaengernVorschlag([t("A"), t("B")], [k1], luecke);
+    expect(v).toEqual({ kranId: "k1", von: undefined, bis: "2026-12-22" });
+    const neu = kranVerlaengern([k1], v!)[0];
+    expect(neu.verfuegbarBis).toBe("2026-12-22");
+    expect(neu.personal?.map(p => p.bis)).toEqual(["2026-12-22", "2026-11-30"]); // Eisen endete vorher → bleibt
+  });
+
+  it("mehrere Kräne: der Kran, dem die Tasks zugewiesen sind; ohne Zuweisung kein Vorschlag", () => {
+    const k2: Kran = { id: "k2", name: "Kran 2", verfuegbarVon: "2026-10-05", verfuegbarBis: "2026-12-01" };
+    expect(kranVerlaengernVorschlag([t("A", ["k2"]), t("B", ["k2"])], [k1, k2], luecke)?.kranId).toBe("k2");
+    expect(kranVerlaengernVorschlag([t("A"), t("B")], [k1, k2], luecke)).toBeNull();
+  });
+
+  it("Lücke vor der Verfügbarkeit: früher verfügbar machen", () => {
+    expect(kranVerlaengernVorschlag([t("A")], [k1], { tage: ["2026-10-01"], taskIds: ["A"] })).toEqual({ kranId: "k1", von: "2026-10-01", bis: undefined });
   });
 });

@@ -1,6 +1,6 @@
 // TabAvor.tsx — Cockpit mit Personal-/Kranauslastung und Mengen-Filter, abgeleitet
 // aus den in Tab Kalkulation erfassten Mengen/Kürzeln/WBS-Feldern und den Stammdaten aus Ressourcen.
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import type { SimProjekt, Zeitraster } from "../types";
 import { parseDateUniversal, nsKey } from "../types";
 import { LEERER_KALENDER } from "./kalenderHelpers";
@@ -32,7 +32,9 @@ function csvHerunterladen(inhalt: string, dateiname: string) {
 
 interface Props { sim: SimProjekt | null; updateSim: (s: SimProjekt) => void; readOnly?: boolean; projectId?: string | null; api?: ApiInstance | null; sharedNadelTag?: React.MutableRefObject<number>;
   /** Knopf «Zur Kranplanung» im Hinweis «Kran fehlt» → Tab Ressourcen → Kräne & Personal */
-  onZuKranplanung?: () => void; }
+  onZuKranplanung?: () => void;
+  /** Sprung aus Tab Ressourcen («Zur Kranoptik»): bei jeder Erhöhung die Kranoptik aufklappen und dorthin scrollen */
+  kranoptikSignal?: number; }
 
 function gestapelteSerien(tagWerte: TagWert[], labelFuer: (k: string) => string): { tage: string[]; serien: Serie[] } {
   const tage = tagWerte.map(t => t.tag);
@@ -52,11 +54,18 @@ function gestapelteSerien(tagWerte: TagWert[], labelFuer: (k: string) => string)
   return { tage, serien };
 }
 
-export default function TabAvor({ sim, updateSim, readOnly, projectId = null, api, sharedNadelTag, onZuKranplanung }: Props) {
+export default function TabAvor({ sim, updateSim, readOnly, projectId = null, api, sharedNadelTag, onZuKranplanung, kranoptikSignal = 0 }: Props) {
   const [mengenGewerkKey, setMengenGewerkKey] = useState<string>("beton");
   const [mengenKuerzel, setMengenKuerzel] = useState<string>(""); // "" = Total (alle Kürzel dieses Gewerks summiert), Default
   const [kranMetrik, setKranMetrik] = useState<"stunden" | "personal">("stunden");
   const { eingeklappt, toggle: toggleEingeklappt } = useEingeklappt(projectId, "avor");
+  const kranoptikRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!kranoptikSignal) return;
+    if (eingeklappt["kran"]) toggleEingeklappt("kran");
+    const id = setTimeout(() => kranoptikRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+    return () => clearTimeout(id);
+  }, [kranoptikSignal]); // eslint-disable-line react-hooks/exhaustive-deps
   // ⋮ → Ansicht: arbeitsfreie Wochenenden in allen Diagrammen ausblenden (Standard), projektbezogen gemerkt
   const weKey = nsKey("4d-cockpit-ohne-we-avor", projectId ?? null);
   const [ohneWochenenden, setOhneWochenenden] = useState(() => {
@@ -451,6 +460,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
         <ChartResizeHandle hoehe={hoeheMengen} setHoehe={setHoeheMengen} />
       </CockpitAbschnitt>
 
+      <div ref={kranoptikRef} />
       <CockpitAbschnitt titel="Kranoptik" eingeklappt={!!eingeklappt["kran"]} onToggle={() => toggleEingeklappt("kran")}
         aktionen={
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>

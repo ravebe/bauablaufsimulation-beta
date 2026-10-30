@@ -24,6 +24,8 @@ interface Props {
   selektion?: number[]; aktivesModellId?: string | null; projectId?: string | null;
   /** Sprung aus Tab AVOR («Zur Kranplanung»): bei jeder Erhöhung «Kräne & Personal» aufklappen und dorthin scrollen */
   kranplanungSignal?: number;
+  /** Knopf «Zur Kranoptik» (Kräne & Personal) → Tab AVOR */
+  onZuKranoptik?: () => void;
 }
 
 const NEUE_RATE: Rate = { kuerzel: "", bezeichnung: "", leistungswertHProEinheit: null, anzahlPersonen: 1, chfProEinheit: null };
@@ -44,7 +46,7 @@ const TOTAL_BREITE = 110; // Mengen-Summe je Kürzel, rot bei fehlenden/fehlerha
 const ENTFERNEN_BREITE = 26; // ×-Button, ganz am Zeilenende
 const LS_RATEN_COLW = "4d-ressourcen-raten-colw";
 
-export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion = [], aktivesModellId = null, projectId = null, kranplanungSignal = 0 }: Props) {
+export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion = [], aktivesModellId = null, projectId = null, kranplanungSignal = 0, onZuKranoptik }: Props) {
   const [ladeErgebnis, setLadeErgebnis] = useState<string | null>(null);
   const [importFehler, setImportFehler] = useState<string | null>(null);
   // Ergebnis von "Mengen berechnen": fett grün/orange/rot, beim nächsten Klick irgendwo wieder grau (wie Tab Kalkulation)
@@ -790,9 +792,10 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
               }} />
           </CockpitAbschnitt>
           <div ref={kranplanungRef} />
-          <CockpitAbschnitt titel="Kräne & Personal" eingeklappt={!!eingeklappt["kraene"]} onToggle={() => toggleEingeklappt("kraene")}>
+          <CockpitAbschnitt titel="Kräne & Personal" eingeklappt={!!eingeklappt["kraene"]} onToggle={() => toggleEingeklappt("kraene")}
+            aktionen={onZuKranoptik && <button type="button" className="tc-btn-secondary" onClick={onZuKranoptik} title="Zu Tab AVOR → Kranoptik: Kranstunden und Personal je Kran im Zeitverlauf" style={{ fontSize: 11, padding: "2px 8px" }}>Zur Kranoptik →</button>}>
             <KranPersonalEditor sim={sim} updateSim={updateSim} readOnly={readOnly}
-              bekannteUnternehmer={unternehmerDerRaten} alleUnternehmer={alleUnternehmer} />
+              bekannteUnternehmer={unternehmerDerRaten} alleUnternehmer={alleUnternehmer} onZuKranoptik={onZuKranoptik} />
           </CockpitAbschnitt>
         </div>
       )}

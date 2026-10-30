@@ -307,6 +307,40 @@ export function kranLuecken(tasks: Task[], kraene: Kran[], stammdaten: Stammdate
   };
 }
 
+/** «Kran fehlt» direkt beheben (Knopf in Tab Ressourcen → Kräne & Personal): der Kran, dem die betroffenen Tasks am häufigsten
+ *  zugewiesen sind (kraeneDesTasks), wird bis zum letzten fehlenden Tag verlängert bzw. ab dem ersten verfügbar gemacht. null, wenn
+ *  das nicht hilft (z.B. mehrere Kräne und den Tasks keiner zugewiesen, oder die Lücke liegt nicht vor/nach seiner Verfügbarkeit). */
+export interface KranVerlaengerung { kranId: string; von?: string; bis?: string }
+export function kranVerlaengernVorschlag(tasks: Task[], kraene: Kran[], luecke: KranLuecke): KranVerlaengerung | null {
+  if (luecke.tage.length === 0) return null;
+  const byId = new Map(tasks.map(t => [t.id, t]));
+  const zaehler = new Map<string, number>();
+  for (const id of luecke.taskIds) {
+    const t = byId.get(id);
+    if (t) for (const k of kraeneDesTasks(t, kraene)) zaehler.set(k, (zaehler.get(k) ?? 0) + 1);
+  }
+  const kranId = [...zaehler].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const kran = kraene.find(k => k.id === kranId);
+  if (!kran) return null;
+  const erster = luecke.tage[0], letzter = luecke.tage[luecke.tage.length - 1];
+  const von = kran.verfuegbarVon && erster < kran.verfuegbarVon ? erster : undefined;
+  const bis = kran.verfuegbarBis && letzter > kran.verfuegbarBis ? letzter : undefined;
+  return von || bis ? { kranId: kran.id, von, bis } : null;
+}
+
+/** Verlängerung anwenden: Verfügbarkeit des Krans und Personal-Zeilen, die genau an seinem bisherigen Anfang/Ende anfangen/aufhören */
+export function kranVerlaengern(kraene: Kran[], v: KranVerlaengerung): Kran[] {
+  return kraene.map(k => {
+    if (k.id !== v.kranId) return k;
+    return {
+      ...k, verfuegbarVon: v.von ?? k.verfuegbarVon, verfuegbarBis: v.bis ?? k.verfuegbarBis,
+      personal: k.personal?.map(p => ({ ...p,
+        von: v.von && p.von && p.von === k.verfuegbarVon ? v.von : p.von,
+        bis: v.bis && p.bis && p.bis === k.verfuegbarBis ? v.bis : p.bis })),
+    };
+  });
+}
+
 /** Zusammenhängende Zeiträume aus sortierten Tagen (Lücken bis 7 Kalendertage, z.B. Wochenenden/Feiertage, überbrückt) —
  *  für kurze Meldungen wie "13.05.–30.06.2027". */
 export function tageAlsZeitraeume(tage: string[]): { von: string; bis: string }[] {
