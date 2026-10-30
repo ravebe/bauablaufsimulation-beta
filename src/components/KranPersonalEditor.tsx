@@ -8,7 +8,6 @@ import { istGruppe } from "../types";
 import { neuerKran, kranAusTasksEntfernen, kraeneDesTasks, kranPersonalAmTag, RICHTWERT_PERSONEN_PRO_KRAN, kranLuecken, tageAlsZeitraeume, kranVerlaengernVorschlag, kranVerlaengern } from "./kranHelpers";
 import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
 import { LEERER_KALENDER } from "./kalenderHelpers";
-import Hinweis from "./Hinweis";
 
 interface Props { sim: SimProjekt; updateSim: (s: SimProjekt) => void; readOnly?: boolean; bekannteUnternehmer: string[];
   /** zur Auswahl: alle Unternehmer (Leistungspositionen und Kräne) */
@@ -114,14 +113,6 @@ export default function KranPersonalEditor({ sim, updateSim, readOnly, bekannteU
 
   return (
     <div>
-      <Hinweis style={{ marginBottom: 8 }}>
-        <div style={{ fontSize: 10, color: "var(--tc-text-3)", lineHeight: 1.5 }}>
-          Je Kran die Verfügbarkeit und darunter das Personal je Unternehmer. Die Summe ist die Höchstzahl der Leute, die pro Tag unter
-          diesem Kran an kranpflichtigen Arbeiten arbeiten (beim Optimieren höchstens 1–2 mehr, wenn sonst Leute untätig wären). Leute
-          desselben Unternehmers sind Allrounder und besetzen jede seiner Leistungspositionen an Tasks dieses Krans (Kran-Zuweisung in
-          Tab Kalkulation, bei nur einem Kran automatisch). Von/bis leer = ganze Verfügbarkeit des Krans.
-        </div>
-      </Hinweis>
       {(() => {
         const luecken = kranLuecken(sim.tasks, kraene, sim.stammdaten ?? LEERE_STAMMDATEN, sim.kalender ?? LEERER_KALENDER);
         const v = readOnly ? null : kranVerlaengernVorschlag(sim.tasks, kraene, luecken.ohneKran);

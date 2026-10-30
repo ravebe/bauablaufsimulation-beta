@@ -793,6 +793,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
           </CockpitAbschnitt>
           <div ref={kranplanungRef} />
           <CockpitAbschnitt titel="Kräne & Personal" eingeklappt={!!eingeklappt["kraene"]} onToggle={() => toggleEingeklappt("kraene")}
+            hinweis={<>Je Kran die Verfügbarkeit und darunter das Personal je Unternehmer. Die Summe ist die Höchstzahl der Leute, die pro Tag unter diesem Kran an kranpflichtigen Arbeiten arbeiten (beim Optimieren höchstens 1–2 mehr, wenn sonst Leute untätig wären). Leute desselben Unternehmers sind Allrounder und besetzen jede seiner Leistungspositionen an Tasks dieses Krans (Kran-Zuweisung in Tab Kalkulation, bei nur einem Kran automatisch). Von/bis leer = ganze Verfügbarkeit des Krans.</>}
             aktionen={onZuKranoptik && <button type="button" className="tc-btn-secondary" onClick={onZuKranoptik} title="Zu Tab AVOR → Kranoptik: Kranstunden und Personal je Kran im Zeitverlauf" style={{ fontSize: 11, padding: "2px 8px" }}>Zur Kranoptik →</button>}>
             <KranPersonalEditor sim={sim} updateSim={updateSim} readOnly={readOnly}
               bekannteUnternehmer={unternehmerDerRaten} alleUnternehmer={alleUnternehmer} onZuKranoptik={onZuKranoptik} />

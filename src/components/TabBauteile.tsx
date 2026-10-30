@@ -406,14 +406,15 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                       <button
                         style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", cursor: "pointer" }}
                         onClick={() => setAutoVorgaengerOffen(o => !o)}>
-                        <div style={{ fontSize: 11, fontWeight: 500, color: "var(--tc-text)" }}>Auto-Vorgänger {autoVorgaengerOffen ? "▾" : "▸"}</div>
-                        <Hinweis style={{ marginTop: 2 }}><div style={{ fontSize: 9, color: "var(--tc-text-3)", whiteSpace: "normal", maxWidth: 320 }}>
+                        <Hinweis kopf={<div style={{ fontSize: 11, fontWeight: 500, color: "var(--tc-text)" }}>Auto-Vorgänger {autoVorgaengerOffen ? "▾" : "▸"}</div>}>
+                          <div style={{ maxWidth: 300 }}>
                           Verknüpft Tasks und Gruppen automatisch — wahlweise der Gantt-Reihenfolge nach (Task 2 ← Task 1, Task 3 ← Task 2 …, alles
                           nacheinander) oder nach den aktuellen Terminen (jeder Task bekommt den Task, der als letzter vor seinem Start endet;
                           was gleichzeitig läuft, bleibt parallel; Tasks ohne Termine der Gantt-Reihenfolge nach). Gruppen nur mit ihren
                           Geschwistern. Automatische Vorgänger erscheinen blau und werden beim erneuten Ausführen neu bestimmt; von Hand
                           gesetzte (schwarz) und Tasks mit Vorgängern vom Optimieren bleiben unverändert.
-                        </div></Hinweis>
+                          </div>
+                        </Hinweis>
                       </button>
                       {autoVorgaengerOffen && (
                         <div style={{ display: "flex", gap: 4, padding: "0 14px 8px" }}>
@@ -429,10 +430,11 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                     <button
                       style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", textAlign: "left", cursor: "pointer", borderBottom: "0.5px solid #eef1f4" }}
                       onClick={() => { folgeTasksNeuAusrichten(); setWerkzeugOffen(false); }}>
-                      <div style={{ fontSize: 11, fontWeight: 500, color: "var(--tc-text)" }}>Folge-Tasks neu ausrichten</div>
-                      <Hinweis style={{ marginTop: 2 }}><div style={{ fontSize: 9, color: "var(--tc-text-3)", whiteSpace: "normal", maxWidth: 320 }}>
+                      <Hinweis kopf={<div style={{ fontSize: 11, fontWeight: 500, color: "var(--tc-text)" }}>Folge-Tasks neu ausrichten</div>}>
+                        <div style={{ maxWidth: 300 }}>
                         Jeder Nachfolger beginnt am Tag nach dem Ende seines Vorgängers plus Wartetage (Kalendertage, auch Wochenende/Feiertage/Ferien zählen als Wartezeit); fällt der Start auf einen freien Tag, rückt er auf den nächsten Arbeitstag. Die Dauer in Arbeitstagen bleibt.
-                      </div></Hinweis>
+                        </div>
+                      </Hinweis>
                     </button>
                   )}
                   {zeitplanStatus && (
@@ -440,15 +442,21 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                       <button
                         style={{ display: "block", width: "100%", padding: "8px 14px", background: "none", border: "none", borderTop: "0.5px solid #eef1f4", textAlign: "left", cursor: "pointer" }}
                         onClick={() => { auslastungVorschauOeffnen(aktiveSim.autoNachfuehren?.reihenfolge, aktiveSim.autoNachfuehren?.luecken ?? true); if (zeitplanStatus.bereit) setWerkzeugOffen(false); }}>
-                        <div style={{ fontSize: 11, fontWeight: 500, color: zeitplanStatus.bereit ? "var(--tc-text)" : "#9aa5b0" }}>Auslastung optimieren</div>
+                        {(() => {
+                          const titel = <div style={{ fontSize: 11, fontWeight: 500, color: zeitplanStatus.bereit ? "var(--tc-text)" : "#9aa5b0" }}>Auslastung optimieren</div>;
+                          return zeitplanStatus.bereit ? (
+                            <Hinweis kopf={titel}>
+                              <div style={{ maxWidth: 300 }}>
+                              {mitKranPersonal
+                                ? "Plant die Tasks so, dass das Personal unter jedem Kran (Tab Ressourcen → Kräne & Personal) möglichst voll arbeitet — Leute desselben Unternehmers als Allrounder, höchstens das Personal unter dem Kran (1–2 mehr nur, wenn sonst Leute untätig wären). Arbeitsablauf je Leistungsposition, Vorgänger und Wartetage bleiben massgebend. Mit Vorschau."
+                                : "Je Gewerk + Unternehmer arbeitet eine Kolonne voll, immer an einer Arbeit gleichzeitig und am selben Tag weiter zur nächsten; was im Arbeitstag keinen Platz hat, geht am nächsten Tag weiter. Vorgänger und Wartetage bleiben massgebend. Mit Vorschau."}
+                              {" Im Dialog auch «Nur Dauern übernehmen»: berechnete Dauer je Task, Reihenfolge und Vorgänger bleiben."}
+                              </div>
+                            </Hinweis>
+                          ) : titel;
+                        })()}
                         {!zeitplanStatus.bereit && <div style={{ fontSize: 9, color: "var(--tc-text-3)", marginTop: 2 }}>Klicken für Details, was dafür noch fehlt.</div>}
                         {aktiveSim?.autoNachfuehren && <div style={{ fontSize: 9, marginTop: 2, color: "var(--tc-blue)", fontWeight: 600, whiteSpace: "normal", maxWidth: 320 }}>Automatisch nachführen ist an — Änderungen werden sofort neu optimiert (ausschalten im Dialog).</div>}
-                        {zeitplanStatus.bereit && <Hinweis style={{ marginTop: 2 }}><div style={{ fontSize: 9, color: "var(--tc-text-3)", whiteSpace: "normal", maxWidth: 320 }}>
-                          {mitKranPersonal
-                              ? "Plant die Tasks so, dass das Personal unter jedem Kran (Tab Ressourcen → Kräne & Personal) möglichst voll arbeitet — Leute desselben Unternehmers als Allrounder, höchstens das Personal unter dem Kran (1–2 mehr nur, wenn sonst Leute untätig wären). Arbeitsablauf je Leistungsposition, Vorgänger und Wartetage bleiben massgebend. Mit Vorschau."
-                              : "Je Gewerk + Unternehmer arbeitet eine Kolonne voll, immer an einer Arbeit gleichzeitig und am selben Tag weiter zur nächsten; was im Arbeitstag keinen Platz hat, geht am nächsten Tag weiter. Vorgänger und Wartetage bleiben massgebend. Mit Vorschau."}
-                          {" Im Dialog auch «Nur Dauern übernehmen»: berechnete Dauer je Task, Reihenfolge und Vorgänger bleiben."}
-                        </div></Hinweis>}
                         {zeitplanAenderungen && (
                           <div style={{ fontSize: 10, color: "#d9622b", marginTop: 4, maxWidth: 320, whiteSpace: "normal" }}>
                             {abweichendeTasks.length} Task{abweichendeTasks.length === 1 ? " weicht" : "s weichen"} von der berechneten Dauer ab: {abweichendeTasks.slice(0, 6).map(t => t.name).join(", ")}{abweichendeTasks.length > 6 ? ` … und ${abweichendeTasks.length - 6} weitere` : ""}
@@ -552,17 +560,8 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
             onClick={e => e.stopPropagation()}>
             {/* Kopf: bleibt immer sichtbar */}
             <div style={{ padding: "12px 16px 10px", borderBottom: "1px solid var(--tc-border-light)", flexShrink: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
-                <div style={{ fontSize: 16, fontWeight: 700, color: "var(--tc-text)", flex: 1 }}>Auslastung optimieren</div>
-                <button className="tc-btn-ghost" style={{ fontSize: 14, padding: "2px 8px" }} onClick={() => setAuslastungVorschau(null)} title="Schliessen">✕</button>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
-                {([["optimieren", "Optimieren", "Personal und Kranzeit planen: Reihenfolge, parallele Arbeiten und Verstärkung so, dass das Personal möglichst voll arbeitet"],
-                  ["dauern", "Nur Dauern übernehmen", "Jeder Task bekommt seine berechnete Dauer aus Tab Kalkulation, Folge-Tasks rücken entlang der Vorgänger nach — Reihenfolge und Vorgänger bleiben, keine Personalplanung"]] as const).map(([m, label, title]) => (
-                  <button key={m} title={title} onClick={() => auslastungVorschauOeffnen(reihenfolge, luecken, m)} style={wahl(modus === m)}>{label}</button>
-                ))}
-              </div>
-              <Hinweis style={{ marginTop: 6 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 10 }}>
+                <Hinweis style={{ flex: 1, minWidth: 0 }} kopf={<div style={{ fontSize: 16, fontWeight: 700, color: "var(--tc-text)" }}>Auslastung optimieren</div>}>
                 <div style={{ fontSize: 11, color: "var(--tc-text-2)", lineHeight: 1.55 }}>
                   {nurDauern ? <>
                     Jeder Task bekommt seine berechnete Dauer aus Tab Kalkulation (Menge × Leistungswert ÷ Min. Personen). Folge-Tasks rücken
@@ -589,7 +588,15 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                     Kräne & Personal) arbeiten die Leute eines Unternehmers unter dem Kran zusätzlich als Allrounder.
                   </>}
                 </div>
-              </Hinweis>
+                </Hinweis>
+                <button className="tc-btn-ghost" style={{ fontSize: 14, padding: "2px 8px" }} onClick={() => setAuslastungVorschau(null)} title="Schliessen">✕</button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+                {([["optimieren", "Optimieren", "Personal und Kranzeit planen: Reihenfolge, parallele Arbeiten und Verstärkung so, dass das Personal möglichst voll arbeitet"],
+                  ["dauern", "Nur Dauern übernehmen", "Jeder Task bekommt seine berechnete Dauer aus Tab Kalkulation, Folge-Tasks rücken entlang der Vorgänger nach — Reihenfolge und Vorgänger bleiben, keine Personalplanung"]] as const).map(([m, label, title]) => (
+                  <button key={m} title={title} onClick={() => auslastungVorschauOeffnen(reihenfolge, luecken, m)} style={wahl(modus === m)}>{label}</button>
+                ))}
+              </div>
             </div>
 
             {/* Einstellungen: scrollt, wenn der Platz nicht reicht */}
@@ -619,7 +626,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                       <input type="checkbox" checked={luecken} onChange={e => auslastungVorschauOeffnen(reihenfolge, e.target.checked)} />
                       Lücken füllen
                     </label>
-                    <Hinweis inZeile style={{ marginLeft: "auto" }}>
+                    <Hinweis inZeile>
                       Wäre Personal unter dem Kran untätig, beginnen Tasks ohne Vorgänger früher als bisher geplant (frühester Start zuerst) —
                       sonst frühestens an ihrem bisherigen Start, und das Personal bleibt so lange untätig.
                     </Hinweis>
@@ -630,7 +637,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                     <input type="checkbox" checked={autoNachfuehren} onChange={e => setAutoNachfuehren(e.target.checked)} />
                     Automatisch nachführen
                   </label>
-                  <Hinweis inZeile style={{ marginLeft: "auto" }}>
+                  <Hinweis inZeile>
                     Nach jeder Änderung (Termine, Mengen, Tab Ressourcen, Kräne & Personal) werden die betroffenen Tasks und ihre Nachfolger
                     sofort mit diesen Einstellungen neu optimiert — die übrigen behalten ihren Ablauf. Von Hand verschobene Tasks beginnen
                     frühestens am neuen Start, können aber später rutschen, wenn Personal oder Kran dann besetzt sind. Gilt für diese

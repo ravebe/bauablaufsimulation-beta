@@ -236,9 +236,9 @@ export default function AttributTaskErzeugung({ api, sim, onUpdate, done }: Prop
               onClick={() => { setOffen(false); setBestaetigen(false); }}>✕</button>
           </div>
 
-          <div style={{ color: "var(--tc-text-3)", marginBottom: 6, fontSize: 10 }}>
-            Wähle ein Attribut für den Tasknamen sowie mindestens ein weiteres Attribut zur Gruppierung.
-            <Hinweis>
+          <div style={{ color: "var(--tc-text-3)", marginBottom: 6, fontSize: 10, display: "flex", flexWrap: "wrap", alignItems: "center", gap: "2px 6px" }}>
+            <span>Wähle ein Attribut für den Tasknamen sowie mindestens ein weiteres Attribut zur Gruppierung.</span>
+            <Hinweis inZeile>
               Für jede vorkommende Werte-Kombination wird ein eigener Task erzeugt; nur Bauteile mit Werten
               für alle gewählten Attribute werden zugeordnet. Je mehr Attribute gewählt sind, desto mehr (kleinere) Tasks entstehen.
             </Hinweis>

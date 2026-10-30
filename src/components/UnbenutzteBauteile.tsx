@@ -95,14 +95,11 @@ export function UnbenutzteDetail({ api, sim, alleGuids, art, selGuids, readOnly,
   const knopf = { fontSize: 10, padding: "3px 8px" } as const;
   return (
     <div className="detail-section">
-      <div className="detail-header">
+      <div className="detail-header" style={{ flexWrap: "wrap" }}>
         <span style={{ fontSize: 11, color: "#555", marginRight: 2 }}>{art === "offen" ? "○" : "⊘"}</span>
         <span className="detail-task-name">{art === "offen" ? "Noch nicht verknüpft" : "Aus Simulation entfernt"}</span>
         <span style={{ fontSize: 9, color: "var(--tc-blue)", fontWeight: 500 }}>⬡ {art === "offen" && !alleGuids ? "…" : guids.length}</span>
-      </div>
-
-      <div className="detail-block" style={{ fontSize: 10, color: "var(--tc-text-2)", lineHeight: 1.5 }}>
-        <Hinweis>
+        <Hinweis inZeile>
           {art === "offen"
             ? "Bauteile der Modelle, die noch keinem Task zugeordnet sind. Entfernte Bauteile werden beim Aktivieren der Simulation ausgeblendet und nirgends gerechnet."
             : "Diese Bauteile sind ausgeblendet und werden nicht gerechnet. Wieder aufgenommen kommen sie zurück in ihren bisherigen Task (falls es ihn noch gibt)."}

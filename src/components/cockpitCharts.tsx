@@ -3,6 +3,7 @@
 // — die App hat aktuell keinen Dark-Mode).
 import { useState, useEffect, useRef } from "react";
 import { fmtZahl } from "./zahlFormat";
+import { HinweisKnopf, HinweisText } from "./Hinweis";
 import { nsKey } from "../types";
 import type { Kalender } from "./kalenderHelpers";
 import { istArbeitstag, getKW } from "./kalenderHelpers";
@@ -962,17 +963,24 @@ export function useEingeklappt(projectId: string | null | undefined, namespace: 
   return { eingeklappt, toggle };
 }
 
-/** Ein-/ausklappbarer Cockpit-Abschnitt (Diagramm-Titel mit Dreieck-Toggle, optional Aktionen rechts). */
-export function CockpitAbschnitt({ titel, eingeklappt, onToggle, aktionen, children }: { titel: string; eingeklappt: boolean; onToggle: () => void; aktionen?: React.ReactNode; children: React.ReactNode }) {
+/** Ein-/ausklappbarer Cockpit-Abschnitt (Diagramm-Titel mit Dreieck-Toggle, optional ? mit Erklärung rechts vom Titel und
+ *  Aktionen rechts). */
+export function CockpitAbschnitt({ titel, eingeklappt, onToggle, aktionen, hinweis, children }: { titel: string; eingeklappt: boolean; onToggle: () => void;
+  aktionen?: React.ReactNode; hinweis?: React.ReactNode; children: React.ReactNode }) {
+  const [hinweisOffen, setHinweisOffen] = useState(false);
   return (
     <div style={{ marginBottom: 20 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: eingeklappt ? 0 : 6 }}>
-        <div onClick={onToggle} style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", userSelect: "none" }}>
-          <span style={{ display: "inline-block", transform: `scaleX(1.6) rotate(${eingeklappt ? -90 : 0}deg)`, transition: "transform .15s", fontSize: 9, color: FARBEN.textMuted }}>▼</span>
-          <span style={{ fontSize: 10, fontWeight: 600, color: FARBEN.textMuted, letterSpacing: ".5px" }}>{titel.toUpperCase()}</span>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: eingeklappt && !hinweisOffen ? 0 : 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <div onClick={onToggle} style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", userSelect: "none" }}>
+            <span style={{ display: "inline-block", transform: `scaleX(1.6) rotate(${eingeklappt ? -90 : 0}deg)`, transition: "transform .15s", fontSize: 9, color: FARBEN.textMuted }}>▼</span>
+            <span style={{ fontSize: 10, fontWeight: 600, color: FARBEN.textMuted, letterSpacing: ".5px" }}>{titel.toUpperCase()}</span>
+          </div>
+          {hinweis && <HinweisKnopf offen={hinweisOffen} onToggle={() => setHinweisOffen(o => !o)} />}
         </div>
         {aktionen}
       </div>
+      {hinweis && hinweisOffen && <HinweisText style={{ marginTop: 0, marginBottom: 8 }}>{hinweis}</HinweisText>}
       {!eingeklappt && children}
     </div>
   );

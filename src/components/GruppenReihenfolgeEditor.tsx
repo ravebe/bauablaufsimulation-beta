@@ -25,7 +25,7 @@ export default function GruppenReihenfolgeEditor({ wert, stammdaten, onChange }:
   }
   return (
     <div style={{ marginTop: 6, padding: "8px 10px", background: "#fff", border: "1px solid var(--tc-border-light)", fontSize: 11 }}>
-      <Hinweis>
+      <Hinweis kopf={<span style={{ fontWeight: 600, color: "var(--tc-text)" }}>Reihenfolge nach Gruppen</span>}>
         Wer weiter vorne steht, bekommt zuerst Personal — Stufe für Stufe von oben nach unten (z.B. zuerst Etappe, dann Geschoss, dann
         Bauteilart), bei Gleichstand der kritische Pfad. Weich: ist in der vorderen Gruppe gerade nichts möglich (Vorgänger, Wartetage,
         Kran), arbeiten die Leute schon in der nächsten — so gehen sie von selbst zur nächsten Bauteilart, ins nächste Geschoss oder in

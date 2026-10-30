@@ -159,20 +159,19 @@ export default function IfcExportDialog({ sim, updateSim, api, geladeneModelle, 
       <div style={{ background: "#fff", borderRadius: 8, width: 560, maxWidth: "92vw", maxHeight: "85vh", overflowY: "auto",
         boxShadow: "0 8px 30px rgba(0,0,0,.25)", fontFamily: "var(--tc-font)" }}
         onClick={e => e.stopPropagation()}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid var(--tc-border-light)" }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "var(--tc-text)" }}>IFC 4D-Export</div>
-          <button className="tc-btn-ghost" style={{ fontSize: 14, padding: "2px 8px" }} onClick={schliessen} disabled={laeuft}
-            title={laeuft ? "Bitte warten, bis der Vorgang abgeschlossen ist" : undefined}>✕</button>
-        </div>
-
-        <div style={{ padding: "14px 18px" }}>
-          <Hinweis style={{ marginBottom: 12 }}><div style={{ fontSize: 11, color: "var(--tc-text-2)", lineHeight: 1.5 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "14px 18px", borderBottom: "1px solid var(--tc-border-light)" }}>
+          <Hinweis style={{ flex: 1, minWidth: 0 }} kopf={<div style={{ fontSize: 16, fontWeight: 700, color: "var(--tc-text)" }}>IFC 4D-Export</div>}>
             Ergänzt die Original-IFC je Modell um den Bauablauf dieser Simulation (Terminplan, Vorgänge, Termine,
             Vorgänger, Hierarchie, Bauteil-Zuordnung, Kalender) — Schema IFC4 oder IFC2X3 wird automatisch erkannt.
             Jedes zugeordnete Bauteil erhält zusätzlich das Property Set <b>Bauablauf_4D</b>.
             <br /><b>In Connect übernehmen</b> lädt die Datei als neue Version des Modells hoch — die Simulation bleibt so lange auf der bisherigen
             Version, bis Connect die neue konvertiert hat und du beim Modell mit ⟳ aktualisierst. <b>Herunterladen</b> speichert sie als <b>…_4D.ifc</b>.
-          </div></Hinweis>
+          </Hinweis>
+          <button className="tc-btn-ghost" style={{ fontSize: 14, padding: "2px 8px" }} onClick={schliessen} disabled={laeuft}
+            title={laeuft ? "Bitte warten, bis der Vorgang abgeschlossen ist" : undefined}>✕</button>
+        </div>
+
+        <div style={{ padding: "14px 18px" }}>
 
           {modellIds.length === 0 && (
             <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>Diese Simulation hat noch keine Modelle bzw. Bauteile.</div>

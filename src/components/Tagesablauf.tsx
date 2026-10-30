@@ -117,13 +117,13 @@ export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeG
         info={<>— {zeilen.length} Task{zeilen.length === 1 ? "" : "s"}, fertig nach {fmtZahl(plan.dauer)} h
           {ueberzogen && <span style={{ color: FARBEN.status.critical, fontWeight: 600 }}> ({fmtZahl(plan.dauer - std)} h nach Arbeitsende)</span>}</>} />
       {!zu.ablauf && (<>
-        <div style={{ color: FARBEN.textSekundaer, marginBottom: 6, lineHeight: 1.5 }}>
-          {veraltet.length === 0 && zeilen.every(z => z.quelle === "optimiert")
+        <div style={{ color: FARBEN.textSekundaer, marginBottom: 6, lineHeight: 1.5, display: "flex", flexWrap: "wrap", alignItems: "center", gap: "2px 6px" }}>
+          <span>{veraltet.length === 0 && zeilen.every(z => z.quelle === "optimiert")
             ? "Ablauf aus «Auslastung optimieren» — genau so geplant."
             : zeilen.some(z => z.quelle === "optimiert")
             ? "Tasks aus «Auslastung optimieren» genau so wie dort geplant, die übrigen mit denselben Regeln auf das freie Personal verteilt."
-            : "Noch nicht optimiert: die Arbeit jedes Tasks ist gleichmässig auf seine Tage im Gantt verteilt."}
-          <Hinweis>
+            : "Noch nicht optimiert: die Arbeit jedes Tasks ist gleichmässig auf seine Tage im Gantt verteilt."}</span>
+          <Hinweis inZeile>
             Die Arbeit des Tages laut Gantt, verteilt auf das Personal: {mitKranPersonal
               ? "das Personal unter dem Kran arbeitet als Team (Allrounder) — jede Arbeit mindestens mit ihren Min. Personen, freie Leute verstärken bis aufs Doppelte; ohne Kran je Gewerk + Unternehmer eine Kolonne mit den Min. Personen der jeweiligen Arbeit, die von Arbeit zu Arbeit geht."
               : "je Gewerk + Unternehmer eine Kolonne mit den Min. Personen der jeweiligen Arbeit, immer nur an einer Arbeit gleichzeitig — sie geht von Arbeit zu Arbeit."}
