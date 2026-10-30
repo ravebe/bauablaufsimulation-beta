@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { Task } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
-import { LEERE_STAMMDATEN, parseSchritt, schritteFuerTask, dauerBerechnetTask } from "./stammdatenHelpers";
+import { LEERE_STAMMDATEN, parseSchritt, schritteFuerTask, dauerBerechnetTask, schrittVerschieben, schrittText } from "./stammdatenHelpers";
 import { aufwandJeTagFuerTask } from "./avorHelpers";
 
 const KAL = { feiertage: [], ferien: [] };
@@ -53,5 +53,15 @@ describe("Arbeitsablauf je Kürzel", () => {
     expect(a.get("2026-11-10")).toEqual({ bew: 8 });
     expect(a.get("2026-11-11")).toEqual({ sch: 16 });
     expect(a.get("2026-11-12")).toEqual({ bet: 32 });
+  });
+});
+
+describe("Arbeitsablauf-Editor: Schritte verschieben", () => {
+  it("verschiebt alle Teile gemeinsam, Prozente bleiben", () => {
+    expect(schrittVerschieben(parseSchritt("2")!, -1)).toBe("1");
+    expect(schrittVerschieben(parseSchritt("1:70/4:30")!, 1)).toBe("2:70/5:30");
+    expect(schrittVerschieben(parseSchritt("1:70/4:30")!, -1)).toBeNull(); // nicht unter Schritt 1
+    expect(schrittText(parseSchritt("1/3")!)).toBe("1:50/3:50");
+    expect(parseSchritt(schrittVerschieben(parseSchritt("1:60/3:40")!, 2)!)).toEqual([{ schritt: 3, anteil: 0.6 }, { schritt: 5, anteil: 0.4 }]);
   });
 });

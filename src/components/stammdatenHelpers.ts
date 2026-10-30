@@ -378,6 +378,18 @@ export function parseSchritt(text: string | undefined): SchrittAnteil[] | null {
   return [...ergebnis.entries()].map(([schritt, anteil]) => ({ schritt, anteil })).sort((a, b) => a.schritt - b.schritt);
 }
 
+/** Schritte wieder als Eingabetext: "3" bzw. "1:70/4:30" */
+export function schrittText(teile: SchrittAnteil[]): string {
+  if (teile.length === 1) return String(teile[0].schritt);
+  return teile.map(t => `${t.schritt}:${Math.round(t.anteil * 10000) / 100}`).join("/");
+}
+
+/** Alle Teile einer Position um delta Schritte verschieben (nicht unter Schritt 1) — null, wenn das nicht geht */
+export function schrittVerschieben(teile: SchrittAnteil[], delta: number): string | null {
+  if (teile.some(t => t.schritt + delta < 1)) return null;
+  return schrittText(teile.map(t => ({ ...t, schritt: t.schritt + delta })));
+}
+
 /** Schritte einer Rate im Arbeitsablauf ihres Kürzels — ohne (gültige) Eingabe die Position ihrer Kategorie in Tab Ressourcen
  *  (1. Kategorie = Schritt 1 …), also wie bisher: Gewerke in der Reihenfolge der Kategorien nacheinander. */
 export function schritteFuerRate(stammdaten: Stammdaten, gewerkKey: string, rate: Rate | undefined): SchrittAnteil[] {
@@ -404,10 +416,14 @@ export function schritteFuerTask(task: Task, stammdaten: Stammdaten): TaskSchrit
     const rate = rateFuerKuerzel(gewerk, task.bauteilKuerzel);
     if (!menge || !rate?.leistungswertHProEinheit || !rate.anzahlPersonen) continue;
     const personenstunden = menge * rate.leistungswertHProEinheit;
-    for (const s of schritteFuerRate(stammdaten, gewerk.key, rate)) {
+    const teile = schritteFuerRate(stammdaten, gewerk.key, rate);
+    for (const s of teile) {
       const ph = personenstunden * s.anteil;
       const liste = jeSchritt.get(s.schritt) ?? [];
-      liste.push({ gewerkKey: gewerk.key, position: `${gewerk.key}::${task.bauteilKuerzel}`, unternehmer: rate.unternehmer?.trim() ?? "",
+      // aufgeteilte Position (z.B. Schalung 70 % in Schritt 1, 30 % Ausschalen in Schritt 4): je Teil eine eigene Kennung, sonst
+      // verwechseln Optimieren, Tagesablauf und AVOR die Teile (TagesLauf.pos); ungeteilte behalten die bisherige
+      const position = `${gewerk.key}::${task.bauteilKuerzel}${teile.length > 1 ? `::${s.schritt}` : ""}`;
+      liste.push({ gewerkKey: gewerk.key, position, unternehmer: rate.unternehmer?.trim() ?? "",
         kranpflichtig: istRateKranpflichtig(rate, gewerk), personenstunden: ph, kolonne: rate.anzahlPersonen, tage: ph / (rate.anzahlPersonen * std),
         kranAnteil: istRateKranpflichtig(rate, gewerk) ? kranzeitAnteil(rate) : 0 });
       jeSchritt.set(s.schritt, liste);

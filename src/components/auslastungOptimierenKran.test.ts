@@ -254,3 +254,29 @@ describe("Auslastung optimieren mit Kranpersonal", () => {
     }
   });
 });
+
+describe("Aufgeteilte Leistungsposition (z.B. Schalen 70 % → Bewehrung → Ausschalen 30 %)", () => {
+  const geteilt: Stammdaten = { ...stammdaten, gewerke: [
+    { ...stammdaten.gewerke[0], raten: [{ ...stammdaten.gewerke[0].raten[0], schritt: "1:70/3:30" }] },
+    { ...stammdaten.gewerke[1], raten: [{ ...stammdaten.gewerke[1].raten[0], schritt: "2" }] },
+  ] } as Stammdaten;
+  // Schalung 40 h (28 h Schalen, 12 h Ausschalen), Bewehrung 16 h
+  const ts = [task("A", { mengen: { sch: 40, bew: 16 } })];
+
+  for (const [name, k] of [["mit Kranpersonal", kran([{ unternehmer: "Bau AG", personen: 4 }, { unternehmer: "Eisen GmbH", personen: 2 }])], ["ohne Kranpersonal", []]] as const) {
+    it(`${name}: jeder Teil wird genau einmal geleistet, Ausschalen erst nach der Bewehrung`, () => {
+      const a = optimiereAuslastung(ts, geteilt, KAL, "tage", [...k])[0];
+      const laeufe = Object.entries(a.tagesArbeit!.tage).sort(([x], [y]) => x.localeCompare(y)).flatMap(([iso, l]) => l.map(x => ({ iso, ...x })));
+      const summe = (pos: string) => laeufe.filter(l => l.pos === pos).reduce((s, l) => s + l.ph, 0);
+      expect(summe("sch::W::1")).toBeCloseTo(28);
+      expect(summe("sch::W::3")).toBeCloseTo(12);
+      expect(summe("bew::W")).toBeCloseTo(16);
+      const zeit = (l: { iso: string; von: number }) => `${l.iso} ${String(l.von.toFixed(3)).padStart(8, "0")}`;
+      const bewEnde = laeufe.filter(l => l.pos === "bew::W").map(l => `${l.iso} ${String(l.bis.toFixed(3)).padStart(8, "0")}`).sort().pop()!;
+      expect(laeufe.filter(l => l.pos === "sch::W::3").every(l => zeit(l) >= bewEnde)).toBe(true);
+      // Tab AVOR liest denselben Ablauf: Schalung total 40 h, nicht doppelt
+      const total = [...aufwandJeTagFuerTask(a, geteilt, KAL).values()].reduce((s, w) => s + (w.sch ?? 0), 0);
+      expect(total).toBeCloseTo(40);
+    });
+  }
+});

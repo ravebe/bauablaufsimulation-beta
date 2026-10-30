@@ -790,7 +790,14 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                 const gi = stammdaten.gewerke.findIndex(g => g.key === gewerkKey);
                 const ri = gi >= 0 ? stammdaten.gewerke[gi].raten.findIndex(r => r.kuerzel === kuerzel) : -1;
                 if (ri >= 0) rateAendern(gi, ri, patch);
-              }} />
+              }}
+              onRatenAendern={aenderungen => speichern({
+                ...stammdaten,
+                gewerke: stammdaten.gewerke.map(g => ({ ...g, raten: g.raten.map(r => {
+                  const a = aenderungen.find(x => x.gewerkKey === g.key && x.kuerzel === r.kuerzel);
+                  return a ? { ...r, ...a.patch } : r;
+                }) })),
+              })} />
           </CockpitAbschnitt>
           <div ref={kranplanungRef} />
           <CockpitAbschnitt titel="Kräne & Personal" eingeklappt={!!eingeklappt["kraene"]} onToggle={() => toggleEingeklappt("kraene")}
