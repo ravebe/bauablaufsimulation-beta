@@ -38,6 +38,14 @@ describe("Ablaufregeln", () => {
     expect([...automatischeVorgaenger(tasks.find(t => t.id === "A-EG-ST")!)]).toEqual(["A-UG-DE"]);
   });
 
+  it("«ausser»: Wände auf der Bodenplatte warten nicht auf die Decke darunter", () => {
+    const ts = gantt().map(t => t.id === "A-EG-DE" ? { ...t, name: "Stütze EG Bopla", bauteilKuerzel: "ST" } : t);
+    const r = { ...platteDarunter, nach: [{ feld: "kuerzel" as const, werte: ["ST"] }, { feld: "name" as const, werte: ["bopla"], nicht: true }] };
+    const v = vorg(regelnAnwenden(ts, [r]).tasks);
+    expect(v["A-EG-ST"]).toBe("A-UG-DE");
+    expect(v["A-EG-DE"]).toBe("");
+  });
+
   it("unvollständige Regel (Bedingung ohne Wert) wirkt nicht", () => {
     const leer = { ...platteDarunter, vor: [{ feld: "kuerzel" as const, werte: [] }] };
     expect(regelnAnwenden(gantt(), [leer]).tasks).toEqual(gantt());

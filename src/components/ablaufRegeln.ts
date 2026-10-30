@@ -89,7 +89,7 @@ export function regelnAnwenden(tasks: Task[], regeln: AblaufRegel[], stammdaten:
     const echte = erg.filter((t, i) => !t.isGroup && !istGruppe(erg, i));
     const gruppen = gruppenJeTask(erg);
     const merk = new Map(echte.map(t => [t.id, merkmale(t, stammdaten)]));
-    const passt = (bed: RegelBedingung[], t: Task) => bed.every(b => bedingungTrifft(b, t, merk.get(t.id)!, gruppen.get(t.id)));
+    const passt = (bed: RegelBedingung[], t: Task) => bed.every(b => bedingungTrifft(b, t, merk.get(t.id)!, gruppen.get(t.id)) !== !!b.nicht);
     const ordnung = reihenfolge ?? gruppenReihenfolgeAbgleichen(undefined, erg);
     const rangAufEbene = (ebene: number, t: Task) => {
       const werte = ordnung.stufen.find(s => s.quelle === "gruppe" && s.ebene === ebene)?.werte ?? [];
@@ -231,9 +231,10 @@ export function regelOptionen(tasks: Task[], stammdaten: Stammdaten, reihenfolge
 export function auswahlText(bed: RegelBedingung[], optionen: RegelOptionen): string {
   const teile = bed.filter(b => b.werte.some(w => w.trim())).map(b => {
     const label = (w: string) => b.feld === "kategorie" ? optionen.kategorien.find(k => k.wert === w)?.label ?? w : b.feld === "name" ? `«${w}»` : w;
-    return `${b.feld === "gruppe" ? `Gruppe (Ebene ${b.ebene ?? 1})` : REGEL_FELD_LABEL[b.feld]} ${b.werte.filter(w => w.trim()).map(label).join(" / ")}`;
+    return `${b.nicht ? "ausser " : ""}${b.feld === "gruppe" ? `Gruppe (Ebene ${b.ebene ?? 1})` : REGEL_FELD_LABEL[b.feld]} ${b.werte.filter(w => w.trim()).map(label).join(" / ")}`;
   });
-  return teile.length ? teile.join(" · ") : "alle Tasks";
+  if (!teile.length) return "alle Tasks";
+  return (bed.every(b => b.nicht || !b.werte.some(w => w.trim())) ? "alle Tasks " : "") + teile.join(" · ");
 }
 
 export function bezugText(r: AblaufRegel): string {
@@ -256,7 +257,7 @@ export function parseRegelnJson(text: string): AblaufRegel[] {
   if (!Array.isArray(liste) || (!Array.isArray(raw) && raw.format !== FORMAT)) throw new Error("Ungültiges Format — keine Ablaufregeln-Datei");
   const bedingungen = (x: unknown): RegelBedingung[] => (Array.isArray(x) ? x : [])
     .filter(b => b && FELDER.includes(b.feld) && Array.isArray(b.werte))
-    .map(b => ({ feld: b.feld, ...(b.feld === "gruppe" ? { ebene: Number(b.ebene) || 1 } : {}), werte: b.werte.map(String) }));
+    .map(b => ({ feld: b.feld, ...(b.feld === "gruppe" ? { ebene: Number(b.ebene) || 1 } : {}), werte: b.werte.map(String), ...(b.nicht ? { nicht: true } : {}) }));
   return liste.filter(r => r && typeof r === "object").map((r, i): AblaufRegel => ({
     id: typeof r.id === "string" && r.id ? r.id : `regel-${Date.now()}-${i}`,
     name: typeof r.name === "string" ? r.name : `Regel ${i + 1}`,

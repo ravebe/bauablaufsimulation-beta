@@ -158,7 +158,8 @@ export interface SimProjekt {
  *  "darunter" = A liegt in der Gruppe direkt vor der Gruppe von B auf Ebene ebene (Reihenfolge wie im Dialog «Nach Gruppen», z.B.
  *  UG → EG → OG), auf den Ebenen darüber in derselben Gruppe. */
 export type RegelFeld = "gruppe" | "kuerzel" | "kategorie" | "unternehmer" | "name";
-export interface RegelBedingung { feld: RegelFeld; ebene?: number; werte: string[] }
+/** nicht = «ausser»: trifft zu, wenn KEINER der Werte passt */
+export interface RegelBedingung { feld: RegelFeld; ebene?: number; werte: string[]; nicht?: boolean }
 export interface AblaufRegel {
   id: string;
   name: string;

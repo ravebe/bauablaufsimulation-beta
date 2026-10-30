@@ -186,8 +186,14 @@ function AuswahlEditor({ bed, optionen, disabled, onChange }: { bed: RegelBeding
         return (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
             {i > 0 && <span style={{ color: "var(--tc-text-3)" }}>und</span>}
+            <select value={b.nicht ? "ausser" : "ist"} disabled={disabled} title="ist = einer der Werte trifft zu · ausser = keiner der Werte trifft zu"
+              style={{ ...feldStil, ...(b.nicht ? { color: "#b5452b", borderColor: "#e3b3a6", fontWeight: 600 } : {}) }}
+              onChange={e => { const { nicht: _alt, ...rest } = b; void _alt; setze(i, e.target.value === "ausser" ? { ...rest, nicht: true } : rest); }}>
+              <option value="ist">ist</option>
+              <option value="ausser">ausser</option>
+            </select>
             <select value={b.feld} disabled={disabled} style={feldStil}
-              onChange={e => { const feld = e.target.value as RegelFeld; setze(i, { feld, ...(feld === "gruppe" ? { ebene: optionen.ebenen[0]?.ebene ?? 1 } : {}), werte: [] }); }}>
+              onChange={e => { const feld = e.target.value as RegelFeld; setze(i, { feld, ...(feld === "gruppe" ? { ebene: optionen.ebenen[0]?.ebene ?? 1 } : {}), werte: [], ...(b.nicht ? { nicht: true } : {}) }); }}>
               {felder.map(f => <option key={f} value={f} disabled={f === "gruppe" && !optionen.ebenen.length}>{REGEL_FELD_LABEL[f]}</option>)}
             </select>
             {b.feld === "gruppe" && (
@@ -196,7 +202,8 @@ function AuswahlEditor({ bed, optionen, disabled, onChange }: { bed: RegelBeding
               </select>
             )}
             {b.werte.map((w, wi) => (
-              <span key={w + wi} style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "0 4px", border: "1px solid var(--tc-blue)", background: "var(--tc-blue-bg)", color: "var(--tc-blue)", whiteSpace: "nowrap" }}>
+              <span key={w + wi} style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "0 4px", whiteSpace: "nowrap",
+                ...(b.nicht ? { border: "1px solid #e3b3a6", background: "#fdf1ee", color: "#b5452b" } : { border: "1px solid var(--tc-blue)", background: "var(--tc-blue-bg)", color: "var(--tc-blue)" }) }}>
                 {wi > 0 && <span style={{ color: "var(--tc-text-3)" }}>oder</span>} {label(w)}
                 {!disabled && <button type="button" style={{ ...knopf, border: "none", background: "none", padding: 0 }} title="Wert entfernen"
                   onClick={() => setze(i, { ...b, werte: b.werte.filter((_, k) => k !== wi) })}>✕</button>}
@@ -217,6 +224,8 @@ function AuswahlEditor({ bed, optionen, disabled, onChange }: { bed: RegelBeding
       {!disabled && (
         <div>
           <button type="button" style={knopf} onClick={() => onChange([...bed, { feld: "kuerzel", werte: [] }])}>+ Bedingung</button>
+          <button type="button" style={{ ...knopf, marginLeft: 4 }} title="Ausnahme: Tasks, auf die einer der Werte zutrifft, gehören nicht dazu"
+            onClick={() => onChange([...bed, { feld: "name", werte: [], nicht: true }])}>+ ausser …</button>
         </div>
       )}
     </div>
