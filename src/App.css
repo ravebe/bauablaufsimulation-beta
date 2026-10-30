@@ -1,10 +1,13 @@
 /* 4D Bauablaufsimulation — Design V2 (Mockup Match) */
 *{box-sizing:border-box}
 
-/* Zahleneingabe ohne native Spinner-Pfeile (Mengen-Felder etc.) */
+/* Zahlenfelder überall ohne native Auf/Ab-Pfeile (Mausrad verändert sie ohnehin nicht, siehe main.tsx) — ausser .pfeile-immer
+   (Sekunden pro Tag in Tab Abspielen) */
+input[type="number"]:not(.pfeile-immer)::-webkit-outer-spin-button,
+input[type="number"]:not(.pfeile-immer)::-webkit-inner-spin-button,
 .no-spinner::-webkit-outer-spin-button,
 .no-spinner::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.no-spinner { -moz-appearance: textfield; appearance: textfield; }
+input[type="number"]:not(.pfeile-immer), .no-spinner { -moz-appearance: textfield; appearance: textfield; }
 
 /* Verstellbare Spalten: dünne Trennlinie immer sichtbar, blau beim Drüberfahren über den Grab-Bereich */
 .col-resize-handle::after {
