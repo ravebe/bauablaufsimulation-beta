@@ -33,14 +33,32 @@ describe("Reihenfolge nach Gruppen", () => {
     ]);
   });
 
-  it("gespeicherte Reihenfolge bleibt, neue Werte kommen hinten dazu, verschwundene fallen weg", () => {
+  it("gespeicherte Reihenfolge bleibt, neue Werte kommen an ihre Stelle laut Gantt, verschwundene fallen weg", () => {
     const gespeichert: GruppenReihenfolge = { stufen: [
       { quelle: "kuerzel", werte: ["D", "X", "W"], aktiv: true }, { quelle: "gruppe", ebene: 2, werte: ["EG"], aktiv: false }] };
     expect(gruppenReihenfolgeAbgleichen(gespeichert, gantt()).stufen).toEqual([
       { quelle: "kuerzel", werte: ["D", "W"], aktiv: true },
-      { quelle: "gruppe", ebene: 2, werte: ["EG", "UG"], aktiv: false },
+      { quelle: "gruppe", ebene: 2, werte: ["UG", "EG"], aktiv: false }, // UG steht im Gantt vor EG
       { quelle: "gruppe", ebene: 1, werte: ["Etappe A"], aktiv: true },
     ]);
+  });
+
+  it("neue Gruppe zuoberst im Gantt (z.B. Tiefbau) kommt vorne dazu, nicht hinten; Kürzel aus Tab Ressourcen erscheinen gleich", () => {
+    const ts = [gruppe("tb", "Tiefbau", 1), task("MB", "MB", { outlineLevel: 2 }), ...gantt()];
+    const gespeichert: GruppenReihenfolge = { stufen: [{ quelle: "gruppe", ebene: 1, werte: ["Etappe A"], aktiv: true }, { quelle: "kuerzel", werte: ["D", "W"], aktiv: true }] };
+    const erg = gruppenReihenfolgeAbgleichen(gespeichert, ts, ["W", "D", "NEU"]);
+    expect(erg.stufen[0].werte).toEqual(["Tiefbau", "Etappe A"]);
+    expect(erg.stufen.find(x => x.quelle === "kuerzel")!.werte).toEqual(["MB", "D", "W", "NEU"]);
+  });
+
+  it("Tasks ohne Vorgänger ab Projektbeginn: die Reihenfolge entscheidet, nicht die bisherige Lage im Gantt", () => {
+    // Magerbeton (Tiefbau) steht im Gantt spät, ist aber in der Reihenfolge vorne
+    const ts = [gruppe("tb", "Tiefbau", 1), task("MB", "W", { outlineLevel: 2, start: "2026-12-14", end: "2026-12-14" }), ...gantt()];
+    const reihenfolge = gruppenReihenfolgeAbgleichen(undefined, ts);
+    const ohne = optimiereAuslastung(ts, stammdaten, KAL, "tage", kraene, "gruppen", false, { gruppen: reihenfolge });
+    expect(ohne.find(t => t.id === "MB")!.start).toBe("2026-12-14"); // frühestens am bisherigen Start
+    const mit = optimiereAuslastung(ts, stammdaten, KAL, "tage", kraene, "gruppen", false, { gruppen: reihenfolge, abBeginn: true });
+    expect(termine(mit)).toEqual(["MB 2026-11-09", "UG-W 2026-11-10", "UG-D 2026-11-11", "EG-W 2026-11-12"]);
   });
 
   it("Rang: Tasks ausserhalb der Gruppen zuerst", () => {

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import type { AblaufRegel, RegelBedingung, RegelFeld, SimProjekt } from "../types";
 import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
 import { LEERER_KALENDER } from "./kalenderHelpers";
-import { gruppenReihenfolgeAbgleichen } from "./gruppenReihenfolge";
+import { bauablaufReihenfolge } from "./gruppenReihenfolge";
 import { regelnAnwenden, regelWirkt, regelOptionen, auswahlText, bezugText, REGEL_FELD_LABEL } from "./ablaufRegeln";
 import type { RegelOptionen } from "./ablaufRegeln";
 
@@ -17,7 +17,7 @@ interface Props { sim: SimProjekt; updateSim: (s: SimProjekt) => void; readOnly:
 export default function AblaufRegelnEditor({ sim, updateSim, readOnly }: Props) {
   const regeln = useMemo(() => sim.ablaufRegeln ?? [], [sim.ablaufRegeln]);
   const stammdaten = sim.stammdaten ?? LEERE_STAMMDATEN;
-  const reihenfolge = useMemo(() => gruppenReihenfolgeAbgleichen(sim.gruppenReihenfolge, sim.tasks), [sim.gruppenReihenfolge, sim.tasks]);
+  const reihenfolge = useMemo(() => bauablaufReihenfolge({ gruppenReihenfolge: sim.gruppenReihenfolge, tasks: sim.tasks, stammdaten: sim.stammdaten }), [sim.gruppenReihenfolge, sim.tasks, sim.stammdaten]);
   const optionen = useMemo(() => regelOptionen(sim.tasks, stammdaten, reihenfolge), [sim.tasks, stammdaten, reihenfolge]);
   // Wirkung: wie viele Vorgänger jede Regel setzt, Zirkelbezüge, zu viele Vorgänger
   const wirkung = useMemo(() => regelnAnwenden(sim.tasks, regeln, stammdaten, reihenfolge, sim.kalender ?? LEERER_KALENDER),

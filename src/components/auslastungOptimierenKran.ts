@@ -90,7 +90,10 @@ function laufAnhaengen(z: TaskZ, tag: number, l: TagesLauf) {
 /** Nachführen (nachfuehren.ts): nur = nur diese Tasks neu planen — alle übrigen behalten Termine und gespeicherten Ablauf
  *  (Task.tagesArbeit), der Personal, Kolonnen und Kranzeit belegt; untergrenze = diese Tasks beginnen frühestens an ihrem
  *  aktuellen Start, auch wenn ihre Vorgänger früher erlauben würden (von Hand verschoben). gruppen = Reihenfolge «Nach Gruppen». */
-export interface OptimierOptionen { nur?: Set<string>; untergrenze?: Set<string>; gruppen?: GruppenReihenfolge }
+/** abBeginn: Tasks ohne Vorgänger beginnen frühestens am Projektbeginn (frühester Start aller Tasks) statt an ihrem bisherigen
+ *  Start — wann sie drankommen, bestimmen dann Personal, Kran und Reihenfolge (z.B. «Nach Gruppen»), nicht die zufällige Lage im
+ *  Gantt. Von Hand verschobene (untergrenze) beginnen weiterhin frühestens an ihrem Start. */
+export interface OptimierOptionen { nur?: Set<string>; untergrenze?: Set<string>; gruppen?: GruppenReihenfolge; abBeginn?: boolean }
 
 /** lueckenFuellen: wäre Personal unter einem Kran sonst untätig, dürfen Tasks ohne Vorgänger früher als an ihrem bisherigen Start
  *  beginnen (frühester bisheriger Start zuerst) — nur mit Leuten aus dem Kran-Pool, nie über dem Personal des Krans. */
@@ -183,6 +186,8 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
     const eigen = naechsteArbeitszeit(startZeitpunkt(z.t), kalender);
     // von Hand verschoben (Nachführen): frühestens am eigenen Start, auch wenn die Vorgänger früher erlauben würden
     if (f && optionen.untergrenze?.has(z.t.id) && vergleicheZeitpunkte(eigen, f) > 0) f = eigen;
+    // ohne Vorgänger: ab Projektbeginn (abBeginn) oder frühestens am bisherigen Start
+    if (!f && optionen.abBeginn && !optionen.untergrenze?.has(z.t.id)) return 0;
     return aufRaster(minutenVon(f ?? eigen));
   };
   let vorgaengerGeaendert = true; // frühester Start nur neu prüfen, wenn seit dem letzten Mal ein Task eingeplant wurde

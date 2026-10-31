@@ -14,7 +14,7 @@ import { LEERE_STAMMDATEN, alleKuerzel } from "./stammdatenHelpers";
 import type { Kalender } from "./kalenderHelpers";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import { startZeitpunkt, vergleicheZeitpunkte } from "./zeitHelpers";
-import { gruppenJeTask, gruppenStruktur, gruppenReihenfolgeAbgleichen } from "./gruppenReihenfolge";
+import { gruppenJeTask, gruppenStruktur, gruppenReihenfolgeAbgleichen, bauablaufReihenfolge } from "./gruppenReihenfolge";
 
 export const REGEL_FELD_LABEL: Record<RegelFeld, string> = {
   gruppe: "Gruppe", kuerzel: "Bauteilart", kategorie: "Kategorie", unternehmer: "Unternehmer", name: "Task-Name enthält",
@@ -277,7 +277,7 @@ export function regelnAnwenden(tasks: Task[], regeln: AblaufRegel[], stammdaten:
 export function simRegelnAnwenden(sim: SimProjekt): SimProjekt {
   if (!sim.ablaufRegeln?.some(regelWirkt) &&!sim.tasks.some(t => t.regelVorgaenger?.length)) return sim;
   const { tasks } = regelnAnwenden(sim.tasks, sim.ablaufRegeln ?? [], sim.stammdaten ?? LEERE_STAMMDATEN,
-    gruppenReihenfolgeAbgleichen(sim.gruppenReihenfolge, sim.tasks), sim.kalender ?? LEERER_KALENDER);
+    bauablaufReihenfolge(sim), sim.kalender ?? LEERER_KALENDER);
   return tasks === sim.tasks ? sim : { ...sim, tasks };
 }
 

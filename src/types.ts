@@ -144,7 +144,9 @@ export interface SimProjekt {
   /** "Auslastung optimieren" → «Automatisch nachführen»: nach jeder Änderung (Termine, Mengen, Tab Ressourcen, Kräne & Personal)
    *  werden die betroffenen Tasks und ihre Nachfolger mit diesen Einstellungen neu optimiert (nachfuehren.ts), die übrigen
    *  behalten ihren Ablauf. Fehlt = aus. */
-  autoNachfuehren?: { reihenfolge: "kritischerPfad" | "startdatum" | "gantt" | "gruppen"; luecken: boolean };
+  autoNachfuehren?: { reihenfolge: "kritischerPfad" | "startdatum" | "gantt" | "gruppen"; luecken: boolean;
+    /** Tasks ohne Vorgänger ab Projektbeginn (OptimierOptionen.abBeginn) — fehlt = ein (Standard), false = frühestens am bisherigen Start */
+    abBeginn?: boolean };
   /** "Auslastung optimieren" → Reihenfolge «Nach Gruppen» (gruppenReihenfolge.ts): wer zuerst Personal bekommt — Stufe für Stufe
    *  (Gruppenebenen des Gantts, Bauteilart) in der hier festgelegten Reihenfolge der Werte. */
   gruppenReihenfolge?: GruppenReihenfolge;

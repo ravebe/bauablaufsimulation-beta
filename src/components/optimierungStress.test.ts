@@ -101,7 +101,7 @@ function projekt(seed: number, gross = false) {
   const reihenfolge = z.aus<OptimierReihenfolge>(["gruppen", "kritischerPfad", "startdatum", "gantt"]);
   const sim: SimProjekt = { id: "s", name: "Stress", erstelltAm: BASIS, tasks, modelle: [], stammdaten: sd, kalender: kal, kraene, ablaufRegeln: regeln,
     zeiteinheit: einheit === "tage" ? undefined : einheit } as SimProjekt;
-  return { sim, sd, kal, kraene, einheit, reihenfolge, luecken: z.ja(0.7), z };
+  return { sim, sd, kal, kraene, einheit, reihenfolge, luecken: z.ja(0.7), abBeginn: z.ja(0.5), z };
 }
 
 const zeit = (iso: string, h: number) => `${iso} ${h.toFixed(4).padStart(9, "0")}`;
@@ -160,26 +160,26 @@ describe("Stresstest Optimierung", () => {
   it(`${ANZAHL} zufällige Projekte: Regeln + Optimieren + Nachführen ohne Rechenfehler`, () => {
     let langsamste = { ms: 0, seed: 0 };
     for (let seed = 1; seed <= ANZAHL; seed++) {
-      const { sim, sd, kal, kraene, einheit, reihenfolge, luecken, z } = projekt(seed);
-      const info = `Seed ${seed} (${einheit}, ${reihenfolge}, ${kraene.length} Kräne):`;
+      const { sim, sd, kal, kraene, einheit, reihenfolge, luecken, abBeginn, z } = projekt(seed);
+      const info = `Seed ${seed} (${einheit}, ${reihenfolge}, ${kraene.length} Kräne${abBeginn ? ", ab Projektbeginn" : ""}):`;
       const t0 = performance.now();
       // 1. Regeln anwenden — stabil
       const s1 = simRegelnAnwenden(sim);
       expect(simRegelnAnwenden(s1), `${info} Regeln nicht stabil`).toBe(s1);
       // 2. Optimieren
       const gruppen = gruppenReihenfolgeAbgleichen(undefined, s1.tasks);
-      const erg = optimierungUebernehmen(s1.tasks, optimiereAuslastung(s1.tasks, sd, kal, einheit, kraene, reihenfolge, luecken, { gruppen }));
+      const erg = optimierungUebernehmen(s1.tasks, optimiereAuslastung(s1.tasks, sd, kal, einheit, kraene, reihenfolge, luecken, { gruppen, abBeginn }));
       const geplant = geplanteIds(erg, sd);
       pruefe(erg, sd, kal, geplant, info);
       // Regel-Vorgänger überleben das Optimieren, und es ist nichts mehr zu verschieben
       const s2 = simRegelnAnwenden({ ...s1, tasks: erg });
       expect(s2.tasks, `${info} Regeln nach dem Optimieren nicht stabil`).toBe(erg);
       // 3. Erneut optimieren ergibt dieselben Termine
-      const nochmal = optimiereAuslastung(erg, sd, kal, einheit, kraene, reihenfolge, luecken, { gruppen });
+      const nochmal = optimiereAuslastung(erg, sd, kal, einheit, kraene, reihenfolge, luecken, { gruppen, abBeginn });
       const abw = nochmal.filter((t, i) => t.start !== erg[i].start || t.end !== erg[i].end || t.startZeit !== erg[i].startZeit || t.endZeit !== erg[i].endZeit);
       expect(abw.map(t => t.id), `${info} erneutes Optimieren verschiebt Tasks`).toEqual([]);
       // 4. Nachführen nach einer Änderung (Menge eines Tasks), wie in useUndo.ts — danach stabil
-      const auto: SimProjekt = { ...s2, autoNachfuehren: { reihenfolge, luecken }, gruppenReihenfolge: gruppen };
+      const auto: SimProjekt = { ...s2, autoNachfuehren: { reihenfolge, luecken, ...(abBeginn ? {} : { abBeginn: false }) }, gruppenReihenfolge: gruppen };
       const ziel = [...geplant][z.int(0, Math.max(0, geplant.size - 1))];
       const geaendert: SimProjekt = { ...auto, tasks: auto.tasks.map(t => t.id === ziel && t.mengen ? { ...t, mengen: Object.fromEntries(Object.entries(t.mengen).map(([k, v]) => [k, v * 1.5 + 3])) } : t) };
       const nach = simNachfuehren(simRegelnAnwenden(geaendert));

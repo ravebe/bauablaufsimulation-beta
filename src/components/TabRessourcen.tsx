@@ -11,7 +11,7 @@ import ArbeitsablaufEditor from "./ArbeitsablaufEditor";
 import AblaufRegelnEditor from "./AblaufRegelnEditor";
 import GruppenReihenfolgeEditor from "./GruppenReihenfolgeEditor";
 import Hinweis from "./Hinweis";
-import { gruppenReihenfolgeAbgleichen } from "./gruppenReihenfolge";
+import { bauablaufReihenfolge } from "./gruppenReihenfolge";
 import { regelnAlsJson, parseBauablaufJson, simRegelnAnwenden } from "./ablaufRegeln";
 import { optimiereAuslastung, optimierungUebernehmen, terminSignatur } from "./auslastungOptimieren";
 import { pruefeZeitplanBereitschaft } from "./zeitplanUebernahmeHelpers";
@@ -186,7 +186,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   // optimieren. Ein Schritt für «Rückgängig».
   function bauablaufAktualisieren() {
     setBauablaufFehler(null); setBauablaufInfo(null);
-    const gruppenReihenfolge = gruppenReihenfolgeAbgleichen(sim!.gruppenReihenfolge, sim!.tasks);
+    const gruppenReihenfolge = bauablaufReihenfolge(sim!);
     const mitRegeln = simRegelnAnwenden({ ...sim!, gruppenReihenfolge });
     const status = pruefeZeitplanBereitschaft(mitRegeln.tasks, stammdaten);
     if (!status.bereit) {
@@ -198,7 +198,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     const reihenfolge = sim!.autoNachfuehren?.reihenfolge ?? "gruppen";
     const kal = sim!.kalender ?? LEERER_KALENDER;
     const ergebnis = optimiereAuslastung(mitRegeln.tasks, stammdaten, kal, sim!.zeiteinheit ?? "tage", sim!.kraene ?? [], reihenfolge,
-      sim!.autoNachfuehren?.luecken ?? true, { gruppen: reihenfolge === "gruppen" ? gruppenReihenfolge : undefined });
+      sim!.autoNachfuehren?.luecken ?? true, { gruppen: reihenfolge === "gruppen" ? gruppenReihenfolge : undefined, abBeginn: sim!.autoNachfuehren?.abBeginn !== false });
     const tasks = optimierungUebernehmen(mitRegeln.tasks, ergebnis);
     const verschoben = tasks.filter((t, i) => t.start !== sim!.tasks[i]?.start || t.end !== sim!.tasks[i]?.end || t.startZeit !== sim!.tasks[i]?.startZeit || t.endZeit !== sim!.tasks[i]?.endZeit).length;
     const ende = (ts: typeof tasks) => ts.reduce((m, t) => (!t.isGroup && t.end && t.end > m ? t.end : m), "");
@@ -210,7 +210,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
 
   // Bauablauf (Reihenfolge der Gruppen und Bauteilarten + Ablaufregeln) als Datei, siehe ablaufRegeln.ts
   function bauablaufExportieren() {
-    const url = URL.createObjectURL(new Blob([regelnAlsJson(sim!.ablaufRegeln ?? [], gruppenReihenfolgeAbgleichen(sim!.gruppenReihenfolge, sim!.tasks))], { type: "application/json" }));
+    const url = URL.createObjectURL(new Blob([regelnAlsJson(sim!.ablaufRegeln ?? [], bauablaufReihenfolge(sim!))], { type: "application/json" }));
     const a = document.createElement("a");
     a.href = url; a.download = `${sim!.name}_Bauablauf.json`; a.click();
     URL.revokeObjectURL(url);
@@ -913,7 +913,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
         <CockpitAbschnitt titel="2. Reihenfolge der Gruppen und Bauteilarten" eingeklappt={!!eingeklappt["gruppen"]} onToggle={() => toggleEingeklappt("gruppen")}
           hinweis={<>Weich: wer beim Optimieren mit Reihenfolge «Nach Gruppen» zuerst Personal bekommt — Stufe für Stufe von oben nach unten (z.B. zuerst Etappe, dann Geschoss, dann Bauteilart), bei Gleichstand der kritische Pfad. Ist in der vorderen Gruppe gerade nichts möglich, arbeiten die Leute schon in der nächsten. Die Reihenfolge der Werte einer Gruppenebene gilt zugleich als unten → oben für den Bezug «Gruppe darunter» der Ablaufregeln (z.B. UG → EG → 1.OG). Gleichnamige Gruppen zählen gleich (z.B. «UG» in jeder Etappe); Tasks ausserhalb der Gruppen kommen zuerst. Wirkt beim nächsten Optimieren.</>}>
           <div style={readOnly ? { pointerEvents: "none", opacity: 0.7 } : undefined}>
-            <GruppenReihenfolgeEditor wert={gruppenReihenfolgeAbgleichen(sim.gruppenReihenfolge, sim.tasks)} stammdaten={stammdaten}
+            <GruppenReihenfolgeEditor wert={bauablaufReihenfolge(sim)} stammdaten={stammdaten}
               onChange={g => updateSim({ ...sim!, gruppenReihenfolge: g })} />
           </div>
         </CockpitAbschnitt>

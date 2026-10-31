@@ -28,7 +28,7 @@ import Hinweis from "./Hinweis";
 import { autoVorgaengerSetzen } from "./autoVorgaenger";
 import { regelWirkt } from "./ablaufRegeln";
 import type { AutoVorgaengerModus } from "./autoVorgaenger";
-import { gruppenReihenfolgeAbgleichen } from "./gruppenReihenfolge";
+import { bauablaufReihenfolge } from "./gruppenReihenfolge";
 import { stufenTitel } from "./gruppenReihenfolge";
 import PunkteMenu from "./PunkteMenu";
 import { exportEintraege } from "./exportEintraege";
@@ -81,7 +81,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   // je Zeiteinheit (aktuelle + feinere) ein Ergebnis — feinere erlauben Nachfolger am selben Tag, siehe auslastungVorschauOeffnen
   // modus "dauern" = nur berechnete Dauer übernehmen (früher eigener Menüpunkt "Berechnete Dauer übernehmen"): Reihenfolge und
   // Vorgänger bleiben, keine Personalplanung — siehe berechneZeitplanUebernahme
-  const [auslastungVorschau, setAuslastungVorschau] = useState<{ modus: "optimieren" | "dauern"; reihenfolge: OptimierReihenfolge; luecken: boolean; gruppen: GruppenReihenfolge; ergebnisse: { einheit: Zeiteinheit; tasks: Task[] }[] } | null>(null);
+  const [auslastungVorschau, setAuslastungVorschau] = useState<{ modus: "optimieren" | "dauern"; reihenfolge: OptimierReihenfolge; luecken: boolean; abBeginn: boolean; gruppen: GruppenReihenfolge; ergebnisse: { einheit: Zeiteinheit; tasks: Task[] }[] } | null>(null);
   // «Automatisch nachführen» im Dialog (SimProjekt.autoNachfuehren, siehe nachfuehren.ts) — gilt beim Übernehmen
   const [autoNachfuehren, setAutoNachfuehren] = useState(false);
   const [neuInputOffen, setNeuInputOffen] = useState(false);
@@ -305,27 +305,30 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   // Tages wechseln und Nachfolger noch am selben Tag beginnen. Ist das Bauende damit früher, schlägt die Vorschau die Umstellung vor.
   // luecken: Tasks ohne Vorgänger dürfen früher beginnen, wenn Personal unter dem Kran sonst untätig wäre (nur mit Kranpersonal)
   // gruppen: Reihenfolge «Nach Gruppen» (gruppenReihenfolge.ts) — aus Tab Ressourcen → Bauablauf, mit dem aktuellen Gantt abgeglichen
-  function auslastungVorschauOeffnen(reihenfolge: OptimierReihenfolge = "gruppen", luecken = true, modus: "optimieren" | "dauern" = "optimieren") {
+  // abBeginn: Tasks ohne Vorgänger ab Projektbeginn statt frühestens am bisherigen Start (Standard ein; fehlt = wie bisher im Dialog)
+  function auslastungVorschauOeffnen(reihenfolge: OptimierReihenfolge = "gruppen", luecken = true, modus: "optimieren" | "dauern" = "optimieren", abBeginn?: boolean) {
     if (!aktiveSim || !zeitplanStatus?.bereit) { setZeitplanHinweisOffen(o => !o); return; }
     if (!auslastungVorschau) setAutoNachfuehren(!!aktiveSim.autoNachfuehren);
-    const gruppen = gruppenReihenfolgeAbgleichen(aktiveSim.gruppenReihenfolge, aktiveSim.tasks);
+    const gruppen = bauablaufReihenfolge(aktiveSim);
+    abBeginn ??= auslastungVorschau?.abBeginn ?? aktiveSim.autoNachfuehren?.abBeginn !== false;
     const aktuell: Zeiteinheit = aktiveSim.zeiteinheit ?? "tage";
     if (modus === "dauern") {
-      setAuslastungVorschau({ modus, reihenfolge, luecken, gruppen, ergebnisse: [{ einheit: aktuell,
+      setAuslastungVorschau({ modus, reihenfolge, luecken, abBeginn, gruppen, ergebnisse: [{ einheit: aktuell,
         tasks: berechneZeitplanUebernahme(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN, aktiveSim.kalender ?? LEERER_KALENDER, aktiveSim.zeiteinheit) }] });
       return;
     }
     const einheiten = [aktuell, ...(["halbtage", "stunden"] as const).filter(e => feinerAls(e, aktuell))];
-    setAuslastungVorschau({ modus, reihenfolge, luecken, gruppen, ergebnisse: einheiten.map(einheit => ({ einheit,
+    setAuslastungVorschau({ modus, reihenfolge, luecken, abBeginn, gruppen, ergebnisse: einheiten.map(einheit => ({ einheit,
       tasks: optimiereAuslastung(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN, aktiveSim.kalender ?? LEERER_KALENDER, einheit, aktiveSim.kraene ?? [],
-        reihenfolge, luecken, { gruppen }) })) });
+        reihenfolge, luecken, { gruppen, abBeginn }) })) });
   }
   function auslastungUebernehmen(einheit: Zeiteinheit, tasks: Task[], optimiert = true) {
     if (!aktiveSim || !auslastungVorschau) return;
     // nur Termine, Vorgänger, Optimierungs-Stand und Ablauf je Tag in den aktuellen Stand übernehmen — Bauteile (auch aus der
     // Simulation entfernte), Mengen usw. bleiben, wie sie jetzt sind, selbst wenn sich seit dem Öffnen der Vorschau etwas geändert hat
     tasks = optimierungUebernehmen(aktiveSim.tasks, tasks);
-    const auto = optimiert && autoNachfuehren ? { reihenfolge: auslastungVorschau.reihenfolge, luecken: auslastungVorschau.luecken } : undefined;
+    const auto = optimiert && autoNachfuehren ? { reihenfolge: auslastungVorschau.reihenfolge, luecken: auslastungVorschau.luecken,
+      ...(auslastungVorschau.abBeginn ? {} : { abBeginn: false }) } : undefined;
     updateSim({ ...aktiveSim, tasks, zeiteinheit: einheit === "tage" ? undefined : einheit, optimiertStand: optimiert ? terminSignatur(tasks) : undefined,
       autoNachfuehren: auto });
     setAuslastungVorschau(null);
@@ -565,7 +568,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
         const ende = (ts: Task[]) => ts.reduce((m, t) => (!t.isGroup && t.end && t.end > m ? t.end : m), "");
         const datum = (iso: string) => iso ? iso.split("-").reverse().join(".") : "–";
         // Vorschlag: gröbste Zeiteinheit mit dem frühesten Bauende (aktuelle Einheit, solange sie gleich früh fertig wird)
-        const { ergebnisse, reihenfolge, luecken, modus } = auslastungVorschau;
+        const { ergebnisse, reihenfolge, luecken, abBeginn, modus } = auslastungVorschau;
         const nurDauern = modus === "dauern";
         const aktuellesErgebnis = ergebnisse[0];
         const fruehestesEnde = ergebnisse.map(e => ende(e.tasks)).reduce((a, b) => (b < a ? b : a));
@@ -687,7 +690,19 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                 )}
 
                 <div style={abschnitt}>OPTIONEN</div>
-                {mitKranPersonal && (
+                <div style={optionZeile}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontWeight: 600, color: "var(--tc-text)" }}>
+                    <input type="checkbox" checked={abBeginn} onChange={e => auslastungVorschauOeffnen(reihenfolge, luecken, modus, e.target.checked)} />
+                    Tasks ohne Vorgänger ab Projektbeginn
+                  </label>
+                  <Hinweis inZeile>
+                    Tasks ohne Vorgänger beginnen so früh, wie Personal, Kran und Reihenfolge es erlauben (ab dem frühesten Start aller
+                    Tasks) — wann sie drankommen, bestimmt die Reihenfolge (z.B. «Nach Gruppen»: Tiefbau vor Etappe A), nicht ihre bisherige
+                    Lage im Gantt. Aus: frühestens an ihrem bisherigen Start (z.B. bewusst später gesetzte Arbeiten). Von Hand verschobene
+                    Tasks beginnen beim Nachführen weiterhin frühestens an ihrem neuen Start.
+                  </Hinweis>
+                </div>
+                {mitKranPersonal && !abBeginn && (
                   <div style={optionZeile}>
                     <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontWeight: 600, color: "var(--tc-text)" }}>
                       <input type="checkbox" checked={luecken} onChange={e => auslastungVorschauOeffnen(reihenfolge, e.target.checked)} />
@@ -747,7 +762,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                     <span>Keine höhere Auslastung möglich.</span>
                     <Hinweis inZeile>
                       Es sind nicht genug Arbeiten gleichzeitig frei — Vorgänger und Wartetage
-                      {luecken || !mitKranPersonal ? "" : ", bisherige Starttermine (→ «Lücken füllen»)"} halten das Personal zurück.
+                      {abBeginn ? "" : ", bisherige Starttermine (→ «Tasks ohne Vorgänger ab Projektbeginn»)"} halten das Personal zurück.
                       Die Tagesangaben in Tab AVOR zeigen, an welchen Tagen Leute untätig sind.
                     </Hinweis>
                   </div>

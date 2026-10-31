@@ -3,9 +3,10 @@
 // Etappe A → B, UG → EG → OG, Boden → Wände → Stützen → Decken); bei Gleichstand der kritische Pfad. Weich: ist in der vorderen
 // Gruppe gerade nichts möglich (Vorgänger, Wartetage, Kran), arbeiten die Leute schon in der nächsten — so geht das Personal von
 // selbst zur nächsten Bauteilart, ins nächste Geschoss oder in die nächste Etappe, sobald es dort keine Arbeit mehr hat.
-import type { Task, GruppenReihenfolge, PrioStufe } from "../types";
+import type { Task, GruppenReihenfolge, PrioStufe, SimProjekt } from "../types";
 import { istGruppe, getOutlineLevel } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
+import { LEERE_STAMMDATEN, alleKuerzel } from "./stammdatenHelpers";
 import { ablaufText } from "./stammdatenHelpers";
 
 /** Gruppen-Namen je Gliederungsebene der Übergruppen eines Tasks (Ebene → Name) */
@@ -22,8 +23,9 @@ export function gruppenJeTask(tasks: Task[]): Map<string, Map<number, string>> {
 }
 
 /** Vorhandene Stufen mit ihren Werten in Gantt-Reihenfolge: je Gliederungsebene mit Gruppen (die Tasks enthalten) eine Stufe,
- *  zuletzt die Bauteilart (Kürzel). */
-export function gruppenStruktur(tasks: Task[]): PrioStufe[] {
+ *  zuletzt die Bauteilart (Kürzel der Tasks, danach weitere aus zusatzKuerzel — die Leistungspositionen aus Tab Ressourcen, damit
+ *  eine neue Leistungsposition gleich erscheint, auch bevor ein Task sie trägt). */
+export function gruppenStruktur(tasks: Task[], zusatzKuerzel: string[] = []): PrioStufe[] {
   const jeEbene = new Map<number, string[]>();
   const kuerzel: string[] = [];
   const gruppen = gruppenJeTask(tasks);
@@ -36,6 +38,7 @@ export function gruppenStruktur(tasks: Task[]): PrioStufe[] {
     }
     if (t.bauteilKuerzel && !kuerzel.includes(t.bauteilKuerzel)) kuerzel.push(t.bauteilKuerzel);
   });
+  for (const k of zusatzKuerzel) if (k.trim() && !kuerzel.includes(k)) kuerzel.push(k);
   return [
     ...[...jeEbene.entries()].sort((a, b) => a[0] - b[0]).map(([ebene, werte]): PrioStufe => ({ quelle: "gruppe", ebene, werte, aktiv: true })),
     ...(kuerzel.length > 0 ? [{ quelle: "kuerzel", werte: kuerzel, aktiv: true } as PrioStufe] : []),
@@ -44,18 +47,34 @@ export function gruppenStruktur(tasks: Task[]): PrioStufe[] {
 
 const stufenSchluessel = (s: PrioStufe) => s.quelle === "gruppe" ? `gruppe|${s.ebene}` : "kuerzel";
 
-/** Gespeicherte Reihenfolge mit dem aktuellen Gantt abgleichen: gespeicherte Stufen und Werte in ihrer Reihenfolge, neue Werte
- *  hinten angehängt, nicht mehr vorhandene entfernt; neue Stufen hinten (Bauteilart bleibt zuletzt, wenn sie es war). */
-export function gruppenReihenfolgeAbgleichen(gespeichert: GruppenReihenfolge | undefined, tasks: Task[]): GruppenReihenfolge {
-  const struktur = gruppenStruktur(tasks);
+/** Werte abgleichen: gespeicherte (noch vorhandene) in ihrer Reihenfolge; ein neuer Wert kommt an seine Stelle laut Gantt — direkt
+ *  nach dem Wert, der im Gantt vor ihm steht, ohne einen solchen ganz nach vorne (z.B. eine neue Gruppe «Tiefbau» zuoberst im Gantt
+ *  → vorne, eine neue «Etappe C» nach Etappe B → hinter B). */
+function werteAbgleichen(gespeichert: string[], gantt: string[], ansEnde: Set<string> = new Set()): string[] {
+  const erg = gespeichert.filter(w => gantt.includes(w));
+  gantt.forEach((w, i) => {
+    if (erg.includes(w)) return;
+    if (ansEnde.has(w)) { erg.push(w); return; } // Leistungsposition ohne Task: hinten
+    const davor = gantt.slice(0, i).reverse().find(x => erg.includes(x));
+    erg.splice(davor === undefined ? 0 : erg.indexOf(davor) + 1, 0, w);
+  });
+  return erg;
+}
+
+/** Gespeicherte Reihenfolge mit dem aktuellen Gantt abgleichen: gespeicherte Stufen und Werte in ihrer Reihenfolge, neue Werte an
+ *  ihrer Stelle laut Gantt (werteAbgleichen), nicht mehr vorhandene entfernt; neue Stufen hinten (Bauteilart bleibt zuletzt, wenn
+ *  sie es war). zusatzKuerzel siehe gruppenStruktur. */
+export function gruppenReihenfolgeAbgleichen(gespeichert: GruppenReihenfolge | undefined, tasks: Task[], zusatzKuerzel: string[] = []): GruppenReihenfolge {
+  const struktur = gruppenStruktur(tasks, zusatzKuerzel);
   if (!gespeichert) return { stufen: struktur };
   const vorhanden = new Map(struktur.map(s => [stufenSchluessel(s), s]));
+  const ohneTask = new Set(zusatzKuerzel.filter(k => !tasks.some(t => t.bauteilKuerzel === k)));
   const stufen: PrioStufe[] = [];
   for (const g of gespeichert.stufen) {
     const s = vorhanden.get(stufenSchluessel(g));
     if (!s) continue;
     vorhanden.delete(stufenSchluessel(g));
-    stufen.push({ ...g, werte: [...g.werte.filter(w => s.werte.includes(w)), ...s.werte.filter(w => !g.werte.includes(w))] });
+    stufen.push({ ...g, werte: werteAbgleichen(g.werte, s.werte, s.quelle === "kuerzel" ? ohneTask : undefined) });
   }
   for (const s of vorhanden.values()) {
     const kuerzelIdx = stufen.findIndex(x => x.quelle === "kuerzel");
@@ -99,4 +118,10 @@ export function stufenTitel(s: PrioStufe): string {
 export function wertTitel(s: PrioStufe, wert: string, stammdaten: Stammdaten): string {
   const ablauf = s.quelle === "kuerzel" ? ablaufText(stammdaten, wert) : "";
   return (ablauf ? `${wert}: ${ablauf}\n` : "") + "Ziehen, um die Reihenfolge zu ändern";
+}
+
+/** Reihenfolge der Gruppen und Bauteilarten einer Simulation (Tab Ressourcen → Bauablauf → 2.): gespeicherte, mit dem Gantt und den
+ *  Leistungspositionen aus Tab Ressourcen abgeglichen — überall gleich verwendet (Bauablauf, Optimieren, Nachführen, Ablaufregeln). */
+export function bauablaufReihenfolge(sim: Pick<SimProjekt, "gruppenReihenfolge" | "tasks" | "stammdaten">): GruppenReihenfolge {
+  return gruppenReihenfolgeAbgleichen(sim.gruppenReihenfolge, sim.tasks, alleKuerzel(sim.stammdaten ?? LEERE_STAMMDATEN));
 }

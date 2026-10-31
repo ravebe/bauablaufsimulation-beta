@@ -13,7 +13,7 @@ import { kranstundenProKranUndBucket, kranPersonalMaxImBereich, RICHTWERT_PERSON
 import { KranLueckenHinweis } from "./KranPersonalEditor";
 import Tagesablauf from "./Tagesablauf";
 import { optimiereAuslastung } from "./auslastungOptimieren";
-import { gruppenReihenfolgeAbgleichen } from "./gruppenReihenfolge";
+import { bauablaufReihenfolge } from "./gruppenReihenfolge";
 import { personenstundenProKranUndBucket, personalRichtwertJeBucket } from "./kapazitaetsCheckHelpers";
 import { dreiDZustandAufTagSetzen, tagVonDatum } from "./dreiDHeuteHelper";
 import type { ApiInstance } from "../hooks/useApi";
@@ -101,7 +101,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
     if (gantt == null) return null;
     const reihenfolge = sim?.autoNachfuehren?.reihenfolge ?? "gruppen";
     const optimiert = optimiereAuslastung(tasks, stammdaten, kalender, sim?.zeiteinheit ?? "tage", kraene, reihenfolge, sim?.autoNachfuehren?.luecken ?? true,
-      { gruppen: reihenfolge === "gruppen" ? gruppenReihenfolgeAbgleichen(sim?.gruppenReihenfolge, tasks) : undefined });
+      { gruppen: reihenfolge === "gruppen" && sim ? bauablaufReihenfolge(sim) : undefined, abBeginn: sim?.autoNachfuehren?.abBeginn !== false });
     return { gantt, optimiert: durchschnittlicheAuslastung(optimiert, kraene, stammdaten, kalender) };
   }, [tasks, kraene, stammdaten, kalender, sim?.zeiteinheit, sim?.autoNachfuehren, sim?.gruppenReihenfolge]);
   // Tagesplan (tagesplan.ts) für jeden Tag einmal: Spalte Dauer, Tagesablauf, rote Tage im Diagramm (Arbeit nach Arbeitsende) und
