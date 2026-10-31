@@ -12,7 +12,10 @@ import AblaufRegelnEditor from "./AblaufRegelnEditor";
 import GruppenReihenfolgeEditor from "./GruppenReihenfolgeEditor";
 import Hinweis from "./Hinweis";
 import { gruppenReihenfolgeAbgleichen } from "./gruppenReihenfolge";
-import { regelnAlsJson, parseBauablaufJson } from "./ablaufRegeln";
+import { regelnAlsJson, parseBauablaufJson, simRegelnAnwenden } from "./ablaufRegeln";
+import { optimiereAuslastung, optimierungUebernehmen, terminSignatur } from "./auslastungOptimieren";
+import { pruefeZeitplanBereitschaft } from "./zeitplanUebernahmeHelpers";
+import { LEERER_KALENDER } from "./kalenderHelpers";
 import EntwurfInput from "./EntwurfInput";
 import { fmtZahl } from "./zahlFormat";
 import type { Arbeitszeit } from "./zeitHelpers";
@@ -92,6 +95,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     return () => clearTimeout(id);
   }, [bauablaufSignal]); // eslint-disable-line react-hooks/exhaustive-deps
   const [bauablaufFehler, setBauablaufFehler] = useState<string | null>(null);
+  const [bauablaufInfo, setBauablaufInfo] = useState<string | null>(null); // Ergebnis von «Aktualisieren»
   const bauablaufImportRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (!kranplanungSignal) return;
@@ -174,6 +178,34 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     } finally {
       if (importInputRef.current) importInputRef.current.value = "";
     }
+  }
+
+  // «Aktualisieren»: Änderungen aus anderen Orten (Gantt, Kalkulation, Ressourcen) und dem Bauablauf sofort übernehmen — Reihenfolge
+  // mit dem Gantt abgleichen und speichern, Ablaufregeln anwenden (vor dem Optimieren, damit ihre Vorgänger gelten) und mit den
+  // Einstellungen des Dialogs Auslastung optimieren (des automatischen Nachführens, sonst «Nach Gruppen» mit Lücken füllen) neu
+  // optimieren. Ein Schritt für «Rückgängig».
+  function bauablaufAktualisieren() {
+    setBauablaufFehler(null); setBauablaufInfo(null);
+    const gruppenReihenfolge = gruppenReihenfolgeAbgleichen(sim!.gruppenReihenfolge, sim!.tasks);
+    const mitRegeln = simRegelnAnwenden({ ...sim!, gruppenReihenfolge });
+    const status = pruefeZeitplanBereitschaft(mitRegeln.tasks, stammdaten);
+    if (!status.bereit) {
+      updateSim(mitRegeln);
+      setBauablaufFehler(status.keineTasks ? "Reihenfolge und Regeln übernommen — keine Tasks zum Optimieren."
+        : `Reihenfolge und Regeln übernommen, aber nicht neu optimiert: ${status.fehlerTasks.length} Task(s) mit Fehler in der Mengenermittlung (Tab Kalkulation): ${status.fehlerTasks.slice(0, 5).map(t => t.name).join(", ")}${status.fehlerTasks.length > 5 ? " …" : ""}`);
+      return;
+    }
+    const reihenfolge = sim!.autoNachfuehren?.reihenfolge ?? "gruppen";
+    const kal = sim!.kalender ?? LEERER_KALENDER;
+    const ergebnis = optimiereAuslastung(mitRegeln.tasks, stammdaten, kal, sim!.zeiteinheit ?? "tage", sim!.kraene ?? [], reihenfolge,
+      sim!.autoNachfuehren?.luecken ?? true, { gruppen: reihenfolge === "gruppen" ? gruppenReihenfolge : undefined });
+    const tasks = optimierungUebernehmen(mitRegeln.tasks, ergebnis);
+    const verschoben = tasks.filter((t, i) => t.start !== sim!.tasks[i]?.start || t.end !== sim!.tasks[i]?.end || t.startZeit !== sim!.tasks[i]?.startZeit || t.endZeit !== sim!.tasks[i]?.endZeit).length;
+    const ende = (ts: typeof tasks) => ts.reduce((m, t) => (!t.isGroup && t.end && t.end > m ? t.end : m), "");
+    const datum = (iso: string) => iso ? iso.split("-").reverse().join(".") : "–";
+    updateSim({ ...mitRegeln, tasks, optimiertStand: terminSignatur(tasks) });
+    setBauablaufInfo(verschoben === 0 ? "Aktualisiert — keine Termine geändert."
+      : `Aktualisiert — ${verschoben} Task${verschoben === 1 ? "" : "s"} neu terminiert, Bauende ${datum(ende(sim!.tasks))} → ${datum(ende(tasks))}.`);
   }
 
   // Bauablauf (Reihenfolge der Gruppen und Bauteilarten + Ablaufregeln) als Datei, siehe ablaufRegeln.ts
@@ -839,8 +871,16 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
             Gruppen und Bauteilarten (Vorrang beim Optimieren — wer zuerst Personal bekommt — und zugleich unten → oben für «Gruppe
             darunter» in den Regeln), <b>3.</b> Ablaufregeln (zwingend zwischen Tasks, ergeben Vorgänger). Wie gerechnet wird
             (Optimieren / Nur Dauern, Reihenfolge, Lücken füllen, Automatisch nachführen), steht im Dialog Auslastung optimieren
-            (Tab Bauteile → 🔧). ⋮ = Stufe 2 und 3 als Datei exportieren/importieren; der Arbeitsablauf wird mit der Ressourcen-Datei übertragen.
+            (Tab Bauteile → 🔧). «Aktualisieren» übernimmt alle Änderungen sofort: Reihenfolge mit dem Gantt abgleichen (neue Gruppen
+            und Bauteilarten hinten angehängt), Ablaufregeln anwenden und mit den Einstellungen des Dialogs neu optimieren — ein Schritt
+            für «Rückgängig». ⋮ = Stufe 2 und 3 als Datei exportieren/importieren; der Arbeitsablauf wird mit der Ressourcen-Datei übertragen.
           </Hinweis>
+          {!readOnly && (
+            <button className="tc-btn-primary" style={{ fontSize: 11, padding: "0 10px", height: 24, flexShrink: 0 }} onClick={bauablaufAktualisieren}
+              title="Änderungen aus Gantt, Kalkulation, Ressourcen und Bauablauf sofort übernehmen: Reihenfolge abgleichen, Ablaufregeln anwenden und neu optimieren (Rückgängig oben in der Kopfzeile)">
+              ↻ Aktualisieren
+            </button>
+          )}
           <PunkteMenu title="Bauablauf exportieren / importieren" abschnitte={[
             { titel: "Export", eintraege: [{ label: "JSON", onClick: bauablaufExportieren, title: "Reihenfolge der Gruppen und Bauteilarten + Ablaufregeln als Datei — für andere Simulationen oder Projekte" }] },
             ...(!readOnly ? [{ titel: "Import", eintraege: [{ label: "JSON", onClick: () => bauablaufImportRef.current?.click(), title: "Aus einer exportierten Bauablauf-Datei übernehmen (ersetzt Reihenfolge und Regeln)" }] }] : []),
@@ -849,6 +889,8 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
         <input ref={bauablaufImportRef} type="file" accept=".json" style={{ display: "none" }}
           onChange={e => e.target.files?.[0] && bauablaufImportieren(e.target.files[0])} />
         {bauablaufFehler && <div className="alert err" style={{ marginBottom: 10 }}>! {bauablaufFehler}</div>}
+        {bauablaufInfo && <div style={{ marginBottom: 10, padding: "6px 10px", background: "var(--tc-blue-bg)", border: "1px solid #c5dbef", fontSize: 11, color: "var(--tc-text-2)" }}>
+          {bauablaufInfo} <span style={{ color: "var(--tc-text-3)" }}>Rückgängig oben in der Kopfzeile.</span></div>}
         {stammdaten.gewerke.length > 0 && (<>
             <CockpitAbschnitt titel="1. Innerhalb eines Bauteils — Arbeitsablauf je Leistungsposition" eingeklappt={!!eingeklappt["ablauf"]} onToggle={() => toggleEingeklappt("ablauf")}
               hinweis={<>Zwingend: in welcher Reihenfolge die Leistungspositionen an einem Task arbeiten (z.B. Schalung → Bewehrung → Beton). Gilt für berechnete Dauer, Personal je Tag und Optimierung. Wird mit der Ressourcen-Datei übertragen.</>}>
