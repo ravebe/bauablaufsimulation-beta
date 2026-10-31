@@ -11,8 +11,8 @@ const regel = (p: Partial<AblaufRegel>): AblaufRegel => ({ id: "r", name: "r", a
 
 // Etappe A / B (Ebene 1), darin UG / EG (Ebene 2); Bauteilarten DE = Decke, ST = Stütze
 const gantt = (): Task[] => [
-  task("KAN-A", "2026-11-02", "2026-11-03", { name: "Kanalisation A" }),
-  task("MB-A", "2026-11-02", "2026-11-03", { name: "Magerbeton A" }),
+  task("KAN-A", "2026-11-02", "2026-11-03", { name: "Kanalisation A", berechneteDauerManuell: 2 }),
+  task("MB-A", "2026-11-02", "2026-11-03", { name: "Magerbeton A", berechneteDauerManuell: 2 }),
   gruppe("Etappe A", 1),
   gruppe("UG", 2),
   task("A-UG-DE", "2026-11-09", "2026-11-10", { bauteilKuerzel: "DE", outlineLevel: 3 }),
@@ -44,6 +44,17 @@ describe("Ablaufregeln", () => {
     const v = vorg(regelnAnwenden(ts, [r]).tasks);
     expect(v["A-EG-ST"]).toBe("A-UG-DE");
     expect(v["A-EG-DE"]).toBe("");
+  });
+
+  it("Meilensteine und Platzhalter (ohne Leistungsposition und feste Dauer) bleiben stehen — als «Erst fertig» gelten sie", () => {
+    const ts = [...gantt(), task("MS", "2026-11-02", "2026-11-02", { name: "Abnahme", meilenstein: true }), task("PH", "2026-11-02", "2026-11-04", { name: "Platzhalter Reserve" })];
+    const alle = regel({ vor: [{ feld: "kuerzel", werte: ["DE"] }], nach: [{ feld: "name", werte: ["Abnahme", "Reserve", "Kanalisation"] }] });
+    const v = vorg(regelnAnwenden(ts, [alle]).tasks);
+    expect(v["MS"]).toBe("");
+    expect(v["PH"]).toBe("");
+    expect(v["KAN-A"]).not.toBe(""); // feste Dauer → wird verknüpft
+    const vorher = regel({ vor: [{ feld: "name", werte: ["Abnahme"] }], nach: [{ feld: "kuerzel", werte: ["ST"] }] });
+    expect(vorg(regelnAnwenden(ts, [vorher]).tasks)["A-EG-ST"]).toBe("MS");
   });
 
   it("unvollständige Regel (Bedingung ohne Wert) wirkt nicht", () => {

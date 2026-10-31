@@ -21,7 +21,8 @@ export function nachzufuehrendeTasks(tasks: Task[], stammdaten: Stammdaten, kale
   const kraeneText = kranSchluessel(kraene);
   const ergebnis = new Set<string>();
   tasks.forEach((t, i) => {
-    if (t.isGroup || istGruppe(tasks, i) || t.meilenstein || !t.start || !t.end || !hatKalkulationsWerte(t, stammdaten)) return;
+    if (t.isGroup || istGruppe(tasks, i) || t.meilenstein || !hatKalkulationsWerte(t, stammdaten)) return;
+    if (!t.start || !t.end) { ergebnis.add(t.id); return; } // ohne Termine, aber mit Dauer: einplanen
     if (schritteFuerTask(t, stammdaten).length === 0) return; // nur Dauer, kein Ablauf
     if (!gueltigeTagesArbeit(t, stammdaten, kalender) || t.tagesArbeit!.kraene !== kraeneText) ergebnis.add(t.id);
   });
@@ -46,7 +47,7 @@ export function simNachfuehren(sim: SimProjekt): SimProjekt {
   // von Hand verschoben (Start anders als beim Optimieren): frühestens am neuen Start
   const untergrenze = new Set(sim.tasks.filter(t => nur.has(t.id) && t.optimierung && zpText(t) !== t.optimierung.start).map(t => t.id));
   const ergebnis = optimiereAuslastung(sim.tasks, stammdaten, kalender, sim.zeiteinheit ?? "tage", kraene, e.reihenfolge, e.luecken,
-    { nur, untergrenze, gruppen: e.reihenfolge === "gruppen" ? bauablaufReihenfolge(sim) : undefined, abBeginn: e.abBeginn !== false });
+    { nur, untergrenze, gruppen: e.reihenfolge === "gruppen" ? bauablaufReihenfolge(sim) : undefined, abBeginn: e.abBeginn !== false, baubeginn: sim.baubeginn });
   const tasks = optimierungUebernehmen(sim.tasks, ergebnis);
   return { ...sim, tasks, optimiertStand: terminSignatur(tasks) };
 }

@@ -93,13 +93,21 @@ function laufAnhaengen(z: TaskZ, tag: number, l: TagesLauf) {
 /** abBeginn: Tasks ohne Vorgänger beginnen frühestens am Projektbeginn (frühester Start aller Tasks) statt an ihrem bisherigen
  *  Start — wann sie drankommen, bestimmen dann Personal, Kran und Reihenfolge (z.B. «Nach Gruppen»), nicht die zufällige Lage im
  *  Gantt. Von Hand verschobene (untergrenze) beginnen weiterhin frühestens an ihrem Start. */
-export interface OptimierOptionen { nur?: Set<string>; untergrenze?: Set<string>; gruppen?: GruppenReihenfolge; abBeginn?: boolean }
+/*  baubeginn (YYYY-MM-DD, SimProjekt.baubeginn): Projektbeginn — kein geplanter Task beginnt davor; ohne gilt der früheste Start aller
+ *  Tasks. Tasks ohne Termine im Gantt werden mitgeplant, wenn sie eine Dauer haben (Menge oder feste Dauer «Berechnet»), ab Baubeginn
+ *  bzw. nach ihren Vorgängern; Meilensteine und Platzhalter (ohne Menge und ohne feste Dauer) bleiben, wo sie sind. */
+export interface OptimierOptionen { nur?: Set<string>; untergrenze?: Set<string>; gruppen?: GruppenReihenfolge; abBeginn?: boolean; baubeginn?: string }
+
+const ohneTermin = (t: Task) => !t.start || !t.end;
+const heuteIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 
 /** lueckenFuellen: wäre Personal unter einem Kran sonst untätig, dürfen Tasks ohne Vorgänger früher als an ihrem bisherigen Start
  *  beginnen (frühester bisheriger Start zuerst) — nur mit Leuten aus dem Kran-Pool, nie über dem Personal des Krans. */
 export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender, einheit: Zeiteinheit, kraene: Kran[],
   reihenfolge: OptimierReihenfolge = "kritischerPfad", lueckenFuellen = false, optionen: OptimierOptionen = {}): Task[] {
-  const echte = tasks.map((t, i) => ({ t, i })).filter(({ t, i }) => !t.isGroup && !istGruppe(tasks, i) && !!t.start && !!t.end);
+  // mit Terminen, oder ohne Termine aber mit Dauer (wird ab Baubeginn eingeplant) — Meilensteine ohne Termine bleiben ohne
+  const echte = tasks.map((t, i) => ({ t, i })).filter(({ t, i }) => !t.isGroup && !istGruppe(tasks, i)
+    && (!ohneTermin(t) || (!t.meilenstein && hatKalkulationsWerte(t, stammdaten))));
   if (echte.length === 0) return tasks;
   const byId = new Map(tasks.map(t => [t.id, t]));
   const std = stammdaten.arbeitszeitStdProTag;
@@ -123,7 +131,10 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
   }
 
   // Achse wie in auslastungOptimieren.ts: Arbeitsminuten ab Arbeitsbeginn des frühesten Starts
-  const frueh = echte.map(({ t }) => startZeitpunkt(t)).reduce((a, b) => vergleicheZeitpunkte(a, b) <= 0 ? a : b);
+  // (frühester Start der Tasks mit Terminen bzw. Baubeginn; ganz ohne Termine heute)
+  const datiert = echte.filter(({ t }) => !ohneTermin(t)).map(({ t }) => startZeitpunkt(t));
+  if (optionen.baubeginn) datiert.push({ datum: optionen.baubeginn, min: ARBEITSBEGINN_MIN });
+  const frueh = datiert.length > 0 ? datiert.reduce((a, b) => vergleicheZeitpunkte(a, b) <= 0 ? a : b) : { datum: heuteIso(), min: ARBEITSBEGINN_MIN };
   const anker = naechsteArbeitszeit({ datum: frueh.datum, min: ARBEITSBEGINN_MIN }, kalender);
   const raster = schrittMinuten(einheit);
   const aufRaster = (m: number) => Math.ceil(m / raster - 1e-9) * raster;
@@ -134,6 +145,7 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
     return einheit === "tage" ? { datum: p.datum, min: ARBEITSBEGINN_MIN } : { datum: p.datum, min: rasteUhrzeit(p.min, "start", einheit) };
   };
   const endeAus = (m: number): Zeitpunkt => endeAusArbeitsMinuten(anker, m, kalender);
+  const beginnM = optionen.baubeginn ? aufRaster(minutenVon(naechsteArbeitszeit({ datum: optionen.baubeginn, min: ARBEITSBEGINN_MIN }, kalender))) : 0;
   // Zeitschritte wie im Tagesablauf: N je Arbeitstag, je Person Std./Tag ÷ N Stunden Arbeit (auch wenn die Kalender-Arbeitszeit abweicht)
   const N = slotsProTag();
   const SLOT = MIN_PRO_ARBEITSTAG / N;
@@ -183,12 +195,12 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
       const fs = folgeStartZeitpunkt(e, v.lagDays, kalender);
       if (!f || vergleicheZeitpunkte(fs, f) > 0) f = fs;
     }
-    const eigen = naechsteArbeitszeit(startZeitpunkt(z.t), kalender);
+    const eigen = ohneTermin(z.t) ? null : naechsteArbeitszeit(startZeitpunkt(z.t), kalender);
     // von Hand verschoben (Nachführen): frühestens am eigenen Start, auch wenn die Vorgänger früher erlauben würden
-    if (f && optionen.untergrenze?.has(z.t.id) && vergleicheZeitpunkte(eigen, f) > 0) f = eigen;
-    // ohne Vorgänger: ab Projektbeginn (abBeginn) oder frühestens am bisherigen Start
-    if (!f && optionen.abBeginn && !optionen.untergrenze?.has(z.t.id)) return 0;
-    return aufRaster(minutenVon(f ?? eigen));
+    if (f && eigen && optionen.untergrenze?.has(z.t.id) && vergleicheZeitpunkte(eigen, f) > 0) f = eigen;
+    // ohne Vorgänger: ab Projektbeginn (abBeginn, ohne Termine immer) oder frühestens am bisherigen Start; nie vor dem Baubeginn
+    if (!f && (!eigen || (optionen.abBeginn && !optionen.untergrenze?.has(z.t.id)))) return beginnM;
+    return Math.max(beginnM, aufRaster(minutenVon(f ?? eigen!)));
   };
   let vorgaengerGeaendert = true; // frühester Start nur neu prüfen, wenn seit dem letzten Mal ein Task eingeplant wurde
   const freigaben = new Map<string, { id: string; end: Zeitpunkt }[]>(); // Pool/Kolonne → Tasks, die damit fertig wurden
@@ -254,7 +266,7 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
     const t0 = slot * SLOT;
     const bereit = offen.filter(z => !z.fertig && z.erste === null && z.frueheste !== null && z.frueheste <= t0 + EPS).sort(prio);
     // Lückenfüller: Tasks ohne Vorgänger, deren bisheriger Start noch kommt (frühester zuerst)
-    const fueller = lueckenFuellen
+    const fueller = lueckenFuellen && t0 + EPS >= beginnM // nie vor dem Baubeginn
       ? offen.filter(z => !z.fertig && z.erste === null && z.frueheste !== null && z.frueheste > t0 + EPS && vorgaengerListe(z.t).length === 0)
         .sort((a, b) => a.frueheste! - b.frueheste! || a.i - b.i)
       : [];

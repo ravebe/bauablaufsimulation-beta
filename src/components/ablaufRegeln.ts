@@ -54,6 +54,10 @@ function bedingungTrifft(b: RegelBedingung, t: Task, m: Merkmale, gruppen: Map<n
   }
 }
 
+/** Meilensteine und Platzhalter (keine Leistungsposition und keine feste Dauer) bleiben im Ablauf, wo sie sind: Regeln setzen sie
+ *  nicht als «dann beginnt» und schieben sie nicht — als «Erst fertig» (z.B. Baubewilligung vor dem Aushub) gelten sie. */
+export const bleibtStehen = (t: Task) => !!t.meilenstein || (!t.bauteilKuerzel && t.berechneteDauerManuell == null);
+
 export interface RegelErgebnis {
   tasks: Task[];
   /** je Regel-ID: so viele Vorgänger hat sie gesetzt (nach dem Weglassen unnötiger) */
@@ -69,6 +73,7 @@ export interface RegelErgebnis {
  *  kaskadiereNachfolger), damit es auch bei sehr vielen Tasks schnell bleibt. Gruppen: verschiebt sich ein Task, kann sich das
  *  Ende seiner Übergruppen ändern — deren Nachfolger werden mitgeprüft; eine verschobene Gruppe nimmt ihre Kinder mit. */
 function nachHintenSchieben(tasks: Task[], ids: string[], kalender: Kalender): Task[] {
+  // Meilensteine und Platzhalter bleiben, wo sie sind (auch nicht über eine Kette von Vorgängern)
   let erg = tasks;
   const nachfolger = new Map<string, string[]>();
   for (const t of tasks) for (const v of vorgaengerListe(t)) nachfolger.set(v.id, [...(nachfolger.get(v.id) ?? []), t.id]);
@@ -89,7 +94,7 @@ function nachHintenSchieben(tasks: Task[], ids: string[], kalender: Kalender): T
   while (queue.length > 0 && schritte++ < maxSchritte) {
     const id = queue.shift()!;
     const t = erg[index.get(id) ?? -1];
-    if (!t || !t.start) continue;
+    if (!t || !t.start || bleibtStehen(t)) continue;
     const frueh = vorgaengerStart(erg, t, kalender, index);
     if (!frueh || vergleicheZeitpunkte(frueh, startZeitpunkt(t)) <= 0) continue;
     erg = verschiebeAufStart(erg, id, frueh, kalender);
@@ -157,7 +162,7 @@ export function regelnAnwenden(tasks: Task[], regeln: AblaufRegel[], stammdaten:
         index.set(k, [...(index.get(k) ?? []), a]);
       }
       for (const b of echte) {
-        if (!passt(regel.nach, b)) continue;
+        if (bleibtStehen(b) || !passt(regel.nach, b)) continue;
         let liste: Task[];
         if (regel.bezug === "ueberall") liste = as;
         else if (regel.bezug === "gleich") liste = index.get(pfad(b, ebene)) ?? [];

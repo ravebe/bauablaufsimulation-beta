@@ -51,6 +51,28 @@ describe("Reihenfolge nach Gruppen", () => {
     expect(erg.stufen.find(x => x.quelle === "kuerzel")!.werte).toEqual(["MB", "D", "W", "NEU"]);
   });
 
+  it("ohne Gantt-Termine: Tasks mit Dauer werden ab Baubeginn geplant, Meilensteine und Platzhalter bleiben, wie sie sind", () => {
+    const ts = [
+      gruppe("tb", "Tiefbau", 1),
+      task("MB", "", { outlineLevel: 2, start: "", end: "", typ: "bestand", bauteilKuerzel: undefined, mengen: undefined, berechneteDauerManuell: 2 }),
+      task("MS", "", { outlineLevel: 2, start: "2026-12-01", end: "2026-12-01", meilenstein: true, bauteilKuerzel: undefined, mengen: undefined }),
+      task("PH", "", { outlineLevel: 2, start: "", end: "", bauteilKuerzel: undefined, mengen: undefined }),
+      ...gantt({ "UG-W": { start: "", end: "", predecessorId: "MB" }, "UG-D": { start: "", end: "" }, "EG-W": { start: "", end: "" } }),
+    ];
+    const erg = optimiereAuslastung(ts, stammdaten, KAL, "tage", kraene, "gruppen", false, { gruppen: gruppenReihenfolgeAbgleichen(undefined, ts), abBeginn: true, baubeginn: "2027-03-01" });
+    const t = (id: string) => erg.find(x => x.id === id)!;
+    expect([t("MB").start, t("MB").end]).toEqual(["2027-03-01", "2027-03-02"]); // feste Dauer 2 d ab Baubeginn
+    expect(t("UG-W").start).toBe("2027-03-03"); // nach dem Magerbeton
+    expect(t("UG-D").start >= "2027-03-01" && t("EG-W").start >= "2027-03-01").toBe(true);
+    expect(t("MS")).toBe(ts.find(x => x.id === "MS")); // Meilenstein unverändert
+    expect([t("PH").start, t("PH").end]).toEqual(["", ""]); // Platzhalter bleibt ohne Termine
+  });
+
+  it("Baubeginn: kein geplanter Task beginnt davor, auch wenn sein bisheriger Start früher ist", () => {
+    const erg = optimiereAuslastung(gantt(), stammdaten, KAL, "tage", kraene, "gruppen", false, { gruppen: gruppenReihenfolgeAbgleichen(undefined, gantt()), baubeginn: "2026-11-16" });
+    expect(termine(erg)).toEqual(["UG-W 2026-11-16", "UG-D 2026-11-17", "EG-W 2026-11-18"]);
+  });
+
   it("Tasks ohne Vorgänger ab Projektbeginn: die Reihenfolge entscheidet, nicht die bisherige Lage im Gantt", () => {
     // Magerbeton (Tiefbau) steht im Gantt spät, ist aber in der Reihenfolge vorne
     const ts = [gruppe("tb", "Tiefbau", 1), task("MB", "W", { outlineLevel: 2, start: "2026-12-14", end: "2026-12-14" }), ...gantt()];

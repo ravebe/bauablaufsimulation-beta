@@ -101,9 +101,9 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
     if (gantt == null) return null;
     const reihenfolge = sim?.autoNachfuehren?.reihenfolge ?? "gruppen";
     const optimiert = optimiereAuslastung(tasks, stammdaten, kalender, sim?.zeiteinheit ?? "tage", kraene, reihenfolge, sim?.autoNachfuehren?.luecken ?? true,
-      { gruppen: reihenfolge === "gruppen" && sim ? bauablaufReihenfolge(sim) : undefined, abBeginn: sim?.autoNachfuehren?.abBeginn !== false });
+      { gruppen: reihenfolge === "gruppen" && sim ? bauablaufReihenfolge(sim) : undefined, abBeginn: sim?.autoNachfuehren?.abBeginn !== false, baubeginn: sim?.baubeginn });
     return { gantt, optimiert: durchschnittlicheAuslastung(optimiert, kraene, stammdaten, kalender) };
-  }, [tasks, kraene, stammdaten, kalender, sim?.zeiteinheit, sim?.autoNachfuehren, sim?.gruppenReihenfolge]);
+  }, [tasks, kraene, stammdaten, kalender, sim?.zeiteinheit, sim?.autoNachfuehren, sim?.gruppenReihenfolge, sim?.baubeginn]);
   // Tagesplan (tagesplan.ts) für jeden Tag einmal: Spalte Dauer, Tagesablauf, rote Tage im Diagramm (Arbeit nach Arbeitsende) und
   // Überstunden je Unternehmer/Kran über das ganze Projekt
   const tageSchluessel = alleTage.join(",");

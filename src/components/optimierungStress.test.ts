@@ -59,6 +59,7 @@ function projekt(seed: number, gross = false) {
     const t: Task = { id: `t${n++}`, name: `${kuerzel ?? "Task"} ${n}`, start, end: tagPlus(start, z.int(0, 8)), typ: "neubau", objektGuids: [],
       ...(kuerzel ? { mengen } : {}), ...p };
     if (z.ja(0.03)) { t.meilenstein = true; t.end = t.start; }
+    else if (z.ja(0.06)) { t.start = ""; t.end = ""; } // ohne Gantt-Termine
     if (z.ja(0.05) && kuerzel) t.berechneteDauerManuell = z.int(1, 5);
     return t;
   };
@@ -100,6 +101,7 @@ function projekt(seed: number, gross = false) {
   const einheit = z.aus<Zeiteinheit>(["tage", "tage", "halbtage", "stunden"]);
   const reihenfolge = z.aus<OptimierReihenfolge>(["gruppen", "kritischerPfad", "startdatum", "gantt"]);
   const sim: SimProjekt = { id: "s", name: "Stress", erstelltAm: BASIS, tasks, modelle: [], stammdaten: sd, kalender: kal, kraene, ablaufRegeln: regeln,
+    ...(z.ja(0.4) ? { baubeginn: tagPlus(BASIS, z.int(0, 20)) } : {}),
     zeiteinheit: einheit === "tage" ? undefined : einheit } as SimProjekt;
   return { sim, sd, kal, kraene, einheit, reihenfolge, luecken: z.ja(0.7), abBeginn: z.ja(0.5), z };
 }
@@ -168,14 +170,21 @@ describe("Stresstest Optimierung", () => {
       expect(simRegelnAnwenden(s1), `${info} Regeln nicht stabil`).toBe(s1);
       // 2. Optimieren
       const gruppen = gruppenReihenfolgeAbgleichen(undefined, s1.tasks);
-      const erg = optimierungUebernehmen(s1.tasks, optimiereAuslastung(s1.tasks, sd, kal, einheit, kraene, reihenfolge, luecken, { gruppen, abBeginn }));
+      const erg = optimierungUebernehmen(s1.tasks, optimiereAuslastung(s1.tasks, sd, kal, einheit, kraene, reihenfolge, luecken, { gruppen, abBeginn, baubeginn: sim.baubeginn }));
+      // Baubeginn: kein geplanter Task davor; Tasks ohne Termine mit Dauer haben jetzt Termine, Meilensteine sind unverändert
+      for (const t of erg) {
+        const vorher = s1.tasks.find(x => x.id === t.id)!;
+        if (vorher.meilenstein) expect(t.start, `${info} Meilenstein ${t.id} verschoben`).toBe(vorher.start);
+        if (!vorher.isGroup && !vorher.meilenstein && (!vorher.start || !vorher.end) && hatKalkulationsWerte(vorher, sd)) expect(!!t.start && !!t.end, `${info} ${t.id} ohne Termine nicht eingeplant`).toBe(true);
+        if (sim.baubeginn && geplanteIds(erg, sd).has(t.id) && t !== vorher) expect(t.start >= sim.baubeginn, `${info} ${t.id} beginnt ${t.start} vor dem Baubeginn ${sim.baubeginn}`).toBe(true);
+      }
       const geplant = geplanteIds(erg, sd);
       pruefe(erg, sd, kal, geplant, info);
       // Regel-Vorgänger überleben das Optimieren, und es ist nichts mehr zu verschieben
       const s2 = simRegelnAnwenden({ ...s1, tasks: erg });
       expect(s2.tasks, `${info} Regeln nach dem Optimieren nicht stabil`).toBe(erg);
       // 3. Erneut optimieren ergibt dieselben Termine
-      const nochmal = optimiereAuslastung(erg, sd, kal, einheit, kraene, reihenfolge, luecken, { gruppen, abBeginn });
+      const nochmal = optimiereAuslastung(erg, sd, kal, einheit, kraene, reihenfolge, luecken, { gruppen, abBeginn, baubeginn: sim.baubeginn });
       const abw = nochmal.filter((t, i) => t.start !== erg[i].start || t.end !== erg[i].end || t.startZeit !== erg[i].startZeit || t.endZeit !== erg[i].endZeit);
       expect(abw.map(t => t.id), `${info} erneutes Optimieren verschiebt Tasks`).toEqual([]);
       // 4. Nachführen nach einer Änderung (Menge eines Tasks), wie in useUndo.ts — danach stabil

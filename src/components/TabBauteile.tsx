@@ -320,7 +320,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
     const einheiten = [aktuell, ...(["halbtage", "stunden"] as const).filter(e => feinerAls(e, aktuell))];
     setAuslastungVorschau({ modus, reihenfolge, luecken, abBeginn, gruppen, ergebnisse: einheiten.map(einheit => ({ einheit,
       tasks: optimiereAuslastung(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN, aktiveSim.kalender ?? LEERER_KALENDER, einheit, aktiveSim.kraene ?? [],
-        reihenfolge, luecken, { gruppen, abBeginn }) })) });
+        reihenfolge, luecken, { gruppen, abBeginn, baubeginn: aktiveSim.baubeginn }) })) });
   }
   function auslastungUebernehmen(einheit: Zeiteinheit, tasks: Task[], optimiert = true) {
     if (!aktiveSim || !auslastungVorschau) return;

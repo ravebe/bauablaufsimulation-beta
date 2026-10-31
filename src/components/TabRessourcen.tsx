@@ -198,7 +198,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     const reihenfolge = sim!.autoNachfuehren?.reihenfolge ?? "gruppen";
     const kal = sim!.kalender ?? LEERER_KALENDER;
     const ergebnis = optimiereAuslastung(mitRegeln.tasks, stammdaten, kal, sim!.zeiteinheit ?? "tage", sim!.kraene ?? [], reihenfolge,
-      sim!.autoNachfuehren?.luecken ?? true, { gruppen: reihenfolge === "gruppen" ? gruppenReihenfolge : undefined, abBeginn: sim!.autoNachfuehren?.abBeginn !== false });
+      sim!.autoNachfuehren?.luecken ?? true, { gruppen: reihenfolge === "gruppen" ? gruppenReihenfolge : undefined, abBeginn: sim!.autoNachfuehren?.abBeginn !== false, baubeginn: sim!.baubeginn });
     const tasks = optimierungUebernehmen(mitRegeln.tasks, ergebnis);
     const verschoben = tasks.filter((t, i) => t.start !== sim!.tasks[i]?.start || t.end !== sim!.tasks[i]?.end || t.startZeit !== sim!.tasks[i]?.startZeit || t.endZeit !== sim!.tasks[i]?.endZeit).length;
     const ende = (ts: typeof tasks) => ts.reduce((m, t) => (!t.isGroup && t.end && t.end > m ? t.end : m), "");
@@ -885,6 +885,18 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
             { titel: "Export", eintraege: [{ label: "JSON", onClick: bauablaufExportieren, title: "Reihenfolge der Gruppen und Bauteilarten + Ablaufregeln als Datei — für andere Simulationen oder Projekte" }] },
             ...(!readOnly ? [{ titel: "Import", eintraege: [{ label: "JSON", onClick: () => bauablaufImportRef.current?.click(), title: "Aus einer exportierten Bauablauf-Datei übernehmen (ersetzt Reihenfolge und Regeln)" }] }] : []),
           ]} />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 10, fontSize: 12 }}>
+          <span style={{ fontWeight: 600 }}>Baubeginn:</span>
+          <input type="date" disabled={readOnly} value={sim.baubeginn ?? ""}
+            onChange={e => updateSim({ ...sim!, baubeginn: e.target.value || undefined })}
+            style={{ fontSize: 12, padding: "2px 4px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
+          <Hinweis inZeile>
+            Projektbeginn fürs Optimieren: kein geplanter Task beginnt davor. Tasks ohne Vorgänger (mit «Tasks ohne Vorgänger ab
+            Projektbeginn») und Tasks ohne Termine im Gantt beginnen hier — so erstellt der Optimierer das Bauprogramm auch ohne
+            Gantt-Termine, sofern die Tasks eine Dauer haben (Menge in Tab Kalkulation oder feste Dauer in der Spalte «Berechnet»).
+            Meilensteine und Platzhalter (ohne Menge und ohne feste Dauer) bleiben, wo sie sind. Leer = frühester Start aller Tasks.
+          </Hinweis>
         </div>
         <input ref={bauablaufImportRef} type="file" accept=".json" style={{ display: "none" }}
           onChange={e => e.target.files?.[0] && bauablaufImportieren(e.target.files[0])} />

@@ -150,6 +150,9 @@ export interface SimProjekt {
   /** "Auslastung optimieren" → Reihenfolge «Nach Gruppen» (gruppenReihenfolge.ts): wer zuerst Personal bekommt — Stufe für Stufe
    *  (Gruppenebenen des Gantts, Bauteilart) in der hier festgelegten Reihenfolge der Werte. */
   gruppenReihenfolge?: GruppenReihenfolge;
+  /** Baubeginn (YYYY-MM-DD, Tab Ressourcen → Bauablauf): Projektbeginn fürs Optimieren — kein geplanter Task beginnt davor, Tasks
+   *  ohne Vorgänger (mit «ab Projektbeginn») und Tasks ohne Termine beginnen hier. Fehlt = frühester Start aller Tasks. */
+  baubeginn?: string;
   /** Ablaufregeln (Tab Ressourcen, ablaufRegeln.ts): «erst A fertig, dann B» — ergeben automatische Vorgänger (Task.regelVorgaenger). */
   ablaufRegeln?: AblaufRegel[];
 }
