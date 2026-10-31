@@ -101,7 +101,10 @@ export default function App() {
   const readOnly = !darfBearbeiten(aktiveSim, userId);
   const andererBearbeiter = usePresence(api, aktiveSim, userId, userName);
   // Aus der Simulation entfernte Bauteile im Modell ausgeblendet halten (Tab Bauteile → "Aus Simulation entfernt")
-  useAusgeschlosseneAusblenden(api, aktiveSim, geladeneModelle);
+  // Klick auf den Titel / die aktive Simulationskarte → nochmals ausblenden (Modell beim Start nicht fertig geladen)
+  const [ausblendenAuffrischen, setAusblendenAuffrischen] = useState(0);
+  const darstellungAuffrischen = () => setAusblendenAuffrischen(n => n + 1);
+  useAusgeschlosseneAusblenden(api, aktiveSim, geladeneModelle, ausblendenAuffrischen);
   // Nur Sims anzeigen die nicht "none" sind
   const sichtbareSims = sims.filter(s => istSichtbar(s, userId));
 
@@ -159,12 +162,17 @@ export default function App() {
       <div className="tc-header-org">
         <div className="tc-header-org-top">
           <div style={{ flex: 1 }}>
-            <div className="tc-header-org-title">
+            <div className="tc-header-org-title" style={{ cursor: aktiveSim ? "pointer" : undefined }}
+              title={aktiveSim ? "Klicken: aus der Simulation entfernte Bauteile erneut ausblenden" : undefined}
+              onClick={aktiveSim ? (e => { e.stopPropagation(); darstellungAuffrischen(); }) : undefined}>
               <span className="tc-logo">{tabGruppe === "erweitert" ? "5D" : "4D"}</span> Simulationen
             </div>
             <div ref={headerDropdownRef}>
             <div className={`tc-header-org-sub ${aktTab === "projekte" ? "" : "static"}`}
-              onClick={aktTab === "projekte" ? (e => { e.stopPropagation(); setHeaderDropdown(d => !d); setSortDropdown(false); }) : undefined}>
+              title={aktTab !== "projekte" && aktiveSim ? "Klicken: aus der Simulation entfernte Bauteile erneut ausblenden" : undefined}
+              style={aktTab !== "projekte" && aktiveSim ? { cursor: "pointer" } : undefined}
+              onClick={aktTab === "projekte" ? (e => { e.stopPropagation(); setHeaderDropdown(d => !d); setSortDropdown(false); })
+                : aktiveSim ? (e => { e.stopPropagation(); darstellungAuffrischen(); }) : undefined}>
               {aktiveSim ? aktiveSim.name : "Kein Projekt"}{aktTab === "projekte" && ` ${headerDropdown ? "▲" : "▼"}`}
             </div>
             {andererBearbeiter && (
@@ -398,6 +406,7 @@ export default function App() {
               setSims={setSimsMitUndo}
               aktivId={aktivId}
               setAktivId={setAktivId}
+              onAktiveAuffrischen={darstellungAuffrischen}
               geladeneModelle={geladeneModelle}
               userId={userId}
               sichtbar={aktTab === "projekte"}

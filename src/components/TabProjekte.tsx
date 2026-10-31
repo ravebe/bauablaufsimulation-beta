@@ -33,13 +33,15 @@ interface Props {
   setSims: React.Dispatch<React.SetStateAction<SimProjekt[]>>;
   aktivId: string | null;
   setAktivId: (id: string) => void;
+  /** Klick auf die Karte der aktiven Simulation → entfernte Bauteile erneut ausblenden */
+  onAktiveAuffrischen?: () => void;
   geladeneModelle: { id: string; name: string }[];
   userId?: string | null;
   /** Tab "Projekte" ist gerade sichtbar — beim Wechsel wird der Verknüpfungs-Bereich zugeklappt */
   sichtbar?: boolean;
 }
 
-export default function TabProjekte({ api, laedt, sims, setSims, aktivId, setAktivId, userId, sichtbar = true, onKalender, onIfcExport, onVerlauf }: Props) {
+export default function TabProjekte({ api, laedt, sims, setSims, aktivId, setAktivId, onAktiveAuffrischen, userId, sichtbar = true, onKalender, onIfcExport, onVerlauf }: Props) {
   const [aufgeklappt, setAufgeklappt] = useState<string | null>(aktivId);
   // Sim-ID, deren Verknüpfungs-Aktion (Auto-Verknüpfung / Attribut-Tasks) nach Klick auf den Umschalter
   // eingeblendet ist — Klick ausserhalb oder Tab-Wechsel blendet sie wieder aus (Komponente bleibt gemountet,
@@ -450,7 +452,8 @@ export default function TabProjekte({ api, laedt, sims, setSims, aktivId, setAkt
           <div key={sim.id} className={`sim-card ${istAktiv ? "aktiv" : ""}`}>
 
             {/* Sim Header */}
-            <div className="sim-card-header" onClick={() => toggleAufgeklappt(sim.id)}>
+            <div className="sim-card-header" onClick={() => { toggleAufgeklappt(sim.id); if (istAktiv) onAktiveAuffrischen?.(); }}
+              title={istAktiv ? "Klicken: auf-/zuklappen und aus der Simulation entfernte Bauteile erneut ausblenden" : undefined}>
               <div className="sim-card-left">
                 <span style={{ flexShrink: 0 }}>
                   {/* Gantt-Symbol */}

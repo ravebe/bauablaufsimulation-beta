@@ -2,6 +2,8 @@
 // beim Aktivieren einer Simulation, sobald (weitere) Modelle geladen sind und wann immer sich die Liste
 // ändert. Wieder aufgenommene Bauteile werden eingeblendet. Die Wiedergabe (Tab Abspielen) zeigt nur
 // Bauteile von Tasks — ausgeschlossene bleiben dort also von selbst ausgeblendet.
+// «auffrischen» (Zähler): Klick auf den Titel bzw. die aktive Simulationskarte wendet das Ausblenden erneut an —
+// falls das Modell beim Start noch nicht fertig geladen war und der Viewer den ersten Aufruf verschluckt hat.
 import { useEffect, useRef } from "react";
 import type { SimProjekt } from "../types";
 import type { ApiInstance } from "./useApi";
@@ -16,7 +18,7 @@ async function setzeSichtbar(api: ApiInstance, guids: string[], visible: boolean
   } catch (e) { console.warn("[Ausschluss] Ein-/Ausblenden fehlgeschlagen:", e); }
 }
 
-export function useAusgeschlosseneAusblenden(api: ApiInstance | null, aktiveSim: SimProjekt | null, geladeneModelle: { id: string }[]) {
+export function useAusgeschlosseneAusblenden(api: ApiInstance | null, aktiveSim: SimProjekt | null, geladeneModelle: { id: string }[], auffrischen = 0) {
   const vorher = useRef<{ simId: string | null; guids: Set<string> }>({ simId: null, guids: new Set() });
   const schluessel = (aktiveSim?.ausgeschlossen ?? []).map(a => a.guid).sort().join("|");
   const modelle = geladeneModelle.map(m => m.id).sort().join("|");
@@ -31,5 +33,5 @@ export function useAusgeschlosseneAusblenden(api: ApiInstance | null, aktiveSim:
     if (wiederDa.length) void setzeSichtbar(api, wiederDa, true);
     if (jetzt.size) void setzeSichtbar(api, [...jetzt], false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, aktiveSim?.id, schluessel, modelle]);
+  }, [api, aktiveSim?.id, schluessel, modelle, auffrischen]);
 }
