@@ -197,8 +197,9 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     }
     const reihenfolge = sim!.autoNachfuehren?.reihenfolge ?? "gruppen";
     const kal = sim!.kalender ?? LEERER_KALENDER;
+    const bericht = { gelockert: [] as string[] };
     const ergebnis = optimiereAuslastung(mitRegeln.tasks, stammdaten, kal, sim!.zeiteinheit ?? "tage", sim!.kraene ?? [], reihenfolge,
-      sim!.autoNachfuehren?.luecken ?? true, { gruppen: reihenfolge === "gruppen" ? gruppenReihenfolge : undefined, abBeginn: sim!.autoNachfuehren?.abBeginn !== false, baubeginn: sim!.baubeginn });
+      sim!.autoNachfuehren?.luecken ?? true, { gruppen: gruppenReihenfolge, abBeginn: sim!.autoNachfuehren?.abBeginn !== false, baubeginn: sim!.baubeginn, bericht });
     const tasks = optimierungUebernehmen(mitRegeln.tasks, ergebnis);
     const verschoben = tasks.filter((t, i) => t.start !== sim!.tasks[i]?.start || t.end !== sim!.tasks[i]?.end || t.startZeit !== sim!.tasks[i]?.startZeit || t.endZeit !== sim!.tasks[i]?.endZeit).length;
     const ende = (ts: typeof tasks) => ts.reduce((m, t) => (!t.isGroup && t.end && t.end > m ? t.end : m), "");
@@ -206,6 +207,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     updateSim({ ...mitRegeln, tasks, optimiertStand: terminSignatur(tasks) });
     setBauablaufInfo(verschoben === 0 ? "Aktualisiert — keine Termine geändert."
       : `Aktualisiert — ${verschoben} Task${verschoben === 1 ? "" : "s"} neu terminiert, Bauende ${datum(ende(sim!.tasks))} → ${datum(ende(tasks))}.`);
+    if (bericht.gelockert.length > 0) setBauablaufFehler(`Feste Reihenfolge («fest» in Stufe 2) widerspricht Vorgängern oder Ablaufregeln — für ${bericht.gelockert.length} Task${bericht.gelockert.length === 1 ? "" : "s"} aufgehoben: ${bericht.gelockert.slice(0, 6).join(", ")}${bericht.gelockert.length > 6 ? " …" : ""}`);
   }
 
   // Bauablauf (Reihenfolge der Gruppen und Bauteilarten + Ablaufregeln) als Datei, siehe ablaufRegeln.ts

@@ -73,6 +73,30 @@ describe("Reihenfolge nach Gruppen", () => {
     expect(termine(erg)).toEqual(["UG-W 2026-11-16", "UG-D 2026-11-17", "EG-W 2026-11-18"]);
   });
 
+  it("Stufe «fest»: EG beginnt erst nach dem ganzen UG derselben Etappe — weich dürfte es parallel, wenn Personal frei ist", () => {
+    // genug Personal (12 = 3 × Min. 4): weich laufen alle drei am ersten Tag, fest wartet EG auf UG-W und UG-D
+    const viel: Kran[] = [{ id: "k1", name: "Kran 1", personal: [{ id: "1", unternehmer: "Bau AG", personen: 12 }] }];
+    const weich = gruppenReihenfolgeAbgleichen(undefined, gantt());
+    const fest = { stufen: weich.stufen.map(s => s.quelle === "gruppe" && s.ebene === 2 ? { ...s, streng: true } : s) };
+    expect(termine(optimiereAuslastung(gantt(), stammdaten, KAL, "tage", viel, "gruppen", false, { gruppen: weich }))).toEqual(["UG-W 2026-11-09", "UG-D 2026-11-09", "EG-W 2026-11-09"]);
+    expect(termine(optimiereAuslastung(gantt(), stammdaten, KAL, "tage", viel, "gruppen", false, { gruppen: fest }))).toEqual(["UG-W 2026-11-09", "UG-D 2026-11-09", "EG-W 2026-11-10"]);
+    // fest gilt auch mit anderer Reihenfolge der Optimierung (z.B. Gantt-Reihenfolge)
+    const eg = (r: "gantt" | "kritischerPfad") => optimiereAuslastung(gantt(), stammdaten, KAL, "tage", viel, r, false, { gruppen: fest }).find(t => t.id === "EG-W")!.start;
+    expect(eg("gantt") > "2026-11-09" && eg("kritischerPfad") > "2026-11-09").toBe(true);
+  });
+
+  it("Stufe «fest» im Widerspruch zu einem Vorgänger: wird für die Wartenden aufgehoben und gemeldet, keine Endlosschleife", () => {
+    // UG-W hat EG-W als Vorgänger, EG soll aber fest nach UG kommen → Widerspruch
+    const ts = gantt({ "UG-W": { predecessorId: "EG-W" } });
+    const fest = { stufen: gruppenReihenfolgeAbgleichen(undefined, ts).stufen.map(s => s.quelle === "gruppe" && s.ebene === 2 ? { ...s, streng: true } : s) };
+    const bericht = { gelockert: [] as string[] };
+    const erg = optimiereAuslastung(ts, stammdaten, KAL, "tage", kraene, "gruppen", false, { gruppen: fest, bericht });
+    expect(bericht.gelockert.length).toBeGreaterThan(0);
+    expect(erg.every(t => t.isGroup || !!t.start)).toBe(true);
+    const t = (id: string) => erg.find(x => x.id === id)!;
+    expect(t("UG-W").start > t("EG-W").start).toBe(true); // der Vorgänger gilt
+  });
+
   it("Tasks ohne Vorgänger ab Projektbeginn: die Reihenfolge entscheidet, nicht die bisherige Lage im Gantt", () => {
     // Magerbeton (Tiefbau) steht im Gantt spät, ist aber in der Reihenfolge vorne
     const ts = [gruppe("tb", "Tiefbau", 1), task("MB", "W", { outlineLevel: 2, start: "2026-12-14", end: "2026-12-14" }), ...gantt()];

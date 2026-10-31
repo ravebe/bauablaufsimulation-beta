@@ -601,7 +601,10 @@ export function istZirkular(tasks: Task[], taskId: string, predId: string): bool
 /** Eine Stufe der Reihenfolge «Nach Gruppen»: quelle "gruppe" = Gruppen der Gliederungsebene ebene (Name, z.B. «Etappe A» oder
  *  «UG» — gleichnamige Gruppen zählen gleich), "kuerzel" = Bauteilart (Bauteil-Kürzel des Tasks); werte = Reihenfolge, zuerst
  *  = bekommt zuerst Personal; aktiv = Stufe wird berücksichtigt. */
-export interface PrioStufe { quelle: "gruppe" | "kuerzel"; ebene?: number; werte: string[]; aktiv: boolean }
+/*  streng = «fest»: ein Wert beginnt erst, wenn alle geplanten Tasks der vorderen Werte fertig sind (Gruppenebene: innerhalb derselben
+ *  Gruppen darüber, z.B. EG erst nach dem ganzen UG derselben Etappe; Bauteilart: innerhalb derselben Gruppen) — sonst weich (Vorrang
+ *  beim Personal). Siehe auslastungOptimierenKran.ts. */
+export interface PrioStufe { quelle: "gruppe" | "kuerzel"; ebene?: number; werte: string[]; aktiv: boolean; streng?: boolean }
 export interface GruppenReihenfolge { stufen: PrioStufe[] }
 
 /** Ein Stück Arbeit eines Tages (Task.tagesArbeit): Leistungsposition pos, von/bis in Stunden ab Arbeitsbeginn (bis über Std./Tag

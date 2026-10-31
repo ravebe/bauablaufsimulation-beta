@@ -17,7 +17,7 @@
 //  - Den Ablauf jedes Tages (wer von wann bis wann an welcher Arbeit) merkt sich der Task (Task.tagesArbeit) — Tab AVOR zeigt und
 //    rechnet genau diesen Ablauf, solange Termine, Mengen, Stammdaten und Kräne & Personal unverändert sind.
 import type { Task, Kran, TagesLauf, GruppenReihenfolge } from "../types";
-import { rangJeTask, vergleicheRang } from "./gruppenReihenfolge";
+import { rangJeTask, vergleicheRang, gruppenJeTask } from "./gruppenReihenfolge";
 import { istGruppe, vorgaengerListe, mitVorgaengern, terminSchluessel } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { dauerBerechnetTask, hatKalkulationsWerte, schritteFuerTask } from "./stammdatenHelpers";
@@ -96,7 +96,10 @@ function laufAnhaengen(z: TaskZ, tag: number, l: TagesLauf) {
 /*  baubeginn (YYYY-MM-DD, SimProjekt.baubeginn): Projektbeginn — kein geplanter Task beginnt davor; ohne gilt der früheste Start aller
  *  Tasks. Tasks ohne Termine im Gantt werden mitgeplant, wenn sie eine Dauer haben (Menge oder feste Dauer «Berechnet»), ab Baubeginn
  *  bzw. nach ihren Vorgängern; Meilensteine und Platzhalter (ohne Menge und ohne feste Dauer) bleiben, wo sie sind. */
-export interface OptimierOptionen { nur?: Set<string>; untergrenze?: Set<string>; gruppen?: GruppenReihenfolge; abBeginn?: boolean; baubeginn?: string }
+/*  gruppen: Reihenfolge der Gruppen und Bauteilarten — Rang beim Personal nur mit Reihenfolge «Nach Gruppen», Stufen «fest» (streng)
+ *  gelten immer. bericht (Ausgabe): Tasks, bei denen «fest» gelockert werden musste, weil Vorgänger/Regeln widersprechen. */
+export interface OptimierOptionen { nur?: Set<string>; untergrenze?: Set<string>; gruppen?: GruppenReihenfolge; abBeginn?: boolean; baubeginn?: string;
+  bericht?: { gelockert: string[] } }
 
 const ohneTermin = (t: Task) => !t.start || !t.end;
 const heuteIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
@@ -185,6 +188,41 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
     const t = byId.get(id);
     return t?.end ? endZeitpunkt(t) : null;
   };
+  // Stufen «fest»: je Stufe und Bereich (Gruppen darüber bzw. bei der Bauteilart alle Gruppen) ein Topf je Rang — ein Task wartet,
+  // bis die Töpfe der vorderen Ränge leer (alle fertig) sind, und beginnt nach ihrem letzten Ende. Tasks ohne Wert auf der Stufe
+  // (z.B. ausserhalb der Gruppen) sind nicht betroffen. Bereits feststehende Tasks (Nachführen) zählen mit ihrem Ende.
+  type Topf = { offen: number; ende: Zeitpunkt | null };
+  const toepfe = new Map<string, Map<number, Topf>>(); // Stufe|Bereich → Rang → Topf
+  const plaetze = new Map<string, { bereich: string; rang: number }[]>(); // Task → seine Plätze in den festen Stufen
+  const festeStufen = (optionen.gruppen?.stufen ?? []).filter(s => s.aktiv && s.streng);
+  if (festeStufen.length > 0) {
+    const gruppen = gruppenJeTask(tasks);
+    const topf = (bereich: string, rang: number) => {
+      let m = toepfe.get(bereich);
+      if (!m) { m = new Map(); toepfe.set(bereich, m); }
+      let t = m.get(rang);
+      if (!t) { t = { offen: 0, ende: null }; m.set(rang, t); }
+      return t;
+    };
+    for (const { t } of echte) {
+      const g = gruppen.get(t.id);
+      const liste: { bereich: string; rang: number }[] = [];
+      festeStufen.forEach((s, si) => {
+        const wert = s.quelle === "kuerzel" ? t.bauteilKuerzel : g?.get(s.ebene ?? 1);
+        if (!wert) return;
+        const darueber = [...(g ?? [])].filter(([e]) => s.quelle === "kuerzel" || e < (s.ebene ?? 1)).sort((a, b) => a[0] - b[0]).map(([, n]) => n);
+        const i = s.werte.indexOf(wert);
+        liste.push({ bereich: `${si}|${darueber.join("\u0001")}`, rang: i < 0 ? s.werte.length : i });
+      });
+      if (liste.length === 0) continue;
+      if (zustand.has(t.id)) { plaetze.set(t.id, liste); for (const p of liste) topf(p.bereich, p.rang).offen++; }
+      else if (hatKalkulationsWerte(t, stammdaten) && !t.meilenstein && t.end) for (const p of liste) {
+        const tp = topf(p.bereich, p.rang), e = endZeitpunkt(t);
+        if (!tp.ende || vergleicheZeitpunkte(e, tp.ende) > 0) tp.ende = e;
+      }
+    }
+  }
+  const gelockert = new Set<string>(); // «fest» aufgehoben (Widerspruch mit Vorgängern/Regeln), siehe unten
   /** Frühester Start, sobald alle Vorgänger eingeplant sind (sonst null). */
   const fruehesteVon = (z: TaskZ): number | null => {
     let f: Zeitpunkt | null = null;
@@ -194,6 +232,16 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
       if (!e) continue;
       const fs = folgeStartZeitpunkt(e, v.lagDays, kalender);
       if (!f || vergleicheZeitpunkte(fs, f) > 0) f = fs;
+    }
+    // feste Stufen: alle vorderen Ränge im selben Bereich fertig?
+    if (!gelockert.has(z.t.id)) for (const p of plaetze.get(z.t.id) ?? []) {
+      for (const [rang, tp] of toepfe.get(p.bereich) ?? []) {
+        if (rang >= p.rang) continue;
+        if (tp.offen > 0) return null;
+        if (!tp.ende) continue;
+        const fs = folgeStartZeitpunkt(tp.ende, 0, kalender);
+        if (!f || vergleicheZeitpunkte(fs, f) > 0) f = fs;
+      }
     }
     const eigen = ohneTermin(z.t) ? null : naechsteArbeitszeit(startZeitpunkt(z.t), kalender);
     // von Hand verschoben (Nachführen): frühestens am eigenen Start, auch wenn die Vorgänger früher erlauben würden
@@ -211,6 +259,11 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
     const startM = abRaster(von);
     const r = { start: startAus(startM), end: endeAus(Math.max(aufRaster(bis), startM + raster)) };
     ergebnis.set(z.t.id, r);
+    for (const p of plaetze.get(z.t.id) ?? []) {
+      const tp = toepfe.get(p.bereich)!.get(p.rang)!;
+      tp.offen--;
+      if (!tp.ende || vergleicheZeitpunkte(r.end, tp.ende) > 0) tp.ende = r.end;
+    }
     if (z.laeufe.size > 0) {
       const tage: Record<string, TagesLauf[]> = {};
       for (const [tag, liste] of [...z.laeufe].sort((a, b) => a[0] - b[0])) {
@@ -273,7 +326,16 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
     if (laufend.length === 0 && bereit.length === 0 && fueller.length === 0) {
       // nichts zu tun: zum nächsten frühesten Start springen
       const naechster = Math.min(...offen.filter(z => !z.fertig && z.frueheste !== null).map(z => z.frueheste!));
-      if (!isFinite(naechster)) break; // nur noch Tasks mit uneingeplanten Vorgängern (Zyklus) — unverändert lassen
+      if (!isFinite(naechster)) {
+        // alle warten aufeinander: widersprechen sich «fest» und Vorgänger/Regeln, für die Wartenden «fest» aufheben (und melden)
+        const wartend = offen.filter(z => !z.fertig && z.frueheste === null && !gelockert.has(z.t.id) && plaetze.has(z.t.id));
+        if (wartend.length > 0) {
+          for (const z of wartend) { gelockert.add(z.t.id); optionen.bericht?.gelockert.push(z.t.name); }
+          vorgaengerGeaendert = true;
+          continue;
+        }
+        break; // nur noch Tasks mit uneingeplanten Vorgängern (Zyklus) — unverändert lassen
+      }
       slot = Math.max(slot + 1, Math.floor(naechster / SLOT + EPS));
       continue;
     }

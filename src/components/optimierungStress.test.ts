@@ -169,7 +169,7 @@ describe("Stresstest Optimierung", () => {
       const s1 = simRegelnAnwenden(sim);
       expect(simRegelnAnwenden(s1), `${info} Regeln nicht stabil`).toBe(s1);
       // 2. Optimieren
-      const gruppen = gruppenReihenfolgeAbgleichen(undefined, s1.tasks);
+      const gruppen = { stufen: gruppenReihenfolgeAbgleichen(undefined, s1.tasks).stufen.map(s => z.ja(0.3) ? { ...s, streng: true } : s) };
       const erg = optimierungUebernehmen(s1.tasks, optimiereAuslastung(s1.tasks, sd, kal, einheit, kraene, reihenfolge, luecken, { gruppen, abBeginn, baubeginn: sim.baubeginn }));
       // Baubeginn: kein geplanter Task davor; Tasks ohne Termine mit Dauer haben jetzt Termine, Meilensteine sind unverändert
       for (const t of erg) {

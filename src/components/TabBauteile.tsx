@@ -81,7 +81,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   // je Zeiteinheit (aktuelle + feinere) ein Ergebnis — feinere erlauben Nachfolger am selben Tag, siehe auslastungVorschauOeffnen
   // modus "dauern" = nur berechnete Dauer übernehmen (früher eigener Menüpunkt "Berechnete Dauer übernehmen"): Reihenfolge und
   // Vorgänger bleiben, keine Personalplanung — siehe berechneZeitplanUebernahme
-  const [auslastungVorschau, setAuslastungVorschau] = useState<{ modus: "optimieren" | "dauern"; reihenfolge: OptimierReihenfolge; luecken: boolean; abBeginn: boolean; gruppen: GruppenReihenfolge; ergebnisse: { einheit: Zeiteinheit; tasks: Task[] }[] } | null>(null);
+  const [auslastungVorschau, setAuslastungVorschau] = useState<{ modus: "optimieren" | "dauern"; reihenfolge: OptimierReihenfolge; luecken: boolean; abBeginn: boolean; gruppen: GruppenReihenfolge; gelockert?: string[]; ergebnisse: { einheit: Zeiteinheit; tasks: Task[] }[] } | null>(null);
   // «Automatisch nachführen» im Dialog (SimProjekt.autoNachfuehren, siehe nachfuehren.ts) — gilt beim Übernehmen
   const [autoNachfuehren, setAutoNachfuehren] = useState(false);
   const [neuInputOffen, setNeuInputOffen] = useState(false);
@@ -318,9 +318,10 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
       return;
     }
     const einheiten = [aktuell, ...(["halbtage", "stunden"] as const).filter(e => feinerAls(e, aktuell))];
-    setAuslastungVorschau({ modus, reihenfolge, luecken, abBeginn, gruppen, ergebnisse: einheiten.map(einheit => ({ einheit,
+    const bericht = { gelockert: [] as string[] }; // nur für die aktuelle Zeiteinheit gemeldet (die feineren gleich)
+    setAuslastungVorschau({ modus, reihenfolge, luecken, abBeginn, gruppen, ergebnisse: einheiten.map((einheit, i) => ({ einheit,
       tasks: optimiereAuslastung(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN, aktiveSim.kalender ?? LEERER_KALENDER, einheit, aktiveSim.kraene ?? [],
-        reihenfolge, luecken, { gruppen, abBeginn, baubeginn: aktiveSim.baubeginn }) })) });
+        reihenfolge, luecken, { gruppen, abBeginn, baubeginn: aktiveSim.baubeginn, ...(i === 0 ? { bericht } : {}) }) })), gelockert: bericht.gelockert });
   }
   function auslastungUebernehmen(einheit: Zeiteinheit, tasks: Task[], optimiert = true) {
     if (!aktiveSim || !auslastungVorschau) return;
@@ -757,6 +758,12 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                   {(neueVorgaenger > 0 || wegVorgaenger > 0) && kachel("Vorgänger", <><strong>+{neueVorgaenger}</strong>{wegVorgaenger > 0 && <> / −{wegVorgaenger}</>} automatisch</>,
                     "Tasks, die auf freies Personal warten mussten, bekommen den Task als zusätzlichen Vorgänger, nach dem diese Leute frei wurden — so bleibt der Ablauf beim Ausrichten der Folge-Tasks erhalten. Eigene (von Hand gesetzte) Vorgänger bleiben; automatisch ergänzte eines früheren Optimierens werden neu bestimmt.")}
                 </div>
+                {!nurDauern && (auslastungVorschau.gelockert?.length ?? 0) > 0 && (
+                  <div style={{ marginBottom: 8, padding: "6px 10px", background: "#fff7e6", border: "1px solid #f5d9a8", fontSize: 11, color: "#8a5a00" }}>
+                    Feste Reihenfolge (Bauablauf → 2. «fest») widerspricht Vorgängern oder Ablaufregeln — für {auslastungVorschau.gelockert!.length} Task{auslastungVorschau.gelockert!.length === 1 ? "" : "s"} aufgehoben:
+                    {" "}{auslastungVorschau.gelockert!.slice(0, 6).join(", ")}{auslastungVorschau.gelockert!.length > 6 ? " …" : ""}
+                  </div>
+                )}
                 {keineHoehereAuslastung && (
                   <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "2px 8px", marginBottom: 8, fontSize: 12, color: "#8a5a00" }}>
                     <span>Keine höhere Auslastung möglich.</span>

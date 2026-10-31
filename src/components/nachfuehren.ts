@@ -47,7 +47,7 @@ export function simNachfuehren(sim: SimProjekt): SimProjekt {
   // von Hand verschoben (Start anders als beim Optimieren): frühestens am neuen Start
   const untergrenze = new Set(sim.tasks.filter(t => nur.has(t.id) && t.optimierung && zpText(t) !== t.optimierung.start).map(t => t.id));
   const ergebnis = optimiereAuslastung(sim.tasks, stammdaten, kalender, sim.zeiteinheit ?? "tage", kraene, e.reihenfolge, e.luecken,
-    { nur, untergrenze, gruppen: e.reihenfolge === "gruppen" ? bauablaufReihenfolge(sim) : undefined, abBeginn: e.abBeginn !== false, baubeginn: sim.baubeginn });
+    { nur, untergrenze, gruppen: bauablaufReihenfolge(sim), abBeginn: e.abBeginn !== false, baubeginn: sim.baubeginn });
   const tasks = optimierungUebernehmen(sim.tasks, ergebnis);
   return { ...sim, tasks, optimiertStand: terminSignatur(tasks) };
 }

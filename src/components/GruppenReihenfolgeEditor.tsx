@@ -25,7 +25,9 @@ export default function GruppenReihenfolgeEditor({ wert, stammdaten, onChange }:
   }
   return (
     <div style={{ padding: "6px 10px 8px", background: "#fff", border: "1px solid var(--tc-border-light)", fontSize: 11 }}>
-      <div style={{ color: "var(--tc-text-3)", marginBottom: 2 }}>Werte ziehen oder mit ‹ › verschieben, Stufen mit ▲ ▼ ordnen, Haken = Stufe beim Optimieren berücksichtigen.</div>
+      <div style={{ color: "var(--tc-text-3)", marginBottom: 2 }}>Werte ziehen oder mit ‹ › verschieben, Stufen mit ▲ ▼ ordnen, Haken = Stufe beim Optimieren
+        berücksichtigen. <b>weich</b> = Vorrang beim Personal (mit Reihenfolge «Nach Gruppen»), <b>fest</b> = ein Wert beginnt erst, wenn alle
+        vorderen fertig sind (Gruppenebene: innerhalb derselben Gruppen darüber, z.B. EG erst nach dem ganzen UG derselben Etappe).</div>
       {wert.stufen.map((s, si) => (
         <div key={`${s.quelle}-${s.ebene ?? ""}`} style={{ marginTop: 6, opacity: s.aktiv ? 1 : 0.5 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -36,6 +38,18 @@ export default function GruppenReihenfolgeEditor({ wert, stammdaten, onChange }:
               onClick={() => onChange({ stufen: verschieben(wert.stufen, si, si - 1) })}>▲</button>
             <button type="button" style={knopf} disabled={si === wert.stufen.length - 1} title="Stufe nach unten"
               onClick={() => onChange({ stufen: verschieben(wert.stufen, si, si + 1) })}>▼</button>
+            <span style={{ display: "inline-flex", marginLeft: 8 }}>
+              {([[false, "weich", "Vorrang beim Personal: wer weiter vorne steht, bekommt zuerst Leute (mit Reihenfolge «Nach Gruppen»); andere dürfen gleichzeitig arbeiten"],
+                [true, "fest", s.quelle === "kuerzel"
+                  ? "Fest: eine Bauteilart beginnt erst, wenn alle vorderen Bauteilarten derselben Gruppen fertig sind — sehr streng (keine Bauteilarten parallel), meist ist «weich» besser"
+                  : "Fest: eine Gruppe beginnt erst, wenn alle Tasks der vorderen Gruppen fertig sind (innerhalb derselben Gruppen darüber, z.B. EG erst nach dem ganzen UG derselben Etappe)"]] as const).map(([streng, label, title]) => (
+                <button key={label} type="button" title={title} onClick={() => stufeSetzen(si, { ...s, streng: streng || undefined })}
+                  style={{ ...knopf, padding: "0 6px", fontWeight: !!s.streng === streng ? 700 : 400,
+                    background: !!s.streng === streng ? (streng ? "#fdf1ee" : "var(--tc-blue-bg)") : "#fff",
+                    color: !!s.streng === streng ? (streng ? "#b5452b" : "var(--tc-blue)") : "var(--tc-text-3)",
+                    borderColor: !!s.streng === streng ? (streng ? "#e3b3a6" : "var(--tc-blue)") : "var(--tc-border)" }}>{label}</button>
+              ))}
+            </span>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 3, paddingLeft: 18 }}>
             {s.werte.map((w, wi) => (
