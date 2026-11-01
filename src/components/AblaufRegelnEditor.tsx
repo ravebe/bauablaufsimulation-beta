@@ -29,7 +29,23 @@ export default function AblaufRegelnEditor({ sim, updateSim, readOnly, aktualisi
   // Wirkung: wie viele Vorgänger jede Regel setzt, Zirkelbezüge, zu viele Vorgänger
   const wirkung = useMemo(() => regelnAnwenden(sim.tasks, regeln, stammdaten, reihenfolge, sim.kalender ?? LEERER_KALENDER),
     [sim.tasks, regeln, stammdaten, reihenfolge, sim.kalender]);
-  const [offen, setOffen] = useState<string | null>(null);
+  // Bearbeiten als Entwurf: die aufgeklappte Regel wird erst mit «Speichern» übernommen (setzt dann die Vorgänger, danach erst die
+  // gelben Meldungen) — «Abbrechen» verwirft. Eine neue Regel ist bis zum Speichern nur Entwurf. «aktiv» (Haken) gilt sofort.
+  const [entwurf, setEntwurf] = useState<AblaufRegel | null>(null);
+  const [entwurfNeu, setEntwurfNeu] = useState(false);
+  const offen = entwurf?.id ?? null;
+  const ohneAktiv = (r: AblaufRegel | undefined) => JSON.stringify(r ? { ...r, aktiv: true } : null);
+  const ungespeichert = !!entwurf && (entwurfNeu || ohneAktiv(entwurf) !== ohneAktiv(regeln.find(r => r.id === entwurf.id)));
+  /** Regel aufklappen (null = zuklappen) — ungespeicherte Änderungen nur nach Rückfrage verwerfen */
+  const oeffnen = (id: string | null): boolean => {
+    if (id === offen) return true;
+    if (ungespeichert && !confirm(`Ungespeicherte Änderungen an «${entwurf!.name || "Regel"}» verwerfen?`)) return false;
+    const r = id ? regeln.find(x => x.id === id) : undefined;
+    setEntwurf(r ? { ...r } : null); setEntwurfNeu(false);
+    return true;
+  };
+  const entwurfAendern = (patch: Partial<AblaufRegel>) => setEntwurf(e => e && { ...e, ...patch });
+  useEffect(() => { setEntwurf(null); setEntwurfNeu(false); }, [sim.id]); // andere Simulation → Entwurf gehört nicht dazu
   // «Zeigen ›» im gelben Balken: nicht gesetzte Verknüpfung Nr. … — ihre Regel aufklappen, hinscrollen, hervorheben
   const [zeigeNr, setZeigeNr] = useState<number | null>(null);
   const [zeigeSignal, setZeigeSignal] = useState(0);
@@ -43,7 +59,8 @@ export default function AblaufRegelnEditor({ sim, updateSim, readOnly, aktualisi
   const zeigen = () => {
     if (!stellen.length) return;
     const nr = zeigeNr === null ? 0 : (zeigeNr + 1) % stellen.length;
-    setZeigeNr(nr); setOffen(stellen[nr].regel); setZeigeSignal(n => n + 1);
+    if (!oeffnen(stellen[nr].regel)) return;
+    setZeigeNr(nr); setZeigeSignal(n => n + 1);
   };
   useEffect(() => {
     if (stelle) regelRefs.current.get(stelle.regel)?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -52,40 +69,54 @@ export default function AblaufRegelnEditor({ sim, updateSim, readOnly, aktualisi
 
   const speichern = (neu: AblaufRegel[]) => updateSim({ ...sim, ablaufRegeln: neu.length ? neu : undefined });
   const aendern = (id: string, patch: Partial<AblaufRegel>) => speichern(regeln.map(r => r.id === id ? { ...r, ...patch } : r));
-  const hinzufuegen = (r: Omit<AblaufRegel, "id">) => { const id = neueId(); speichern([...regeln, { ...r, id }]); setOffen(id); };
+  const hinzufuegen = (r: Omit<AblaufRegel, "id">) => {
+    if (!oeffnen(null)) return;
+    setEntwurf({ ...r, id: neueId() }); setEntwurfNeu(true);
+  };
+  const entwurfSpeichern = () => {
+    if (!entwurf) return;
+    const alt = regeln.find(r => r.id === entwurf.id);
+    speichern(alt ? regeln.map(r => r.id === entwurf.id ? { ...entwurf, aktiv: r.aktiv } : r) : [...regeln, entwurf]);
+    setEntwurfNeu(false); // bleibt offen — gelbe Meldungen zu dieser Regel erscheinen gleich darin
+  };
   const unterste = optionen.ebenen.length ? optionen.ebenen[optionen.ebenen.length - 1].ebene : 1;
+  const liste = entwurf && entwurfNeu ? [...regeln, entwurf] : regeln;
 
   return (
     <div style={{ fontSize: 11 }}>
-      {regeln.length === 0 && <div style={{ color: "var(--tc-text-3)", marginBottom: 8 }}>Noch keine Ablaufregeln.</div>}
-      {regeln.map((r, i) => {
-        const istOffen = offen === r.id;
+      {liste.length === 0 && <div style={{ color: "var(--tc-text-3)", marginBottom: 8 }}>Noch keine Ablaufregeln.</div>}
+      {liste.map((gespeichert, i) => {
+        const istOffen = offen === gespeichert.id;
+        const istNeu = istOffen && entwurfNeu;
+        const r = istOffen ? entwurf! : gespeichert; // offen: Anzeige des Entwurfs
         const n = wirkung.anzahl.get(r.id) ?? 0;
         const fest = festKonflikte.filter(w => w.regelId === r.id);
         const hervorheben = stelle?.regel === r.id;
-        const eigeneStellen = stellen.filter(s => s.regel === r.id);
+        const eigeneStellen = istOffen && ungespeichert ? [] : stellen.filter(s => s.regel === r.id);
         return (
           <div key={r.id} ref={el => { if (el) regelRefs.current.set(r.id, el); else regelRefs.current.delete(r.id); }}
             style={{ border: hervorheben ? "1px solid #e0a43a" : "1px solid var(--tc-border-light)", boxShadow: hervorheben ? "0 0 0 2px #fbe3b5" : undefined,
-              background: "#fff", marginBottom: 6, opacity: r.aktiv ? 1 : 0.6 }}>
+              background: "#fff", marginBottom: 6, opacity: gespeichert.aktiv ? 1 : 0.6 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px" }}>
-              <input type="checkbox" checked={r.aktiv} disabled={readOnly} title="Regel anwenden" style={{ margin: 0 }}
+              <input type="checkbox" checked={gespeichert.aktiv} disabled={readOnly || istNeu} title="Regel anwenden (gilt sofort)" style={{ margin: 0 }}
                 onChange={e => aendern(r.id, { aktiv: e.target.checked })} />
-              <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={() => setOffen(istOffen ? null : r.id)}>
+              <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={() => oeffnen(istOffen ? null : r.id)}>
                 <div style={{ fontWeight: 600, color: "var(--tc-text)" }}>{istOffen ? "▾" : "▸"} {r.name || `Regel ${i + 1}`}</div>
                 <div style={{ color: "var(--tc-text-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   Erst {auswahlText(r.vor, optionen)} fertig, dann {auswahlText(r.nach, optionen)} — {bezugText(r)}{r.wartetage ? `, +${r.wartetage} Wartetage` : ""}
                 </div>
               </div>
-              <span title="So viele Vorgänger setzt diese Regel im Moment (ohne unnötige)"
-                style={{ color: !r.aktiv ? "var(--tc-text-3)" : !regelWirkt(r) ? "#d9622b" : n > 0 ? "var(--tc-blue)" : "var(--tc-text-3)", whiteSpace: "nowrap" }}>{!r.aktiv ? "aus" : !regelWirkt(r) ? "Wert fehlt" : `${n} Vorgänger`}</span>
-              {!readOnly && <>
+              {istOffen && ungespeichert
+                ? <span style={{ color: "#d9622b", whiteSpace: "nowrap", fontWeight: 600 }} title="Änderungen gelten erst nach «Speichern»">{istNeu ? "neu — " : ""}nicht gespeichert</span>
+                : <span title="So viele Vorgänger setzt diese Regel im Moment (ohne unnötige)"
+                    style={{ color: !gespeichert.aktiv ? "var(--tc-text-3)" : !regelWirkt(gespeichert) ? "#d9622b" : n > 0 ? "var(--tc-blue)" : "var(--tc-text-3)", whiteSpace: "nowrap" }}>{!gespeichert.aktiv ? "aus" : !regelWirkt(gespeichert) ? "Wert fehlt" : `${n} Vorgänger`}</span>}
+              {!readOnly && !istNeu && <>
                 <button type="button" style={knopf} disabled={i === 0} title="Nach oben"
                   onClick={() => { const neu = [...regeln]; [neu[i - 1], neu[i]] = [neu[i], neu[i - 1]]; speichern(neu); }}>▲</button>
                 <button type="button" style={knopf} disabled={i === regeln.length - 1} title="Nach unten"
                   onClick={() => { const neu = [...regeln]; [neu[i + 1], neu[i]] = [neu[i], neu[i + 1]]; speichern(neu); }}>▼</button>
                 <button type="button" style={knopf} title="Regel löschen — ihre Vorgänger werden entfernt"
-                  onClick={() => { if (confirm(`Regel «${r.name || `Regel ${i + 1}`}» löschen?`)) speichern(regeln.filter(x => x.id !== r.id)); }}>✕</button>
+                  onClick={() => { if (confirm(`Regel «${r.name || `Regel ${i + 1}`}» löschen?`)) { if (istOffen) setEntwurf(null); speichern(regeln.filter(x => x.id !== r.id)); } }}>✕</button>
               </>}
             </div>
             {fest.length > 0 && (
@@ -124,39 +155,49 @@ export default function AblaufRegelnEditor({ sim, updateSim, readOnly, aktualisi
                   </div>
                 )}
                 <Zeile label="Name">
-                  <NameFeld wert={r.name} disabled={readOnly} onChange={name => aendern(r.id, { name })} />
+                  <input value={r.name} disabled={readOnly} style={{ ...feldStil, width: 220 }} onChange={e => entwurfAendern({ name: e.target.value })} />
                 </Zeile>
                 <Zeile label="Erst fertig">
-                  <AuswahlEditor bed={r.vor} optionen={optionen} disabled={readOnly} onChange={vor => aendern(r.id, { vor })} />
+                  <AuswahlEditor bed={r.vor} optionen={optionen} disabled={readOnly} onChange={vor => entwurfAendern({ vor })} />
                 </Zeile>
                 <Zeile label="dann beginnt">
-                  <AuswahlEditor bed={r.nach} optionen={optionen} disabled={readOnly} onChange={nach => aendern(r.id, { nach })} />
+                  <AuswahlEditor bed={r.nach} optionen={optionen} disabled={readOnly} onChange={nach => entwurfAendern({ nach })} />
                 </Zeile>
                 <Zeile label="Bezug">
                   <select value={r.bezug} disabled={readOnly} style={feldStil}
-                    onChange={e => { const bezug = e.target.value as AblaufRegel["bezug"]; aendern(r.id, { bezug, ebene: bezug === "ueberall" ? undefined : r.ebene ?? unterste }); }}>
+                    onChange={e => { const bezug = e.target.value as AblaufRegel["bezug"]; entwurfAendern({ bezug, ebene: bezug === "ueberall" ? undefined : r.ebene ?? unterste }); }}>
                     <option value="ueberall">überall</option>
                     <option value="gleich" disabled={!optionen.ebenen.length}>in derselben Gruppe</option>
                     <option value="darunter" disabled={!optionen.ebenen.length}>Gruppe darunter</option>
                   </select>
                   {r.bezug !== "ueberall" && (
-                    <select value={r.ebene ?? unterste} disabled={readOnly} style={{ ...feldStil, maxWidth: 260 }} onChange={e => aendern(r.id, { ebene: Number(e.target.value) })}>
+                    <select value={r.ebene ?? unterste} disabled={readOnly} style={{ ...feldStil, maxWidth: 260 }} onChange={e => entwurfAendern({ ebene: Number(e.target.value) })}>
                       {optionen.ebenen.map(e => <option key={e.ebene} value={e.ebene}>{ebeneLabel(e)}</option>)}
                     </select>
                   )}
                 </Zeile>
                 <Zeile label="Wartetage">
                   <input type="number" min={0} step={1} value={r.wartetage} disabled={readOnly} style={{ ...feldStil, width: 56 }}
-                    onChange={e => aendern(r.id, { wartetage: Math.max(0, Math.round(Number(e.target.value) || 0)) })} />
+                    onChange={e => entwurfAendern({ wartetage: Math.max(0, Math.round(Number(e.target.value) || 0)) })} />
                   <span style={{ color: "var(--tc-text-3)" }}>Kalendertage nach dem Ende von A (z.B. Trocknung)</span>
                 </Zeile>
+                {!readOnly && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, paddingTop: 2 }}>
+                    <button type="button" className="tc-btn-primary" style={{ fontSize: 11, padding: "0 12px", height: 24 }} disabled={!ungespeichert}
+                      title="Regel übernehmen — setzt ihre Vorgänger; danach erscheinen allfällige Meldungen (gelb)" onClick={entwurfSpeichern}>Speichern</button>
+                    <button type="button" className="tc-btn-secondary" style={{ fontSize: 11, padding: "0 10px", height: 24 }}
+                      title={ungespeichert ? "Änderungen verwerfen und zuklappen" : "Zuklappen"}
+                      onClick={() => { setEntwurf(null); setEntwurfNeu(false); }}>{ungespeichert ? "Abbrechen" : "Schliessen"}</button>
+                    {ungespeichert && <span style={{ color: "#d9622b" }}>Änderungen gelten erst nach «Speichern».</span>}
+                  </div>
+                )}
               </div>
             )}
           </div>
         );
       })}
 
-      {!weggeklickt && (wirkung.zirkel > 0 || wirkung.zuViele.length > 0) && (
+      {!weggeklickt && !ungespeichert && (wirkung.zirkel > 0 || wirkung.zuViele.length > 0) && (
         <div style={{ margin: "6px 0", padding: "6px 8px", background: "#fff7e6", border: "1px solid #f5d9a8", color: "#8a5a00", display: "flex", alignItems: "flex-start", gap: 8 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
           {wirkung.zirkel > 0 && (
@@ -199,17 +240,6 @@ function Zeile({ label, children }: { label: string; children: React.ReactNode }
       <span style={{ width: 80, flexShrink: 0, paddingTop: 3, fontWeight: 600, color: "var(--tc-text-2)" }}>{label}</span>
       <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>{children}</div>
     </div>
-  );
-}
-
-/** Name: erst beim Verlassen speichern (nicht jeder Tastendruck ein Rückgängig-Schritt) */
-function NameFeld({ wert, disabled, onChange }: { wert: string; disabled: boolean; onChange: (v: string) => void }) {
-  const [entwurf, setEntwurf] = useState<string | null>(null);
-  return (
-    <input value={entwurf ?? wert} disabled={disabled} style={{ ...feldStil, width: 220 }}
-      onChange={e => setEntwurf(e.target.value)}
-      onBlur={() => { if (entwurf !== null && entwurf !== wert) onChange(entwurf); setEntwurf(null); }}
-      onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
   );
 }
 
