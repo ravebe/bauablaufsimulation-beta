@@ -96,6 +96,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   }, [bauablaufSignal]); // eslint-disable-line react-hooks/exhaustive-deps
   const [bauablaufFehler, setBauablaufFehler] = useState<string | null>(null);
   const [bauablaufInfo, setBauablaufInfo] = useState<string | null>(null); // Ergebnis von «Aktualisieren»
+  const [aktualisiertSignal, setAktualisiertSignal] = useState(0); // «Aktualisieren» geklickt → weggeklickte Hinweise der Ablaufregeln wieder zeigen
   const bauablaufImportRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (!kranplanungSignal) return;
@@ -185,7 +186,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   // Einstellungen des Dialogs Auslastung optimieren (des automatischen Nachführens, sonst «Nach Gruppen» mit Lücken füllen) neu
   // optimieren. Ein Schritt für «Rückgängig».
   function bauablaufAktualisieren() {
-    setBauablaufFehler(null); setBauablaufInfo(null);
+    setBauablaufFehler(null); setBauablaufInfo(null); setAktualisiertSignal(n => n + 1);
     const gruppenReihenfolge = bauablaufReihenfolge(sim!);
     const mitRegeln = simRegelnAnwenden({ ...sim!, gruppenReihenfolge });
     const status = pruefeZeitplanBereitschaft(mitRegeln.tasks, stammdaten);
@@ -933,7 +934,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
         </CockpitAbschnitt>
         <CockpitAbschnitt titel="3. Ablaufregeln (zwingend)" eingeklappt={!!eingeklappt["ablaufregeln"]} onToggle={() => toggleEingeklappt("ablaufregeln")}
           hinweis={<>«Erst A fertig, dann B» — z.B. Elemente erst versetzen, wenn die Platte darunter fertig ist, oder die Kanalisation einer Etappe vor ihrem Magerbeton. A und B wählen Tasks nach Gruppe, Bauteilart, Kategorie, Unternehmer oder Name (mehrere Bedingungen = alle müssen zutreffen, mehrere Werte = einer genügt; «ausser» = keiner darf zutreffen). Bezug: überall, nur in derselben Gruppe (z.B. selbe Etappe) oder Gruppe darunter (unten → oben wie in Stufe 2, auf den Ebenen darüber dieselbe Gruppe). Die Regeln setzen nach jeder Änderung automatische Vorgänger (blau, Tooltip «Ablaufregel») — nur die nötigen — und gelten so beim Optimieren, Nachführen und Ausrichten. Zu früh beginnende Tasks rücken nach hinten. Von Hand gesetzte Vorgänger bleiben; Regel ausschalten oder löschen entfernt ihre Vorgänger.</>}>
-          <AblaufRegelnEditor sim={sim} updateSim={updateSim} readOnly={!!readOnly} />
+          <AblaufRegelnEditor sim={sim} updateSim={updateSim} readOnly={!!readOnly} aktualisiertSignal={aktualisiertSignal} />
         </CockpitAbschnitt>
       </div>
     </div>

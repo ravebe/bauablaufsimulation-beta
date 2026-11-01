@@ -12,9 +12,11 @@ const feldStil: React.CSSProperties = { fontSize: 11, padding: "2px 4px", border
 const knopf: React.CSSProperties = { border: "1px solid var(--tc-border)", background: "#fff", cursor: "pointer", fontSize: 10, padding: "0 5px", lineHeight: "18px", color: "var(--tc-text-2)" };
 const neueId = () => `regel-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
-interface Props { sim: SimProjekt; updateSim: (s: SimProjekt) => void; readOnly: boolean }
+interface Props { sim: SimProjekt; updateSim: (s: SimProjekt) => void; readOnly: boolean
+  /** zählt bei jedem «↻ Aktualisieren» (TabRessourcen) hoch — weggeklickte Hinweise erscheinen dann wieder */
+  aktualisiertSignal?: number }
 
-export default function AblaufRegelnEditor({ sim, updateSim, readOnly }: Props) {
+export default function AblaufRegelnEditor({ sim, updateSim, readOnly, aktualisiertSignal = 0 }: Props) {
   const regeln = useMemo(() => sim.ablaufRegeln ?? [], [sim.ablaufRegeln]);
   const stammdaten = sim.stammdaten ?? LEERE_STAMMDATEN;
   const reihenfolge = useMemo(() => bauablaufReihenfolge({ gruppenReihenfolge: sim.gruppenReihenfolge, tasks: sim.tasks, stammdaten: sim.stammdaten }), [sim.gruppenReihenfolge, sim.tasks, sim.stammdaten]);
@@ -27,7 +29,10 @@ export default function AblaufRegelnEditor({ sim, updateSim, readOnly }: Props) 
   const [zeigeNr, setZeigeNr] = useState<number | null>(null);
   const [zeigeSignal, setZeigeSignal] = useState(0);
   const regelRefs = useRef(new Map<string, HTMLDivElement>());
-  const stellen = wirkung.zirkelStellen;
+  // ✕ im gelben Balken: Hinweise (Balken, Hervorhebung, Kasten in der Regel) ausblenden bis zum nächsten «↻ Aktualisieren»
+  const [weggeklickt, setWeggeklickt] = useState(false);
+  useEffect(() => setWeggeklickt(false), [aktualisiertSignal]);
+  const stellen = weggeklickt ? [] : wirkung.zirkelStellen;
   const stelle = zeigeNr !== null ? stellen[zeigeNr % Math.max(1, stellen.length)] : undefined;
   const taskName = useMemo(() => new Map(sim.tasks.map(t => [t.id, t.name])), [sim.tasks]);
   const zeigen = () => {
@@ -123,8 +128,9 @@ export default function AblaufRegelnEditor({ sim, updateSim, readOnly }: Props) 
         );
       })}
 
-      {(wirkung.zirkel > 0 || wirkung.zuViele.length > 0) && (
-        <div style={{ margin: "6px 0", padding: "6px 8px", background: "#fff7e6", border: "1px solid #f5d9a8", color: "#8a5a00" }}>
+      {!weggeklickt && (wirkung.zirkel > 0 || wirkung.zuViele.length > 0) && (
+        <div style={{ margin: "6px 0", padding: "6px 8px", background: "#fff7e6", border: "1px solid #f5d9a8", color: "#8a5a00", display: "flex", alignItems: "flex-start", gap: 8 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
           {wirkung.zirkel > 0 && (
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ flex: 1 }}>{wirkung.zirkel} Verknüpfung{wirkung.zirkel === 1 ? "" : "en"} nicht gesetzt — sie hätte{wirkung.zirkel === 1 ? "" : "n"} einen Zirkelbezug ergeben (Regeln widersprechen sich oder einem Vorgänger von Hand).</span>
@@ -134,6 +140,10 @@ export default function AblaufRegelnEditor({ sim, updateSim, readOnly }: Props) 
             </div>
           )}
           {wirkung.zuViele.length > 0 && <div>Mehr als 30 Vorgänger bei: {wirkung.zuViele.slice(0, 5).join(", ")}{wirkung.zuViele.length > 5 ? ` … und ${wirkung.zuViele.length - 5} weitere` : ""} — Auswahl der Regel enger fassen.</div>}
+          </div>
+          <button type="button" title="Hinweise ausblenden — erscheinen wieder beim nächsten «↻ Aktualisieren»"
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "#8a5a00", padding: "2px 0 0", lineHeight: 1, flexShrink: 0 }}
+            onClick={() => { setWeggeklickt(true); setZeigeNr(null); }}>✕</button>
         </div>
       )}
 
