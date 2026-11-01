@@ -12,7 +12,8 @@ import AblaufRegelnEditor from "./AblaufRegelnEditor";
 import GruppenReihenfolgeEditor from "./GruppenReihenfolgeEditor";
 import Hinweis from "./Hinweis";
 import { bauablaufReihenfolge } from "./gruppenReihenfolge";
-import { regelnAlsJson, parseBauablaufJson, simRegelnAnwenden, regelnAnwenden } from "./ablaufRegeln";
+import { regelnAlsJson, parseBauablaufJson, simRegelnAnwenden, regelnAnwenden, ohneVerbindungDarunter } from "./ablaufRegeln";
+import type { OhneDarunter } from "./ablaufRegeln";
 import { optimiereAuslastung, optimierungUebernehmen, terminSignatur } from "./auslastungOptimieren";
 import type { FestWiderspruch } from "./auslastungOptimierenKran";
 import { pruefeZeitplanBereitschaft } from "./zeitplanUebernahmeHelpers";
@@ -103,6 +104,10 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   const [festKonflikt, setFestKonflikt] = useState<{ namen: string[]; widersprueche: (FestWiderspruch & { regelId?: string })[] } | null>(null);
   const [festNr, setFestNr] = useState<number | null>(null);
   const festAusblenden = () => { setFestKonflikt(null); setFestNr(null); setStufeFokus(false); };
+  // Prüfung nach «Aktualisieren»: Tasks der untersten Gruppenebene (z.B. EG), die ohne Verbindung zur Gruppe darunter vor deren
+  // Ende beginnen (ohneVerbindungDarunter) — Button legt die Regel «Gruppe darunter» als Entwurf an (AblaufRegelnEditor)
+  const [ohneDarunter, setOhneDarunter] = useState<OhneDarunter[] | null>(null);
+  const [vorlageSignal, setVorlageSignal] = useState(0);
   const gruppenAbschnittRef = useRef<HTMLDivElement>(null);
   const [stufeFokus, setStufeFokus] = useState(false);
   const bauablaufImportRef = useRef<HTMLInputElement>(null);
@@ -195,7 +200,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   // optimieren. Ein Schritt für «Rückgängig».
   function bauablaufAktualisieren() {
     setBauablaufFehler(null); setBauablaufInfo(null); setAktualisiertSignal(n => n + 1);
-    setFestKonflikt(null); setFestNr(null); setStufeFokus(false);
+    setFestKonflikt(null); setFestNr(null); setStufeFokus(false); setOhneDarunter(null);
     const gruppenReihenfolge = bauablaufReihenfolge(sim!);
     const mitRegeln = simRegelnAnwenden({ ...sim!, gruppenReihenfolge });
     const status = pruefeZeitplanBereitschaft(mitRegeln.tasks, stammdaten);
@@ -215,6 +220,8 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     const ende = (ts: typeof tasks) => ts.reduce((m, t) => (!t.isGroup && t.end && t.end > m ? t.end : m), "");
     const datum = (iso: string) => iso ? iso.split("-").reverse().join(".") : "–";
     updateSim({ ...mitRegeln, tasks, optimiertStand: terminSignatur(tasks) });
+    const ohne = ohneVerbindungDarunter(tasks, gruppenReihenfolge);
+    setOhneDarunter(ohne.length ? ohne : null);
     setBauablaufInfo(verschoben === 0 ? "Aktualisiert — keine Termine geändert."
       : `Aktualisiert — ${verschoben} Task${verschoben === 1 ? "" : "s"} neu terminiert, Bauende ${datum(ende(sim!.tasks))} → ${datum(ende(tasks))}.`);
     if (bericht.gelockert.length > 0) {
@@ -981,6 +988,28 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
             </div>
           );
         })()}
+        {ohneDarunter && (() => {
+          const name = (id: string) => sim.tasks.find(t => t.id === id)?.name ?? id;
+          const d = (iso: string) => iso.split("-").reverse().join(".");
+          const b = ohneDarunter[0];
+          return (
+            <div style={{ marginBottom: 10, padding: "6px 10px", background: "#fff7e6", border: "1px solid #f5d9a8", color: "#8a5a00", fontSize: 11, display: "flex", alignItems: "flex-start", gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div><b>{ohneDarunter.length} Task{ohneDarunter.length === 1 ? "" : "s"} im {b.wert}</b> beginn{ohneDarunter.length === 1 ? "t" : "en"} vor dem Ende von {b.darunter} derselben Gruppe
+                  und {ohneDarunter.length === 1 ? "ist" : "sind"} über keinen Vorgänger damit verbunden — das Personal hat dort Lücken gefüllt, weil keine Regel sie hält:</div>
+                <div style={{ marginTop: 2 }}>{ohneDarunter.slice(0, 5).map(o => `«${name(o.taskId)}» (${o.darunter} bis ${d(o.endeDarunter)})`).join(", ")}{ohneDarunter.length > 5 ? ` … und ${ohneDarunter.length - 5} weitere` : ""}</div>
+                <div style={{ marginTop: 3 }}>Vorschlag: Regel «Erst Decke fertig, dann … — <b>Gruppe darunter</b>, Ebene {b.ebene}» — {b.wert} beginnt dann erst nach der Decke im {b.darunter} derselben Gruppe.
+                  Ist der frühe Beginn gewollt (z.B. unabhängige Bauteile), Hinweis ausblenden.</div>
+              </div>
+              {!readOnly && <button type="button" className="tc-btn-secondary" style={{ flexShrink: 0, fontSize: 11, padding: "3px 10px" }}
+                title="Neue Regel «Geschoss nach Decke darunter» als Entwurf unter 3. Ablaufregeln anlegen — Bauteilart prüfen, speichern, dann «↻ Aktualisieren»"
+                onClick={() => { if (eingeklappt["ablaufregeln"]) toggleEingeklappt("ablaufregeln"); setVorlageSignal(n => n + 1); }}>+ Regel anlegen</button>}
+              <button type="button" title="Hinweis ausblenden — erscheint wieder beim nächsten «↻ Aktualisieren»"
+                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "inherit", padding: "2px 0 0", lineHeight: 1, flexShrink: 0 }}
+                onClick={() => setOhneDarunter(null)}>✕</button>
+            </div>
+          );
+        })()}
         {bauablaufInfo && <div style={{ marginBottom: 10, padding: "6px 10px", background: "var(--tc-blue-bg)", border: "1px solid #c5dbef", fontSize: 11, color: "var(--tc-text-2)" }}>
           {bauablaufInfo} <span style={{ color: "var(--tc-text-3)" }}>Rückgängig oben in der Kopfzeile.</span></div>}
         {stammdaten.gewerke.length > 0 && (<>
@@ -1014,7 +1043,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
         <CockpitAbschnitt titel="3. Ablaufregeln (zwingend)" eingeklappt={!!eingeklappt["ablaufregeln"]} onToggle={() => toggleEingeklappt("ablaufregeln")}
           hinweis={<>«Erst A fertig, dann B» — z.B. Elemente erst versetzen, wenn die Platte darunter fertig ist, oder die Kanalisation einer Etappe vor ihrem Magerbeton. A und B wählen Tasks nach Gruppe, Bauteilart, Kategorie, Unternehmer oder Name (mehrere Bedingungen = alle müssen zutreffen, mehrere Werte = einer genügt; «ausser» = keiner darf zutreffen). Bezug: überall, nur in derselben Gruppe (z.B. selbe Etappe) oder Gruppe darunter (unten → oben wie in Stufe 2, auf den Ebenen darüber dieselbe Gruppe). Die Regeln setzen nach jeder Änderung automatische Vorgänger (blau, Tooltip «Ablaufregel») — nur die nötigen — und gelten so beim Optimieren, Nachführen und Ausrichten. Zu früh beginnende Tasks rücken nach hinten. Von Hand gesetzte Vorgänger bleiben; Regel ausschalten oder löschen entfernt ihre Vorgänger.</>}>
           <AblaufRegelnEditor sim={sim} updateSim={updateSim} readOnly={!!readOnly} aktualisiertSignal={aktualisiertSignal}
-            festKonflikte={festKonflikt?.widersprueche.filter(w => w.regelId)} onFestAusblenden={festAusblenden} />
+            festKonflikte={festKonflikt?.widersprueche.filter(w => w.regelId)} onFestAusblenden={festAusblenden} vorlageSignal={vorlageSignal} />
         </CockpitAbschnitt>
       </div>
     </div>

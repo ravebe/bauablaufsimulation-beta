@@ -26,7 +26,7 @@ import { useSelektionFokus } from "./listenScroll";
 import Schwebend from "./Schwebend";
 import Hinweis from "./Hinweis";
 import { autoVorgaengerSetzen } from "./autoVorgaenger";
-import { regelWirkt } from "./ablaufRegeln";
+import { regelWirkt, ohneVerbindungDarunter } from "./ablaufRegeln";
 import type { AutoVorgaengerModus } from "./autoVorgaenger";
 import { bauablaufReihenfolge } from "./gruppenReihenfolge";
 import { stufenTitel } from "./gruppenReihenfolge";
@@ -764,6 +764,19 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                     {" "}{auslastungVorschau.gelockert!.slice(0, 6).join(", ")}{auslastungVorschau.gelockert!.length > 6 ? " …" : ""}
                   </div>
                 )}
+                {!nurDauern && (() => {
+                  // Prüfung: Tasks im Geschoss darüber ohne Verbindung zur Gruppe darunter, die vor deren Ende beginnen (Lücken gefüllt)
+                  const ohne = ohneVerbindungDarunter(auslastungVorschau.ergebnisse[0]?.tasks ?? [], auslastungVorschau.gruppen);
+                  if (!ohne.length) return null;
+                  const name = (id: string) => aktiveSim.tasks.find(t => t.id === id)?.name ?? id;
+                  return (
+                    <div style={{ marginBottom: 8, padding: "6px 10px", background: "#fff7e6", border: "1px solid #f5d9a8", fontSize: 11, color: "#8a5a00" }}>
+                      <b>{ohne.length} Task{ohne.length === 1 ? "" : "s"} im {ohne[0].wert}</b> beginn{ohne.length === 1 ? "t" : "en"} vor dem Ende von {ohne[0].darunter} derselben Gruppe, ohne Vorgänger dorthin
+                      (Personal füllt Lücken): {ohne.slice(0, 4).map(o => `«${name(o.taskId)}»`).join(", ")}{ohne.length > 4 ? " …" : ""}.
+                      {" "}Regel «Gruppe darunter» anlegen: Tab Ressourcen → Bauablauf → 3. Ablaufregeln (dort nach «↻ Aktualisieren» mit Button).
+                    </div>
+                  );
+                })()}
                 {keineHoehereAuslastung && (
                   <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "2px 8px", marginBottom: 8, fontSize: 12, color: "#8a5a00" }}>
                     <span>Keine höhere Auslastung möglich.</span>

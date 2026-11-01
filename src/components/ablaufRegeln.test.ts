@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { Task, AblaufRegel } from "../types";
 import { vorgaengerListe, automatischeVorgaenger, setzeVorgaenger } from "../types";
-import { regelnAnwenden, regelnAlsJson, parseRegelnJson, parseBauablaufJson } from "./ablaufRegeln";
+import { regelnAnwenden, regelnAlsJson, parseRegelnJson, parseBauablaufJson, ohneVerbindungDarunter } from "./ablaufRegeln";
 
 const task = (id: string, start: string, end: string, p: Partial<Task> = {}): Task =>
   ({ id, name: id, start, end, typ: "neubau", objektGuids: [], ...p });
@@ -36,6 +36,16 @@ describe("Ablaufregeln", () => {
     expect(v["B-EG-ST"]).toBe("B-UG-DE");
     expect(v["A-UG-DE"]).toBe("");
     expect([...automatischeVorgaenger(tasks.find(t => t.id === "A-EG-ST")!)]).toEqual(["A-UG-DE"]);
+  });
+
+  it("Prüfung nach dem Optimieren: EG ohne Verbindung zum UG, das noch läuft, wird gemeldet — mit Regel «Gruppe darunter» nicht mehr", () => {
+    const ohne = ohneVerbindungDarunter(gantt());
+    expect(ohne.map(o => o.taskId).sort()).toEqual(["A-EG-DE", "A-EG-ST", "B-EG-ST"]);
+    expect(ohne.find(o => o.taskId === "A-EG-ST")).toEqual({ taskId: "A-EG-ST", ebene: 2, wert: "EG", darunter: "UG", endeDarunter: "2026-11-10" });
+    expect(ohneVerbindungDarunter(regelnAnwenden(gantt(), [platteDarunter]).tasks)).toEqual([]);
+    // vom Optimieren ergänzter Vorgänger (auf Personal gewartet) zählt nicht als Verbindung
+    const opt = gantt().map(t => t.id === "B-EG-ST" ? { ...t, predecessorId: "B-UG-DE", lagDays: 0, optimierung: { vorgaenger: ["B-UG-DE"] } } as Task : t);
+    expect(ohneVerbindungDarunter(opt).map(o => o.taskId)).toContain("B-EG-ST");
   });
 
   it("«ausser»: Wände auf der Bodenplatte warten nicht auf die Decke darunter", () => {

@@ -13,7 +13,7 @@ import type { Stammdaten } from "./stammdatenHelpers";
 import { LEERE_STAMMDATEN, alleKuerzel } from "./stammdatenHelpers";
 import type { Kalender } from "./kalenderHelpers";
 import { LEERER_KALENDER } from "./kalenderHelpers";
-import { startZeitpunkt, vergleicheZeitpunkte } from "./zeitHelpers";
+import { startZeitpunkt, endZeitpunkt, vergleicheZeitpunkte } from "./zeitHelpers";
 import { gruppenJeTask, gruppenStruktur, gruppenReihenfolgeAbgleichen, bauablaufReihenfolge } from "./gruppenReihenfolge";
 
 export const REGEL_FELD_LABEL: Record<RegelFeld, string> = {
@@ -282,6 +282,55 @@ export function regelnAnwenden(tasks: Task[], regeln: AblaufRegel[], stammdaten:
   let geaendert = false;
   erg = erg.map((t, i) => { if (schluessel(t) === schluessel(tasks[i])) return tasks[i]; geaendert = true; return t; });
   return { tasks: geaendert ? erg : tasks, anzahl, zirkel, zirkelStellen, herkunft, zuViele };
+}
+
+/** Prüfung nach dem Optimieren: Tasks der untersten Gruppenebene (z.B. EG), die vor dem Ende der Gruppe darunter (UG, gleiche
+ *  Gruppen darüber, Reihenfolge wie Stufe 2) beginnen und mit ihr über keine Kette von Vorgängern verbunden sind — so füllt das
+ *  Personal Lücken mit Arbeit im Geschoss darüber (z.B. EG-Wände am ersten Tag), weil keine Regel «Gruppe darunter» sie hält.
+ *  Vom Optimieren ergänzte Vorgänger (auf Personal gewartet) zählen nicht als Verbindung. */
+export interface OhneDarunter { taskId: string; ebene: number; wert: string; darunter: string; endeDarunter: string }
+export function ohneVerbindungDarunter(tasks: Task[], reihenfolge?: GruppenReihenfolge): OhneDarunter[] {
+  const ordnung = reihenfolge ?? gruppenReihenfolgeAbgleichen(undefined, tasks);
+  const gruppenStufen = ordnung.stufen.filter(s => s.quelle === "gruppe");
+  if (!gruppenStufen.length) return [];
+  const ebene = Math.max(...gruppenStufen.map(s => s.ebene ?? 1));
+  const werte = gruppenStufen.find(s => (s.ebene ?? 1) === ebene)!.werte;
+  const rang = new Map(werte.map((w, i) => [w, i]));
+  const gruppen = gruppenJeTask(tasks);
+  const pfad = (t: Task) => { const g = gruppen.get(t.id); let k = ""; for (let e = 1; e < ebene; e++) k += (g?.get(e) ?? "") + "\u0001"; return k; };
+  // je Pfad (Gruppen darüber) und Rang die Tasks
+  const jePfad = new Map<string, Map<number, Task[]>>();
+  tasks.forEach((t, i) => {
+    if (t.isGroup || istGruppe(tasks, i) || !t.start || !t.end || bleibtStehen(t)) return;
+    const r = rang.get(gruppen.get(t.id)?.get(ebene) ?? "");
+    if (r === undefined) return;
+    const k = pfad(t);
+    let m = jePfad.get(k);
+    if (!m) { m = new Map(); jePfad.set(k, m); }
+    m.set(r, [...(m.get(r) ?? []), t]);
+  });
+  // Nachfolger ohne die vom Optimieren ergänzten Vorgänger
+  const nachf = new Map<string, string[]>();
+  for (const t of tasks) {
+    const opt = new Set(t.optimierung?.vorgaenger ?? []);
+    for (const v of vorgaengerListe(t)) if (!opt.has(v.id)) nachf.set(v.id, [...(nachf.get(v.id) ?? []), t.id]);
+  }
+  const erg: OhneDarunter[] = [];
+  for (const m of jePfad.values()) {
+    const raenge = [...m.keys()].sort((a, b) => a - b);
+    for (let i = 1; i < raenge.length; i++) {
+      const unten = m.get(raenge[i - 1])!;
+      const ende = unten.map(endZeitpunkt).reduce((a, b) => vergleicheZeitpunkte(a, b) >= 0 ? a : b);
+      // alles, was über Vorgänger nach einem Task der Gruppe darunter kommt
+      const erreicht = new Set<string>(), stapel = unten.map(t => t.id);
+      while (stapel.length) for (const n of nachf.get(stapel.pop()!) ?? []) if (!erreicht.has(n)) { erreicht.add(n); stapel.push(n); }
+      for (const t of m.get(raenge[i])!) {
+        if (erreicht.has(t.id) || vergleicheZeitpunkte(startZeitpunkt(t), ende) >= 0) continue;
+        erg.push({ taskId: t.id, ebene, wert: werte[raenge[i]], darunter: werte[raenge[i - 1]], endeDarunter: ende.datum });
+      }
+    }
+  }
+  return erg;
 }
 
 /** Simulation mit ihren Ablaufregeln abgleichen — ohne Regeln und ohne Regel-Vorgänger unverändert (dasselbe Objekt). */

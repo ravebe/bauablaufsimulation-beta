@@ -19,9 +19,11 @@ interface Props { sim: SimProjekt; updateSim: (s: SimProjekt) => void; readOnly:
   /** «fest» aufgehoben (beim «Aktualisieren»), weil ein Vorgänger aus dieser Regel wegen «fest» erst danach darf — die Meldung
    *  steht unter der Regel; ✕ = onFestAusblenden (bis zum nächsten «Aktualisieren») */
   festKonflikte?: (FestWiderspruch & { regelId?: string })[]
-  onFestAusblenden?: () => void }
+  onFestAusblenden?: () => void
+  /** zählt hoch → Regel «Geschoss nach Decke darunter» als Entwurf anlegen (Hinweis nach «Aktualisieren» in TabRessourcen) */
+  vorlageSignal?: number }
 
-export default function AblaufRegelnEditor({ sim, updateSim, readOnly, aktualisiertSignal = 0, festKonflikte = [], onFestAusblenden }: Props) {
+export default function AblaufRegelnEditor({ sim, updateSim, readOnly, aktualisiertSignal = 0, festKonflikte = [], onFestAusblenden, vorlageSignal = 0 }: Props) {
   const regeln = useMemo(() => sim.ablaufRegeln ?? [], [sim.ablaufRegeln]);
   const stammdaten = sim.stammdaten ?? LEERE_STAMMDATEN;
   const reihenfolge = useMemo(() => bauablaufReihenfolge({ gruppenReihenfolge: sim.gruppenReihenfolge, tasks: sim.tasks, stammdaten: sim.stammdaten }), [sim.gruppenReihenfolge, sim.tasks, sim.stammdaten]);
@@ -80,6 +82,22 @@ export default function AblaufRegelnEditor({ sim, updateSim, readOnly, aktualisi
     setEntwurfNeu(false); // bleibt offen — gelbe Meldungen zu dieser Regel erscheinen gleich darin
   };
   const unterste = optionen.ebenen.length ? optionen.ebenen[optionen.ebenen.length - 1].ebene : 1;
+  // Vorlage «Geschoss nach Decke darunter»: alles in einer Gruppe (z.B. EG) erst nach der Decke der Gruppe darunter (UG) — Bauteilart
+  // der Decke vorbelegt, wenn eine Leistungsposition «Decke» heisst
+  const geschossVorlage = (): Omit<AblaufRegel, "id"> => {
+    const decke = optionen.kuerzel.filter(k => /decke/i.test(k.label));
+    return { name: "Geschoss nach Decke darunter", aktiv: true, vor: [{ feld: "kuerzel", werte: decke.length === 1 ? [decke[0].wert] : [] }], nach: [],
+      bezug: "darunter", ebene: unterste, wartetage: 0 };
+  };
+  useEffect(() => {
+    if (!vorlageSignal) return;
+    const vorlage = geschossVorlage();
+    if (!oeffnen(null)) return;
+    const id = neueId();
+    setEntwurf({ ...vorlage, id }); setEntwurfNeu(true);
+    const t = setTimeout(() => regelRefs.current.get(id)?.scrollIntoView({ behavior: "smooth", block: "center" }), 80);
+    return () => clearTimeout(t);
+  }, [vorlageSignal]); // eslint-disable-line react-hooks/exhaustive-deps
   const liste = entwurf && entwurfNeu ? [...regeln, entwurf] : regeln;
 
   return (
@@ -152,6 +170,16 @@ export default function AblaufRegelnEditor({ sim, updateSim, readOnly, aktualisi
                       </div>
                     ))}
                     {eigeneStellen.length > 10 && <div>… und {eigeneStellen.length - 10} weitere</div>}
+                    {gespeichert.bezug === "gleich" && n === 0 && !readOnly && (
+                      <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px solid #f5d9a8", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ flex: 1, minWidth: 200 }}>Alle Verknüpfungen dieser Regel ergeben einen Zirkelbezug — «in derselben Gruppe» heisst: A und B im selben
+                          Geschoss. <b>Meinten Sie «Gruppe darunter»?</b> (z.B. EG erst nach der Decke im UG derselben Etappe)</span>
+                        <button type="button" className="tc-btn-secondary" style={{ fontSize: 11, padding: "3px 10px", flexShrink: 0 }}
+                          title="Bezug auf «Gruppe darunter» (gleiche Ebene) umstellen und speichern"
+                          onClick={() => { const neu = { ...gespeichert, bezug: "darunter" as const, ebene: gespeichert.ebene ?? unterste };
+                            speichern(regeln.map(x => x.id === neu.id ? neu : x)); setEntwurf({ ...neu }); }}>Auf «Gruppe darunter» umstellen</button>
+                      </div>
+                    )}
                   </div>
                 )}
                 <Zeile label="Name">
