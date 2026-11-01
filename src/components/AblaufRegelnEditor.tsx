@@ -7,6 +7,7 @@ import { LEERER_KALENDER } from "./kalenderHelpers";
 import { bauablaufReihenfolge } from "./gruppenReihenfolge";
 import { regelnAnwenden, regelWirkt, regelOptionen, auswahlText, bezugText, REGEL_FELD_LABEL } from "./ablaufRegeln";
 import type { RegelOptionen } from "./ablaufRegeln";
+import type { FestWiderspruch } from "./auslastungOptimierenKran";
 
 const feldStil: React.CSSProperties = { fontSize: 11, padding: "2px 4px", border: "1px solid #d4dce4", fontFamily: "inherit", background: "#fff" };
 const knopf: React.CSSProperties = { border: "1px solid var(--tc-border)", background: "#fff", cursor: "pointer", fontSize: 10, padding: "0 5px", lineHeight: "18px", color: "var(--tc-text-2)" };
@@ -15,10 +16,12 @@ const neueId = () => `regel-${Date.now().toString(36)}-${Math.random().toString(
 interface Props { sim: SimProjekt; updateSim: (s: SimProjekt) => void; readOnly: boolean
   /** zählt bei jedem «↻ Aktualisieren» (TabRessourcen) hoch — weggeklickte Hinweise erscheinen dann wieder */
   aktualisiertSignal?: number
-  /** von aussen (rote Meldung «fest» aufgehoben → «Zeigen ›»): diese Regel aufklappen, hinscrollen, hervorheben */
-  fokus?: { id: string; signal: number } | null }
+  /** «fest» aufgehoben (beim «Aktualisieren»), weil ein Vorgänger aus dieser Regel wegen «fest» erst danach darf — die Meldung
+   *  steht unter der Regel; ✕ = onFestAusblenden (bis zum nächsten «Aktualisieren») */
+  festKonflikte?: (FestWiderspruch & { regelId?: string })[]
+  onFestAusblenden?: () => void }
 
-export default function AblaufRegelnEditor({ sim, updateSim, readOnly, aktualisiertSignal = 0, fokus }: Props) {
+export default function AblaufRegelnEditor({ sim, updateSim, readOnly, aktualisiertSignal = 0, festKonflikte = [], onFestAusblenden }: Props) {
   const regeln = useMemo(() => sim.ablaufRegeln ?? [], [sim.ablaufRegeln]);
   const stammdaten = sim.stammdaten ?? LEERE_STAMMDATEN;
   const reihenfolge = useMemo(() => bauablaufReihenfolge({ gruppenReihenfolge: sim.gruppenReihenfolge, tasks: sim.tasks, stammdaten: sim.stammdaten }), [sim.gruppenReihenfolge, sim.tasks, sim.stammdaten]);
@@ -46,12 +49,6 @@ export default function AblaufRegelnEditor({ sim, updateSim, readOnly, aktualisi
     if (stelle) regelRefs.current.get(stelle.regel)?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [zeigeSignal]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!stellen.length) setZeigeNr(null); }, [stellen.length]);
-  useEffect(() => {
-    if (!fokus) return;
-    setOffen(fokus.id);
-    const id = setTimeout(() => regelRefs.current.get(fokus.id)?.scrollIntoView({ behavior: "smooth", block: "center" }), 60);
-    return () => clearTimeout(id);
-  }, [fokus?.signal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const speichern = (neu: AblaufRegel[]) => updateSim({ ...sim, ablaufRegeln: neu.length ? neu : undefined });
   const aendern = (id: string, patch: Partial<AblaufRegel>) => speichern(regeln.map(r => r.id === id ? { ...r, ...patch } : r));
@@ -64,7 +61,8 @@ export default function AblaufRegelnEditor({ sim, updateSim, readOnly, aktualisi
       {regeln.map((r, i) => {
         const istOffen = offen === r.id;
         const n = wirkung.anzahl.get(r.id) ?? 0;
-        const hervorheben = stelle?.regel === r.id || fokus?.id === r.id;
+        const fest = festKonflikte.filter(w => w.regelId === r.id);
+        const hervorheben = stelle?.regel === r.id;
         const eigeneStellen = stellen.filter(s => s.regel === r.id);
         return (
           <div key={r.id} ref={el => { if (el) regelRefs.current.set(r.id, el); else regelRefs.current.delete(r.id); }}
@@ -90,6 +88,28 @@ export default function AblaufRegelnEditor({ sim, updateSim, readOnly, aktualisi
                   onClick={() => { if (confirm(`Regel «${r.name || `Regel ${i + 1}`}» löschen?`)) speichern(regeln.filter(x => x.id !== r.id)); }}>✕</button>
               </>}
             </div>
+            {fest.length > 0 && (
+              <div className="alert err" style={{ margin: "0 8px 6px 28px", display: "flex", alignItems: "flex-start", gap: 8 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600 }}>! Widerspricht der festen Reihenfolge — «fest» für {fest.length} Task{fest.length === 1 ? "" : "s"} aufgehoben:</div>
+                  {fest.slice(0, 5).map((w, k) => (
+                    <div key={k}>«{taskName.get(w.taskId) ?? w.taskId}»{w.taskWert ? ` (${w.taskWert})` : ""} wartet auf «{taskName.get(w.vorgaengerId) ?? w.vorgaengerId}»{w.vorgaengerWert ? ` (${w.vorgaengerWert})` : ""}</div>
+                  ))}
+                  {fest.length > 5 && <div>… und {fest.length - 5} weitere</div>}
+                  {(() => {
+                    const s = fest.find(w => w.stufe);
+                    return s ? <div style={{ marginTop: 3 }}>
+                      Diese Regel setzt den Vorgänger, «fest» bei <b>{s.stufe}</b> lässt {s.vorgaengerWert} aber erst beginnen, wenn alles in {s.taskWert} (derselben
+                      Gruppen darüber) fertig ist — beides geht nicht. Lösung: Regel enger fassen (z.B. Bezug «in derselben Gruppe» statt «überall»)
+                      oder ausschalten, oder {s.stufe} in Stufe 2 auf «weich» stellen.
+                    </div> : <div style={{ marginTop: 3 }}>Die Vorgänger aus dieser Regel sind selbst wegen «fest» blockiert.</div>;
+                  })()}
+                </div>
+                {onFestAusblenden && <button type="button" title="Hinweis ausblenden — erscheint wieder beim nächsten «↻ Aktualisieren»"
+                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "inherit", padding: "2px 0 0", lineHeight: 1, flexShrink: 0 }}
+                  onClick={onFestAusblenden}>✕</button>}
+              </div>
+            )}
             {istOffen && (
               <div style={{ padding: "4px 8px 8px 28px", display: "grid", gap: 6, borderTop: "1px solid var(--tc-border-light)", background: "#fafbfc" }}>
                 {eigeneStellen.length > 0 && (
