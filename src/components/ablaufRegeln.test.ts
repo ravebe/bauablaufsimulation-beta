@@ -95,6 +95,7 @@ describe("Ablaufregeln", () => {
     const zurueck = regel({ id: "2", vor: [{ feld: "name", werte: ["Magerbeton"] }], nach: [{ feld: "name", werte: ["Kanalisation"] }] });
     const e = regelnAnwenden(gantt(), [hin, zurueck]);
     expect(e.zirkel).toBe(1);
+    expect(e.zirkelStellen).toEqual([{ regel: "2", a: "MB-A", b: "KAN-A" }]); // für «Zeigen ›» im Editor
     expect(vorg(e.tasks)["KAN-A"]).toBe("");
   });
 

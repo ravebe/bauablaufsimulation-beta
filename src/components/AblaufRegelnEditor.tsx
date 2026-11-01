@@ -1,6 +1,6 @@
 // AblaufRegelnEditor.tsx — Tab Ressourcen → Bauablauf → 3. Ablaufregeln: «erst A fertig, dann B» je Simulation (SimProjekt.ablaufRegeln);
 // Export/Import im Kopf des Bauablaufs (TabRessourcen.tsx). Daraus setzt ablaufRegeln.ts nach jeder Änderung automatische Vorgänger (blau).
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AblaufRegel, RegelBedingung, RegelFeld, SimProjekt } from "../types";
 import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
 import { LEERER_KALENDER } from "./kalenderHelpers";
@@ -23,6 +23,22 @@ export default function AblaufRegelnEditor({ sim, updateSim, readOnly }: Props) 
   const wirkung = useMemo(() => regelnAnwenden(sim.tasks, regeln, stammdaten, reihenfolge, sim.kalender ?? LEERER_KALENDER),
     [sim.tasks, regeln, stammdaten, reihenfolge, sim.kalender]);
   const [offen, setOffen] = useState<string | null>(null);
+  // «Zeigen ›» im gelben Balken: nicht gesetzte Verknüpfung Nr. … — ihre Regel aufklappen, hinscrollen, hervorheben
+  const [zeigeNr, setZeigeNr] = useState<number | null>(null);
+  const [zeigeSignal, setZeigeSignal] = useState(0);
+  const regelRefs = useRef(new Map<string, HTMLDivElement>());
+  const stellen = wirkung.zirkelStellen;
+  const stelle = zeigeNr !== null ? stellen[zeigeNr % Math.max(1, stellen.length)] : undefined;
+  const taskName = useMemo(() => new Map(sim.tasks.map(t => [t.id, t.name])), [sim.tasks]);
+  const zeigen = () => {
+    if (!stellen.length) return;
+    const nr = zeigeNr === null ? 0 : (zeigeNr + 1) % stellen.length;
+    setZeigeNr(nr); setOffen(stellen[nr].regel); setZeigeSignal(n => n + 1);
+  };
+  useEffect(() => {
+    if (stelle) regelRefs.current.get(stelle.regel)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [zeigeSignal]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!stellen.length) setZeigeNr(null); }, [stellen.length]);
 
   const speichern = (neu: AblaufRegel[]) => updateSim({ ...sim, ablaufRegeln: neu.length ? neu : undefined });
   const aendern = (id: string, patch: Partial<AblaufRegel>) => speichern(regeln.map(r => r.id === id ? { ...r, ...patch } : r));
@@ -35,8 +51,12 @@ export default function AblaufRegelnEditor({ sim, updateSim, readOnly }: Props) 
       {regeln.map((r, i) => {
         const istOffen = offen === r.id;
         const n = wirkung.anzahl.get(r.id) ?? 0;
+        const hervorheben = stelle?.regel === r.id;
+        const eigeneStellen = stellen.filter(s => s.regel === r.id);
         return (
-          <div key={r.id} style={{ border: "1px solid var(--tc-border-light)", background: "#fff", marginBottom: 6, opacity: r.aktiv ? 1 : 0.6 }}>
+          <div key={r.id} ref={el => { if (el) regelRefs.current.set(r.id, el); else regelRefs.current.delete(r.id); }}
+            style={{ border: hervorheben ? "1px solid #e0a43a" : "1px solid var(--tc-border-light)", boxShadow: hervorheben ? "0 0 0 2px #fbe3b5" : undefined,
+              background: "#fff", marginBottom: 6, opacity: r.aktiv ? 1 : 0.6 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px" }}>
               <input type="checkbox" checked={r.aktiv} disabled={readOnly} title="Regel anwenden" style={{ margin: 0 }}
                 onChange={e => aendern(r.id, { aktiv: e.target.checked })} />
@@ -59,6 +79,17 @@ export default function AblaufRegelnEditor({ sim, updateSim, readOnly }: Props) 
             </div>
             {istOffen && (
               <div style={{ padding: "4px 8px 8px 28px", display: "grid", gap: 6, borderTop: "1px solid var(--tc-border-light)", background: "#fafbfc" }}>
+                {eigeneStellen.length > 0 && (
+                  <div style={{ padding: "4px 6px", background: "#fff7e6", border: "1px solid #f5d9a8", color: "#8a5a00" }}>
+                    <div style={{ fontWeight: 600, marginBottom: 2 }}>Nicht gesetzt (Zirkelbezug) — B ist über andere Vorgänger schon vor A:</div>
+                    {eigeneStellen.slice(0, 10).map((s, k) => (
+                      <div key={k} style={{ fontWeight: s === stelle ? 600 : undefined }}>
+                        A «{taskName.get(s.a) ?? s.a}» → B «{taskName.get(s.b) ?? s.b}»
+                      </div>
+                    ))}
+                    {eigeneStellen.length > 10 && <div>… und {eigeneStellen.length - 10} weitere</div>}
+                  </div>
+                )}
                 <Zeile label="Name">
                   <NameFeld wert={r.name} disabled={readOnly} onChange={name => aendern(r.id, { name })} />
                 </Zeile>
@@ -94,7 +125,14 @@ export default function AblaufRegelnEditor({ sim, updateSim, readOnly }: Props) 
 
       {(wirkung.zirkel > 0 || wirkung.zuViele.length > 0) && (
         <div style={{ margin: "6px 0", padding: "6px 8px", background: "#fff7e6", border: "1px solid #f5d9a8", color: "#8a5a00" }}>
-          {wirkung.zirkel > 0 && <div>{wirkung.zirkel} Verknüpfung{wirkung.zirkel === 1 ? "" : "en"} nicht gesetzt — sie hätte{wirkung.zirkel === 1 ? "" : "n"} einen Zirkelbezug ergeben (Regeln widersprechen sich oder einem Vorgänger von Hand).</div>}
+          {wirkung.zirkel > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ flex: 1 }}>{wirkung.zirkel} Verknüpfung{wirkung.zirkel === 1 ? "" : "en"} nicht gesetzt — sie hätte{wirkung.zirkel === 1 ? "" : "n"} einen Zirkelbezug ergeben (Regeln widersprechen sich oder einem Vorgänger von Hand).</span>
+              <button type="button" className="tc-btn-secondary" style={{ flexShrink: 0, fontSize: 11, padding: "3px 10px" }}
+                title="Zur Regel springen, deren Verknüpfung nicht gesetzt wurde, und die betroffenen Tasks zeigen — nochmals klicken: nächste Stelle"
+                onClick={zeigen}>{stellen.length > 1 && zeigeNr !== null ? `Zeigen ${zeigeNr % stellen.length + 1}/${stellen.length} ›` : "Zeigen ›"}</button>
+            </div>
+          )}
           {wirkung.zuViele.length > 0 && <div>Mehr als 30 Vorgänger bei: {wirkung.zuViele.slice(0, 5).join(", ")}{wirkung.zuViele.length > 5 ? ` … und ${wirkung.zuViele.length - 5} weitere` : ""} — Auswahl der Regel enger fassen.</div>}
         </div>
       )}

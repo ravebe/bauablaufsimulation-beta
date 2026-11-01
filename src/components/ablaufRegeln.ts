@@ -64,6 +64,8 @@ export interface RegelErgebnis {
   anzahl: Map<string, number>;
   /** übersprungene Verknüpfungen, die einen Zirkelbezug ergeben hätten */
   zirkel: number;
+  /** dieselben einzeln: Regel und die Verknüpfung A → B, die nicht gesetzt wurde (B ist schon vor A) — für «Zeigen» im Editor */
+  zirkelStellen: { regel: string; a: string; b: string }[];
   /** Tasks mit mehr als MAX_VORGAENGER Vorgängern — die überzähligen Regel-Vorgänger fehlen */
   zuViele: string[];
 }
@@ -109,6 +111,7 @@ export function regelnAnwenden(tasks: Task[], regeln: AblaufRegel[], stammdaten:
   reihenfolge?: GruppenReihenfolge, kalender: Kalender = LEERER_KALENDER): RegelErgebnis {
   const anzahl = new Map<string, number>();
   let zirkel = 0;
+  const zirkelStellen: RegelErgebnis["zirkelStellen"] = [];
   const zuViele: string[] = [];
 
   // 1. bisherige Regel-Vorgänger entfernen — sie werden neu bestimmt
@@ -181,7 +184,7 @@ export function regelnAnwenden(tasks: Task[], regeln: AblaufRegel[], stammdaten:
           if (bisher) { if (regel.wartetage > bisher.lag) neu.get(b.id)!.set(a.id, { lag: regel.wartetage, regel: regel.id }); continue; }
           if (!vorg.get(b.id)!.has(a.id)) {
             unten ??= nachkommen(b.id);
-            if (unten.has(a.id)) { zirkel++; continue; }
+            if (unten.has(a.id)) { zirkel++; zirkelStellen.push({ regel: regel.id, a: a.id, b: b.id }); continue; }
           }
           if (!neu.has(b.id)) neu.set(b.id, new Map());
           neu.get(b.id)!.set(a.id, { lag: regel.wartetage, regel: regel.id });
@@ -275,7 +278,7 @@ export function regelnAnwenden(tasks: Task[], regeln: AblaufRegel[], stammdaten:
     sortiert(t.regelVorgaenger), sortiert(t.autoVorgaenger), sortiert(t.optimierung?.vorgaenger)]);
   let geaendert = false;
   erg = erg.map((t, i) => { if (schluessel(t) === schluessel(tasks[i])) return tasks[i]; geaendert = true; return t; });
-  return { tasks: geaendert ? erg : tasks, anzahl, zirkel, zuViele };
+  return { tasks: geaendert ? erg : tasks, anzahl, zirkel, zirkelStellen, zuViele };
 }
 
 /** Simulation mit ihren Ablaufregeln abgleichen — ohne Regeln und ohne Regel-Vorgänger unverändert (dasselbe Objekt). */
