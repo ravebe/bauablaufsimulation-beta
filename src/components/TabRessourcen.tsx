@@ -12,8 +12,9 @@ import AblaufRegelnEditor from "./AblaufRegelnEditor";
 import GruppenReihenfolgeEditor from "./GruppenReihenfolgeEditor";
 import Hinweis from "./Hinweis";
 import { bauablaufReihenfolge } from "./gruppenReihenfolge";
-import { regelnAlsJson, parseBauablaufJson, simRegelnAnwenden } from "./ablaufRegeln";
+import { regelnAlsJson, parseBauablaufJson, simRegelnAnwenden, regelnAnwenden } from "./ablaufRegeln";
 import { optimiereAuslastung, optimierungUebernehmen, terminSignatur } from "./auslastungOptimieren";
+import type { FestWiderspruch } from "./auslastungOptimierenKran";
 import { pruefeZeitplanBereitschaft } from "./zeitplanUebernahmeHelpers";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import EntwurfInput from "./EntwurfInput";
@@ -97,6 +98,13 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   const [bauablaufFehler, setBauablaufFehler] = useState<string | null>(null);
   const [bauablaufInfo, setBauablaufInfo] = useState<string | null>(null); // Ergebnis von «Aktualisieren»
   const [aktualisiertSignal, setAktualisiertSignal] = useState(0); // «Aktualisieren» geklickt → weggeklickte Hinweise der Ablaufregeln wieder zeigen
+  // «fest» aufgehoben (beim Aktualisieren): Tasks und je Ursache Vorgänger, Stufe und ggf. die Ablaufregel — «Zeigen ›» springt
+  // dorthin (Regel in 3. bzw. Stufe in 2.), ✕ blendet aus bis zum nächsten «Aktualisieren»
+  const [festKonflikt, setFestKonflikt] = useState<{ namen: string[]; widersprueche: (FestWiderspruch & { regelId?: string })[] } | null>(null);
+  const [festNr, setFestNr] = useState<number | null>(null);
+  const [regelFokus, setRegelFokus] = useState<{ id: string; signal: number } | null>(null);
+  const gruppenAbschnittRef = useRef<HTMLDivElement>(null);
+  const [stufeFokus, setStufeFokus] = useState(false);
   const bauablaufImportRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (!kranplanungSignal) return;
@@ -187,6 +195,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   // optimieren. Ein Schritt für «Rückgängig».
   function bauablaufAktualisieren() {
     setBauablaufFehler(null); setBauablaufInfo(null); setAktualisiertSignal(n => n + 1);
+    setFestKonflikt(null); setFestNr(null); setRegelFokus(null); setStufeFokus(false);
     const gruppenReihenfolge = bauablaufReihenfolge(sim!);
     const mitRegeln = simRegelnAnwenden({ ...sim!, gruppenReihenfolge });
     const status = pruefeZeitplanBereitschaft(mitRegeln.tasks, stammdaten);
@@ -198,7 +207,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     }
     const reihenfolge = sim!.autoNachfuehren?.reihenfolge ?? "gruppen";
     const kal = sim!.kalender ?? LEERER_KALENDER;
-    const bericht = { gelockert: [] as string[] };
+    const bericht = { gelockert: [] as string[], widersprueche: [] as FestWiderspruch[] };
     const ergebnis = optimiereAuslastung(mitRegeln.tasks, stammdaten, kal, sim!.zeiteinheit ?? "tage", sim!.kraene ?? [], reihenfolge,
       sim!.autoNachfuehren?.luecken ?? true, { gruppen: gruppenReihenfolge, abBeginn: sim!.autoNachfuehren?.abBeginn !== false, baubeginn: sim!.baubeginn, bericht });
     const tasks = optimierungUebernehmen(mitRegeln.tasks, ergebnis);
@@ -208,7 +217,16 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     updateSim({ ...mitRegeln, tasks, optimiertStand: terminSignatur(tasks) });
     setBauablaufInfo(verschoben === 0 ? "Aktualisiert — keine Termine geändert."
       : `Aktualisiert — ${verschoben} Task${verschoben === 1 ? "" : "s"} neu terminiert, Bauende ${datum(ende(sim!.tasks))} → ${datum(ende(tasks))}.`);
-    if (bericht.gelockert.length > 0) setBauablaufFehler(`Feste Reihenfolge («fest» in Stufe 2) widerspricht Vorgängern oder Ablaufregeln — für ${bericht.gelockert.length} Task${bericht.gelockert.length === 1 ? "" : "s"} aufgehoben: ${bericht.gelockert.slice(0, 6).join(", ")}${bericht.gelockert.length > 6 ? " …" : ""}`);
+    if (bericht.gelockert.length > 0) {
+      // welche Ablaufregel hat den blockierenden Vorgänger gesetzt? (nur nötig, wenn es ein Regel-Vorgänger ist)
+      const byId = new Map(mitRegeln.tasks.map(t => [t.id, t]));
+      const ausRegel = bericht.widersprueche.some(w => byId.get(w.taskId)?.regelVorgaenger?.includes(w.vorgaengerId));
+      const herkunft = ausRegel ? regelnAnwenden(mitRegeln.tasks, sim!.ablaufRegeln ?? [], stammdaten, gruppenReihenfolge, kal).herkunft : new Map<string, string>();
+      // Widersprüche mit Stufe (direkte Ursache) zuerst
+      const widersprueche = bericht.widersprueche.map(w => ({ ...w, regelId: herkunft.get(`${w.taskId}|${w.vorgaengerId}`) }))
+        .sort((a, b) => Number(!a.stufe) - Number(!b.stufe));
+      setFestKonflikt({ namen: bericht.gelockert, widersprueche });
+    }
   }
 
   // Bauablauf (Reihenfolge der Gruppen und Bauteilarten + Ablaufregeln) als Datei, siehe ablaufRegeln.ts
@@ -904,6 +922,64 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
         <input ref={bauablaufImportRef} type="file" accept=".json" style={{ display: "none" }}
           onChange={e => e.target.files?.[0] && bauablaufImportieren(e.target.files[0])} />
         {bauablaufFehler && <div className="alert err" style={{ marginBottom: 10 }}>! {bauablaufFehler}</div>}
+        {festKonflikt && (() => {
+          const { namen, widersprueche } = festKonflikt;
+          const w = festNr !== null ? widersprueche[festNr] : undefined;
+          const taskById = new Map(sim.tasks.map(t => [t.id, t]));
+          const name = (id: string) => taskById.get(id)?.name ?? id;
+          const herkunft = (x: typeof widersprueche[number]) => {
+            const t = taskById.get(x.taskId);
+            const regel = x.regelId && (sim.ablaufRegeln ?? []).find(r => r.id === x.regelId);
+            return regel ? <>aus der Ablaufregel <b>«{regel.name}»</b></>
+              : t?.regelVorgaenger?.includes(x.vorgaengerId) ? "aus einer Ablaufregel"
+              : t?.autoVorgaenger?.includes(x.vorgaengerId) || t?.optimierung?.vorgaenger?.includes(x.vorgaengerId) ? "automatisch gesetzt (Auto-Vorgänger / Optimieren)"
+              : "von Hand gesetzt";
+          };
+          const zeigen = () => {
+            if (!widersprueche.length) return;
+            const nr = festNr === null ? 0 : (festNr + 1) % widersprueche.length;
+            const x = widersprueche[nr];
+            setFestNr(nr);
+            if (x.regelId) {
+              setStufeFokus(false);
+              if (eingeklappt["ablaufregeln"]) toggleEingeklappt("ablaufregeln");
+              setRegelFokus(f => ({ id: x.regelId!, signal: (f?.signal ?? 0) + 1 }));
+            } else {
+              setRegelFokus(null); setStufeFokus(true);
+              if (eingeklappt["gruppen"]) toggleEingeklappt("gruppen");
+              setTimeout(() => gruppenAbschnittRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 60);
+            }
+          };
+          return (
+            <div className="alert err" style={{ marginBottom: 10, display: "flex", alignItems: "flex-start", gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div>! Feste Reihenfolge («fest» in Stufe 2) widerspricht Vorgängern oder Ablaufregeln — für {namen.length} Task{namen.length === 1 ? "" : "s"} aufgehoben: {namen.slice(0, 6).join(", ")}{namen.length > 6 ? " …" : ""}</div>
+                {w && (
+                  <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px solid rgba(0,0,0,.08)" }}>
+                    {w.stufe ? <>
+                      <b>«{name(w.taskId)}»</b> ({w.taskWert}) wartet auf seinen Vorgänger <b>«{name(w.vorgaengerId)}»</b> ({w.vorgaengerWert}) — {herkunft(w)}.
+                      {" "}«fest» bei <b>{w.stufe}</b> verlangt aber, dass {w.vorgaengerWert} erst beginnt, wenn alles in {w.taskWert} (derselben Gruppen darüber) fertig ist.
+                      Beides zusammen geht nicht — deshalb ist «fest» für diesen Task aufgehoben.
+                      <div style={{ marginTop: 3 }}>Lösung: {w.regelId ? <>Regel enger fassen (z.B. Bezug «in derselben Gruppe» statt «überall») oder ausschalten</>
+                        : <>den Vorgänger im Gantt entfernen</>}, oder {w.stufe} in Stufe 2 auf «weich» stellen.</div>
+                    </> : <>
+                      <b>«{name(w.taskId)}»</b> wartet auf seinen Vorgänger <b>«{name(w.vorgaengerId)}»</b> ({herkunft(w)}), der selbst wegen «fest» blockiert ist.
+                    </>}
+                  </div>
+                )}
+              </div>
+              {widersprueche.length > 0 && (
+                <button type="button" className="tc-btn-secondary" style={{ flexShrink: 0, fontSize: 11, padding: "3px 10px" }} onClick={zeigen}
+                  title={"Zur Ursache springen — zur Ablaufregel (3.) bzw. zur Stufe (2.) — mit Erklärung; nochmals klicken: nächste Stelle"}>
+                  {widersprueche.length > 1 && festNr !== null ? `Zeigen ${festNr + 1}/${widersprueche.length} ›` : "Zeigen ›"}
+                </button>
+              )}
+              <button type="button" title="Hinweis ausblenden — erscheint wieder beim nächsten «↻ Aktualisieren»"
+                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "inherit", padding: "2px 0 0", lineHeight: 1, flexShrink: 0 }}
+                onClick={() => { setFestKonflikt(null); setFestNr(null); setRegelFokus(null); setStufeFokus(false); }}>✕</button>
+            </div>
+          );
+        })()}
         {bauablaufInfo && <div style={{ marginBottom: 10, padding: "6px 10px", background: "var(--tc-blue-bg)", border: "1px solid #c5dbef", fontSize: 11, color: "var(--tc-text-2)" }}>
           {bauablaufInfo} <span style={{ color: "var(--tc-text-3)" }}>Rückgängig oben in der Kopfzeile.</span></div>}
         {stammdaten.gewerke.length > 0 && (<>
@@ -925,6 +1001,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
             </CockpitAbschnitt>
         </>)}
         <div ref={bauablaufRef} />
+        <div ref={gruppenAbschnittRef} style={stufeFokus ? { outline: "2px solid #e0a43a", outlineOffset: 2 } : undefined}>
         <CockpitAbschnitt titel="2. Reihenfolge der Gruppen und Bauteilarten" eingeklappt={!!eingeklappt["gruppen"]} onToggle={() => toggleEingeklappt("gruppen")}
           hinweis={<>Weich: wer beim Optimieren mit Reihenfolge «Nach Gruppen» zuerst Personal bekommt — Stufe für Stufe von oben nach unten (z.B. zuerst Etappe, dann Geschoss, dann Bauteilart), bei Gleichstand der kritische Pfad. Ist in der vorderen Gruppe gerade nichts möglich, arbeiten die Leute schon in der nächsten. Die Reihenfolge der Werte einer Gruppenebene gilt zugleich als unten → oben für den Bezug «Gruppe darunter» der Ablaufregeln (z.B. UG → EG → 1.OG). Gleichnamige Gruppen zählen gleich (z.B. «UG» in jeder Etappe); Tasks ausserhalb der Gruppen kommen zuerst. Wirkt beim nächsten Optimieren.</>}>
           <div style={readOnly ? { pointerEvents: "none", opacity: 0.7 } : undefined}>
@@ -932,9 +1009,10 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
               onChange={g => updateSim({ ...sim!, gruppenReihenfolge: g })} />
           </div>
         </CockpitAbschnitt>
+        </div>
         <CockpitAbschnitt titel="3. Ablaufregeln (zwingend)" eingeklappt={!!eingeklappt["ablaufregeln"]} onToggle={() => toggleEingeklappt("ablaufregeln")}
           hinweis={<>«Erst A fertig, dann B» — z.B. Elemente erst versetzen, wenn die Platte darunter fertig ist, oder die Kanalisation einer Etappe vor ihrem Magerbeton. A und B wählen Tasks nach Gruppe, Bauteilart, Kategorie, Unternehmer oder Name (mehrere Bedingungen = alle müssen zutreffen, mehrere Werte = einer genügt; «ausser» = keiner darf zutreffen). Bezug: überall, nur in derselben Gruppe (z.B. selbe Etappe) oder Gruppe darunter (unten → oben wie in Stufe 2, auf den Ebenen darüber dieselbe Gruppe). Die Regeln setzen nach jeder Änderung automatische Vorgänger (blau, Tooltip «Ablaufregel») — nur die nötigen — und gelten so beim Optimieren, Nachführen und Ausrichten. Zu früh beginnende Tasks rücken nach hinten. Von Hand gesetzte Vorgänger bleiben; Regel ausschalten oder löschen entfernt ihre Vorgänger.</>}>
-          <AblaufRegelnEditor sim={sim} updateSim={updateSim} readOnly={!!readOnly} aktualisiertSignal={aktualisiertSignal} />
+          <AblaufRegelnEditor sim={sim} updateSim={updateSim} readOnly={!!readOnly} aktualisiertSignal={aktualisiertSignal} fokus={regelFokus} />
         </CockpitAbschnitt>
       </div>
     </div>

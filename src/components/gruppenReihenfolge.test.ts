@@ -4,6 +4,7 @@ import type { Stammdaten } from "./stammdatenHelpers";
 import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
 import { gruppenStruktur, gruppenReihenfolgeAbgleichen, rangJeTask } from "./gruppenReihenfolge";
 import { optimiereAuslastung } from "./auslastungOptimieren";
+import type { FestWiderspruch } from "./auslastungOptimierenKran";
 
 const KAL = { feiertage: [], ferien: [] };
 const gruppe = (id: string, name: string, outlineLevel: number): Task =>
@@ -89,9 +90,11 @@ describe("Reihenfolge nach Gruppen", () => {
     // UG-W hat EG-W als Vorgänger, EG soll aber fest nach UG kommen → Widerspruch
     const ts = gantt({ "UG-W": { predecessorId: "EG-W" } });
     const fest = { stufen: gruppenReihenfolgeAbgleichen(undefined, ts).stufen.map(s => s.quelle === "gruppe" && s.ebene === 2 ? { ...s, streng: true } : s) };
-    const bericht = { gelockert: [] as string[] };
+    const bericht = { gelockert: [] as string[], widersprueche: [] as FestWiderspruch[] };
     const erg = optimiereAuslastung(ts, stammdaten, KAL, "tage", kraene, "gruppen", false, { gruppen: fest, bericht });
     expect(bericht.gelockert.length).toBeGreaterThan(0);
+    // Ursache für «Zeigen ›» in Tab Ressourcen: UG-W wartet auf EG-W, das wegen «fest» (Gruppenebene 2) erst nach UG darf
+    expect(bericht.widersprueche).toContainEqual({ taskId: "UG-W", vorgaengerId: "EG-W", stufe: "Gruppenebene 2", taskWert: "UG", vorgaengerWert: "EG" });
     expect(erg.every(t => t.isGroup || !!t.start)).toBe(true);
     const t = (id: string) => erg.find(x => x.id === id)!;
     expect(t("UG-W").start > t("EG-W").start).toBe(true); // der Vorgänger gilt

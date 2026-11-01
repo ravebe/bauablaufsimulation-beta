@@ -66,6 +66,8 @@ export interface RegelErgebnis {
   zirkel: number;
   /** dieselben einzeln: Regel und die Verknüpfung A → B, die nicht gesetzt wurde (B ist schon vor A) — für «Zeigen» im Editor */
   zirkelStellen: { regel: string; a: string; b: string }[];
+  /** gesetzte Regel-Vorgänger: «B|A» → Regel-ID (welche Regel A zum Vorgänger von B gemacht hat) */
+  herkunft: Map<string, string>;
   /** Tasks mit mehr als MAX_VORGAENGER Vorgängern — die überzähligen Regel-Vorgänger fehlen */
   zuViele: string[];
 }
@@ -112,6 +114,7 @@ export function regelnAnwenden(tasks: Task[], regeln: AblaufRegel[], stammdaten:
   const anzahl = new Map<string, number>();
   let zirkel = 0;
   const zirkelStellen: RegelErgebnis["zirkelStellen"] = [];
+  const herkunft = new Map<string, string>();
   const zuViele: string[] = [];
 
   // 1. bisherige Regel-Vorgänger entfernen — sie werden neu bestimmt
@@ -257,7 +260,7 @@ export function regelnAnwenden(tasks: Task[], regeln: AblaufRegel[], stammdaten:
       for (const [a, l] of links) if (!bestehend.some(v => v.id === a)) { liste.push({ id: a, lagDays: l.lag }); regelIds.push(a); }
       if (liste.length > MAX_VORGAENGER) { zuViele.push(t.name); liste = liste.slice(0, MAX_VORGAENGER); }
       const behalten = regelIds.filter(id => liste.some(v => v.id === id));
-      for (const id of behalten) { const r = links.get(id)!.regel; anzahl.set(r, (anzahl.get(r) ?? 0) + 1); }
+      for (const id of behalten) { const r = links.get(id)!.regel; anzahl.set(r, (anzahl.get(r) ?? 0) + 1); herkunft.set(`${t.id}|${id}`, r); }
       if (behalten.length === 0) return t;
       return { ...mitVorgaengern(t, liste), regelVorgaenger: behalten, autoVorgaenger: auto.size ? [...auto] : undefined,
         optimierung: t.optimierung ? { ...t.optimierung, vorgaenger: [...opt] } : undefined };
@@ -278,7 +281,7 @@ export function regelnAnwenden(tasks: Task[], regeln: AblaufRegel[], stammdaten:
     sortiert(t.regelVorgaenger), sortiert(t.autoVorgaenger), sortiert(t.optimierung?.vorgaenger)]);
   let geaendert = false;
   erg = erg.map((t, i) => { if (schluessel(t) === schluessel(tasks[i])) return tasks[i]; geaendert = true; return t; });
-  return { tasks: geaendert ? erg : tasks, anzahl, zirkel, zirkelStellen, zuViele };
+  return { tasks: geaendert ? erg : tasks, anzahl, zirkel, zirkelStellen, herkunft, zuViele };
 }
 
 /** Simulation mit ihren Ablaufregeln abgleichen — ohne Regeln und ohne Regel-Vorgänger unverändert (dasselbe Objekt). */

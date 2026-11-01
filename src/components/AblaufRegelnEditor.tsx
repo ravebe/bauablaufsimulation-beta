@@ -14,9 +14,11 @@ const neueId = () => `regel-${Date.now().toString(36)}-${Math.random().toString(
 
 interface Props { sim: SimProjekt; updateSim: (s: SimProjekt) => void; readOnly: boolean
   /** zählt bei jedem «↻ Aktualisieren» (TabRessourcen) hoch — weggeklickte Hinweise erscheinen dann wieder */
-  aktualisiertSignal?: number }
+  aktualisiertSignal?: number
+  /** von aussen (rote Meldung «fest» aufgehoben → «Zeigen ›»): diese Regel aufklappen, hinscrollen, hervorheben */
+  fokus?: { id: string; signal: number } | null }
 
-export default function AblaufRegelnEditor({ sim, updateSim, readOnly, aktualisiertSignal = 0 }: Props) {
+export default function AblaufRegelnEditor({ sim, updateSim, readOnly, aktualisiertSignal = 0, fokus }: Props) {
   const regeln = useMemo(() => sim.ablaufRegeln ?? [], [sim.ablaufRegeln]);
   const stammdaten = sim.stammdaten ?? LEERE_STAMMDATEN;
   const reihenfolge = useMemo(() => bauablaufReihenfolge({ gruppenReihenfolge: sim.gruppenReihenfolge, tasks: sim.tasks, stammdaten: sim.stammdaten }), [sim.gruppenReihenfolge, sim.tasks, sim.stammdaten]);
@@ -44,6 +46,12 @@ export default function AblaufRegelnEditor({ sim, updateSim, readOnly, aktualisi
     if (stelle) regelRefs.current.get(stelle.regel)?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [zeigeSignal]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!stellen.length) setZeigeNr(null); }, [stellen.length]);
+  useEffect(() => {
+    if (!fokus) return;
+    setOffen(fokus.id);
+    const id = setTimeout(() => regelRefs.current.get(fokus.id)?.scrollIntoView({ behavior: "smooth", block: "center" }), 60);
+    return () => clearTimeout(id);
+  }, [fokus?.signal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const speichern = (neu: AblaufRegel[]) => updateSim({ ...sim, ablaufRegeln: neu.length ? neu : undefined });
   const aendern = (id: string, patch: Partial<AblaufRegel>) => speichern(regeln.map(r => r.id === id ? { ...r, ...patch } : r));
@@ -56,7 +64,7 @@ export default function AblaufRegelnEditor({ sim, updateSim, readOnly, aktualisi
       {regeln.map((r, i) => {
         const istOffen = offen === r.id;
         const n = wirkung.anzahl.get(r.id) ?? 0;
-        const hervorheben = stelle?.regel === r.id;
+        const hervorheben = stelle?.regel === r.id || fokus?.id === r.id;
         const eigeneStellen = stellen.filter(s => s.regel === r.id);
         return (
           <div key={r.id} ref={el => { if (el) regelRefs.current.set(r.id, el); else regelRefs.current.delete(r.id); }}

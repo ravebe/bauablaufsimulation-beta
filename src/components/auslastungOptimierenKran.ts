@@ -99,7 +99,11 @@ function laufAnhaengen(z: TaskZ, tag: number, l: TagesLauf) {
 /*  gruppen: Reihenfolge der Gruppen und Bauteilarten — Rang beim Personal nur mit Reihenfolge «Nach Gruppen», Stufen «fest» (streng)
  *  gelten immer. bericht (Ausgabe): Tasks, bei denen «fest» gelockert werden musste, weil Vorgänger/Regeln widersprechen. */
 export interface OptimierOptionen { nur?: Set<string>; untergrenze?: Set<string>; gruppen?: GruppenReihenfolge; abBeginn?: boolean; baubeginn?: string;
-  bericht?: { gelockert: string[] } }
+  bericht?: { gelockert: string[]; widersprueche?: FestWiderspruch[] } }
+
+/** Warum «fest» für einen Task aufgehoben wurde: er wartete auf einen Vorgänger, der wegen «fest» erst nach ihm beginnen darf
+ *  (Stufe = stufenTitel, z.B. «Gruppenebene 2»; Werte = Task UG, Vorgänger EG). Ohne Stufe: Vorgänger wartet auf andere Weise. */
+export interface FestWiderspruch { taskId: string; vorgaengerId: string; stufe?: string; taskWert?: string; vorgaengerWert?: string }
 
 const ohneTermin = (t: Task) => !t.start || !t.end;
 const heuteIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
@@ -330,7 +334,22 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
         // alle warten aufeinander: widersprechen sich «fest» und Vorgänger/Regeln, für die Wartenden «fest» aufheben (und melden)
         const wartend = offen.filter(z => !z.fertig && z.frueheste === null && !gelockert.has(z.t.id) && plaetze.has(z.t.id));
         if (wartend.length > 0) {
-          for (const z of wartend) { gelockert.add(z.t.id); optionen.bericht?.gelockert.push(z.t.name); }
+          for (const z of wartend) {
+            gelockert.add(z.t.id); optionen.bericht?.gelockert.push(z.t.name);
+            if (optionen.bericht?.widersprueche) {
+              // Ursache: ein noch nicht eingeplanter Vorgänger, der in einer festen Stufe hinter diesem Task steht
+              const offeneV = vorgaengerListe(z.t).map(v => v.id).filter(id => zustand.has(id) && !ergebnis.has(id));
+              let w: FestWiderspruch | null = null;
+              for (const vid of offeneV) for (const pv of plaetze.get(vid) ?? []) for (const pz of plaetze.get(z.t.id) ?? []) {
+                if (w || pv.bereich !== pz.bereich || pv.rang <= pz.rang) continue;
+                const s = festeStufen[Number(pv.bereich.split("|")[0])];
+                w = { taskId: z.t.id, vorgaengerId: vid, stufe: s.quelle === "kuerzel" ? "Bauteilart" : `Gruppenebene ${s.ebene ?? 1}`,
+                  taskWert: s.werte[pz.rang], vorgaengerWert: s.werte[pv.rang] };
+              }
+              if (!w && offeneV.length > 0) w = { taskId: z.t.id, vorgaengerId: offeneV[0] };
+              if (w) optionen.bericht.widersprueche.push(w);
+            }
+          }
           vorgaengerGeaendert = true;
           continue;
         }
