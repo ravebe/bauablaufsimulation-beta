@@ -59,6 +59,9 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
   const [mengenGewerkKey, setMengenGewerkKey] = useState<string>("beton");
   const [mengenKuerzel, setMengenKuerzel] = useState<string>(""); // "" = Total (alle Kürzel dieses Gewerks summiert), Default
   const [kranMetrik, setKranMetrik] = useState<"stunden" | "personal">("stunden");
+  // Personalauslastung: «spitze» = Personen im Moment der grössten Besetzung (je Gewerk, wie sie sich dann verteilen), «tag» = jedes
+  // Gewerk mit seiner Tagesarbeit als Personen-Äquivalent (Personenstunden ÷ Std./Tag) — zeigt alle Gewerke, die am Tag arbeiten
+  const [personalAnsicht, setPersonalAnsicht] = useState<"spitze" | "tag">("spitze");
   const { eingeklappt, toggle: toggleEingeklappt } = useEingeklappt(projectId, "avor");
   const kranoptikRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -116,7 +119,8 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
   // dabei (0, wenn es in diesem Moment nicht arbeitet), damit es in den Tagesangaben eine Zeile hat.
   const personalSerien = gestapelteSerien(plaene.map((p, i) => {
     const werte: Record<string, number> = {};
-    for (const g of p.arbeitJeGewerk.keys()) werte[g] = p.imEinsatz.jeGewerkAnSpitze.get(g) ?? 0;
+    const stdTag = stammdaten.arbeitszeitStdProTag || 8;
+    for (const [g, h] of p.arbeitJeGewerk) werte[g] = personalAnsicht === "tag" ? h / stdTag : p.imEinsatz.jeGewerkAnSpitze.get(g) ?? 0;
     return { tag: alleTage[i], werte };
   }), k => stammdaten.gewerke.find(g => g.key === k)?.label ?? k);
   const raster: Zeitraster = sim?.zeitraster ?? "monat";
@@ -293,7 +297,9 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
         if (p.anzahl <= 0) return undefined;
         if (z.art === "total") return `Höchstens ${fmtZahl(p.anzahl)} Personen gleichzeitig, ab ${fmtZahl(p.um)} h nach Arbeitsbeginn (Tagesablauf).`;
         if (z.art !== "serie") return undefined;
-        return `Höchstens ${fmtZahl(maxImEinsatz(z, i))} Personen gleichzeitig in diesem Gewerk.\nIm Moment der grössten Besetzung des Tages (ab ${fmtZahl(p.um)} h): ${fmtZahl(z.wert)} — so hoch ist seine Farbe im Diagramm.`;
+        return personalAnsicht === "tag"
+          ? `Höchstens ${fmtZahl(maxImEinsatz(z, i))} Personen gleichzeitig in diesem Gewerk.\nAnsicht «Ø Tag je Gewerk»: seine Farbe im Diagramm = Personenstunden ÷ Std./Tag = ${fmtZahl(z.wert)} Pers.`
+          : `Höchstens ${fmtZahl(maxImEinsatz(z, i))} Personen gleichzeitig in diesem Gewerk.\nIm Moment der grössten Besetzung des Tages (ab ${fmtZahl(p.um)} h): ${fmtZahl(z.wert)} — so hoch ist seine Farbe im Diagramm.`;
       } },
     { titel: "Eingeplant [Pers.]",
       erklaerung: mitKranPersonal
@@ -422,7 +428,22 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
         </div>
       )}
 
-      <CockpitAbschnitt titel="Personalauslastung" eingeklappt={!!eingeklappt["personal"]} onToggle={() => toggleEingeklappt("personal")}>
+      <CockpitAbschnitt titel="Personalauslastung" eingeklappt={!!eingeklappt["personal"]} onToggle={() => toggleEingeklappt("personal")}
+        aktionen={
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {(["spitze", "tag"] as const).map(m => (
+              <button key={m} onClick={() => setPersonalAnsicht(m)}
+                title={m === "spitze"
+                  ? "Höchstzahl gleichzeitig arbeitender Personen je Tag — die Farben zeigen, wie sich die Leute im Moment der grössten Besetzung auf die Gewerke verteilen (Gewerke, die zu einer anderen Tageszeit arbeiten, sind dann nicht sichtbar)"
+                  : "Jedes Gewerk mit seiner Arbeit des Tages als Personen-Äquivalent = Personenstunden ÷ Std./Tag (Ø über den Tag) — zeigt alle Gewerke, die an diesem Tag arbeiten; kleiner als die Spitze, wenn die Leute nicht den ganzen Tag arbeiten"}
+                style={{ fontSize: 11, fontWeight: 600, padding: "3px 8px", cursor: "pointer",
+                  border: `1px solid ${personalAnsicht === m ? "var(--tc-blue)" : "var(--tc-border)"}`,
+                  background: personalAnsicht === m ? "var(--tc-blue-bg)" : "#fff", color: personalAnsicht === m ? "var(--tc-blue)" : "var(--tc-text-2)" }}>
+                {m === "spitze" ? "Im Einsatz (Spitze)" : "Ø Tag je Gewerk"}
+              </button>
+            ))}
+          </div>
+        }>
         <TimeSeriesChart tage={personalSerien.tage} serien={personalSerien.serien} modus="flaeche-gestapelt" einheit="Pers." totalZeile
           weitereLinien={[{ key: "perfekt", label: mitKranPersonal ? "Eingeplant (Personal unter dem Kran + Personen ohne Kran)" : "Eingeplant (Kolonnen je Gewerk + Unternehmer)", werte: perfekteAuslastung, farbe: FARBEN.status.good }]}
           markierteTage={{ label: `Arbeit nach Arbeitsende (Dauer über ${fmtZahl(std)} h)`, farbe: FARBEN.status.critical,
