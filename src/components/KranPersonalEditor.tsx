@@ -103,6 +103,13 @@ export default function KranPersonalEditor({ sim, updateSim, readOnly, bekannteU
   const kraene = sim.kraene ?? [];
   const speichern = (neu: Kran[]) => updateSim({ ...sim, kraene: neu });
   const kranAendern = (id: string, patch: Partial<Kran>) => speichern(kraene.map(k => k.id === id ? { ...k, ...patch } : k));
+  // Verfügbarkeit des Krans ändern: Personal-Zeilen, die genau am bisherigen Anfang/Ende des Krans anfangen/aufhören, ziehen mit
+  // (wie kranVerlaengern) — sonst müsste jedes Datum mehrmals eingegeben werden
+  const kranZeitraumAendern = (kran: Kran, feldName: "verfuegbarVon" | "verfuegbarBis", wert: string | undefined) => {
+    const alt = kran[feldName], zeile = feldName === "verfuegbarVon" ? "von" : "bis";
+    kranAendern(kran.id, { [feldName]: wert,
+      personal: kran.personal?.map(p => alt && p[zeile] === alt ? { ...p, [zeile]: wert } : p) });
+  };
   const personalAendern = (kran: Kran, liste: KranPersonal[]) => kranAendern(kran.id, { personal: liste });
 
   function kranEntfernen(id: string) {
@@ -135,10 +142,10 @@ export default function KranPersonalEditor({ sim, updateSim, readOnly, bekannteU
               <input disabled={readOnly} value={kran.name} onChange={e => kranAendern(kran.id, { name: e.target.value })}
                 style={{ ...feld, width: 110, fontSize: 12, fontWeight: 700 }} />
               <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--tc-text-2)" }}>
-                von <input type="date" disabled={readOnly} value={kran.verfuegbarVon ?? ""} onChange={e => kranAendern(kran.id, { verfuegbarVon: e.target.value || undefined })} style={feld} />
+                von <input type="date" disabled={readOnly} value={kran.verfuegbarVon ?? ""} onChange={e => kranZeitraumAendern(kran, "verfuegbarVon", e.target.value || undefined)} style={feld} />
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--tc-text-2)" }}>
-                bis <input type="date" disabled={readOnly} value={kran.verfuegbarBis ?? ""} onChange={e => kranAendern(kran.id, { verfuegbarBis: e.target.value || undefined })} style={feld} />
+                bis <input type="date" disabled={readOnly} value={kran.verfuegbarBis ?? ""} onChange={e => kranZeitraumAendern(kran, "verfuegbarBis", e.target.value || undefined)} style={feld} />
               </label>
               <span style={{ fontSize: 11, fontWeight: 600, color: "var(--tc-text-2)" }}
                 title="Summe des Personals aller Unternehmer (grösster Tageswert) — Höchstzahl der Leute unter diesem Kran pro Tag">
@@ -152,11 +159,27 @@ export default function KranPersonalEditor({ sim, updateSim, readOnly, bekannteU
               )}
             </div>
             <div style={{ marginTop: 6, paddingLeft: 12 }}>
-              {(kran.personal ?? []).length > 0 && (
-                <div style={{ display: "grid", gridTemplateColumns: "180px 70px 130px 130px 20px", columnGap: 6, fontSize: 9, fontWeight: 600, color: "var(--tc-text-3)", marginBottom: 2 }}>
-                  <span>Unternehmer</span><span>Personen</span><span>von</span><span>bis</span><span />
-                </div>
-              )}
+              {(kran.personal ?? []).length > 0 && (() => {
+                const abweichend = (kran.personal ?? []).some(p => (p.von ?? "") !== (kran.verfuegbarVon ?? "") || (p.bis ?? "") !== (kran.verfuegbarBis ?? ""));
+                return (
+                  <div style={{ display: "grid", gridTemplateColumns: "180px 70px 130px 130px 20px", columnGap: 6, alignItems: "end", fontSize: 9, fontWeight: 600, color: "var(--tc-text-3)", marginBottom: 2 }}>
+                    <span>Unternehmer</span><span>Personen</span>
+                    <span style={{ gridColumn: "3 / 5", display: "grid", gridTemplateColumns: "130px 130px", columnGap: 6, alignItems: "end" }}>
+                      <span>von</span>
+                      <span style={{ display: "flex", alignItems: "end", justifyContent: "space-between" }}>bis
+                        {!readOnly && abweichend && (
+                          <button type="button" className="tc-btn-ghost" style={{ fontSize: 9, padding: "0 5px", lineHeight: "15px", fontWeight: 600 }}
+                            title={`Zeitraum des Krans (von/bis oben) für alle Unternehmer übernehmen. Danach ziehen sie mit, wenn sich von/bis des Krans ändert.`}
+                            onClick={() => personalAendern(kran, (kran.personal ?? []).map(p => ({ ...p, von: kran.verfuegbarVon, bis: kran.verfuegbarBis })))}>
+                            ↓ wie Kran
+                          </button>
+                        )}
+                      </span>
+                    </span>
+                    <span />
+                  </div>
+                );
+              })()}
               {(kran.personal ?? []).map(p => {
                 const aendern = (patch: Partial<KranPersonal>) => personalAendern(kran, (kran.personal ?? []).map(x => x.id === p.id ? { ...x, ...patch } : x));
                 const unbekannt = p.unternehmer.trim() !== "" && !bekannteUnternehmer.includes(p.unternehmer.trim());
