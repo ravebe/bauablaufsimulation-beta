@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
+import { useRef, useState, useEffect, useLayoutEffect, useCallback, useMemo, memo } from "react";
 import { lsGet, lsSet } from "../hooks/lokalSpeicher";
 import { createPortal } from "react-dom";
 import type { Task, VorgaengerLink } from "../types";
@@ -67,7 +67,7 @@ function fmtDatum(d: Date, lang: boolean): string {
 }
 function fmtDMY(d: Date): string { return `${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`; }
 
-export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selektionFokus, projectId = null, tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selectedIds = [], selGuids, taskSort, height, editable, onDateChange, onTaskReorder, onTaskRename, onSetPredecessor, showObjektCount, suchQuery = "", nadelStil = "normal", dateColor = "#2d7dbd", kalender = LEERER_KALENDER, freieTageAusblenden = false }: Props) {
+function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selektionFokus, projectId = null, tasks, currentTag, totalTage, minDate, onTaskClick, onSliderChange, onNadelClick, selectedIds = [], selGuids, taskSort, height, editable, onDateChange, onTaskReorder, onTaskRename, onSetPredecessor, showObjektCount, suchQuery = "", nadelStil = "normal", dateColor = "#2d7dbd", kalender = LEERER_KALENDER, freieTageAusblenden = false }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
   // Zeitachse: Tag (ab minDate, mit Nachkommastellen) ↔ Achsen-Einheit (x = Einheit × pxProTag). Ohne Ausblenden identisch;
   // mit Ausblenden haben arbeitsfreie Tage die Breite 0 (eingeklappt). Zoom rechnet in Einheiten und bleibt so unverändert.
@@ -306,7 +306,15 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
   useEffect(() => {
     if (!laeuft || !tagRef) return;
     let id = 0;
-    const schleife = () => { setzeNadel(); id = requestAnimationFrame(schleife); };
+    // sichtbaren Bereich mitführen, sobald die Nadel ihn verlässt (wie das Zentrieren unten, aber ohne React-Rendern je Tag)
+    const mitfuehren = () => {
+      const el = bodyRef.current; if (!el || scrollLock.current) return;
+      const x = achseRef.current.zuEinheit(tagRef.current) * pxRef.current, rand = el.clientWidth * 0.15;
+      if (x >= el.scrollLeft + rand && x <= el.scrollLeft + el.clientWidth - rand) return;
+      el.scrollLeft = Math.max(0, x - el.clientWidth / 2);
+      if (headerRef.current) headerRef.current.scrollLeft = el.scrollLeft;
+    };
+    const schleife = () => { setzeNadel(); mitfuehren(); id = requestAnimationFrame(schleife); };
     id = requestAnimationFrame(schleife);
     return () => cancelAnimationFrame(id);
   }, [laeuft, tagRef, setzeNadel]);
@@ -912,3 +920,6 @@ export default function GanttChart({ zeiteinheit = "tage", tagRef, laeuft, selek
     </div>
   );
 }
+
+// memo: beim Abspielen rendert TabAbspielen bei jeder Statusänderung — das Gantt nur, wenn sich seine Props ändern
+export default memo(GanttChart);

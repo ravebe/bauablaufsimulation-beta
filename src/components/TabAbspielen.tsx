@@ -38,6 +38,11 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
   const farbModusRef = useRef(false);
   useEffect(() => { farbModusRef.current = farbModusAktiv; }, [farbModusAktiv]);
   const [laeuft, setLaeuft] = useState(false);
+  const laeuftRef = useRef(false);
+  // Datum und Schieberegler beim Abspielen direkt setzen (ohne React-Rendern je Tag)
+  const datumRef = useRef<HTMLSpanElement>(null);
+  const sliderRef = useRef<HTMLInputElement>(null);
+  const ganttOffenRef = useRef(false);
   const [currentTag, setCurrentTag] = useState(0);
   const [status, setStatus] = useState<string | null>(null);
   const [aktiveTasksAnzeige, setAktiveTasksAnzeige] = useState<Task[] | null>(null);
@@ -46,6 +51,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
   const lastTimeRef = useRef(0);
   const currentTagRef = useRef(0);
   const [ganttOffen, setGanttOffen] = useState(false);
+  ganttOffenRef.current = ganttOffen;
   const listeRef = useRef<HTMLDivElement>(null);
   useEffect(() => bindeListenScroll(listeRef.current), [ganttOffen]); // gleiche erste Zeile wie im Gantt / im anderen Tab
   const [selTaskId, setSelTaskId] = useState<string | null>(null);
@@ -71,8 +77,9 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
   const modellIds = [...new Set([...(aktiveSim?.modelle.map(m => m.id) ?? []), ...(aktivesModellId ? [aktivesModellId] : [])])].filter(Boolean);
 
   // Alle Tasks mit gültigem Startdatum (aus ALLEN Modellen)
-  const allTasks = aktiveSim?.tasks ?? [];
-  const tasks = allTasks.filter(t => t.start && parseDateUniversal(t.start));
+  // stabil (useMemo), damit das Gantt (React.memo) beim Abspielen nicht bei jeder Statusänderung neu zeichnet
+  const allTasks = useMemo(() => aktiveSim?.tasks ?? [], [aktiveSim?.tasks]);
+  const tasks = useMemo(() => allTasks.filter(t => t.start && parseDateUniversal(t.start)), [allTasks]);
   // Ein einzelnes Bauteil im Modell markiert → verknüpften Task in der Liste vertikal zentrieren (nicht während des Abspielens)
   useSelektionFokus(selGuids, !laeuft, guids => {
     const c = listeRef.current; if (!c || guids.length !== 1) return;
@@ -82,7 +89,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
   });
   const nummern = useMemo(() => berechneNummern(tasks), [tasks]);
 
-  const { minDate, maxDate, totalTage } = (() => {
+  const { minDate, maxDate, totalTage } = useMemo(() => {
     if (tasks.length === 0) return { minDate: null, maxDate: null, totalTage: 0 };
     const allDates: Date[] = [];
     for (const t of tasks) {
@@ -94,11 +101,12 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
     const max = new Date(Math.max(...allDates.map(d => d.getTime())));
     // bis zum Arbeitsende des letzten Tages (Tasks sind aktiv für startPos <= Tag < endPos, siehe zeitHelpers.ts)
     return { minDate: min, maxDate: max, totalTage: Math.max(1, Math.round((max.getTime() - min.getTime()) / 86400000)) + 1 };
-  })();
+  }, [tasks]);
 
   useEffect(() => () => { if (animRef.current) cancelAnimationFrame(animRef.current); }, []);
   useEffect(() => {
-    currentTagRef.current = currentTag;
+    // beim Abspielen führt der Ablauf die fliessende Position im Ref — nicht auf den ganzen Tag zurücksetzen (sonst stockt die Nadel)
+    if (!laeuftRef.current) currentTagRef.current = currentTag;
     if (sharedNadelTag && minDate && currentTag >= 0) {
       sharedNadelTag.current = new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate() + Math.round(currentTag)).getTime(); // Kalendertag (zeitumstellungssicher)
     }
@@ -384,7 +392,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
   // --- Playback ---
   const starten = useCallback(async () => {
     if (!api || !aktiveSim || laeuft || modellIds.length === 0 || tasks.length === 0) return;
-    stopRef.current = false; setLaeuft(true);
+    stopRef.current = false; setLaeuft(true); laeuftRef.current = true;
     // Polling pausieren während Playback
     if (selRef.current) { clearInterval(selRef.current); selRef.current = null; }
     letzterEventTag.current = -1;
@@ -398,13 +406,20 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
       const tageProSek = sekProTag > 0 ? 1 / sekProTag : 1;
       const neuerTag = currentTagRef.current + delta * tageProSek;
       if (neuerTag >= totalTage) {
-        setCurrentTag(totalTage); currentTagRef.current = totalTage;
+        setCurrentTag(totalTage); currentTagRef.current = totalTage; laeuftRef.current = false;
         setLaeuft(false); setStatus("✓ Simulation abgeschlossen"); setAktiveTasksAnzeige(null); return;
       }
-      // Fliessende Position nur im Ref (Gantt-Nadel liest sie per rAF direkt); React-State/Rendern nur bei Tageswechsel
+      // Fliessende Position nur im Ref (Gantt-Nadel liest sie per rAF direkt). Datum und Schieberegler direkt im DOM — kein
+      // React-Rendern je Tag (das liess die Nadel bei jedem Tageswechsel kurz stocken); nur die Liste braucht den Tag als State
+      const tagVorher = Math.floor(currentTagRef.current);
       currentTagRef.current = neuerTag;
       const tagAnzeige = Math.floor(neuerTag);
-      setCurrentTag(prev => prev === tagAnzeige ? prev : tagAnzeige);
+      if (tagAnzeige !== tagVorher && minDate) {
+        const text = datumRef.current?.firstChild; // denselben Textknoten wie React ändern (nicht ersetzen)
+        if (text) text.nodeValue = datumZeitBeiPos(minDate, tagAnzeige, ganzerTagRef.current ? "tage" : aktiveSim!.zeiteinheit, totalTage);
+        if (sliderRef.current) sliderRef.current.value = String(tagAnzeige);
+        if (!ganttOffenRef.current) setCurrentTag(tagAnzeige);
+      }
       pruefeTaskEvents(neuerTag);
       animRef.current = requestAnimationFrame(frame);
     }
@@ -413,7 +428,7 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
   }, [api, aktiveSim, laeuft, sekProTag, modellIds, tasks, totalTage]);
 
   function stoppen() {
-    stopRef.current = true;
+    stopRef.current = true; laeuftRef.current = false;
     if (animRef.current) { cancelAnimationFrame(animRef.current); animRef.current = null; }
     setCurrentTag(currentTagRef.current);
     setLaeuft(false); setStatus("■ Gestoppt"); setAktiveTasksAnzeige(null);
@@ -486,6 +501,13 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
     if (suchQuery) { setSuchOffen(false); setSuchQuery(""); }
   }
 
+  // stabile Props fürs Gantt (React.memo) — die Funktionen über Refs, damit sie immer den aktuellen Stand sehen
+  const zuTaskRef = useRef(zuTask); zuTaskRef.current = zuTask;
+  const sliderChangeRef = useRef(sliderChange); sliderChangeRef.current = sliderChange;
+  const ganttTaskClick = useCallback((idx: number) => { zuTaskRef.current(idx); }, []);
+  const ganttSliderChange = useCallback((tag: number) => { sliderChangeRef.current(tag); }, []);
+  const ganttSelectedIds = useMemo(() => selTaskId ? [selTaskId] : [], [selTaskId]);
+
   if (!aktiveSim) return <div className="tc-empty"><div className="tc-empty-icon">▶</div><div className="tc-empty-title">Keine aktive Simulation</div></div>;
 
   const aktuellesDatum = minDate ? datumZeitBeiPos(minDate, currentTag, ganzerTag ? "tage" : aktiveSim.zeiteinheit, totalTage) : "";
@@ -508,12 +530,12 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
 
       {totalTage > 0 && minDate && maxDate && (
         <div style={{ marginTop: 4 }}>
-          <input type="range" min={0} max={totalTage} step={ganzerTag ? 1 : schrittTage(aktiveSim.zeiteinheit)} value={currentTag}
+          <input ref={sliderRef} type="range" min={0} max={totalTage} step={ganzerTag ? 1 : schrittTage(aktiveSim.zeiteinheit)} value={currentTag}
             onChange={e => sliderChange(Number(e.target.value))} disabled={laeuft} style={{ width: "100%", margin: "4px 0 0" }} />
           {/* Start | aktuelles Datum | Ende — unter dem Slider */}
           <div style={{ display: "flex", alignItems: "baseline", fontSize: 11, color: "var(--tc-text-3)" }}>
             <span style={{ flex: 1 }}>{formatDatum(minDate.toISOString().slice(0, 10))}</span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--tc-text)" }}>{aktuellesDatum}</span>
+            <span ref={datumRef} style={{ fontSize: 13, fontWeight: 700, color: "var(--tc-text)" }}>{aktuellesDatum}</span>
             <span style={{ flex: 1, textAlign: "right" }}>{formatDatum(maxDate.toISOString().slice(0, 10))}</span>
           </div>
         </div>
@@ -574,9 +596,9 @@ export default function TabAbspielen({ api, projectId = null, aktiveSim, aktives
             minDate={minDate}
             laeuft={laeuft}
             tagRef={currentTagRef}
-            onTaskClick={idx => zuTask(idx)}
-            onSliderChange={tag => sliderChange(tag)}
-            selectedIds={selTaskId ? [selTaskId] : []}
+            onTaskClick={ganttTaskClick}
+            onSliderChange={ganttSliderChange}
+            selectedIds={ganttSelectedIds}
             selGuids={selGuids}
             selektionFokus="einzeln"
             taskSort={taskSort}
