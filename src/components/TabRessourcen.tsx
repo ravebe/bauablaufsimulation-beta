@@ -29,6 +29,8 @@ import { parseFormel, FormelFehler } from "./formelHelpers";
 import { berechneAlleMengen } from "./mengenBerechnung";
 import type { MeldungStufe } from "./mengenBerechnung";
 import Schwebend from "./Schwebend";
+import ImportFortschritt from "./ImportFortschritt";
+import type { ImportStand } from "./ImportFortschritt";
 import PunkteMenu from "./PunkteMenu";
 
 interface Props {
@@ -62,6 +64,8 @@ const LS_RATEN_COLW = "4d-ressourcen-raten-colw";
 export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion = [], aktivesModellId = null, projectId = null, kranplanungSignal = 0, bauablaufSignal = 0, onZuKranoptik }: Props) {
   const [ladeErgebnis, setLadeErgebnis] = useState<string | null>(null);
   const [importFehler, setImportFehler] = useState<string | null>(null);
+  const [importStand, setImportStand] = useState<ImportStand | null>(null); // Fenster mit Ladebalken beim Ressourcen-Import
+  const importAntwort = useRef<((ja: boolean) => void) | null>(null); // Antwort auf die Rückfrage im Import-Fenster
   // Ergebnis von "Mengen berechnen": fett grün/orange/rot, beim nächsten Klick irgendwo wieder grau (wie Tab Kalkulation)
   const [mengenLaeuft, setMengenLaeuft] = useState(false);
   const [mengenMeldung, setMengenMeldung] = useState<{ text: string; stufe: MeldungStufe } | null>(null);
@@ -181,17 +185,39 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     URL.revokeObjectURL(url);
   }
 
-  async function stammdatenImportieren(file: File) {
+  // Import der Ressourcen (JSON oder CSV) mit Fenster und Ladebalken (ImportFortschritt): bleibt offen, bis alles übernommen und
+  // neu dargestellt ist — Übernehmen wendet im selben Schritt Ablaufregeln an und führt nach (useUndo), das dauert bei grossen
+  // Projekten; vorher sah das wie ein Absturz aus. Zwischen den Schritten bekommt der Browser Zeit zum Zeichnen.
+  async function ressourcenImportieren(file: File, art: "json" | "csv") {
     setImportFehler(null);
+    const zeichnen = () => new Promise<void>(r => requestAnimationFrame(() => setTimeout(r, 0)));
+    const weiter = (patch: Partial<ImportStand>) => setImportStand(s => s && { ...s, ...patch });
+    setImportStand({ titel: `Ressourcen importieren (${art.toUpperCase()})`, datei: file.name, schritt: 0,
+      schritte: ["Datei lesen", "Inhalt prüfen", "Ressourcen übernehmen (Ablaufregeln, Nachführen)", "Ansicht neu berechnen"] });
     try {
-      const importiert = parseStammdatenJson(await file.text());
-      if (stammdaten.gewerke.length > 0 &&
-        !confirm(`Bestehende Ressourcen (${stammdaten.gewerke.length} Kategorien) werden durch den Import ersetzt. Fortfahren?`)) return;
-      speichern(importiert);
+      await zeichnen();
+      const text = await file.text();
+      weiter({ schritt: 1 }); await zeichnen();
+      const importiert = art === "json" ? parseStammdatenJson(text) : parseStammdatenCsv(text, stammdaten);
+      if (stammdaten.gewerke.length > 0) {
+        const ja = await new Promise<boolean>(r => {
+          importAntwort.current = r;
+          weiter({ frage: `Bestehende Ressourcen (${stammdaten.gewerke.length} Kategorien) werden durch den Import ersetzt.` });
+        });
+        importAntwort.current = null;
+        if (!ja) { setImportStand(null); return; }
+        weiter({ frage: undefined });
+      }
+      weiter({ schritt: 2 }); await zeichnen();
+      speichern(importiert); // übernimmt synchron (Ablaufregeln, Nachführen)
+      weiter({ schritt: 3 }); await zeichnen(); await zeichnen(); // neu gezeichnet mit den neuen Ressourcen
+      const positionen = importiert.gewerke.reduce((n, g) => n + g.raten.length, 0);
+      weiter({ schritt: 4, fertig: `${importiert.gewerke.length} Kategorien mit ${positionen} Leistungspositionen importiert.` });
     } catch (e) {
-      setImportFehler(e instanceof Error ? e.message : "Import fehlgeschlagen");
+      weiter({ fehler: e instanceof Error ? e.message : "Import fehlgeschlagen" });
     } finally {
       if (importInputRef.current) importInputRef.current.value = "";
+      if (importCsvInputRef.current) importCsvInputRef.current.value = "";
     }
   }
 
@@ -273,20 +299,6 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     const a = document.createElement("a");
     a.href = url; a.download = `${sim!.name}_Ressourcen.csv`; a.click();
     URL.revokeObjectURL(url);
-  }
-
-  async function stammdatenImportierenCsv(file: File) {
-    setImportFehler(null);
-    try {
-      const importiert = parseStammdatenCsv(await file.text(), stammdaten);
-      if (stammdaten.gewerke.length > 0 &&
-        !confirm(`Bestehende Ressourcen (${stammdaten.gewerke.length} Kategorien) werden durch den CSV-Import ersetzt. Fortfahren?`)) return;
-      speichern(importiert);
-    } catch (e) {
-      setImportFehler(e instanceof Error ? e.message : "CSV-Import fehlgeschlagen");
-    } finally {
-      if (importCsvInputRef.current) importCsvInputRef.current.value = "";
-    }
   }
 
   function rateAendern(gewerkIdx: number, rateIdx: number, patch: Partial<Rate>) {
@@ -550,10 +562,11 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   return (
     <div style={{ padding: 14, fontSize: 12 }}>
       <input ref={importInputRef} type="file" accept=".json" style={{ display: "none" }}
-        onChange={e => e.target.files?.[0] && stammdatenImportieren(e.target.files[0])} />
+        onChange={e => e.target.files?.[0] && ressourcenImportieren(e.target.files[0], "json")} />
       <input ref={importCsvInputRef} type="file" accept=".csv" style={{ display: "none" }}
-        onChange={e => e.target.files?.[0] && stammdatenImportierenCsv(e.target.files[0])} />
+        onChange={e => e.target.files?.[0] && ressourcenImportieren(e.target.files[0], "csv")} />
       {importFehler && <div className="alert err" style={{ marginBottom: 10 }}>! {importFehler}</div>}
+      {importStand && <ImportFortschritt stand={importStand} onAntwort={ja => importAntwort.current?.(ja)} onSchliessen={() => setImportStand(null)} />}
 
       {stammdaten.gewerke.length === 0 && (
         <div style={{ fontSize: 11, color: "var(--tc-text-3)" }}>

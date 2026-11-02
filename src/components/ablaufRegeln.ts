@@ -8,7 +8,7 @@
 // Vorgänger bleiben; ein gleicher automatischer (Auto-Vorgänger/Optimieren) wird zum Regel-Vorgänger. Neue Regel-Vorgänger schieben
 // Tasks, die zu früh beginnen, samt Nachfolgern nach hinten (nie nach vorne).
 import type { Task, AblaufRegel, RegelBedingung, RegelFeld, SimProjekt, GruppenReihenfolge } from "../types";
-import { istGruppe, getOutlineLevel, vorgaengerListe, mitVorgaengern, vorgaengerStart, verschiebeAufStart, MAX_VORGAENGER } from "../types";
+import { istGruppe, getOutlineLevel, vorgaengerListe, mitVorgaengern, vorgaengerStart, verschiebeAufStart, taskAufStart, MAX_VORGAENGER } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { LEERE_STAMMDATEN, alleKuerzel } from "./stammdatenHelpers";
 import type { Kalender } from "./kalenderHelpers";
@@ -78,7 +78,7 @@ export interface RegelErgebnis {
  *  Ende seiner Übergruppen ändern — deren Nachfolger werden mitgeprüft; eine verschobene Gruppe nimmt ihre Kinder mit. */
 function nachHintenSchieben(tasks: Task[], ids: string[], kalender: Kalender): Task[] {
   // Meilensteine und Platzhalter bleiben, wo sie sind (auch nicht über eine Kette von Vorgängern)
-  let erg = tasks;
+  let erg = [...tasks]; // eigene Kopie — Tasks werden unten direkt an ihrer Stelle ersetzt
   const nachfolger = new Map<string, string[]>();
   for (const t of tasks) for (const v of vorgaengerListe(t)) nachfolger.set(v.id, [...(nachfolger.get(v.id) ?? []), t.id]);
   // Übergruppen je Task (Gliederung), Kinder je Gruppe
@@ -92,18 +92,26 @@ function nachHintenSchieben(tasks: Task[], ids: string[], kalender: Kalender): T
     if (istGruppe(tasks, i)) stapel.push({ id: t.id, level });
   });
   const index = new Map(tasks.map((t, i) => [t.id, i])); // verschiebeAufStart behält die Reihenfolge
-  const queue = [...ids];
-  let schritte = 0;
+  // Warteschlange mit Lesezeiger statt shift() und Tasks direkt an ihrer Stelle ersetzen (eigene Kopie) statt je Verschiebung das
+  // ganze Gantt zu durchsuchen und zu kopieren — sonst wächst die Rechenzeit quadratisch (5'000 Tasks: mehrere Sekunden)
+  // jeder Task höchstens einmal gleichzeitig in der Warteschlange (sonst prüft ein Task mit vielen Vorgängern, z.B. eine Stütze nach
+  // allen Wänden des Geschosses, seine Vorgänger einmal je verschobenem Vorgänger)
+  const queue = [...new Set(ids)];
+  const wartet = new Set(queue);
+  let kopf = 0;
   const maxSchritte = (tasks.length + 1) * (MAX_VORGAENGER + 1) * 4; // Schutz gegen Zyklen in alten Daten
-  while (queue.length > 0 && schritte++ < maxSchritte) {
-    const id = queue.shift()!;
-    const t = erg[index.get(id) ?? -1];
+  while (kopf < queue.length && kopf < maxSchritte) {
+    const id = queue[kopf++];
+    wartet.delete(id);
+    const i = index.get(id) ?? -1;
+    const t = erg[i];
     if (!t || !t.start || bleibtStehen(t)) continue;
     const frueh = vorgaengerStart(erg, t, kalender, index);
     if (!frueh || vergleicheZeitpunkte(frueh, startZeitpunkt(t)) <= 0) continue;
-    erg = verschiebeAufStart(erg, id, frueh, kalender);
+    if (t.isGroup || istGruppe(erg, i)) erg = verschiebeAufStart(erg, id, frueh, kalender); // Gruppe nimmt ihre Kinder mit (selten)
+    else erg[i] = taskAufStart(t, frueh, kalender);
     // geändert: der Task selbst, seine Übergruppen (Ende) und bei einer Gruppe ihre Kinder → deren Nachfolger prüfen
-    for (const x of [id, ...(uebergruppen.get(id) ?? []), ...(kinder.get(id) ?? [])]) for (const n of nachfolger.get(x) ?? []) queue.push(n);
+    for (const x of [id, ...(uebergruppen.get(id) ?? []), ...(kinder.get(id) ?? [])]) for (const n of nachfolger.get(x) ?? []) if (!wartet.has(n)) { wartet.add(n); queue.push(n); }
   }
   return erg;
 }

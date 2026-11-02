@@ -768,17 +768,20 @@ export function datumPlusTage(datum: string, tage: number): string {
 }
 
 /** Verschiebt einen Task auf ein neues Startdatum (Dauer in Arbeitstagen bleibt erhalten). Bei Gruppen werden alle Kinder um dieselbe Anzahl Arbeitstage mitverschoben. */
+/** Einen einzelnen Task (keine Gruppe) auf einen neuen Start setzen — Dauer in Arbeitszeit bleibt; ohne Uhrzeit bleibt die bisherige
+ *  Startzeit. Schneller Weg für viele Verschiebungen (nachHintenSchieben), ohne das ganze Gantt zu kopieren. */
+export function taskAufStart(x: Task, start: string | Zeitpunkt, kalender: Kalender = LEERER_KALENDER): Task {
+  const ziel = typeof start === "string" ? { datum: start, min: zeitZuMin(x.startZeit, ARBEITSBEGINN_MIN) } : start;
+  if (x.meilenstein) return { ...x, ...meilensteinFelder(meilensteinZeitpunkt(ziel, kalender)) };
+  const s = naechsteArbeitszeit(ziel, kalender);
+  return { ...x, ...zeitFelder(s, endeAusArbeitsMinuten(s, arbeitsMinutenZwischen(startZeitpunkt(x), endZeitpunkt(x), kalender), kalender)) };
+}
+
 export function verschiebeAufStart(tasks: Task[], taskId: string, neuerStart: string | Zeitpunkt, kalender: Kalender = LEERER_KALENDER): Task[] {
   const idx = tasks.findIndex(t => t.id === taskId);
   if (idx < 0) return tasks;
   const t = tasks[idx];
-  // Dauer in Arbeitszeit bleibt; ohne Uhrzeit bleibt die bisherige Startzeit des Tasks
-  const verschiebe = (x: Task, start: string | Zeitpunkt): Task => {
-    const ziel = typeof start === "string" ? { datum: start, min: zeitZuMin(x.startZeit, ARBEITSBEGINN_MIN) } : start;
-    if (x.meilenstein) return { ...x, ...meilensteinFelder(meilensteinZeitpunkt(ziel, kalender)) };
-    const s = naechsteArbeitszeit(ziel, kalender);
-    return { ...x, ...zeitFelder(s, endeAusArbeitsMinuten(s, arbeitsMinutenZwischen(startZeitpunkt(x), endZeitpunkt(x), kalender), kalender)) };
-  };
+  const verschiebe = (x: Task, start: string | Zeitpunkt): Task => taskAufStart(x, start, kalender);
   if (typeof neuerStart !== "string" && t.isGroup) neuerStart = neuerStart.datum;
   if (t.isGroup) {
     const { start: altStart } = gruppenDaten(tasks, idx, kalender);

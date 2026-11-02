@@ -370,3 +370,12 @@ input[type="number"]:not(.pfeile-immer), .no-spinner { -moz-appearance: textfiel
 /* Zahlenfeld mit immer sichtbaren Auf/Ab-Pfeilen (Chrome/Edge zeigen sie sonst nur beim Darüberfahren) */
 .pfeile-immer::-webkit-inner-spin-button,
 .pfeile-immer::-webkit-outer-spin-button { opacity: 1; }
+
+/* Laufender Streifen im Ladebalken (ImportFortschritt.tsx) — transform-Animation läuft auf dem Compositor weiter, auch wenn
+   JavaScript den Browser kurz blockiert (z.B. Übernehmen grosser Ressourcen) */
+.ladebalken-laeuft {
+  position: absolute; top: 0; bottom: 0; left: 0; width: 35%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .7), transparent);
+  animation: ladebalken-lauf 1.1s linear infinite; will-change: transform;
+}
+@keyframes ladebalken-lauf { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
