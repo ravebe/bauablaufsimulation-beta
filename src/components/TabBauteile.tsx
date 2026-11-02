@@ -12,6 +12,7 @@ import { LEERER_KALENDER, ersterArbeitstagAb } from "./kalenderHelpers";
 import { pruefeZeitplanBereitschaft, berechneZeitplanUebernahme, zeitplanAbweichendeTasks } from "./zeitplanUebernahmeHelpers";
 import { optimiereAuslastung, terminSignatur, optimierungUebernehmen } from "./auslastungOptimieren";
 import type { OptimierReihenfolge } from "./auslastungOptimieren";
+import { ZEITLIMIT_MS } from "./auslastungOptimierenKran";
 import type { Zeiteinheit } from "./zeitHelpers";
 import { feinerAls, ZEITEINHEIT_LABEL } from "./zeitHelpers";
 import { hatKranPersonal, durchschnittlicheAuslastung } from "./kranHelpers";
@@ -81,7 +82,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
   // je Zeiteinheit (aktuelle + feinere) ein Ergebnis — feinere erlauben Nachfolger am selben Tag, siehe auslastungVorschauOeffnen
   // modus "dauern" = nur berechnete Dauer übernehmen (früher eigener Menüpunkt "Berechnete Dauer übernehmen"): Reihenfolge und
   // Vorgänger bleiben, keine Personalplanung — siehe berechneZeitplanUebernahme
-  const [auslastungVorschau, setAuslastungVorschau] = useState<{ modus: "optimieren" | "dauern"; reihenfolge: OptimierReihenfolge; luecken: boolean; abBeginn: boolean; gruppen: GruppenReihenfolge; gelockert?: string[]; ergebnisse: { einheit: Zeiteinheit; tasks: Task[] }[] } | null>(null);
+  const [auslastungVorschau, setAuslastungVorschau] = useState<{ modus: "optimieren" | "dauern"; reihenfolge: OptimierReihenfolge; luecken: boolean; abBeginn: boolean; gruppen: GruppenReihenfolge; gelockert?: string[]; abgebrochen?: boolean; ergebnisse: { einheit: Zeiteinheit; tasks: Task[] }[] } | null>(null);
   // «Automatisch nachführen» im Dialog (SimProjekt.autoNachfuehren, siehe nachfuehren.ts) — gilt beim Übernehmen
   const [autoNachfuehren, setAutoNachfuehren] = useState(false);
   const [neuInputOffen, setNeuInputOffen] = useState(false);
@@ -319,9 +320,10 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
     }
     const einheiten = [aktuell, ...(["halbtage", "stunden"] as const).filter(e => feinerAls(e, aktuell))];
     const bericht = { gelockert: [] as string[] }; // nur für die aktuelle Zeiteinheit gemeldet (die feineren gleich)
+    const status: { abgebrochen?: boolean } = {}; // Zeitlimit überschritten (in irgendeiner Zeiteinheit) → unverändert
     setAuslastungVorschau({ modus, reihenfolge, luecken, abBeginn, gruppen, ergebnisse: einheiten.map((einheit, i) => ({ einheit,
       tasks: optimiereAuslastung(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN, aktiveSim.kalender ?? LEERER_KALENDER, einheit, aktiveSim.kraene ?? [],
-        reihenfolge, luecken, { gruppen, abBeginn, baubeginn: aktiveSim.baubeginn, unternehmer: aktiveSim.unternehmerPersonal, ...(i === 0 ? { bericht } : {}) }) })), gelockert: bericht.gelockert });
+        reihenfolge, luecken, { gruppen, abBeginn, baubeginn: aktiveSim.baubeginn, unternehmer: aktiveSim.unternehmerPersonal, status, ...(i === 0 ? { bericht } : {}) }) })), gelockert: bericht.gelockert, abgebrochen: status.abgebrochen });
   }
   function auslastungUebernehmen(einheit: Zeiteinheit, tasks: Task[], optimiert = true) {
     if (!aktiveSim || !auslastungVorschau) return;
@@ -759,6 +761,12 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
                   {(neueVorgaenger > 0 || wegVorgaenger > 0) && kachel("Vorgänger", <><strong>+{neueVorgaenger}</strong>{wegVorgaenger > 0 && <> / −{wegVorgaenger}</>} automatisch</>,
                     "Tasks, die auf freies Personal warten mussten, bekommen den Task als zusätzlichen Vorgänger, nach dem diese Leute frei wurden — so bleibt der Ablauf beim Ausrichten der Folge-Tasks erhalten. Eigene (von Hand gesetzte) Vorgänger bleiben; automatisch ergänzte eines früheren Optimierens werden neu bestimmt.")}
                 </div>
+                {!nurDauern && auslastungVorschau.abgebrochen && (
+                  <div style={{ marginBottom: 8, padding: "6px 10px", background: "#fdecea", border: "1px solid #f3b6b0", fontSize: 11, color: "#8a1c12" }}>
+                    ⚠ Abgebrochen: die Optimierung hat zu lange gedauert (über {fmtZahl(ZEITLIMIT_MS / 1000)} s) — nichts geändert. Mögliche Gründe: sehr viele Tasks
+                    oder Daten, mit denen ein Task nie Personal bzw. Kran bekommt (Tab Ressourcen → Kräne & Personal, Leistungspositionen prüfen).
+                  </div>
+                )}
                 {!nurDauern && (auslastungVorschau.gelockert?.length ?? 0) > 0 && (
                   <div style={{ marginBottom: 8, padding: "6px 10px", background: "#fff7e6", border: "1px solid #f5d9a8", fontSize: 11, color: "#8a5a00" }}>
                     Feste Reihenfolge (Bauablauf → 2. «fest») widerspricht Vorgängern oder Ablaufregeln — für {auslastungVorschau.gelockert!.length} Task{auslastungVorschau.gelockert!.length === 1 ? "" : "s"} aufgehoben:

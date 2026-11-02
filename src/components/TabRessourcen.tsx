@@ -16,6 +16,7 @@ import { regelnAlsJson, parseBauablaufJson, simRegelnAnwenden, regelnAnwenden, o
 import type { OhneDarunter } from "./ablaufRegeln";
 import { optimiereAuslastung, optimierungUebernehmen, terminSignatur } from "./auslastungOptimieren";
 import type { FestWiderspruch } from "./auslastungOptimierenKran";
+import { ZEITLIMIT_MS } from "./auslastungOptimierenKran";
 import { pruefeZeitplanBereitschaft } from "./zeitplanUebernahmeHelpers";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 import EntwurfInput from "./EntwurfInput";
@@ -213,8 +214,14 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     const reihenfolge = sim!.autoNachfuehren?.reihenfolge ?? "gruppen";
     const kal = sim!.kalender ?? LEERER_KALENDER;
     const bericht = { gelockert: [] as string[], widersprueche: [] as FestWiderspruch[] };
+    const optStatus: { abgebrochen?: boolean } = {};
     const ergebnis = optimiereAuslastung(mitRegeln.tasks, stammdaten, kal, sim!.zeiteinheit ?? "tage", sim!.kraene ?? [], reihenfolge,
-      sim!.autoNachfuehren?.luecken ?? true, { gruppen: gruppenReihenfolge, abBeginn: sim!.autoNachfuehren?.abBeginn !== false, baubeginn: sim!.baubeginn, unternehmer: sim!.unternehmerPersonal, bericht });
+      sim!.autoNachfuehren?.luecken ?? true, { gruppen: gruppenReihenfolge, abBeginn: sim!.autoNachfuehren?.abBeginn !== false, baubeginn: sim!.baubeginn, unternehmer: sim!.unternehmerPersonal, bericht, status: optStatus });
+    if (optStatus.abgebrochen) {
+      updateSim(mitRegeln);
+      setBauablaufFehler(`Reihenfolge und Regeln übernommen, aber nicht neu optimiert: die Optimierung hat zu lange gedauert (über ${ZEITLIMIT_MS / 1000} s) — Kräne & Personal und Leistungspositionen prüfen.`);
+      return;
+    }
     const tasks = optimierungUebernehmen(mitRegeln.tasks, ergebnis);
     const verschoben = tasks.filter((t, i) => t.start !== sim!.tasks[i]?.start || t.end !== sim!.tasks[i]?.end || t.startZeit !== sim!.tasks[i]?.startZeit || t.endZeit !== sim!.tasks[i]?.endZeit).length;
     const ende = (ts: typeof tasks) => ts.reduce((m, t) => (!t.isGroup && t.end && t.end > m ? t.end : m), "");

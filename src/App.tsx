@@ -37,6 +37,12 @@ export default function App() {
   const { api, ready, selektion, aktivesModellId, geladeneModelle, projectId } = useApi();
 
   const [aktTab, setAktTab] = useState<Tab>("projekte");
+  // Kalkulation, Ressourcen, AVOR und Kosten erst beim ersten Öffnen laden (danach bleiben sie geladen): sie rechnen beim Rendern
+  // viel (z.B. Tab AVOR Tagesabläufe und Optimierungs-Vorschau) — versteckt mitgeladen konnte das den Start bzw. jede Änderung
+  // (z.B. Ressourcen-Import) so lange blockieren, dass die Extension leer blieb
+  const [geoeffneteTabs, setGeoeffneteTabs] = useState<ReadonlySet<Tab>>(() => new Set<Tab>(["projekte"]));
+  if (!geoeffneteTabs.has(aktTab)) setGeoeffneteTabs(new Set(geoeffneteTabs).add(aktTab)); // beim Rendern angepasst (kein Effekt nötig)
+  const geoeffnet = (t: Tab) => aktTab === t || geoeffneteTabs.has(t);
   const [tabGruppe, setTabGruppe] = useState<TabGruppe>("haupt");
   const lastHauptTab = useRef<Tab>("projekte");
   const lastErweitertTab = useRef<Tab>("ressourcen");
@@ -450,26 +456,26 @@ export default function App() {
           </FehlerGrenze>
         </div>
         <div className="tc-tab-pane" style={{ display: aktTab === "kalkulation" ? "block" : "none" }}>
-          <FehlerGrenze bereich="Tab Kalkulation">
+          {geoeffnet("kalkulation") && <FehlerGrenze bereich="Tab Kalkulation">
             <TabKalkulation sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} api={api} projectId={projectId} taskSort={taskSort} />
-          </FehlerGrenze>
+          </FehlerGrenze>}
         </div>
         <div className="tc-tab-pane" style={{ display: aktTab === "ressourcen" ? "block" : "none" }}>
-          <FehlerGrenze bereich="Tab Ressourcen">
+          {geoeffnet("ressourcen") && <FehlerGrenze bereich="Tab Ressourcen">
             <TabRessourcen sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} api={api} selektion={selektion} aktivesModellId={aktivesModellId} projectId={projectId}
               kranplanungSignal={kranplanungSignal} bauablaufSignal={bauablaufSignal} onZuKranoptik={zuKranoptik} />
-          </FehlerGrenze>
+          </FehlerGrenze>}
         </div>
         <div className="tc-tab-pane" style={{ display: aktTab === "avor" ? "block" : "none" }}>
-          <FehlerGrenze bereich="Tab AVOR">
+          {geoeffnet("avor") && <FehlerGrenze bereich="Tab AVOR">
             <TabAvor sim={aktiveSim} updateSim={updateSim} readOnly={readOnly} projectId={projectId} api={api} sharedNadelTag={sharedNadelTag}
               onZuKranplanung={zuKranplanung} kranoptikSignal={kranoptikSignal} />
-          </FehlerGrenze>
+          </FehlerGrenze>}
         </div>
         <div className="tc-tab-pane" style={{ display: aktTab === "kosten" ? "block" : "none" }}>
-          <FehlerGrenze bereich="Tab Kosten">
+          {geoeffnet("kosten") && <FehlerGrenze bereich="Tab Kosten">
             <TabKosten sim={aktiveSim} projectId={projectId} api={api} sharedNadelTag={sharedNadelTag} />
-          </FehlerGrenze>
+          </FehlerGrenze>}
         </div>
       </div>
 

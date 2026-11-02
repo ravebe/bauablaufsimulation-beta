@@ -46,8 +46,12 @@ export function simNachfuehren(sim: SimProjekt): SimProjekt {
   if (nur.size === 0) return sim;
   // von Hand verschoben (Start anders als beim Optimieren): frühestens am neuen Start
   const untergrenze = new Set(sim.tasks.filter(t => nur.has(t.id) && t.optimierung && zpText(t) !== t.optimierung.start).map(t => t.id));
+  // kürzeres Zeitlimit: Nachführen läuft bei jeder Änderung im selben Schritt — dauert es zu lange, bleibt die Simulation unverändert
+  const status: { abgebrochen?: boolean } = {};
   const ergebnis = optimiereAuslastung(sim.tasks, stammdaten, kalender, sim.zeiteinheit ?? "tage", kraene, e.reihenfolge, e.luecken,
-    { nur, untergrenze, gruppen: bauablaufReihenfolge(sim), abBeginn: e.abBeginn !== false, baubeginn: sim.baubeginn, unternehmer: sim.unternehmerPersonal });
+    { nur, untergrenze, gruppen: bauablaufReihenfolge(sim), abBeginn: e.abBeginn !== false, baubeginn: sim.baubeginn, unternehmer: sim.unternehmerPersonal,
+      zeitLimitMs: 3000, status });
+  if (status.abgebrochen) return sim;
   const tasks = optimierungUebernehmen(sim.tasks, ergebnis);
   return { ...sim, tasks, optimiertStand: terminSignatur(tasks) };
 }

@@ -98,3 +98,18 @@ describe("Personal je Unternehmer", () => {
     expect(eingeplantesPersonalJeTag(ts, kraene, sd, KAL, [iso], [{ id: "1", unternehmer: "Baumeister", personen: 7 }]).get(iso)!.total).toBe(7);
   });
 });
+
+describe("Zeitlimit der Optimierung", () => {
+  it("überschritten → Abbruch: Tasks unverändert, status.abgebrochen", () => {
+    // viele Zeitschritte: 4 Wände mit je 400 h Schalung
+    const ts = ["A", "B", "C", "D"].map(id => task(id, { sch: 400 }));
+    const status: { abgebrochen?: boolean } = {};
+    const neu = optimiereAuslastung(ts, sd, KAL, "stunden", kraene, "kritischerPfad", false, { zeitLimitMs: -1, status });
+    expect(status.abgebrochen).toBe(true);
+    expect(neu).toEqual(ts);
+    // mit genug Zeit: fertig, nicht abgebrochen
+    const ok: { abgebrochen?: boolean } = {};
+    optimiereAuslastung(ts, sd, KAL, "stunden", kraene, "kritischerPfad", false, { status: ok });
+    expect(ok.abgebrochen).toBeUndefined();
+  });
+});

@@ -101,7 +101,13 @@ function laufAnhaengen(z: TaskZ, tag: number, l: TagesLauf) {
 /*  unternehmer: Personal je Unternehmer (SimProjekt.unternehmerPersonal) — Grenze bzw. «wie Leistungsposition», siehe ablaufKern.ts */
 export interface OptimierOptionen { nur?: Set<string>; untergrenze?: Set<string>; gruppen?: GruppenReihenfolge; abBeginn?: boolean; baubeginn?: string;
   unternehmer?: UnternehmerPersonal[];
-  bericht?: { gelockert: string[]; widersprueche?: FestWiderspruch[] } }
+  bericht?: { gelockert: string[]; widersprueche?: FestWiderspruch[] };
+  /** Höchstens so lange rechnen (ms, Standard ZEITLIMIT_MS) — sonst Abbruch: Tasks unverändert, status.abgebrochen = true. Schützt
+   *  die Oberfläche vor dem Einfrieren (z.B. sehr grosses Projekt oder Daten, mit denen ein Task nie Personal bekommt). */
+  zeitLimitMs?: number; status?: { abgebrochen?: boolean } }
+
+/** Standard-Zeitlimit von «Auslastung optimieren» (ms) */
+export const ZEITLIMIT_MS = 6000;
 
 /** Warum «fest» für einen Task aufgehoben wurde: er wartete auf einen Vorgänger, der wegen «fest» erst nach ihm beginnen darf
  *  (Stufe = stufenTitel, z.B. «Gruppenebene 2»; Werte = Task UG, Vorgänger EG). Ohne Stufe: Vorgänger wartet auf andere Weise. */
@@ -308,7 +314,14 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
   let slot = 0;
 
   let anzahlOffen = offen.length;
+  const zeitBeginn = performance.now(), zeitLimit = optionen.zeitLimitMs ?? ZEITLIMIT_MS;
+  let schleifen = 0;
   while (anzahlOffen > 0 && slot < maxSlots) {
+    // Zeitlimit: lieber abbrechen und nichts ändern als die Oberfläche einfrieren
+    if ((++schleifen & 255) === 0 && performance.now() - zeitBeginn > zeitLimit) {
+      if (optionen.status) optionen.status.abgebrochen = true;
+      return tasks;
+    }
     anzahlOffen = offen.reduce((n, z) => n + (z.fertig ? 0 : 1), 0);
     if (anzahlOffen === 0) break;
     // Vorgänger erledigt → frühester Start bekannt; Tasks ohne Ressourcen (nur Dauer) gleich einplanen
