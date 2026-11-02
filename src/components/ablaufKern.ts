@@ -7,7 +7,8 @@
 //    (MAX_UEBERZUG mehr nur, wenn sonst Leute untätig wären).
 //  - Ohne Pool (nicht kranpflichtig, Task ohne Kran, Unternehmer ohne Personal unter dem Kran): je Gewerk + Unternehmer eine
 //    Kolonne, die immer nur an einer Arbeit gleichzeitig arbeitet, mit den Min. Personen dieser Leistungsposition — sie geht von
-//    Arbeit zu Arbeit (z.B. Bewehrung Wand → Bewehrung Stütze, sobald diese geschalt ist).
+//    Arbeit zu Arbeit (z.B. Bewehrung Wand → Bewehrung Stütze, sobald diese geschalt ist). Ist sie kranpflichtig, braucht sie nur
+//    Kranzeit — das Personal unter dem Kran gilt nur für die dort eingetragenen Unternehmer (sie nimmt ihnen keine Plätze weg).
 //  - Kranzeit: eine kranpflichtige Arbeit belegt ihren Kran mit Leute ÷ Min. Personen × Kranzeit % (bei mehreren verfügbaren
 //    Kränen des Tasks aufgeteilt); je Zeitschritt hat jeder Kran höchstens einen Zeitschritt Kranzeit.
 //  - Personal je Unternehmer (SimProjekt.unternehmerPersonal, unternehmerAmTag): «höchstens n» ist eine harte Grenze für alle
@@ -168,19 +169,15 @@ export class Zeitschritt<T> {
       this.besetzt.add(p);
       return;
     }
-    // 2) Kolonne ohne Pool (Gewerk + Unternehmer, eine Arbeit gleichzeitig); kranpflichtige zählen zum Personal eines Krans des Tasks
+    // 2) Kolonne ohne Pool (Gewerk + Unternehmer, eine Arbeit gleichzeitig); kranpflichtige brauchen nur Kranzeit — das Personal
+    //    unter dem Kran gilt nur für die dort eingetragenen Unternehmer
     const kolonne = kolonnenSchluessel(p.gewerkKey, p.unternehmer);
     if (this.kolonneBelegt.has(kolonne)) return;
     const leute = Math.min(p.kolonne, this.grenzeVon(p.unternehmer));
     if (this.grenzeFreiVon(p.unternehmer) < leute) return;
-    let kranId: string | null = null;
-    if (heute.length > 0) {
-      if (!this.kranZeitReicht(heute, p, leute)) { this.kranWartend.add(p); return; }
-      kranId = heute.find(kid => this.reicht(this.kranFrei.get(kid) ?? 0, Math.min(leute, this.kranTotal.get(kid)!), kid, mitUeberzug)) ?? null;
-      if (!kranId) return;
-      this.abziehen(kranId, Math.min(leute, this.kranTotal.get(kranId)!));
-      this.kranZeitAbziehen(heute, p, leute);
-    }
+    if (heute.length > 0 && !this.kranZeitReicht(heute, p, leute)) { this.kranWartend.add(p); return; }
+    this.kranZeitAbziehen(heute, p, leute);
+    const kranId = heute[0] ?? null;
     this.kolonneBelegt.add(kolonne);
     this.grenzeAbziehen(p.unternehmer, leute);
     this.vergabe.push({ ref: a.ref, p, leute, ressource: kolonne, ausPool: false, kranId, kranIds: heute, kranBegrenzt: false });
@@ -215,7 +212,6 @@ export class Zeitschritt<T> {
       this.abziehen(pool.kid, leute);
     } else if (!this.unbegrenzt.has(p.unternehmer)) {
       this.kolonneBelegt.add(kolonnenSchluessel(p.gewerkKey, p.unternehmer));
-      if (heute.length > 0) this.abziehen(heute[0], Math.min(leute, this.kranTotal.get(heute[0])!));
     }
     this.kranZeitAbziehen(heute, p, leute * anteil);
   }

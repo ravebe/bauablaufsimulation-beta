@@ -11,7 +11,8 @@ import { hatKalkulationsWerte } from "./stammdatenHelpers";
 import type { Kalender } from "./kalenderHelpers";
 import { kranstundenJeTagFuerTask, aufwandJeTagFuerTask } from "./avorHelpers";
 import type { Tagesplan, TagesplanPhase, BereitWartend } from "./tagesplan";
-import { unternehmerLabel, bereitAberNichtDran, kranstundenImArbeitstag } from "./tagesplan";
+import { unternehmerLabel, bereitAberNichtDran, kranstundenImArbeitstag, pausiertAmTag } from "./tagesplan";
+import type { WarteGrund } from "./tagesplan";
 import type { EingeplantTag } from "./kranHelpers";
 import { kraeneDesTasks, istKranVerfuegbarAn } from "./kranHelpers";
 import { endZeitpunkt, folgeStartZeitpunkt, minZuZeit, ARBEITSBEGINN_MIN, MITTAG_VON_MIN, MITTAG_BIS_MIN, ARBEITSENDE_MIN } from "./zeitHelpers";
@@ -41,6 +42,9 @@ interface Props {
 }
 
 const datumText = (iso: string) => iso.split("-").reverse().join(".");
+/** Kurzer Grund, warum eine Arbeit an diesem Tag nicht läuft (tagesplan.ts, WarteGrund) */
+const pauseText = (g: WarteGrund) => g === "kran" ? "Kran voll" : g === "personal" ? "Personal ausgeschöpft"
+  : g === "kolonne" ? "Kolonne an anderer Arbeit" : g === "wechselnd" ? "Kran und Personal belegt" : "Kran und Personal wären frei (neu optimieren)";
 
 /** Uhrzeit (Minuten ab Mitternacht) nach h Stunden Arbeit ab Arbeitsbeginn — Arbeitszeit (Beginn, Mittag, Ende) aus Tab Ressourcen,
  *  Std./Tag darauf gestreckt (falls sie nicht genau gleich lang sind); nach Arbeitsende (Überstunden) Stunde für Stunde.
@@ -133,7 +137,9 @@ export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeG
       ))}
     </div>
   );
-  if (zeilen.length === 0) return tabellenKasten || null;
+  // laufen laut Gantt (im 3D-Modell markiert), arbeiten heute aber nicht — als graue Zeile «pausiert» mit Grund
+  const pausiert = pausiertAmTag(iso, tasks, plan, stammdaten, kalender, kraene, unternehmer);
+  if (zeilen.length === 0 && pausiert.length === 0) return tabellenKasten || null;
 
   const arbeit = plan.arbeit;
   // Zeitachse in Uhrzeit: Arbeitsbeginn bis Arbeitsende, oder länger, wenn die Arbeit überzieht
@@ -230,6 +236,17 @@ export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeG
           );
         })}
         {zeilen.length > MAX_TASKS && <div style={{ color: FARBEN.textMuted }}>… und {zeilen.length - MAX_TASKS} weitere Tasks</div>}
+        {pausiert.map(pz => (
+          <div key={pz.t.id} style={{ display: "grid", gridTemplateColumns: `minmax(110px, 180px) 1fr ${SPALTE_RECHTS}px`, alignItems: "center", columnGap: 8, marginBottom: 3 }}
+            title={`${pz.t.name}: läuft laut Gantt ${datumText(pz.t.start)}–${datumText(pz.t.end)} (im Modell markiert), hat an diesem Tag aber keine Arbeit${pz.grund ? " — " + pauseText(pz.grund) : ""}${pz.weiterAm ? `. Weiter am ${datumText(pz.weiterAm)}.` : "."}`}>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: FARBEN.textMuted }}>{pz.t.name}</span>
+            <div style={{ height: 18, lineHeight: "18px", paddingLeft: 6, fontSize: 10, color: FARBEN.textSekundaer, overflow: "hidden", whiteSpace: "nowrap",
+              background: "repeating-linear-gradient(135deg, #eef1f4 0 6px, #e2e6ea 6px 12px)" }}>
+              pausiert{pz.grund ? ` — ${pauseText(pz.grund)}` : ""}{pz.weiterAm ? ` · weiter am ${datumText(pz.weiterAm)}` : ""}
+            </div>
+            <span style={{ textAlign: "right", color: FARBEN.textMuted }}>pausiert</span>
+          </div>
+        ))}
       </>)}
     </div>
     {tabellenKasten}

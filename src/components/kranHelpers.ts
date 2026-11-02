@@ -311,17 +311,20 @@ export function eingeplantesPersonalJeTag(tasks: Task[], kraene: Kran[], stammda
           : kranIds.length === 0 ? "Task ohne Kran (Tab Kalkulation → Kräne)"
           : kraeneHeute.length === 0 ? "Kran an diesem Tag nicht verfügbar"
           : !a.phase.unternehmer ? "kein Unternehmer bei der Leistungsposition (Tab Ressourcen)"
-          : `${a.phase.unternehmer} hat kein Personal unter dem Kran`;
+          : `${a.phase.unternehmer} hat kein Personal unter dem Kran (nur Kranzeit)`;
         const kuerzel = a.phase.position.split("::")[1] ?? "";
         const ohne = ohnePoolJeTag.get(iso) ?? new Map<string, OhnePool>();
         ohne.set(a.phase.position, { position: a.phase.position, label: `${gewerkLabel.get(a.phase.gewerkKey) ?? a.phase.gewerkKey} · ${kuerzel}`,
           kolonne: a.phase.kolonne, grund, unterKran: kraeneHeute.length > 0 });
         ohnePoolJeTag.set(iso, ohne);
-        if (kraeneHeute.length > 0) unterKranMerken();
+        // Kolonne zählt nur dann zum Kranpersonal, wenn unter dem Kran gar kein Personal eingetragen ist — sonst gilt das Personal
+        // unter dem Kran nur für die eingetragenen Unternehmer und die Kolonne kommt dazu (sie braucht nur Kranzeit, siehe ablaufKern)
+        const kranOhnePersonal = kraeneHeute.find(id => kranPersonalTotalAmTag(kranById.get(id)!, iso) === 0) ?? null;
+        if (kranOhnePersonal) unterKranMerken();
         const jeKolonne = kolonnenJeTag.get(iso) ?? new Map<string, Kol>();
         const key = kolonnenSchluessel(a.phase.gewerkKey, a.phase.unternehmer);
         const bisher = jeKolonne.get(key);
-        jeKolonne.set(key, { gewerkKey: a.phase.gewerkKey, unternehmer: a.phase.unternehmer, personen: Math.max(bisher?.personen ?? 0, a.phase.kolonne), kranId: bisher?.kranId ?? kraeneHeute[0] ?? null });
+        jeKolonne.set(key, { gewerkKey: a.phase.gewerkKey, unternehmer: a.phase.unternehmer, personen: Math.max(bisher?.personen ?? 0, a.phase.kolonne), kranId: bisher?.kranId ?? kranOhnePersonal });
         kolonnenJeTag.set(iso, jeKolonne);
       }
     }

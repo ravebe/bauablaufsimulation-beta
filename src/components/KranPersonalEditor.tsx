@@ -6,7 +6,8 @@ import { useState } from "react";
 import type { SimProjekt, Kran, KranPersonal, UnternehmerPersonal } from "../types";
 import { istGruppe } from "../types";
 import { personalJeUnternehmerAusKraenen, neuerKran, kranAusTasksEntfernen, kraeneDesTasks, kranPersonalAmTag, RICHTWERT_PERSONEN_PRO_KRAN, kranLuecken, tageAlsZeitraeume, kranVerlaengernVorschlag, kranVerlaengern } from "./kranHelpers";
-import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
+import { LEERE_STAMMDATEN, istRateKranpflichtig } from "./stammdatenHelpers";
+import type { Stammdaten } from "./stammdatenHelpers";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 
 interface Props { sim: SimProjekt; updateSim: (s: SimProjekt) => void; readOnly?: boolean; bekannteUnternehmer: string[];
@@ -213,6 +214,16 @@ export default function KranPersonalEditor({ sim, updateSim, readOnly, bekannteU
                   + Unternehmer
                 </button>
               )}
+              {(() => {
+                // kranpflichtige Arbeit von Unternehmern, die unter diesem Kran nicht eingetragen sind: braucht nur Kranzeit
+                const weitere = nurKranzeitAmKran(kran, sim, kraene);
+                return weitere.length > 0 && (
+                  <div style={{ fontSize: 10, color: "var(--tc-text-3)", marginTop: 4 }}
+                    title="Diese Unternehmer arbeiten kranpflichtig an Tasks dieses Krans, sind oben aber nicht eingetragen: sie brauchen nur Kranzeit und nehmen dem Personal unter dem Kran keine Plätze weg. Ihre Leute rechnen nach «Personal je Unternehmer» (ohne Zeile: eine Kolonne je Gewerk, nacheinander). Sollen sie zum Personal unter dem Kran zählen: oben eintragen.">
+                    Ebenfalls am Kran (nur Kranzeit): {weitere.map(w => `${w.unternehmer} · ${w.positionen}`).join(" · ")}
+                  </div>
+                );
+              })()}
               {summe > RICHTWERT_PERSONEN_PRO_KRAN && (
                 <div style={{ fontSize: 10, color: "#b5750a", marginTop: 4 }}>
                   ⚠ {summe} Personen{tag ? ` ab ${tag.split("-").reverse().join(".")}` : ""} — mehr als der Richtwert von {RICHTWERT_PERSONEN_PRO_KRAN} Personen, die ein Kran etwa versorgen kann.
@@ -226,6 +237,72 @@ export default function KranPersonalEditor({ sim, updateSim, readOnly, bekannteU
         <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }} onClick={() => speichern([...kraene, neuerKran(kraene)])}>+ Kran hinzufügen</button>
       )}
       <UnternehmerPersonalEditor sim={sim} updateSim={updateSim} readOnly={readOnly} bekannteUnternehmer={bekannteUnternehmer} alleUnternehmer={alleUnternehmer} />
+    </div>
+  );
+}
+
+/** Prozente kurz: «5 %» oder «20–40 %» (leer = 100) */
+const prozentText = (werte: (number | undefined)[]) => {
+  const p = werte.map(v => v ?? 100);
+  const min = Math.min(...p), max = Math.max(...p);
+  return min === max ? `${min} %` : `${min}–${max} %`;
+};
+
+/** Unternehmer mit kranpflichtiger Arbeit an Tasks dieses Krans, die unter ihm nicht eingetragen sind (brauchen nur Kranzeit),
+ *  je mit ihren Gewerken und der Kranzeit, z.B. «Akkordant BEW · Bewehrung 5 %». */
+function nurKranzeitAmKran(kran: Kran, sim: SimProjekt, kraene: Kran[]): { unternehmer: string; positionen: string }[] {
+  const stammdaten = sim.stammdaten ?? LEERE_STAMMDATEN;
+  const eingetragen = new Set((kran.personal ?? []).filter(p => p.personen > 0).map(p => p.unternehmer.trim()));
+  const kuerzel = new Set(sim.tasks.filter((t, i) => !t.isGroup && !istGruppe(sim.tasks, i) && t.bauteilKuerzel && t.mengen && kraeneDesTasks(t, kraene).includes(kran.id))
+    .map(t => t.bauteilKuerzel!));
+  const jeU = new Map<string, Map<string, (number | undefined)[]>>(); // Unternehmer → Gewerk → Kranzeit %
+  for (const g of stammdaten.gewerke) for (const r of g.raten) {
+    const u = (r.unternehmer ?? "").trim();
+    if (!u || eingetragen.has(u) || !kuerzel.has(r.kuerzel.trim()) || !istRateKranpflichtig(r, g)) continue;
+    const m = jeU.get(u) ?? new Map<string, (number | undefined)[]>();
+    m.set(g.label, [...(m.get(g.label) ?? []), r.kranzeitProzent]);
+    jeU.set(u, m);
+  }
+  return [...jeU].map(([unternehmer, m]) => ({ unternehmer, positionen: [...m].map(([label, p]) => `${label} ${prozentText(p)}`).join(", ") }));
+}
+
+/** Übersicht unter «Personal je Unternehmer»: je Unternehmer kurz, wie sein Personal und der Kran gerechnet werden. */
+function Uebersicht({ sim }: { sim: SimProjekt }) {
+  const stammdaten: Stammdaten = sim.stammdaten ?? LEERE_STAMMDATEN;
+  const kraene = sim.kraene ?? [];
+  const zeilen = sim.unternehmerPersonal ?? [];
+  const raten = stammdaten.gewerke.flatMap(g => g.raten.map(r => ({ g, r, u: (r.unternehmer ?? "").trim() }))).filter(x => x.u);
+  const alle = [...new Set([...raten.map(x => x.u), ...kraene.flatMap(k => (k.personal ?? []).map(p => p.unternehmer.trim())), ...zeilen.map(z => z.unternehmer.trim())])].filter(Boolean);
+  if (alle.length === 0) return null;
+  const zelle: React.CSSProperties = { padding: "1px 12px 1px 0", verticalAlign: "top" };
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ fontSize: 10, fontWeight: 600, color: "var(--tc-text-3)", marginBottom: 2 }}
+        title="So rechnen «Auslastung optimieren» und der Tagesablauf das Personal jedes Unternehmers — aus Kränen & Personal, Personal je Unternehmer und den Leistungspositionen (Unternehmer, Kran, Kranzeit %).">
+        Übersicht: so wird gerechnet</div>
+      <table style={{ fontSize: 10, borderCollapse: "collapse", color: "var(--tc-text-2)" }}>
+        <tbody>
+          {alle.map(u => {
+            const pools = kraene.filter(k => (k.personal ?? []).some(p => p.unternehmer.trim() === u && p.personen > 0)).map(k => k.name);
+            const wieLp = zeilen.some(z => z.unternehmer.trim() === u && z.unbegrenzt);
+            const grenzen = [...new Set(zeilen.filter(z => z.unternehmer.trim() === u && !z.unbegrenzt && z.personen != null && z.personen >= 1).map(z => z.personen!))];
+            const eigene = raten.filter(x => x.u === u);
+            const mitKran = eigene.filter(x => istRateKranpflichtig(x.r, x.g));
+            const ohneKran = eigene.length - mitKran.length;
+            const personal = wieLp ? "wie Leistungsposition, parallel"
+              : [pools.length ? `Pool ${pools.join(", ")}` : "", grenzen.length ? `höchstens ${grenzen.join(" / ")}` : "",
+                !pools.length || ohneKran > 0 ? `${pools.length ? "ohne Kran: " : ""}1 Kolonne je Gewerk, nacheinander` : ""].filter(Boolean).join(" · ");
+            const kran = mitKran.length === 0 ? "–" : `${pools.length || wieLp ? "" : "nur "}Kranzeit ${prozentText(mitKran.map(x => x.r.kranzeitProzent))}`;
+            return (
+              <tr key={u}>
+                <td style={{ ...zelle, fontWeight: 600 }}>{u}</td>
+                <td style={zelle}>{personal}</td>
+                <td style={zelle}>{kran}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -337,6 +414,7 @@ function UnternehmerPersonalEditor({ sim, updateSim, readOnly, bekannteUnternehm
           + Zeile
         </button>
       )}
+      <Uebersicht sim={sim} />
     </div>
   );
 }

@@ -11,8 +11,9 @@ import type { Task, Kran, TagesLauf, UnternehmerPersonal } from "../types";
 import { vorgaengerListe, istGruppe } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { hatKalkulationsWerte, schritteFuerTask, rateFuerKuerzel, istRateKranpflichtig } from "./stammdatenHelpers";
+import type { TaskPhase } from "./stammdatenHelpers";
 import type { Kalender } from "./kalenderHelpers";
-import { endZeitpunkt, folgeStartZeitpunkt, vergleicheZeitpunkte, ARBEITSBEGINN_MIN } from "./zeitHelpers";
+import { endZeitpunkt, startZeitpunkt, folgeStartZeitpunkt, vergleicheZeitpunkte, ARBEITSBEGINN_MIN } from "./zeitHelpers";
 import type { Zeitpunkt } from "./zeitHelpers";
 import { kolonnenSchluessel } from "./kranHelpers";
 import { aufwandJeTagUndPhaseFuerTask, gueltigeTagesArbeit } from "./avorHelpers";
@@ -249,12 +250,66 @@ export interface BereitWartend { t: Task; bereitSeit: string; grund: WarteGrund;
 /** Tasks, deren Vorgänger (ohne die vom Optimieren ergänzten) zu Beginn des Tages fertig sind, die aber an diesem Tag nicht
  *  arbeiten — mit dem Grund aus der Belegung des Tages (Plan): für den ersten Schritt seines Arbeitsablaufs wird je Zeitschritt
  *  geprüft, ob Kranzeit, Pool-Personal bzw. Kolonne für die Mindestbesetzung frei gewesen wären (gleiche Regeln wie ablaufKern). */
-export function bereitAberNichtDran(iso: string, tasks: Task[], plan: Tagesplan, stammdaten: Stammdaten, kalender: Kalender, kraene: Kran[],
-  unternehmer: UnternehmerPersonal[] = [], max = 6): BereitWartend[] {
+/** Prüft für Arbeiten (Phasen eines Schritts), ob sie am Tag des Plans in irgendeinem Zeitschritt Kranzeit, Personal (Pool bzw.
+ *  Grenze des Unternehmers) und Kolonne frei gehabt hätten — gleiche Regeln wie ablaufKern — und gibt den Grund zurück. */
+function grundPruefer(iso: string, plan: Tagesplan, stammdaten: Stammdaten, kraene: Kran[], unternehmer: UnternehmerPersonal[]) {
   const std = stammdaten.arbeitszeitStdProTag || 8;
   const N = slotsProTag();
-  const slotStd = std / N;
-  const pruefung = new Zeitschritt<null>(iso, kraene, slotStd, false, unternehmer);
+  const pruefung = new Zeitschritt<null>(iso, kraene, std / N, false, unternehmer);
+  return (phasen: TaskPhase[], kranIds: string[]): WarteGrund => {
+    let kranFehlt = true, personalFehlt = true, kolonneFehlt = true;
+    for (let s = 0; s < N; s++) {
+      let kranOk = true, personalOk = true, kolonneOk = true;
+      for (const ph of phasen) {
+        const p: KernPhase = { position: ph.position, gewerkKey: ph.gewerkKey, unternehmer: ph.unternehmer, kranpflichtig: ph.kranpflichtig,
+          kolonne: Math.max(1, ph.kolonne), kranAnteil: ph.kranAnteil, rest: ph.personenstunden };
+        const heute = pruefung.kraeneHeute(p, kranIds);
+        const pool = pruefung.poolDer(p, kranIds);
+        const unbegrenzt = pruefung.istUnbegrenzt(p.unternehmer);
+        const grenze = pruefung.grenzeVon(p.unternehmer);
+        const leute = Math.min(pool ? Math.min(p.kolonne, pruefung.poolGroesseVon(pool.key)) : p.kolonne, unbegrenzt ? Infinity : grenze);
+        if (heute.some(id => (plan.belegung.kran.get(id)?.[s] ?? 0) + leute / p.kolonne * p.kranAnteil / heute.length > 1 + 1e-6)) kranOk = false;
+        if (pool && (plan.belegung.pool.get(pool.key)?.[s] ?? 0) + leute > pruefung.poolGroesseVon(pool.key) + 1e-6) personalOk = false;
+        if (isFinite(grenze) && (plan.belegung.unternehmer.get(p.unternehmer)?.[s] ?? 0) + leute > grenze + 1e-6) personalOk = false;
+        if (!pool && !unbegrenzt && plan.belegung.kolonne.get(kolonnenSchluessel(p.gewerkKey, p.unternehmer))?.[s]) kolonneOk = false;
+      }
+      if (kranOk && personalOk && kolonneOk) return "frei";
+      if (kranOk) kranFehlt = false;
+      if (personalOk) personalFehlt = false;
+      if (kolonneOk) kolonneFehlt = false;
+    }
+    return kranFehlt ? "kran" : personalFehlt ? "personal" : kolonneFehlt ? "kolonne" : "wechselnd";
+  };
+}
+
+/** Task, der laut Gantt an diesem Tag läuft (im 3D-Modell markiert), aber an diesem Tag keine Arbeit hat — z.B. von «Auslastung
+ *  optimieren» unterbrochen, weil Personal oder Kran anderswo gebraucht wurden. weiterAm = nächster Tag mit Arbeit, grund = was
+ *  seine nächste Arbeit heute zurückhält (null = keine Arbeit mehr, z.B. Ende genau am Tagesbeginn). */
+export interface Pausiert { t: Task; weiterAm: string | null; grund: WarteGrund | null; kranIds: string[] }
+
+/** Tasks, deren Gantt-Zeitraum den Tag berührt (wie die Markierung im 3D-Modell: Start bis Tagesende, Ende nach Tagesbeginn), die
+ *  an diesem Tag aber nicht arbeiten — mit dem nächsten Tag mit Arbeit und dem Grund für die Pause. */
+export function pausiertAmTag(iso: string, tasks: Task[], plan: Tagesplan, stammdaten: Stammdaten, kalender: Kalender, kraene: Kran[],
+  unternehmer: UnternehmerPersonal[] = [], aufwand?: AufwandQuelle): Pausiert[] {
+  const amTag = new Set(plan.tasks.map(z => z.t.id));
+  const grundFuer = grundPruefer(iso, plan, stammdaten, kraene, unternehmer);
+  const tagesBeginn: Zeitpunkt = { datum: iso, min: 0 }, tagesEnde: Zeitpunkt = { datum: iso, min: 24 * 60 };
+  const ergebnis: Pausiert[] = [];
+  tasks.forEach((t, i) => {
+    if (t.isGroup || istGruppe(tasks, i) || t.meilenstein || amTag.has(t.id) || !t.start || !t.end || !hatKalkulationsWerte(t, stammdaten)) return;
+    if (vergleicheZeitpunkte(startZeitpunkt(t), tagesEnde) >= 0 || vergleicheZeitpunkte(endZeitpunkt(t), tagesBeginn) <= 0) return;
+    const jeTag = aufwand ? aufwand(t) : aufwandJeTagUndPhaseFuerTask(t, stammdaten, kalender);
+    const weiterAm = [...jeTag.keys()].filter(d => d > iso).sort()[0] ?? null;
+    const kranIds = kraeneDesTasks(t, kraene);
+    const naechste = weiterAm ? jeTag.get(weiterAm)!.map(a => a.phase) : [];
+    ergebnis.push({ t, weiterAm, kranIds, grund: naechste.length ? grundFuer(naechste, kranIds) : null });
+  });
+  return ergebnis;
+}
+
+export function bereitAberNichtDran(iso: string, tasks: Task[], plan: Tagesplan, stammdaten: Stammdaten, kalender: Kalender, kraene: Kran[],
+  unternehmer: UnternehmerPersonal[] = [], max = 6): BereitWartend[] {
+  const grundFuer = grundPruefer(iso, plan, stammdaten, kraene, unternehmer);
   const tagesBeginn: Zeitpunkt = { datum: iso, min: ARBEITSBEGINN_MIN };
   const byId = new Map(tasks.map(t => [t.id, t]));
   const amTag = new Set(plan.tasks.map(z => z.t.id));
@@ -278,28 +333,7 @@ export function bereitAberNichtDran(iso: string, tasks: Task[], plan: Tagesplan,
     const schritt = schritteFuerTask(t, stammdaten)[0];
     if (!schritt) continue;
     const kranIds = kraeneDesTasks(t, kraene);
-    let kranFehlt = true, personalFehlt = true, kolonneFehlt = true, frei = false;
-    for (let s = 0; s < N && !frei; s++) {
-      let kranOk = true, personalOk = true, kolonneOk = true;
-      for (const ph of schritt.phasen) {
-        const p: KernPhase = { position: ph.position, gewerkKey: ph.gewerkKey, unternehmer: ph.unternehmer, kranpflichtig: ph.kranpflichtig,
-          kolonne: Math.max(1, ph.kolonne), kranAnteil: ph.kranAnteil, rest: ph.personenstunden };
-        const heute = pruefung.kraeneHeute(p, kranIds);
-        const pool = pruefung.poolDer(p, kranIds);
-        const unbegrenzt = pruefung.istUnbegrenzt(p.unternehmer);
-        const grenze = pruefung.grenzeVon(p.unternehmer);
-        const leute = Math.min(pool ? Math.min(p.kolonne, pruefung.poolGroesseVon(pool.key)) : p.kolonne, unbegrenzt ? Infinity : grenze);
-        if (heute.some(id => (plan.belegung.kran.get(id)?.[s] ?? 0) + leute / p.kolonne * p.kranAnteil / heute.length > 1 + 1e-6)) kranOk = false;
-        if (pool && (plan.belegung.pool.get(pool.key)?.[s] ?? 0) + leute > pruefung.poolGroesseVon(pool.key) + 1e-6) personalOk = false;
-        if (isFinite(grenze) && (plan.belegung.unternehmer.get(p.unternehmer)?.[s] ?? 0) + leute > grenze + 1e-6) personalOk = false;
-        if (!pool && !unbegrenzt && plan.belegung.kolonne.get(kolonnenSchluessel(p.gewerkKey, p.unternehmer))?.[s]) kolonneOk = false;
-      }
-      if (kranOk) kranFehlt = false;
-      if (personalOk) personalFehlt = false;
-      if (kolonneOk) kolonneFehlt = false;
-      if (kranOk && personalOk && kolonneOk) frei = true;
-    }
-    const grund: WarteGrund = frei ? "frei" : kranFehlt ? "kran" : personalFehlt ? "personal" : kolonneFehlt ? "kolonne" : "wechselnd";
+    const grund = grundFuer(schritt.phasen, kranIds);
     // Positionen, die heute den Kran belegen und ohne Kranzeit % mit 100 % rechnen
     const kranzeitLeer = new Set<string>();
     if (grund === "kran" || grund === "wechselnd") for (const z of plan.tasks) {
