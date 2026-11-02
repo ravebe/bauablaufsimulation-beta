@@ -182,7 +182,8 @@ export function stammdatenAlsCsv(s: Stammdaten, tasks: Task[]): string {
     }
     for (const r of g.raten) {
       zeilen.push([
-        g.key, g.label, g.einheit, g.kranpflichtig ? "ja" : "nein",
+        // Kranpflichtig je Leistungsposition (Haken in Tab Ressourcen), nicht das alte Flag der Kategorie
+        g.key, g.label, g.einheit, istRateKranpflichtig(r, g) ? "ja" : "nein",
         r.kuerzel, r.bezeichnung,
         r.leistungswertHProEinheit != null ? String(r.leistungswertHProEinheit) : "",
         String(r.anzahlPersonen),
@@ -285,7 +286,8 @@ export function parseStammdatenCsv(text: string, bestehende: Stammdaten): Stammd
       chfProEinheit: iChf !== -1 ? parseNum(z[iChf] ?? "") : null,
       formel: iFormel !== -1 && (z[iFormel] ?? "").trim() ? z[iFormel].trim() : undefined,
       ausschlussFilterIds: bisher?.ausschlussFilterIds,
-      kranpflichtig: bisher?.kranpflichtig,
+      // Kranpflichtig je Zeile (Leistungsposition); leer = bisherigen Wert behalten
+      kranpflichtig: iKran !== -1 && (z[iKran] ?? "").trim() ? parseBool(z[iKran]) : bisher?.kranpflichtig,
       // ältere CSV ohne diese Spalten: bisherigen Wert behalten
       unternehmer: (text(iUnternehmer) ?? bisher?.unternehmer) || undefined,
       schritt: (text(iSchritt) ?? bisher?.schritt) || undefined,
