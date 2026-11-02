@@ -111,7 +111,7 @@ export class Zeitschritt<T> {
 
   /** Personal eines Pools an diesem Tag (0 = kein Pool) */
   poolGroesseVon(key: string): number { return this.poolGroesse.get(key) ?? 0; }
-  /** Unternehmer mit «so viele wie nötig» an diesem Tag */
+  /** Unternehmer mit «wie Leistungsposition» an diesem Tag */
   istUnbegrenzt(unternehmer: string): boolean { return this.unbegrenzt.has(unternehmer); }
   /** Grenze des Unternehmers an diesem Tag (Infinity = keine) */
   grenzeVon(unternehmer: string): number { return this.grenze.get(unternehmer) ?? Infinity; }

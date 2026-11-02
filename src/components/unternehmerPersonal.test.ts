@@ -23,7 +23,7 @@ const tage = (ts: Task[]) => { const s = new Set<string>(); for (const t of ts) 
 const maxImEinsatz = (ts: Task[], up: UnternehmerPersonal[]) => Math.max(0, ...tage(ts).map(iso => tagesplan(iso, ts, sd, KAL, kraene, undefined, up).imEinsatz.anzahl));
 
 describe("Personal je Unternehmer", () => {
-  it("unternehmerAmTag: Zeiträume, kleinste Grenze, so viele wie nötig gewinnt", () => {
+  it("unternehmerAmTag: Zeiträume, kleinste Grenze, wie Leistungsposition gewinnt", () => {
     const up: UnternehmerPersonal[] = [
       { id: "1", unternehmer: "Baumeister", personen: 7, bis: "2026-11-20" }, { id: "2", unternehmer: "Baumeister", personen: 10, von: "2026-11-21" },
       { id: "3", unternehmer: "Akkordant", unbegrenzt: true }, { id: "4", unternehmer: "Akkordant", personen: 2 },
@@ -52,7 +52,7 @@ describe("Personal je Unternehmer", () => {
     expect(neu[0].end).toBe("2026-11-09");
   });
 
-  it("so viele wie nötig: Bewehrung des Akkordanten an zwei Wänden gleichzeitig statt nacheinander", () => {
+  it("wie Leistungsposition: Bewehrung des Akkordanten an zwei Wänden gleichzeitig statt nacheinander", () => {
     const ts = [task("A", { bew: 16 }), task("B", { bew: 16 })];
     const nacheinander = optimiereAuslastung(ts, sd, KAL, "stunden", kraene);
     expect(nacheinander.map(t => t.start)).toEqual(["2026-11-09", "2026-11-10"]);

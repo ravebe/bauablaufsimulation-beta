@@ -29,7 +29,7 @@ const AUSLASTUNG_HINWEIS = 0.9;
 interface Props {
   iso: string; tasks: Task[]; stammdaten: Stammdaten; kalender: Kalender;
   farbeJeGewerk: Map<string, string>; eingeplant?: EingeplantTag; mitKranPersonal: boolean; kraene: Kran[];
-  /** Personal je Unternehmer (Grenze bzw. so viele wie nötig) — für «Bereit, aber heute nicht dran» */
+  /** Personal je Unternehmer (Grenze bzw. wie Leistungsposition) — für «Bereit, aber heute nicht dran» */
   unternehmer?: UnternehmerPersonal[];
   /** Ablauf des Tages (tagesplan) — derselbe wie in der Spalte Dauer */
   plan: Tagesplan;

@@ -240,8 +240,8 @@ const isoTagDanach = (iso: string) => {
 };
 
 /** Personal je Unternehmer über alle Kräne (SimProjekt.unternehmerPersonal): je Zeile Unternehmer, «höchstens n Personen» (harte
- *  Grenze für alle seine Leute — Pools, Kolonnen ohne Kran, Überzug) oder «so viele wie nötig» (Akkordant: jede Arbeit eigene
- *  Kolonne, ohne Personalgrenze, nur die Kranzeit gilt), von/bis. «Aktualisieren» übernimmt und optimiert neu (wie im Bauablauf). */
+ *  Grenze für alle seine Leute — Pools, Kolonnen ohne Kran, Überzug) oder «wie Leistungsposition» (z.B. Akkordant: jede Arbeit mit
+ *  den Min. Personen ihrer Leistungsposition aus Tab Ressourcen, eigene Kolonne, auch parallel — nur die Kranzeit gilt), von/bis. «Aktualisieren» übernimmt und optimiert neu (wie im Bauablauf). */
 function UnternehmerPersonalEditor({ sim, updateSim, readOnly, bekannteUnternehmer, alleUnternehmer, onAktualisieren, meldung }: {
   sim: SimProjekt; updateSim: (s: SimProjekt) => void; readOnly?: boolean; bekannteUnternehmer: string[]; alleUnternehmer: string[];
   onAktualisieren?: () => void; meldung?: string | null;
@@ -250,16 +250,20 @@ function UnternehmerPersonalEditor({ sim, updateSim, readOnly, bekannteUnternehm
   const [geklickt, setGeklickt] = useState(false);
   const speichern = (neu: UnternehmerPersonal[]) => updateSim({ ...sim, unternehmerPersonal: neu.length ? neu : undefined });
   const aendern = (id: string, patch: Partial<UnternehmerPersonal>) => speichern(liste.map(z => z.id === id ? { ...z, ...patch } : z));
-  // Unternehmer mit «so viele wie nötig», die auch Personal unter einem Kran haben — dieses Personal wird dann nicht verwendet
+  // Unternehmer mit «wie Leistungsposition», die auch Personal unter einem Kran haben — dieses Personal wird dann nicht verwendet
   const mitPool = new Set((sim.kraene ?? []).flatMap(k => (k.personal ?? []).filter(p => p.personen > 0).map(p => p.unternehmer.trim())));
-  const spalten = "180px 150px 70px 130px 130px 20px";
+  // Min. Personen der Leistungspositionen je Unternehmer (Tab Ressourcen) — Anzeige bei «wie Leistungsposition»
+  const positionenVon = (u: string) => (sim.stammdaten?.gewerke ?? []).flatMap(g => g.raten
+    .filter(r => (r.unternehmer ?? "").trim() === u.trim() && r.anzahlPersonen > 0 && r.kuerzel.trim())
+    .map(r => ({ label: `${g.label} · ${r.kuerzel.trim()}`, personen: r.anzahlPersonen })));
+  const spalten = "180px 150px 90px 130px 130px 20px";
   return (
     <div style={{ marginTop: 14, borderTop: "1px solid var(--tc-border-light)", paddingTop: 10 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
         <span style={{ fontSize: 12, fontWeight: 700, color: "var(--tc-text)" }}>Personal je Unternehmer (über alle Kräne)</span>
         <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}
-          title={"«höchstens»: so viele Leute des Unternehmers arbeiten gleichzeitig höchstens — über alle Kräne und Arbeiten zusammen (auch nicht kranpflichtige wie Beton, ohne Überzug). Mehrere Zeilen mit von/bis = Personal im Zeitverlauf, z.B. 7, ab drei Wochen später 10.\n«so viele wie nötig»: z.B. Akkordant — jede Arbeit bekommt ihre eigene Kolonne mit ihren Min. Personen, auch mehrere gleichzeitig; sein Personal unter dem Kran wird nicht verwendet. Die Kranzeit gilt weiterhin (Kranzeit % in den Kategorien oben).\nOhne Zeile gilt wie bisher das Personal unter den Kränen. Wirkt beim nächsten Optimieren — «Aktualisieren» übernimmt sofort."}>
-          ⓘ Grenze bzw. so viele wie nötig, je Zeitraum</span>
+          title={"«höchstens»: so viele Leute des Unternehmers arbeiten gleichzeitig höchstens — über alle Kräne und Arbeiten zusammen (auch nicht kranpflichtige wie Beton, ohne Überzug). Mehrere Zeilen mit von/bis = Personal im Zeitverlauf, z.B. 7, ab drei Wochen später 10.\n«wie Leistungsposition»: z.B. Akkordant — jede Arbeit bekommt die Min. Personen ihrer Leistungsposition (Tab Ressourcen, Kategorien oben) als eigene Kolonne, auch mehrere gleichzeitig; sein Personal unter dem Kran wird nicht verwendet. Die Kranzeit gilt weiterhin (Kranzeit % in den Kategorien oben).\nOhne Zeile gilt wie bisher das Personal unter den Kränen. Wirkt beim nächsten Optimieren — «Aktualisieren» übernimmt sofort."}>
+          ⓘ Grenze bzw. wie Leistungsposition, je Zeitraum</span>
         {!readOnly && onAktualisieren && (
           <button type="button" className="tc-btn-primary" style={{ fontSize: 11, padding: "3px 10px", marginLeft: "auto" }}
             title="Personal je Unternehmer übernehmen: Ablaufregeln anwenden und mit den Einstellungen des Dialogs Auslastung optimieren neu optimieren (wie «Aktualisieren» im Bauablauf). Rückgängig oben in der Kopfzeile."
@@ -282,9 +286,18 @@ function UnternehmerPersonalEditor({ sim, updateSim, readOnly, bekannteUnternehm
               <select disabled={readOnly} value={z.unbegrenzt ? "noetig" : "max"} style={feld}
                 onChange={e => aendern(z.id, e.target.value === "noetig" ? { unbegrenzt: true, personen: undefined } : { unbegrenzt: undefined, personen: z.personen ?? 1 })}>
                 <option value="max">höchstens</option>
-                <option value="noetig">so viele wie nötig</option>
+                <option value="noetig">wie Leistungsposition</option>
               </select>
-              {z.unbegrenzt ? <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>–</span> : (
+              {z.unbegrenzt ? (() => {
+                // Min. Personen aus Tab Ressourcen: eine Zahl oder von–bis, die Positionen im Tooltip
+                const pos = positionenVon(z.unternehmer);
+                const werte = pos.map(p => p.personen);
+                const min = Math.min(...werte), max = Math.max(...werte);
+                return <span style={{ fontSize: 11, color: pos.length ? "var(--tc-text-2)" : "#b5750a", whiteSpace: "nowrap" }}
+                  title={pos.length ? "Min. Personen je Leistungsposition (Tab Ressourcen):\n" + pos.map(p => `${p.label}: ${p.personen}`).join("\n")
+                    : "Dieser Unternehmer ist bei keiner Leistungsposition eingetragen (Spalte Unternehmer in den Kategorien oben)"}>
+                  {pos.length ? (min === max ? `${min} P` : `${min}–${max} P`) : "keine Position"}</span>;
+              })() : (
                 <input type="number" className="no-spinner" disabled={readOnly} min={1} value={z.personen ?? ""} placeholder="Pers."
                   onChange={e => { const n = Math.floor(Number(e.target.value)); aendern(z.id, { personen: n >= 1 ? n : undefined }); }}
                   style={{ ...feld, borderColor: ohneZahl ? "#e08a00" : "#d4dce4" }}
@@ -298,7 +311,7 @@ function UnternehmerPersonalEditor({ sim, updateSim, readOnly, bekannteUnternehm
               ) : <span />}
             </div>
             {z.unbegrenzt && mitPool.has(z.unternehmer.trim()) && (
-              <div style={{ fontSize: 10, color: "#b5750a", marginTop: 1 }}>⚠ {z.unternehmer.trim()} hat auch Personal unter einem Kran — mit «so viele wie nötig» wird es in diesem Zeitraum nicht verwendet.</div>
+              <div style={{ fontSize: 10, color: "#b5750a", marginTop: 1 }}>⚠ {z.unternehmer.trim()} hat auch Personal unter einem Kran — mit «wie Leistungsposition» wird es in diesem Zeitraum nicht verwendet.</div>
             )}
           </div>
         );

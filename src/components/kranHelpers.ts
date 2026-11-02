@@ -95,7 +95,7 @@ export function kranVerfuegbareArbeitstage(kran: Kran, bucket: { start: string; 
 }
 
 /** Personal je Unternehmer an diesem Tag (SimProjekt.unternehmerPersonal): grenze = höchstens so viele gleichzeitig (über alle
- *  Kräne und Arbeiten), unbegrenzt = so viele wie nötig. Zeilen ohne Unternehmer oder ohne Personen (≥ 1) zählen nicht; mehrere
+ *  Kräne und Arbeiten), unbegrenzt = wie Leistungsposition. Zeilen ohne Unternehmer oder ohne Personen (≥ 1) zählen nicht; mehrere
  *  Zeilen am selben Tag: unbegrenzt gewinnt, sonst die kleinste Grenze. */
 export function unternehmerAmTag(liste: UnternehmerPersonal[] | undefined, iso: string): { grenze: Map<string, number>; unbegrenzt: Set<string> } {
   const grenze = new Map<string, number>();
@@ -234,7 +234,7 @@ export interface EingeplantTag { kranPersonal: number; kolonnen: number; total: 
  *  - Kolonnen ohne Kran: nicht kranpflichtige Positionen und Tasks ohne Kran (bei nur einem Kran gelten alle Tasks als seine) —
  *    je Gewerk + Unternehmer eine Kolonne, je Tag einmal mit den grössten Min. Personen ihrer Positionen an diesem Tag. Arbeitet
  *    dieselbe Kolonne am Tag auch unter einem Kran, zählt sie dort.
- *  - Personal je Unternehmer (unternehmer, unternehmerAmTag): «so viele wie nötig» zählt mit der Arbeit des Tages ÷ Std./Tag (die
+ *  - Personal je Unternehmer (unternehmer, unternehmerAmTag): «wie Leistungsposition» zählt mit der Arbeit des Tages ÷ Std./Tag (die
  *    Leute kommen, wenn Arbeit da ist), «höchstens n» kappt alle Leute des Unternehmers (Pools und Kolonnen) auf n.
  *  ohnePool nennt je Tag die Positionen, die nicht aus einem Kran-Pool besetzt werden, mit Grund. */
 export function eingeplantesPersonalJeTag(tasks: Task[], kraene: Kran[], stammdaten: Stammdaten, kalender: Kalender, tage: string[],
@@ -256,7 +256,7 @@ export function eingeplantesPersonalJeTag(tasks: Task[], kraene: Kran[], stammda
         if (!(a.personenstunden > 1e-9)) continue;
         const kraeneHeute = a.phase.kranpflichtig ? kranIds.filter(id => istKranVerfuegbarAn(kranById.get(id)!, iso)) : [];
         if (a.phase.unternehmer && amTag(iso).unbegrenzt.has(a.phase.unternehmer)) {
-          // so viele wie nötig: so viele Leute, wie die Arbeit des Tages braucht
+          // wie Leistungsposition: so viele Leute, wie die Arbeit des Tages braucht
           const jeKolonne = kolonnenJeTag.get(iso) ?? new Map<string, Kol>();
           const key = `unbegrenzt|${a.phase.gewerkKey}|${a.phase.unternehmer}`;
           const bisher = jeKolonne.get(key);

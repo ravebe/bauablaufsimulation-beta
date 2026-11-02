@@ -98,7 +98,7 @@ function laufAnhaengen(z: TaskZ, tag: number, l: TagesLauf) {
  *  bzw. nach ihren Vorgängern; Meilensteine und Platzhalter (ohne Menge und ohne feste Dauer) bleiben, wo sie sind. */
 /*  gruppen: Reihenfolge der Gruppen und Bauteilarten — Rang beim Personal nur mit Reihenfolge «Nach Gruppen», Stufen «fest» (streng)
  *  gelten immer. bericht (Ausgabe): Tasks, bei denen «fest» gelockert werden musste, weil Vorgänger/Regeln widersprechen. */
-/*  unternehmer: Personal je Unternehmer (SimProjekt.unternehmerPersonal) — Grenze bzw. «so viele wie nötig», siehe ablaufKern.ts */
+/*  unternehmer: Personal je Unternehmer (SimProjekt.unternehmerPersonal) — Grenze bzw. «wie Leistungsposition», siehe ablaufKern.ts */
 export interface OptimierOptionen { nur?: Set<string>; untergrenze?: Set<string>; gruppen?: GruppenReihenfolge; abBeginn?: boolean; baubeginn?: string;
   unternehmer?: UnternehmerPersonal[];
   bericht?: { gelockert: string[]; widersprueche?: FestWiderspruch[] } }

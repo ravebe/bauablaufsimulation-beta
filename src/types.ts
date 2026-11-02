@@ -113,7 +113,7 @@ export interface KranPersonal {
 
 /** Personal eines Unternehmers über alle Kräne und Arbeiten in einem Zeitraum (Tab Ressourcen → Kräne & Personal → Personal je
  *  Unternehmer). Ohne unbegrenzt: höchstens personen gleichzeitig — harte Grenze für Kran-Pools, Kolonnen ohne Kran und Überzug
- *  zusammen. unbegrenzt: so viele wie nötig (z.B. Akkordant) — jede Arbeit bekommt ihre eigene Kolonne mit ihren Min. Personen,
+ *  zusammen. unbegrenzt: wie Leistungsposition (z.B. Akkordant) — jede Arbeit bekommt ihre eigene Kolonne mit ihren Min. Personen,
  *  ohne Pool und ohne Personalgrenze des Krans; die Kranzeit gilt weiterhin. von/bis leer = immer. Mehrere Zeilen am selben Tag:
  *  unbegrenzt gewinnt, sonst die kleinste Grenze. */
 export interface UnternehmerPersonal {
@@ -149,7 +149,7 @@ export interface SimProjekt {
   stammdaten?: Stammdaten; // Leistungswerte/Personal/CHF für die Kalkulation, siehe stammdatenHelpers.ts
   mengenBerechnetSignatur?: string; // Signatur der Stammdaten (Formeln/Ausschlussfilter) zum Zeitpunkt des letzten "Mengen aus Bauteilen berechnen" — siehe mengenRelevanteSignatur() in stammdatenHelpers.ts; weicht sie vom aktuellen Stand ab, sind die Mengen veraltet
   kraene?: Kran[]; // Kran-Stammdaten, Verfügbarkeit und Personal je Unternehmer, siehe kranHelpers.ts / KranPersonalEditor.tsx (Tab Ressourcen)
-  unternehmerPersonal?: UnternehmerPersonal[]; // Personal je Unternehmer über alle Kräne (Grenze bzw. so viele wie nötig), siehe ablaufKern.ts
+  unternehmerPersonal?: UnternehmerPersonal[]; // Personal je Unternehmer über alle Kräne (Grenze bzw. wie Leistungsposition), siehe ablaufKern.ts
   zeitraster?: Zeitraster; // globaler Monat/Woche-Umschalter für Kran-Auswertungen, fehlt = "monat"
   /** 3D-Ansicht bei Halbtagen/Uhrzeit: true = genau nach Uhrzeit (Abspielen zeigt den Stand zur jeweiligen Zeit); fehlt/false =
    *  ganzer Tag (sichtbar ist, was bis Tagesende begonnen hat, aktiv alle Tasks des Tages) — gilt für Abspielen, Tab AVOR und Tab
