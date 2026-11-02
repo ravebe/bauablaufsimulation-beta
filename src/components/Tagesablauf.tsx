@@ -14,13 +14,14 @@ import type { Tagesplan, TagesplanPhase, BereitWartend } from "./tagesplan";
 import { unternehmerLabel, bereitAberNichtDran, kranstundenImArbeitstag } from "./tagesplan";
 import type { EingeplantTag } from "./kranHelpers";
 import { kraeneDesTasks, istKranVerfuegbarAn } from "./kranHelpers";
-import { endZeitpunkt, folgeStartZeitpunkt } from "./zeitHelpers";
+import { endZeitpunkt, folgeStartZeitpunkt, minZuZeit, ARBEITSBEGINN_MIN, MITTAG_VON_MIN, MITTAG_BIS_MIN, ARBEITSENDE_MIN } from "./zeitHelpers";
 import { fmtZahl } from "./zahlFormat";
 import { UEBERSTUNDEN_ANTEIL } from "./ablaufKern";
 import { FARBEN } from "./cockpitCharts";
 import Hinweis from "./Hinweis";
 
 const MAX_TASKS = 12;
+const SPALTE_RECHTS = 84; // rechte Spalte «07:00–16:20»
 const MAX_WARTENDE = 6;
 /** Unter dieser Auslastung erklärt der Tagesablauf, was die übrigen Arbeiten zurückhält */
 const AUSLASTUNG_HINWEIS = 0.9;
@@ -40,6 +41,22 @@ interface Props {
 }
 
 const datumText = (iso: string) => iso.split("-").reverse().join(".");
+
+/** Uhrzeit (Minuten ab Mitternacht) nach h Stunden Arbeit ab Arbeitsbeginn — Arbeitszeit (Beginn, Mittag, Ende) aus Tab Ressourcen,
+ *  Std./Tag darauf gestreckt (falls sie nicht genau gleich lang sind); nach Arbeitsende (Überstunden) Stunde für Stunde.
+ *  start: genau an der Mittagspause beginnt eine Arbeit nach, endet sie vor der Pause. */
+function uhrzeit(h: number, std: number, start = false): number {
+  const vor = MITTAG_VON_MIN - ARBEITSBEGINN_MIN, nach = ARBEITSENDE_MIN - MITTAG_BIS_MIN;
+  if (h > std + 1e-9 || (h >= std - 1e-9 && !start)) return ARBEITSENDE_MIN + Math.max(0, h - std) * 60;
+  const m = h / std * (vor + nach);
+  return (start ? m < vor - 1e-9 : m <= vor + 1e-9) ? ARBEITSBEGINN_MIN + m : MITTAG_BIS_MIN + (m - vor);
+}
+const uhr = (h: number, std: number, start = false) => minZuZeit(uhrzeit(h, std, start));
+/** Abschnitt [von, bis) in Uhrzeiten, über die Mittagspause in zwei Teile getrennt */
+function uhrTeile(von: number, bis: number, std: number): [number, number][] {
+  const a = uhrzeit(von, std, true), b = uhrzeit(bis, std);
+  return a < MITTAG_VON_MIN && b > MITTAG_BIS_MIN ? [[a, MITTAG_VON_MIN], [MITTAG_BIS_MIN, b]] : [[a, b]];
+}
 
 /** Kopfzeile eines zuklappbaren Kastens: Dreieck + Titel, zugeklappt mit Kurzinfo daneben */
 function KastenKopf({ titel, zu, onToggle, info, farbe }: { titel: string; zu: boolean; onToggle: () => void; info?: React.ReactNode; farbe?: string }) {
@@ -119,7 +136,9 @@ export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeG
   if (zeilen.length === 0) return tabellenKasten || null;
 
   const arbeit = plan.arbeit;
-  const skala = Math.max(std, plan.dauer); // Balkenbreite: Arbeitstag, oder länger, wenn die Arbeit überzieht
+  // Zeitachse in Uhrzeit: Arbeitsbeginn bis Arbeitsende, oder länger, wenn die Arbeit überzieht
+  const achseEnde = Math.max(ARBEITSENDE_MIN, uhrzeit(plan.dauer, std));
+  const x = (min: number) => (min - ARBEITSBEGINN_MIN) / (achseEnde - ARBEITSBEGINN_MIN) * 100;
   const sichtbar = zeilen.slice(0, MAX_TASKS);
   const datum = iso.split("-").reverse().join(".");
   const ueberzogen = plan.dauer > std + 1e-6;
@@ -137,7 +156,7 @@ export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeG
   return (<>
     <div style={{ margin: "6px 0 6px", padding: "8px 10px", background: "#fafbfc", border: `1px solid ${FARBEN.gridline}`, fontSize: 11 }}>
       <KastenKopf titel={`Tagesablauf ${datum}`} zu={zu.ablauf} onToggle={() => onToggle("ablauf")}
-        info={<>— {zeilen.length} Task{zeilen.length === 1 ? "" : "s"}, fertig nach {fmtZahl(plan.dauer)} h
+        info={<>— {zeilen.length} Task{zeilen.length === 1 ? "" : "s"}, fertig um {uhr(plan.dauer, std)}
           {ueberzogen && <span style={{ color: FARBEN.status.critical, fontWeight: 600 }}> ({fmtZahl(plan.dauer - std)} h nach Arbeitsende)</span>}</>} />
       {!zu.ablauf && (<>
         <div style={{ color: FARBEN.textSekundaer, marginBottom: 6, lineHeight: 1.5, display: "flex", flexWrap: "wrap", alignItems: "center", gap: "2px 6px" }}>
@@ -150,7 +169,7 @@ export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeG
             Die Arbeit des Tages laut Gantt, verteilt auf das Personal: {mitKranPersonal
               ? "das Personal unter dem Kran arbeitet als Team (Allrounder) — jede Arbeit mindestens mit ihren Min. Personen, freie Leute verstärken bis aufs Doppelte; ohne Kran je Gewerk + Unternehmer eine Kolonne mit den Min. Personen der jeweiligen Arbeit, die von Arbeit zu Arbeit geht."
               : "je Gewerk + Unternehmer eine Kolonne mit den Min. Personen der jeweiligen Arbeit, immer nur an einer Arbeit gleichzeitig — sie geht von Arbeit zu Arbeit."}
-            {" "}Kranpflichtige Arbeiten gehen nur so schnell, wie der Kran nachkommt (Kranzeit %). Schritte eines Tasks nacheinander. Balken = {fmtZahl(std)} h Arbeitstag.
+            {" "}Kranpflichtige Arbeiten gehen nur so schnell, wie der Kran nachkommt (Kranzeit %). Schritte eines Tasks nacheinander. Balken = Arbeitszeit {minZuZeit(ARBEITSBEGINN_MIN)}–{minZuZeit(ARBEITSENDE_MIN)} mit Mittagspause {minZuZeit(MITTAG_VON_MIN)}–{minZuZeit(MITTAG_BIS_MIN)} (Arbeitszeit in Tab Ressourcen){Math.abs((MITTAG_VON_MIN - ARBEITSBEGINN_MIN + ARBEITSENDE_MIN - MITTAG_BIS_MIN) / 60 - std) > 0.01 ? `; die ${fmtZahl(std)} h Std./Tag sind auf diese Zeit gestreckt` : ""}.
           </Hinweis>
         </div>
         {veraltet.length > 0 && (
@@ -160,6 +179,20 @@ export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeG
             hier neu gerechnet. Für einen passenden Ablauf neu optimieren: Tab Bauteile → Werkzeuge → «Auslastung optimieren».
           </div>
         )}
+        {/* Zeitleiste: Start, Mittagspause, Ende (und Ende der Überstunden) */}
+        <div style={{ display: "grid", gridTemplateColumns: `minmax(110px, 180px) 1fr ${SPALTE_RECHTS}px`, columnGap: 8, marginBottom: 2 }}>
+          <span />
+          <div style={{ position: "relative", height: 13, fontSize: 9, color: FARBEN.textMuted }}>
+            {[[ARBEITSBEGINN_MIN, "start"], [MITTAG_VON_MIN, "ende"], [MITTAG_BIS_MIN, "start"], [ARBEITSENDE_MIN, ueberzogen ? "mitte" : "ende"],
+              ...(ueberzogen ? [[achseEnde, "ende"] as const] : [])].map(([m, ausrichtung], i) => (
+              <span key={i} style={{ position: "absolute", left: `${x(m as number)}%`, whiteSpace: "nowrap", fontWeight: m === ARBEITSENDE_MIN && ueberzogen ? 600 : undefined,
+                color: m === ARBEITSENDE_MIN && ueberzogen ? FARBEN.status.critical : undefined,
+                transform: ausrichtung === "ende" ? "translateX(-100%)" : ausrichtung === "mitte" ? "translateX(-50%)" : undefined, padding: "0 2px" }}>
+                {minZuZeit(m as number)}</span>
+            ))}
+          </div>
+          <span />
+        </div>
         {sichtbar.map(z => {
           // parallele Arbeiten eines Tasks übereinander (Spuren)
           const spuren: TagesplanPhase[][] = [];
@@ -169,28 +202,30 @@ export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeG
           }
           const hoehe = 18;
           return (
-            <div key={z.t.id} style={{ display: "grid", gridTemplateColumns: "minmax(110px, 180px) 1fr 64px", alignItems: "center", columnGap: 8, marginBottom: 3 }}>
+            <div key={z.t.id} style={{ display: "grid", gridTemplateColumns: `minmax(110px, 180px) 1fr ${SPALTE_RECHTS}px`, alignItems: "center", columnGap: 8, marginBottom: 3 }}>
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: FARBEN.textPrimaer }}
                 title={`${z.t.name}\n${z.quelle === "optimiert" ? "Ablauf aus «Auslastung optimieren»" : z.quelle === "veraltet" ? "Seit «Auslastung optimieren» geändert — gleichmässig verteilt, neu gerechnet" : "Nicht optimiert — gleichmässig auf seine Tage im Gantt verteilt"}`}>
                 {z.quelle === "veraltet" && <span style={{ color: FARBEN.status.warning }}>⚠ </span>}{z.t.name}</span>
               <div style={{ position: "relative", height: hoehe, background: "#eef1f4" }}>
-                {ueberzogen && <div style={{ position: "absolute", left: `${std / skala * 100}%`, top: -3, bottom: -3, borderLeft: `2px solid ${FARBEN.status.critical}` }}
-                  title={`Arbeitsende (${fmtZahl(std)} h)`} />}
+                <div style={{ position: "absolute", left: `${x(MITTAG_VON_MIN)}%`, width: `${x(MITTAG_BIS_MIN) - x(MITTAG_VON_MIN)}%`, top: 0, bottom: 0, background: "#d3d8de" }}
+                  title={`Mittagspause ${minZuZeit(MITTAG_VON_MIN)}–${minZuZeit(MITTAG_BIS_MIN)}`} />
+                {ueberzogen && <div style={{ position: "absolute", left: `${x(ARBEITSENDE_MIN)}%`, top: -3, bottom: -3, borderLeft: `2px solid ${FARBEN.status.critical}` }}
+                  title={`Arbeitsende ${minZuZeit(ARBEITSENDE_MIN)}`} />}
                 {/* je Arbeitsstück ein Abschnitt mit seiner Besetzung — ändert sich die Zahl der Leute, beginnt ein neuer Abschnitt */}
-                {spuren.map((spur, si) => spur.map((p, pi) => (p.stuecke.length ? p.stuecke : [{ von: p.von, bis: p.bis, leute: p.personen, kran: p.kranBegrenzt }]).map((s, ki) => (
-                  <div key={`${si}-${pi}-${ki}`}
-                    title={`${gewerkLabel.get(p.gewerkKey) ?? p.gewerkKey} · ${p.kuerzel}: ${fmtZahl(s.leute)} Personen, ${fmtZahl(s.von)}–${fmtZahl(s.bis)} h nach Arbeitsbeginn${s.kran ? " — durch die Kranzeit begrenzt (mehr Leute wären frei)" : ""}\nGanzer Tag: ${fmtZahl(p.arbeit)} Personenstunden, Min. ${fmtZahl(p.minPersonen)} Personen${p.unterKran ? ", Personal unter dem Kran" : ""}`}
-                    style={{ position: "absolute", left: `${s.von / skala * 100}%`, width: `${Math.max(s.bis - s.von, 0.05) / skala * 100}%`,
+                {spuren.map((spur, si) => spur.map((p, pi) => (p.stuecke.length ? p.stuecke : [{ von: p.von, bis: p.bis, leute: p.personen, kran: p.kranBegrenzt }]).flatMap((s, ki) => uhrTeile(s.von, s.bis, std).map(([a, b], ti) => (
+                  <div key={`${si}-${pi}-${ki}-${ti}`}
+                    title={`${gewerkLabel.get(p.gewerkKey) ?? p.gewerkKey} · ${p.kuerzel}: ${fmtZahl(s.leute)} Personen, ${uhr(s.von, std, true)}–${uhr(s.bis, std)} (${fmtZahl(s.bis - s.von)} h)${s.kran ? " — durch die Kranzeit begrenzt (mehr Leute wären frei)" : ""}\nGanzer Tag: ${fmtZahl(p.arbeit)} Personenstunden, Min. ${fmtZahl(p.minPersonen)} Personen${p.unterKran ? ", Personal unter dem Kran" : ""}`}
+                    style={{ position: "absolute", left: `${x(a)}%`, width: `${Math.max(x(b) - x(a), 0.3)}%`,
                       top: si * hoehe / spuren.length, height: hoehe / spuren.length, background: farbeJeGewerk.get(p.gewerkKey) ?? FARBEN.andere,
                       borderRight: "1px solid #fff", color: "#fff", fontSize: 9, lineHeight: `${hoehe / spuren.length}px`, overflow: "hidden", whiteSpace: "nowrap", paddingLeft: 3,
                       backgroundImage: s.kran ? "repeating-linear-gradient(135deg, rgba(255,255,255,.25) 0 4px, transparent 4px 8px)" : undefined }}>
-                    {spuren.length === 1 ? `${fmtZahl(s.leute)} P · ${fmtZahl(s.bis - s.von)} h${s.kran ? " · Kran" : ""}` : ""}
+                    {spuren.length === 1 && ti === 0 ? `${fmtZahl(s.leute)} P · ${fmtZahl(s.bis - s.von)} h${s.kran ? " · Kran" : ""}` : ""}
                   </div>
-                ))))}
+                )))))}
               </div>
               <span style={{ textAlign: "right", fontWeight: z.bis > std + 1e-6 ? 700 : 400, color: z.bis > std + 1e-6 ? FARBEN.status.critical : FARBEN.textSekundaer }}
-                title={z.bis > std + 1e-6 ? "Fertig erst nach Arbeitsende — die Arbeit dieses Tages ist in der normalen Arbeitszeit nicht zu schaffen" : "Fertig nach so vielen Stunden ab Arbeitsbeginn"}>
-                bis {fmtZahl(z.bis)} h</span>
+                title={z.bis > std + 1e-6 ? `Fertig erst ${fmtZahl(z.bis - std)} h nach Arbeitsende — die Arbeit dieses Tages ist in der normalen Arbeitszeit nicht zu schaffen` : `Arbeitet an diesem Tag von ${uhr(z.von, std, true)} bis ${uhr(z.bis, std)} (${fmtZahl(z.arbeit)} Personenstunden)`}>
+                {uhr(z.von, std, true)}–{uhr(z.bis, std)}</span>
             </div>
           );
         })}
@@ -208,7 +243,7 @@ export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeG
           {eingeplant && <> · Eingeplant <strong>{fmtZahl(eingeplant.total)} P</strong>
             {mitKranPersonal && eingeplant.kolonnen > 0 ? ` (${fmtZahl(eingeplant.kranPersonal)} unter Kran + ${fmtZahl(eingeplant.kolonnen)} ohne)` : ""}
             , davon {fmtZahl(Math.max(0, eingeplant.total - plan.imEinsatz.anzahl))} nie im Einsatz · Auslastung <strong>{fmtZahl(auslastung! * 100)} %</strong></>}
-          {" "}· <span style={{ color: ueberzogen ? FARBEN.status.critical : undefined, fontWeight: ueberzogen ? 600 : undefined }}>fertig nach {fmtZahl(plan.dauer)} h</span>
+          {" "}· <span style={{ color: ueberzogen ? FARBEN.status.critical : undefined, fontWeight: ueberzogen ? 600 : undefined }}>fertig um {uhr(plan.dauer, std)}</span>
           {kranZeit.map(k => <span key={k.id}> · {k.name} {fmtZahl(k.h / std * 100)} %</span>)}
         </div>
         {(ueberU.length > 0 || ueberK.length > 0) && (
@@ -277,7 +312,7 @@ function Ueberzug({ plan, std, tasks, stammdaten, kalender, kranUeber }: {
   const byId = new Map(tasks.map(t => [t.id, t]));
   return (
     <div style={abschnitt}>
-      <div style={{ fontWeight: 600, color: FARBEN.status.critical }}>Warum erst nach {fmtZahl(plan.dauer)} h fertig?</div>
+      <div style={{ fontWeight: 600, color: FARBEN.status.critical }}>Warum erst um {uhr(plan.dauer, std)} fertig?</div>
       {geplant.length > 0 && (
         <div>• {geplant.map(z => z.t.name).join(", ")}: Rest ≤ {fmtZahl(UEBERSTUNDEN_ANTEIL * 100)} % — so optimiert, heute in Überstunden statt einen Tag mehr</div>
       )}
@@ -289,7 +324,7 @@ function Ueberzug({ plan, std, tasks, stammdaten, kalender, kranUeber }: {
         return (
           <div key={z.t.id} title="Nicht (mehr) optimiert: die Arbeit ist gleichmässig auf die Tage des Tasks im Gantt verteilt">
             • {z.t.name}: heute {fmtZahl(z.arbeit)} h{total > 0 ? ` (${fmtZahl(z.arbeit / total * 100)} % des Tasks)` : ""}
-            {z.von > 0.01 ? `, Start erst nach ${fmtZahl(z.von)} h (Kran/Personal belegt)` : ""} → fertig nach {fmtZahl(z.bis)} h
+            {z.von > 0.01 ? `, Start erst um ${uhr(z.von, std, true)} (Kran/Personal belegt)` : ""} → fertig um {uhr(z.bis, std)}
           </div>
         );
       })}
