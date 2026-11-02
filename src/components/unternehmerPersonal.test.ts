@@ -75,6 +75,22 @@ describe("Personal je Unternehmer", () => {
     expect(personalJeUnternehmerAusKraenen(kraene)).toEqual([{ unternehmer: "Baumeister", personen: 10 }]);
   });
 
+  it("Tagesablauf-Stücke: echte Besetzung je Abschnitt — gleichzeitig nie mehr als der Pool (+ Überzug), Summe = Arbeit", () => {
+    const ts = optimiereAuslastung([task("A", { sch: 10 }), task("B", { sch: 40 }), task("C", { sch: 20 })], sd, KAL, "stunden", kraene);
+    for (const iso of tage(ts)) {
+      const p = tagesplan(iso, ts, sd, KAL, kraene);
+      const stuecke = p.tasks.flatMap(z => z.phasen.flatMap(ph => ph.stuecke));
+      for (const t of new Set(stuecke.map(s => s.von))) {
+        const gleichzeitig = stuecke.filter(s => s.von <= t + 1e-9 && s.bis > t + 1e-9).reduce((n, s) => n + s.leute, 0);
+        expect(gleichzeitig).toBeLessThanOrEqual(12);
+      }
+      for (const ph of p.tasks.flatMap(z => z.phasen)) {
+        expect(ph.stuecke.reduce((h, s) => h + s.leute * (s.bis - s.von), 0)).toBeCloseTo(ph.arbeit, 3);
+        expect(Math.max(...ph.stuecke.map(s => s.leute))).toBe(ph.personen);
+      }
+    }
+  });
+
   it("Eingeplant: Kran-Pool 10 wird auf die Grenze 7 gekappt", () => {
     const ts = [task("A", { sch: 32 })];
     const iso = "2026-11-09";

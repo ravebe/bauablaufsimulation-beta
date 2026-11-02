@@ -31,6 +31,9 @@ export interface TagesplanPhase {
   minPersonen: number;
   unterKran: boolean; // aus dem Personal unter dem Kran besetzt
   kranBegrenzt: boolean; // mehr Leute wären frei gewesen, aber die Kranzeit reichte nicht
+  /** Arbeitsstücke mit ihrer Besetzung (aufeinanderfolgende mit gleich vielen Leuten zusammengefasst) — der Tagesablauf zeichnet
+   *  diese, damit sich Arbeiten nicht scheinbar mit der grössten Besetzung überschneiden; kran = durch die Kranzeit begrenzt */
+  stuecke: { von: number; bis: number; leute: number; kran?: boolean }[];
 }
 /** quelle: "optimiert" = Ablauf aus «Auslastung optimieren»; "veraltet" = dort geplant, seither aber Termine, Mengen, Stammdaten
  *  oder Kräne & Personal geändert → gleichmässig verteilt und neu gerechnet; "gleichmaessig" = nie optimiert */
@@ -138,6 +141,13 @@ export function tagesplan(iso: string, tasks: Task[], stammdaten: Stammdaten, ka
     }
   };
 
+  /** Arbeitsstück an die Phase hängen — schliesst es mit gleich vielen Leuten an das letzte an, wird dieses verlängert */
+  const stueckAnhaengen = (p: TagesplanPhase, von: number, bis: number, leute: number, kran: boolean) => {
+    const letztes = p.stuecke[p.stuecke.length - 1];
+    if (letztes && letztes.leute === leute && !!letztes.kran === kran && Math.abs(letztes.bis - von) < 1e-6) { letztes.bis = bis; return; }
+    p.stuecke.push({ von, bis, leute, ...(kran ? { kran } : {}) });
+  };
+
   const plan: TagesplanTask[] = [];
   const sim: SimTask[] = [];
   const fest: { phase: KernPhase; kranIds: string[]; lauf: TagesLauf }[] = [];
@@ -159,13 +169,14 @@ export function tagesplan(iso: string, tasks: Task[], stammdaten: Stammdaten, ka
       const kern: KernPhase = { position: a.phase.position, gewerkKey: a.phase.gewerkKey, unternehmer: a.phase.unternehmer ?? "",
         kranpflichtig: a.phase.kranpflichtig, kolonne: Math.max(1, a.phase.kolonne), kranAnteil: a.phase.kranAnteil, rest: a.personenstunden };
       const p: TagesplanPhase = { gewerkKey: a.phase.gewerkKey, kuerzel: a.phase.position.split("::")[1] ?? "", arbeit: a.personenstunden,
-        von: Infinity, bis: 0, personen: 0, minPersonen: a.phase.kolonne, unterKran: !!pruefung.poolDer(kern, kranIds), kranBegrenzt: false };
+        von: Infinity, bis: 0, personen: 0, minPersonen: a.phase.kolonne, unterKran: !!pruefung.poolDer(kern, kranIds), kranBegrenzt: false, stuecke: [] };
       tp.phasen.push(p);
       tp.arbeit += a.personenstunden;
       if (laeufe) {
         // geplanter Ablauf: so übernehmen, wie "Auslastung optimieren" ihn gerechnet hat
         for (const l of laeufe.filter(x => x.pos === a.phase.position)) {
           p.von = Math.min(p.von, l.von); p.bis = Math.max(p.bis, l.bis); p.personen = Math.max(p.personen, l.leute);
+          stueckAnhaengen(p, l.von, l.bis, l.leute, !!l.kran);
           if (l.kran) p.kranBegrenzt = true;
           fest.push({ phase: kern, kranIds, lauf: l });
           stuecke.push({ von: l.von, bis: l.bis, leute: l.leute, gewerk: kern.gewerkKey });
@@ -198,6 +209,7 @@ export function tagesplan(iso: string, tasks: Task[], stammdaten: Stammdaten, ka
       p.tp.von = Math.min(p.tp.von, von);
       p.tp.bis = Math.max(p.tp.bis, ende);
       p.tp.personen = Math.max(p.tp.personen, v.leute);
+      stueckAnhaengen(p.tp, von, ende, v.leute, v.kranBegrenzt);
       if (v.kranBegrenzt) p.tp.kranBegrenzt = true;
       ueberstundenBuchen(p, v.kranIds, von, ende, v.leute);
       belegungBuchen(p, v.ref.kranIds, von, ende, v.leute);

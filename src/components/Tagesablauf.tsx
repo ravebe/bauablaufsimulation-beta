@@ -176,16 +176,17 @@ export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeG
               <div style={{ position: "relative", height: hoehe, background: "#eef1f4" }}>
                 {ueberzogen && <div style={{ position: "absolute", left: `${std / skala * 100}%`, top: -3, bottom: -3, borderLeft: `2px solid ${FARBEN.status.critical}` }}
                   title={`Arbeitsende (${fmtZahl(std)} h)`} />}
-                {spuren.map((spur, si) => spur.map((p, pi) => (
-                  <div key={`${si}-${pi}`}
-                    title={`${gewerkLabel.get(p.gewerkKey) ?? p.gewerkKey} · ${p.kuerzel}: ${fmtZahl(p.arbeit)} Personenstunden mit ${fmtZahl(p.personen)} Personen (Min. ${fmtZahl(p.minPersonen)}${p.unterKran ? ", Personal unter dem Kran" : ""}) = ${fmtZahl(p.bis - p.von)} h, ${fmtZahl(p.von)}–${fmtZahl(p.bis)} h nach Arbeitsbeginn${p.kranBegrenzt ? "\nDurch die Kranzeit begrenzt: mehr Leute wären frei gewesen, aber der Kran kommt nicht nach (Kranzeit % in Tab Ressourcen)." : ""}`}
-                    style={{ position: "absolute", left: `${p.von / skala * 100}%`, width: `${Math.max(p.bis - p.von, 0.05) / skala * 100}%`,
+                {/* je Arbeitsstück ein Abschnitt mit seiner Besetzung — ändert sich die Zahl der Leute, beginnt ein neuer Abschnitt */}
+                {spuren.map((spur, si) => spur.map((p, pi) => (p.stuecke.length ? p.stuecke : [{ von: p.von, bis: p.bis, leute: p.personen, kran: p.kranBegrenzt }]).map((s, ki) => (
+                  <div key={`${si}-${pi}-${ki}`}
+                    title={`${gewerkLabel.get(p.gewerkKey) ?? p.gewerkKey} · ${p.kuerzel}: ${fmtZahl(s.leute)} Personen, ${fmtZahl(s.von)}–${fmtZahl(s.bis)} h nach Arbeitsbeginn${s.kran ? " — durch die Kranzeit begrenzt (mehr Leute wären frei)" : ""}\nGanzer Tag: ${fmtZahl(p.arbeit)} Personenstunden, Min. ${fmtZahl(p.minPersonen)} Personen${p.unterKran ? ", Personal unter dem Kran" : ""}`}
+                    style={{ position: "absolute", left: `${s.von / skala * 100}%`, width: `${Math.max(s.bis - s.von, 0.05) / skala * 100}%`,
                       top: si * hoehe / spuren.length, height: hoehe / spuren.length, background: farbeJeGewerk.get(p.gewerkKey) ?? FARBEN.andere,
                       borderRight: "1px solid #fff", color: "#fff", fontSize: 9, lineHeight: `${hoehe / spuren.length}px`, overflow: "hidden", whiteSpace: "nowrap", paddingLeft: 3,
-                      backgroundImage: p.kranBegrenzt ? "repeating-linear-gradient(135deg, rgba(255,255,255,.25) 0 4px, transparent 4px 8px)" : undefined }}>
-                    {spuren.length === 1 ? `${fmtZahl(p.personen)} P · ${fmtZahl(p.bis - p.von)} h${p.kranBegrenzt ? " · Kran" : ""}` : ""}
+                      backgroundImage: s.kran ? "repeating-linear-gradient(135deg, rgba(255,255,255,.25) 0 4px, transparent 4px 8px)" : undefined }}>
+                    {spuren.length === 1 ? `${fmtZahl(s.leute)} P · ${fmtZahl(s.bis - s.von)} h${s.kran ? " · Kran" : ""}` : ""}
                   </div>
-                )))}
+                ))))}
               </div>
               <span style={{ textAlign: "right", fontWeight: z.bis > std + 1e-6 ? 700 : 400, color: z.bis > std + 1e-6 ? FARBEN.status.critical : FARBEN.textSekundaer }}
                 title={z.bis > std + 1e-6 ? "Fertig erst nach Arbeitsende — die Arbeit dieses Tages ist in der normalen Arbeitszeit nicht zu schaffen" : "Fertig nach so vielen Stunden ab Arbeitsbeginn"}>
