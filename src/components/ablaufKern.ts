@@ -94,6 +94,9 @@ export class Zeitschritt<T> {
     return null;
   }
 
+  /** Personal eines Pools an diesem Tag (0 = kein Pool) */
+  poolGroesseVon(key: string): number { return this.poolGroesse.get(key) ?? 0; }
+
   private reicht(frei: number, noetig: number, kid: string, mitUeberzug: boolean) {
     return frei >= noetig || (mitUeberzug && frei > 0 && noetig - frei <= MAX_UEBERZUG - (this.ueberzug.get(kid) ?? 0));
   }

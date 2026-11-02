@@ -479,6 +479,11 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
   );
   const kuerzelOhneRate = [...kuerzelInTasks].filter(k => !kuerzelInStammdaten.has(k));
   const kuerzelUnbenutzt = [...kuerzelInStammdaten].filter(k => !kuerzelInTasks.has(k));
+  // Kranpflichtige Leistungspositionen in Tasks ohne Kranzeit %: gerechnet mit 100 % — der Kran ist während der ganzen Arbeit
+  // belegt, keine andere kranpflichtige Arbeit passt daneben (häufiger Grund, warum «Auslastung optimieren» Arbeiten nacheinander legt)
+  const ohneKranzeit = stammdaten.gewerke.flatMap(g => g.raten
+    .filter(r => r.kranzeitProzent == null && istRateKranpflichtig(r, g) && kuerzelInTasks.has(r.kuerzel.trim()))
+    .map(r => `${g.label} · ${r.kuerzel.trim()}`));
 
   // Wo ein Kürzel überall vorkommt (gewerkIdx→Gewerk-Label) — für Duplikat-Warnung beim Erfassen.
   // Dasselbe Kürzel in mehreren Gewerken ist beabsichtigt (z.B. "WB" in Schalung UND Bewehrung UND
@@ -569,8 +574,13 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
           </div>
           <div style={{ marginLeft: "auto" }}>{ressourcenMenu}</div>
         </div>
-        {(kuerzelOhneLw.length > 0 || kuerzelOhneRate.length > 0) && (
+        {(kuerzelOhneLw.length > 0 || kuerzelOhneRate.length > 0 || ohneKranzeit.length > 0) && (
           <div style={{ marginBottom: 16, fontSize: 11 }}>
+            {ohneKranzeit.length > 0 && (
+              <div style={{ color: "#b5750a", marginBottom: 3 }}
+                title="Leere Kranzeit % = 100 %: die Arbeit belegt den Kran die ganze Zeit, keine andere kranpflichtige Arbeit passt daneben — «Auslastung optimieren» legt sie darum nacheinander, auch wenn Personal frei ist. Realistisch ist z.B. Schalung 20–40 %.">
+                ⚠ Kranpflichtig ohne Kranzeit % (gerechnet mit 100 % — Kran während der ganzen Arbeit belegt): {ohneKranzeit.join(", ")}</div>
+            )}
             {kuerzelOhneLw.length > 0 && (
               <div style={{ color: "#b5750a", marginBottom: 3 }}>⚠ Ohne Leistungswert: {kuerzelOhneLw.join(", ")}</div>
             )}
@@ -709,9 +719,11 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
                     onChange={e => rateAendern(gi, ri, { kranpflichtig: e.target.checked })} />
                   {istRateKranpflichtig(r, gewerk) && (
                     <EntwurfInput type="number" min={0} max={100} step={5} disabled={readOnly} wert={r.kranzeitProzent == null ? "" : String(r.kranzeitProzent)} placeholder="100"
-                      title="Kranzeit %: so viel der Arbeitszeit der Personen braucht diese Leistungsposition den Kran (leer = 100)"
+                      title={r.kranzeitProzent == null && tasksMitKuerzel.length > 0
+                        ? "Kranzeit % leer = 100 %: die Arbeit belegt den Kran die ganze Zeit, keine andere kranpflichtige Arbeit passt daneben. Realistischen Anteil eintragen (z.B. Schalung 20–40)."
+                        : "Kranzeit %: so viel der Arbeitszeit der Personen braucht diese Leistungsposition den Kran (leer = 100)"}
                       onCommit={t => { const v = t.trim() === "" ? undefined : Math.min(100, Math.max(0, Number(t))); rateAendern(gi, ri, { kranzeitProzent: v != null && isFinite(v) ? v : undefined }); }}
-                      style={{ width: 44, fontSize: 11, padding: "2px 3px", border: "1px solid #d4dce4", fontFamily: "inherit" }} />
+                      style={{ width: 44, fontSize: 11, padding: "2px 3px", border: `1px solid ${r.kranzeitProzent == null && tasksMitKuerzel.length > 0 ? "#e08a00" : "#d4dce4"}`, fontFamily: "inherit" }} />
                   )}
                 </div>
                 <div style={{ textAlign: "right", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
