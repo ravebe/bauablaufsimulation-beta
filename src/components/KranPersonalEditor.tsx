@@ -3,7 +3,7 @@
 // Personal desselben Unternehmers unter einem Kran ist ein Pool von Allroundern; die Summe aller Unternehmer ist die Höchstzahl
 // der Leute an kranpflichtigen Arbeiten dieses Krans pro Tag (Richtwert 13 nur als Hinweis).
 import { useState } from "react";
-import type { SimProjekt, Kran, KranPersonal } from "../types";
+import type { SimProjekt, Kran, KranPersonal, UnternehmerPersonal } from "../types";
 import { istGruppe } from "../types";
 import { neuerKran, kranAusTasksEntfernen, kraeneDesTasks, kranPersonalAmTag, RICHTWERT_PERSONEN_PRO_KRAN, kranLuecken, tageAlsZeitraeume, kranVerlaengernVorschlag, kranVerlaengern } from "./kranHelpers";
 import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
@@ -13,7 +13,9 @@ interface Props { sim: SimProjekt; updateSim: (s: SimProjekt) => void; readOnly?
   /** zur Auswahl: alle Unternehmer (Leistungspositionen und Kräne) */
   alleUnternehmer: string[];
   /** Knopf «Zur Kranoptik» im Hinweis «Kran fehlt» → Tab AVOR */
-  onZuKranoptik?: () => void }
+  onZuKranoptik?: () => void;
+  /** «Aktualisieren» unter Personal je Unternehmer: wie im Bauablauf übernehmen und neu optimieren; meldung = Ergebnis davon */
+  onAktualisieren?: () => void; meldung?: string | null }
 
 const feld: React.CSSProperties = { fontSize: 11, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" };
 
@@ -99,7 +101,7 @@ function UnternehmerFeld({ wert, alle, disabled, unbekannt, onChange }: { wert: 
   );
 }
 
-export default function KranPersonalEditor({ sim, updateSim, readOnly, bekannteUnternehmer, alleUnternehmer, onZuKranoptik }: Props) {
+export default function KranPersonalEditor({ sim, updateSim, readOnly, bekannteUnternehmer, alleUnternehmer, onZuKranoptik, onAktualisieren, meldung }: Props) {
   const kraene = sim.kraene ?? [];
   const speichern = (neu: Kran[]) => updateSim({ ...sim, kraene: neu });
   const kranAendern = (id: string, patch: Partial<Kran>) => speichern(kraene.map(k => k.id === id ? { ...k, ...patch } : k));
@@ -224,6 +226,95 @@ export default function KranPersonalEditor({ sim, updateSim, readOnly, bekannteU
       })}
       {!readOnly && (
         <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }} onClick={() => speichern([...kraene, neuerKran(kraene)])}>+ Kran hinzufügen</button>
+      )}
+      <UnternehmerPersonalEditor sim={sim} updateSim={updateSim} readOnly={readOnly} bekannteUnternehmer={bekannteUnternehmer} alleUnternehmer={alleUnternehmer}
+        onAktualisieren={onAktualisieren} meldung={meldung} />
+    </div>
+  );
+}
+
+const isoTagDanach = (iso: string) => {
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() + 1);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+};
+
+/** Personal je Unternehmer über alle Kräne (SimProjekt.unternehmerPersonal): je Zeile Unternehmer, «höchstens n Personen» (harte
+ *  Grenze für alle seine Leute — Pools, Kolonnen ohne Kran, Überzug) oder «so viele wie nötig» (Akkordant: jede Arbeit eigene
+ *  Kolonne, ohne Personalgrenze, nur die Kranzeit gilt), von/bis. «Aktualisieren» übernimmt und optimiert neu (wie im Bauablauf). */
+function UnternehmerPersonalEditor({ sim, updateSim, readOnly, bekannteUnternehmer, alleUnternehmer, onAktualisieren, meldung }: {
+  sim: SimProjekt; updateSim: (s: SimProjekt) => void; readOnly?: boolean; bekannteUnternehmer: string[]; alleUnternehmer: string[];
+  onAktualisieren?: () => void; meldung?: string | null;
+}) {
+  const liste = sim.unternehmerPersonal ?? [];
+  const [geklickt, setGeklickt] = useState(false);
+  const speichern = (neu: UnternehmerPersonal[]) => updateSim({ ...sim, unternehmerPersonal: neu.length ? neu : undefined });
+  const aendern = (id: string, patch: Partial<UnternehmerPersonal>) => speichern(liste.map(z => z.id === id ? { ...z, ...patch } : z));
+  // Unternehmer mit «so viele wie nötig», die auch Personal unter einem Kran haben — dieses Personal wird dann nicht verwendet
+  const mitPool = new Set((sim.kraene ?? []).flatMap(k => (k.personal ?? []).filter(p => p.personen > 0).map(p => p.unternehmer.trim())));
+  const spalten = "180px 150px 70px 130px 130px 20px";
+  return (
+    <div style={{ marginTop: 14, borderTop: "1px solid var(--tc-border-light)", paddingTop: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "var(--tc-text)" }}>Personal je Unternehmer (über alle Kräne)</span>
+        <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}
+          title={"«höchstens»: so viele Leute des Unternehmers arbeiten gleichzeitig höchstens — über alle Kräne und Arbeiten zusammen (auch nicht kranpflichtige wie Beton, ohne Überzug). Mehrere Zeilen mit von/bis = Personal im Zeitverlauf, z.B. 7, ab drei Wochen später 10.\n«so viele wie nötig»: z.B. Akkordant — jede Arbeit bekommt ihre eigene Kolonne mit ihren Min. Personen, auch mehrere gleichzeitig; sein Personal unter dem Kran wird nicht verwendet. Die Kranzeit gilt weiterhin (Kranzeit % in den Kategorien oben).\nOhne Zeile gilt wie bisher das Personal unter den Kränen. Wirkt beim nächsten Optimieren — «Aktualisieren» übernimmt sofort."}>
+          ⓘ Grenze bzw. so viele wie nötig, je Zeitraum</span>
+        {!readOnly && onAktualisieren && (
+          <button type="button" className="tc-btn-primary" style={{ fontSize: 11, padding: "3px 10px", marginLeft: "auto" }}
+            title="Personal je Unternehmer übernehmen: Ablaufregeln anwenden und mit den Einstellungen des Dialogs Auslastung optimieren neu optimieren (wie «Aktualisieren» im Bauablauf). Rückgängig oben in der Kopfzeile."
+            onClick={() => { setGeklickt(true); onAktualisieren(); }}>Aktualisieren</button>
+        )}
+      </div>
+      {geklickt && meldung && <div style={{ fontSize: 11, color: "var(--tc-text-2)", marginBottom: 6 }}>{meldung}</div>}
+      {liste.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: spalten, columnGap: 6, fontSize: 9, fontWeight: 600, color: "var(--tc-text-3)", marginBottom: 2 }}>
+          <span>Unternehmer</span><span>Personal</span><span>Personen</span><span>von</span><span>bis</span><span />
+        </div>
+      )}
+      {liste.map(z => {
+        const unbekannt = z.unternehmer.trim() !== "" && !bekannteUnternehmer.includes(z.unternehmer.trim());
+        const ohneZahl = !z.unbegrenzt && !(z.personen != null && z.personen >= 1);
+        return (
+          <div key={z.id} style={{ marginBottom: 3 }}>
+            <div style={{ display: "grid", gridTemplateColumns: spalten, columnGap: 6, alignItems: "center" }}>
+              <UnternehmerFeld wert={z.unternehmer} alle={alleUnternehmer} disabled={readOnly} unbekannt={unbekannt} onChange={u => aendern(z.id, { unternehmer: u })} />
+              <select disabled={readOnly} value={z.unbegrenzt ? "noetig" : "max"} style={feld}
+                onChange={e => aendern(z.id, e.target.value === "noetig" ? { unbegrenzt: true, personen: undefined } : { unbegrenzt: undefined, personen: z.personen ?? 1 })}>
+                <option value="max">höchstens</option>
+                <option value="noetig">so viele wie nötig</option>
+              </select>
+              {z.unbegrenzt ? <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}>–</span> : (
+                <input type="number" className="no-spinner" disabled={readOnly} min={1} value={z.personen ?? ""} placeholder="Pers."
+                  onChange={e => { const n = Math.floor(Number(e.target.value)); aendern(z.id, { personen: n >= 1 ? n : undefined }); }}
+                  style={{ ...feld, borderColor: ohneZahl ? "#e08a00" : "#d4dce4" }}
+                  title={ohneZahl ? "Mindestens 1 Person — ohne Zahl gilt keine Grenze" : undefined} />
+              )}
+              <input type="date" disabled={readOnly} value={z.von ?? ""} onChange={e => aendern(z.id, { von: e.target.value || undefined })} style={feld} />
+              <input type="date" disabled={readOnly} value={z.bis ?? ""} onChange={e => aendern(z.id, { bis: e.target.value || undefined })} style={feld} />
+              {!readOnly ? (
+                <button title="Entfernen" onClick={() => speichern(liste.filter(x => x.id !== z.id))}
+                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "var(--tc-text-3)", padding: 0, lineHeight: 1 }}>×</button>
+              ) : <span />}
+            </div>
+            {z.unbegrenzt && mitPool.has(z.unternehmer.trim()) && (
+              <div style={{ fontSize: 10, color: "#b5750a", marginTop: 1 }}>⚠ {z.unternehmer.trim()} hat auch Personal unter einem Kran — mit «so viele wie nötig» wird es in diesem Zeitraum nicht verwendet.</div>
+            )}
+          </div>
+        );
+      })}
+      {!readOnly && (
+        <button className="tc-btn-ghost" style={{ fontSize: 10, padding: "2px 8px", marginTop: 2 }}
+          title="Neue Zeile — hat die letzte Zeile ein Ende (bis), derselbe Unternehmer ab dem Tag danach (Personal im Zeitverlauf)"
+          onClick={() => {
+            const letzte = liste[liste.length - 1];
+            const vorhanden = new Set(liste.map(x => x.unternehmer.trim()));
+            speichern([...liste, letzte?.bis
+              ? { id: crypto.randomUUID(), unternehmer: letzte.unternehmer, unbegrenzt: letzte.unbegrenzt, personen: letzte.personen, von: isoTagDanach(letzte.bis) }
+              : { id: crypto.randomUUID(), unternehmer: alleUnternehmer.find(u => !vorhanden.has(u)) ?? bekannteUnternehmer[0] ?? "", personen: 1 }]);
+          }}>
+          + Zeile
+        </button>
       )}
     </div>
   );

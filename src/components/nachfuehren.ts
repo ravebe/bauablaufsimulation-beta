@@ -3,7 +3,7 @@
 // Kräne & Personal geändert, oder neu — und alle ihre Nachfolger. Die übrigen behalten Termine und Ablauf; ihr Ablauf belegt beim
 // Neuplanen Personal, Kolonnen und Kranzeit. Von Hand verschobene Tasks beginnen frühestens an ihrem neuen Start.
 // Läuft in useUndo.ts zusammen mit der Änderung — ein Schritt, mit "Rückgängig" auf einmal zurückzunehmen.
-import type { Task, Kran, SimProjekt } from "../types";
+import type { Task, Kran, SimProjekt, UnternehmerPersonal } from "../types";
 import { istGruppe, vorgaengerListe } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { LEERE_STAMMDATEN, hatKalkulationsWerte, schritteFuerTask } from "./stammdatenHelpers";
@@ -17,8 +17,8 @@ import { pruefeZeitplanBereitschaft } from "./zeitplanUebernahmeHelpers";
 import { bauablaufReihenfolge } from "./gruppenReihenfolge";
 
 /** Tasks, die neu geplant werden müssen: planbar, aber ohne gültigen Ablauf — plus alle ihre Nachfolger (über alle Stufen). */
-export function nachzufuehrendeTasks(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender, kraene: Kran[]): Set<string> {
-  const kraeneText = kranSchluessel(kraene);
+export function nachzufuehrendeTasks(tasks: Task[], stammdaten: Stammdaten, kalender: Kalender, kraene: Kran[], unternehmer: UnternehmerPersonal[] = []): Set<string> {
+  const kraeneText = kranSchluessel(kraene, unternehmer);
   const ergebnis = new Set<string>();
   tasks.forEach((t, i) => {
     if (t.isGroup || istGruppe(tasks, i) || t.meilenstein || !hatKalkulationsWerte(t, stammdaten)) return;
@@ -42,12 +42,12 @@ export function simNachfuehren(sim: SimProjekt): SimProjekt {
   if (!e) return sim;
   const stammdaten = sim.stammdaten ?? LEERE_STAMMDATEN, kalender = sim.kalender ?? LEERER_KALENDER, kraene = sim.kraene ?? [];
   if (!pruefeZeitplanBereitschaft(sim.tasks, stammdaten).bereit) return sim; // Tab Kalkulation noch mit Fehlern
-  const nur = nachzufuehrendeTasks(sim.tasks, stammdaten, kalender, kraene);
+  const nur = nachzufuehrendeTasks(sim.tasks, stammdaten, kalender, kraene, sim.unternehmerPersonal);
   if (nur.size === 0) return sim;
   // von Hand verschoben (Start anders als beim Optimieren): frühestens am neuen Start
   const untergrenze = new Set(sim.tasks.filter(t => nur.has(t.id) && t.optimierung && zpText(t) !== t.optimierung.start).map(t => t.id));
   const ergebnis = optimiereAuslastung(sim.tasks, stammdaten, kalender, sim.zeiteinheit ?? "tage", kraene, e.reihenfolge, e.luecken,
-    { nur, untergrenze, gruppen: bauablaufReihenfolge(sim), abBeginn: e.abBeginn !== false, baubeginn: sim.baubeginn });
+    { nur, untergrenze, gruppen: bauablaufReihenfolge(sim), abBeginn: e.abBeginn !== false, baubeginn: sim.baubeginn, unternehmer: sim.unternehmerPersonal });
   const tasks = optimierungUebernehmen(sim.tasks, ergebnis);
   return { ...sim, tasks, optimiertStand: terminSignatur(tasks) };
 }

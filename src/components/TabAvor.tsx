@@ -95,25 +95,26 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
   const alleTage = personal.map(t => t.tag);
 
   const kraene = sim?.kraene ?? [];
+  const unternehmer = sim?.unternehmerPersonal ?? [];
   const kranById = new Map(kraene.map(k => [k.id, k]));
   // Ø Auslastung des Gantts und nach "Auslastung optimieren" mit denselben Einstellungen wie im Dialog (Reihenfolge und Lücken füllen
   // des automatischen Nachführens, sonst «Nach Gruppen» mit gespeicherter Gruppen-Reihenfolge und Lücken füllen; aktuelle
   // Zeiteinheit) — nur Vorschau, übernommen wird in Tab Bauteile
   const auslastungKennzahl = useMemo(() => {
-    const gantt = durchschnittlicheAuslastung(tasks, kraene, stammdaten, kalender);
+    const gantt = durchschnittlicheAuslastung(tasks, kraene, stammdaten, kalender, unternehmer);
     if (gantt == null) return null;
     const reihenfolge = sim?.autoNachfuehren?.reihenfolge ?? "gruppen";
     const optimiert = optimiereAuslastung(tasks, stammdaten, kalender, sim?.zeiteinheit ?? "tage", kraene, reihenfolge, sim?.autoNachfuehren?.luecken ?? true,
-      { gruppen: sim ? bauablaufReihenfolge(sim) : undefined, abBeginn: sim?.autoNachfuehren?.abBeginn !== false, baubeginn: sim?.baubeginn });
-    return { gantt, optimiert: durchschnittlicheAuslastung(optimiert, kraene, stammdaten, kalender) };
-  }, [tasks, kraene, stammdaten, kalender, sim?.zeiteinheit, sim?.autoNachfuehren, sim?.gruppenReihenfolge, sim?.baubeginn]);
+      { gruppen: sim ? bauablaufReihenfolge(sim) : undefined, abBeginn: sim?.autoNachfuehren?.abBeginn !== false, baubeginn: sim?.baubeginn, unternehmer });
+    return { gantt, optimiert: durchschnittlicheAuslastung(optimiert, kraene, stammdaten, kalender, unternehmer) };
+  }, [tasks, kraene, stammdaten, kalender, sim?.zeiteinheit, sim?.autoNachfuehren, sim?.gruppenReihenfolge, sim?.baubeginn, sim?.unternehmerPersonal]); // eslint-disable-line react-hooks/exhaustive-deps
   // Tagesplan (tagesplan.ts) für jeden Tag einmal: Spalte Dauer, Tagesablauf, rote Tage im Diagramm (Arbeit nach Arbeitsende) und
   // Überstunden je Unternehmer/Kran über das ganze Projekt
   const tageSchluessel = alleTage.join(",");
   const plaene = useMemo(() => {
     const aufwand = aufwandCache(stammdaten, kalender);
-    return alleTage.map(iso => tagesplan(iso, tasks, stammdaten, kalender, kraene, aufwand));
-  }, [tageSchluessel, sim?.tasks, sim?.stammdaten, sim?.kalender, sim?.kraene]); // eslint-disable-line react-hooks/exhaustive-deps
+    return alleTage.map(iso => tagesplan(iso, tasks, stammdaten, kalender, kraene, aufwand, unternehmer));
+  }, [tageSchluessel, sim?.tasks, sim?.stammdaten, sim?.kalender, sim?.kraene, sim?.unternehmerPersonal]); // eslint-disable-line react-hooks/exhaustive-deps
   // Personalauslastung = Personen im Einsatz laut Tagesablauf: die Fläche zeigt je Tag, wie sich die Leute zum Zeitpunkt der
   // grössten Besetzung auf die Gewerke verteilen — oben = Höchstzahl gleichzeitig arbeitender Personen. Jedes Gewerk mit Arbeit ist
   // dabei (0, wenn es in diesem Moment nicht arbeitet), damit es in den Tagesangaben eine Zeile hat.
@@ -221,7 +222,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
   // Kranpersonal je Gewerk seine Kolonnen (je Unternehmer, grösste Min. Personen des Tages, kolonnenJeTag).
   const mitKranPersonal = hatKranPersonal(kraene);
   const kolonnen = kolonnenJeTag(tasks, stammdaten, kalender);
-  const eingeplantJeTag = eingeplantesPersonalJeTag(tasks, kraene, stammdaten, kalender, personalSerien.tage);
+  const eingeplantJeTag = eingeplantesPersonalJeTag(tasks, kraene, stammdaten, kalender, personalSerien.tage, unternehmer);
   const geplantesPersonal = (idx: number) => eingeplantJeTag.get(personalSerien.tage[idx])?.total ?? 0;
   const gewerkEingeplant = (key: string, idx: number) => eingeplantJeTag.get(personalSerien.tage[idx])?.jeGewerk[key];
   /** Personen, mit denen eine Zeile rechnet (null = Gewerk unter dem Kran: teilt sich das Personal des Krans, keine eigene Zahl) */
@@ -452,7 +453,7 @@ export default function TabAvor({ sim, updateSim, readOnly, projectId = null, ap
           // unter dem Diagramm: Tagesablauf, darunter Tagesangaben-Tabelle und Erklärung & Optimierung (beide standardmässig zu —
           // gemerkt wird «offen», damit ohne Einstellung «zu» gilt)
           detailUnterDiagramm={(i, tabelle) => <Tagesablauf iso={personalSerien.tage[i]} tasks={tasks} stammdaten={stammdaten} kalender={kalender} farbeJeGewerk={farbeJeGewerk}
-            eingeplant={eingeplantJeTag.get(personalSerien.tage[i])} mitKranPersonal={mitKranPersonal} kraene={kraene} plan={planFuer(i)} tabelle={tabelle}
+            eingeplant={eingeplantJeTag.get(personalSerien.tage[i])} mitKranPersonal={mitKranPersonal} kraene={kraene} unternehmer={unternehmer} plan={planFuer(i)} tabelle={tabelle}
             zu={{ ablauf: !!eingeklappt["tagesablauf"], tabelle: !eingeklappt["tagesangabenOffen"], erklaerung: !eingeklappt["erklaerungOffen"] }}
             onToggle={w => toggleEingeklappt(w === "ablauf" ? "tagesablauf" : w === "tabelle" ? "tagesangabenOffen" : "erklaerungOffen")} />}
           markerIdx={ausgewaehlterTag} markerLabel={ausgewaehltesDatumLabel} onTagKlick={onChartTagKlick} onMarkerEntfernen={markerEntfernen}

@@ -7,7 +7,7 @@
 //  - Überstunden: was nach Arbeitsende (Std./Tag) noch gearbeitet wird — Personenstunden je Unternehmer, Kranstunden je Kran.
 //  - Belegung je Zeitschritt im Arbeitstag (Kranzeit je Kran, Leute je Pool, Kolonnen): Tagesangaben (Kranzeit) und
 //    bereitAberNichtDran — Tasks, deren Vorgänger fertig sind, die aber an diesem Tag nicht arbeiten, mit dem Grund.
-import type { Task, Kran, TagesLauf } from "../types";
+import type { Task, Kran, TagesLauf, UnternehmerPersonal } from "../types";
 import { vorgaengerListe, istGruppe } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { hatKalkulationsWerte, schritteFuerTask, rateFuerKuerzel, istRateKranpflichtig } from "./stammdatenHelpers";
@@ -43,8 +43,8 @@ export const unternehmerLabel = (u: string) => u || "ohne Unternehmer";
  *  sich in diesem Moment auf die Gewerke verteilen (Summe = anzahl), maxJeGewerk = Höchstzahl jedes Gewerks für sich (zu irgendeiner Zeit) */
 export interface ImEinsatz { anzahl: number; um: number; jeGewerkAnSpitze: Map<string, number>; maxJeGewerk: Map<string, number> }
 /** Belegung je Zeitschritt des Arbeitstags (slotsProTag): kran = belegte Kranzeit je Kran-Id (0…1 je Zeitschritt), pool = Leute je
- *  Pool ("kranId|Unternehmer"), kolonne = Kolonnen (kolonnenSchluessel) bei der Arbeit */
-export interface Belegung { kran: Map<string, number[]>; pool: Map<string, number[]>; kolonne: Map<string, boolean[]> }
+ *  Pool ("kranId|Unternehmer"), kolonne = Kolonnen (kolonnenSchluessel) bei der Arbeit, unternehmer = Leute je Unternehmer */
+export interface Belegung { kran: Map<string, number[]>; pool: Map<string, number[]>; kolonne: Map<string, boolean[]>; unternehmer: Map<string, number[]> }
 export interface Tagesplan { tasks: TagesplanTask[]; dauer: number; arbeit: number; jeGewerk: Map<string, { von: number; bis: number }>; ueberstunden: Ueberstunden;
   arbeitJeGewerk: Map<string, number>; imEinsatz: ImEinsatz; belegung: Belegung }
 
@@ -86,12 +86,13 @@ export function aufwandCache(stammdaten: Stammdaten, kalender: Kalender): Aufwan
 interface SimPhase extends KernPhase { tp: TagesplanPhase }
 interface SimTask { schritte: SimPhase[][]; schritt: number; kranIds: string[] }
 
-export function tagesplan(iso: string, tasks: Task[], stammdaten: Stammdaten, kalender: Kalender, kraene: Kran[], aufwand?: AufwandQuelle): Tagesplan {
+export function tagesplan(iso: string, tasks: Task[], stammdaten: Stammdaten, kalender: Kalender, kraene: Kran[], aufwand?: AufwandQuelle,
+  unternehmer: UnternehmerPersonal[] = []): Tagesplan {
   const std = stammdaten.arbeitszeitStdProTag || 8;
   const N = slotsProTag();
   const slotStd = std / N;
-  const kraeneText = kranSchluessel(kraene);
-  const pruefung = new Zeitschritt<SimTask>(iso, kraene, slotStd, false); // nur zum Nachschlagen von Pools und verfügbaren Kränen
+  const kraeneText = kranSchluessel(kraene, unternehmer);
+  const pruefung = new Zeitschritt<SimTask>(iso, kraene, slotStd, false, unternehmer); // nur zum Nachschlagen von Pools und verfügbaren Kränen
 
   const ueberstunden: Ueberstunden = { jeUnternehmer: new Map(), jeKran: new Map(), jeUnternehmerDauer: new Map() };
   /** Teil von [von, bis) nach Arbeitsende als Überstunden: Personenstunden des Unternehmers, Kranstunden der heutigen Kräne */
@@ -106,7 +107,7 @@ export function tagesplan(iso: string, tasks: Task[], stammdaten: Stammdaten, ka
     }
   };
 
-  const belegung: Belegung = { kran: new Map(), pool: new Map(), kolonne: new Map() };
+  const belegung: Belegung = { kran: new Map(), pool: new Map(), kolonne: new Map(), unternehmer: new Map() };
   /** Arbeit [von, bis) mit leute in die Belegung je Zeitschritt des Arbeitstags buchen */
   const belegungBuchen = (p: KernPhase, kranIds: string[], von: number, bis: number, leute: number) => {
     const heute = pruefung.kraeneHeute(p, kranIds);
@@ -119,11 +120,16 @@ export function tagesplan(iso: string, tasks: Task[], stammdaten: Stammdaten, ka
         w[s] += leute / Math.max(1, p.kolonne) * p.kranAnteil / heute.length * anteil;
         belegung.kran.set(id, w);
       }
+      if (p.unternehmer) {
+        const w = belegung.unternehmer.get(p.unternehmer) ?? Array<number>(N).fill(0);
+        w[s] += leute;
+        belegung.unternehmer.set(p.unternehmer, w);
+      }
       if (pool) {
         const w = belegung.pool.get(pool.key) ?? Array<number>(N).fill(0);
         w[s] += leute;
         belegung.pool.set(pool.key, w);
-      } else {
+      } else if (!pruefung.istUnbegrenzt(p.unternehmer)) {
         const key = kolonnenSchluessel(p.gewerkKey, p.unternehmer);
         const w = belegung.kolonne.get(key) ?? Array<boolean>(N).fill(false);
         w[s] = true;
@@ -176,7 +182,7 @@ export function tagesplan(iso: string, tasks: Task[], stammdaten: Stammdaten, ka
   // übrige Tasks mit dem Rechenkern auf das Personal verteilen, das die geplanten übrig lassen
   for (let slot = 0; slot < N * MAX_TAGE && sim.some(x => x.schritt < x.schritte.length); slot++) {
     const von = slot * slotStd, bis = von + slotStd;
-    const zs = new Zeitschritt<SimTask>(iso, kraene, slotStd, false);
+    const zs = new Zeitschritt<SimTask>(iso, kraene, slotStd, false, unternehmer);
     for (const f of fest) {
       const ueberlappung = Math.min(bis, f.lauf.bis) - Math.max(von, f.lauf.von);
       if (ueberlappung > EPS) zs.vorbelegen(f.phase, f.kranIds, f.lauf.leute, ueberlappung / slotStd);
@@ -221,7 +227,7 @@ export function tagesplan(iso: string, tasks: Task[], stammdaten: Stammdaten, ka
 }
 
 /** Grund, warum ein bereiter Task am Tag nicht arbeitet: kran = in keinem Zeitschritt genug Kranzeit frei, personal = in keinem
- *  Zeitschritt genug Leute im Pool frei, kolonne = seine Kolonne ist den ganzen Tag an anderer Arbeit, wechselnd = Kran und
+ *  Zeitschritt genug Leute im Pool bzw. innerhalb der Grenze des Unternehmers frei, kolonne = seine Kolonne ist den ganzen Tag an anderer Arbeit, wechselnd = Kran und
  *  Personal abwechselnd belegt, frei = Kran und Personal wären zeitweise frei gewesen (Reihenfolge, Termine im Gantt). */
 export type WarteGrund = "kran" | "personal" | "kolonne" | "wechselnd" | "frei";
 /** autoVorgaenger = beim letzten Optimieren ergänzte Vorgänger (auf Personal/Kran gewartet), die den Task heute noch zurückhalten;
@@ -231,11 +237,12 @@ export interface BereitWartend { t: Task; bereitSeit: string; grund: WarteGrund;
 /** Tasks, deren Vorgänger (ohne die vom Optimieren ergänzten) zu Beginn des Tages fertig sind, die aber an diesem Tag nicht
  *  arbeiten — mit dem Grund aus der Belegung des Tages (Plan): für den ersten Schritt seines Arbeitsablaufs wird je Zeitschritt
  *  geprüft, ob Kranzeit, Pool-Personal bzw. Kolonne für die Mindestbesetzung frei gewesen wären (gleiche Regeln wie ablaufKern). */
-export function bereitAberNichtDran(iso: string, tasks: Task[], plan: Tagesplan, stammdaten: Stammdaten, kalender: Kalender, kraene: Kran[], max = 6): BereitWartend[] {
+export function bereitAberNichtDran(iso: string, tasks: Task[], plan: Tagesplan, stammdaten: Stammdaten, kalender: Kalender, kraene: Kran[],
+  unternehmer: UnternehmerPersonal[] = [], max = 6): BereitWartend[] {
   const std = stammdaten.arbeitszeitStdProTag || 8;
   const N = slotsProTag();
   const slotStd = std / N;
-  const pruefung = new Zeitschritt<null>(iso, kraene, slotStd, false);
+  const pruefung = new Zeitschritt<null>(iso, kraene, slotStd, false, unternehmer);
   const tagesBeginn: Zeitpunkt = { datum: iso, min: ARBEITSBEGINN_MIN };
   const byId = new Map(tasks.map(t => [t.id, t]));
   const amTag = new Set(plan.tasks.map(z => z.t.id));
@@ -267,10 +274,13 @@ export function bereitAberNichtDran(iso: string, tasks: Task[], plan: Tagesplan,
           kolonne: Math.max(1, ph.kolonne), kranAnteil: ph.kranAnteil, rest: ph.personenstunden };
         const heute = pruefung.kraeneHeute(p, kranIds);
         const pool = pruefung.poolDer(p, kranIds);
-        const leute = pool ? Math.min(p.kolonne, pruefung.poolGroesseVon(pool.key)) : p.kolonne;
+        const unbegrenzt = pruefung.istUnbegrenzt(p.unternehmer);
+        const grenze = pruefung.grenzeVon(p.unternehmer);
+        const leute = Math.min(pool ? Math.min(p.kolonne, pruefung.poolGroesseVon(pool.key)) : p.kolonne, unbegrenzt ? Infinity : grenze);
         if (heute.some(id => (plan.belegung.kran.get(id)?.[s] ?? 0) + leute / p.kolonne * p.kranAnteil / heute.length > 1 + 1e-6)) kranOk = false;
         if (pool && (plan.belegung.pool.get(pool.key)?.[s] ?? 0) + leute > pruefung.poolGroesseVon(pool.key) + 1e-6) personalOk = false;
-        if (!pool && plan.belegung.kolonne.get(kolonnenSchluessel(p.gewerkKey, p.unternehmer))?.[s]) kolonneOk = false;
+        if (isFinite(grenze) && (plan.belegung.unternehmer.get(p.unternehmer)?.[s] ?? 0) + leute > grenze + 1e-6) personalOk = false;
+        if (!pool && !unbegrenzt && plan.belegung.kolonne.get(kolonnenSchluessel(p.gewerkKey, p.unternehmer))?.[s]) kolonneOk = false;
       }
       if (kranOk) kranFehlt = false;
       if (personalOk) personalFehlt = false;

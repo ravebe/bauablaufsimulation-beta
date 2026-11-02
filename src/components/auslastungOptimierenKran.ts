@@ -16,7 +16,7 @@
 //    (bisherige Vorgänger bleiben) — so bleibt der neue Ablauf beim Ausrichten der Folge-Tasks erhalten.
 //  - Den Ablauf jedes Tages (wer von wann bis wann an welcher Arbeit) merkt sich der Task (Task.tagesArbeit) — Tab AVOR zeigt und
 //    rechnet genau diesen Ablauf, solange Termine, Mengen, Stammdaten und Kräne & Personal unverändert sind.
-import type { Task, Kran, TagesLauf, GruppenReihenfolge } from "../types";
+import type { Task, Kran, TagesLauf, GruppenReihenfolge, UnternehmerPersonal } from "../types";
 import { rangJeTask, vergleicheRang, gruppenJeTask } from "./gruppenReihenfolge";
 import { istGruppe, vorgaengerListe, mitVorgaengern, terminSchluessel } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
@@ -98,7 +98,9 @@ function laufAnhaengen(z: TaskZ, tag: number, l: TagesLauf) {
  *  bzw. nach ihren Vorgängern; Meilensteine und Platzhalter (ohne Menge und ohne feste Dauer) bleiben, wo sie sind. */
 /*  gruppen: Reihenfolge der Gruppen und Bauteilarten — Rang beim Personal nur mit Reihenfolge «Nach Gruppen», Stufen «fest» (streng)
  *  gelten immer. bericht (Ausgabe): Tasks, bei denen «fest» gelockert werden musste, weil Vorgänger/Regeln widersprechen. */
+/*  unternehmer: Personal je Unternehmer (SimProjekt.unternehmerPersonal) — Grenze bzw. «so viele wie nötig», siehe ablaufKern.ts */
 export interface OptimierOptionen { nur?: Set<string>; untergrenze?: Set<string>; gruppen?: GruppenReihenfolge; abBeginn?: boolean; baubeginn?: string;
+  unternehmer?: UnternehmerPersonal[];
   bericht?: { gelockert: string[]; widersprueche?: FestWiderspruch[] } }
 
 /** Warum «fest» für einen Task aufgehoben wurde: er wartete auf einen Vorgänger, der wegen «fest» erst nach ihm beginnen darf
@@ -118,7 +120,8 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
   if (echte.length === 0) return tasks;
   const byId = new Map(tasks.map(t => [t.id, t]));
   const std = stammdaten.arbeitszeitStdProTag;
-  const kraeneText = kranSchluessel(kraene);
+  const unternehmer = optionen.unternehmer ?? [];
+  const kraeneText = kranSchluessel(kraene, unternehmer);
 
   // Nachführen: der gespeicherte Ablauf der Tasks, die nicht neu geplant werden, belegt Personal, Kolonnen und Kranzeit
   const festJeTag = new Map<string, { phase: KernPhase; kranIds: string[]; lauf: TagesLauf }[]>();
@@ -362,7 +365,7 @@ export function optimiereMitKranpersonal(tasks: Task[], stammdaten: Stammdaten, 
     const tag = Math.floor(slot / N);
     const s = slot - tag * N; // Zeitschritt im Tag
     const iso = tagIso(tag);
-    const zs = new Zeitschritt<TaskZ>(iso, kraene, slotStd, true);
+    const zs = new Zeitschritt<TaskZ>(iso, kraene, slotStd, true, unternehmer);
     for (const f of festJeTag.get(iso) ?? []) {
       const ueberlappung = Math.min((s + 1) * slotStd, f.lauf.bis) - Math.max(s * slotStd, f.lauf.von);
       if (ueberlappung > EPS) zs.vorbelegen(f.phase, f.kranIds, f.lauf.leute, ueberlappung / slotStd);

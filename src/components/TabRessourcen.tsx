@@ -214,7 +214,7 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
     const kal = sim!.kalender ?? LEERER_KALENDER;
     const bericht = { gelockert: [] as string[], widersprueche: [] as FestWiderspruch[] };
     const ergebnis = optimiereAuslastung(mitRegeln.tasks, stammdaten, kal, sim!.zeiteinheit ?? "tage", sim!.kraene ?? [], reihenfolge,
-      sim!.autoNachfuehren?.luecken ?? true, { gruppen: gruppenReihenfolge, abBeginn: sim!.autoNachfuehren?.abBeginn !== false, baubeginn: sim!.baubeginn, bericht });
+      sim!.autoNachfuehren?.luecken ?? true, { gruppen: gruppenReihenfolge, abBeginn: sim!.autoNachfuehren?.abBeginn !== false, baubeginn: sim!.baubeginn, unternehmer: sim!.unternehmerPersonal, bericht });
     const tasks = optimierungUebernehmen(mitRegeln.tasks, ergebnis);
     const verschoben = tasks.filter((t, i) => t.start !== sim!.tasks[i]?.start || t.end !== sim!.tasks[i]?.end || t.startZeit !== sim!.tasks[i]?.startZeit || t.endZeit !== sim!.tasks[i]?.endZeit).length;
     const ende = (ts: typeof tasks) => ts.reduce((m, t) => (!t.isGroup && t.end && t.end > m ? t.end : m), "");
@@ -898,7 +898,8 @@ export default function TabRessourcen({ sim, updateSim, readOnly, api, selektion
             hinweis={<>Je Kran die Verfügbarkeit und darunter das Personal je Unternehmer. Die Summe ist die Höchstzahl der Leute, die pro Tag unter diesem Kran an kranpflichtigen Arbeiten arbeiten (beim Optimieren höchstens 1–2 mehr, wenn sonst Leute untätig wären). Leute desselben Unternehmers sind Allrounder und besetzen jede seiner Leistungspositionen an Tasks dieses Krans (Kran-Zuweisung in Tab Kalkulation, bei nur einem Kran automatisch). Von/bis leer = ganze Verfügbarkeit des Krans.</>}
             aktionen={onZuKranoptik && <button type="button" className="tc-btn-secondary" onClick={onZuKranoptik} title="Zu Tab AVOR → Kranoptik: Kranstunden und Personal je Kran im Zeitverlauf" style={{ fontSize: 11, padding: "2px 8px" }}>Zur Kranoptik →</button>}>
             <KranPersonalEditor sim={sim} updateSim={updateSim} readOnly={readOnly}
-              bekannteUnternehmer={unternehmerDerRaten} alleUnternehmer={alleUnternehmer} onZuKranoptik={onZuKranoptik} />
+              bekannteUnternehmer={unternehmerDerRaten} alleUnternehmer={alleUnternehmer} onZuKranoptik={onZuKranoptik}
+              onAktualisieren={readOnly ? undefined : bauablaufAktualisieren} meldung={bauablaufFehler ?? bauablaufInfo} />
           </CockpitAbschnitt>
         </div>
       )}

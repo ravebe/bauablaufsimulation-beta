@@ -2,7 +2,7 @@
 // Kranoptik (Tab AVOR), dazu Kranpersonal je Tag (Tab Ressourcen → Kräne & Personal) für Perfekte Auslastung und Optimierung.
 // Reine Funktionen, kein UI. Verfügbarkeit ist bewusst grob: ein zusammenhängender von/bis-Zeitraum je
 // Kran, keine Perioden-Liste (siehe Kran in types.ts).
-import type { Task, Kran, Zeitraster } from "../types";
+import type { Task, Kran, Zeitraster, UnternehmerPersonal } from "../types";
 import { parseDateUniversal } from "../types";
 import type { Kalender } from "./kalenderHelpers";
 import { istArbeitstag, getKW } from "./kalenderHelpers";
@@ -92,6 +92,23 @@ export function kranVerfuegbareArbeitstage(kran: Kran, bucket: { start: string; 
   const start = kran.verfuegbarVon && kran.verfuegbarVon > bucket.start ? kran.verfuegbarVon : bucket.start;
   const end = kran.verfuegbarBis && kran.verfuegbarBis < bucket.end ? kran.verfuegbarBis : bucket.end;
   return arbeitstageInBereich(start, end, kalender);
+}
+
+/** Personal je Unternehmer an diesem Tag (SimProjekt.unternehmerPersonal): grenze = höchstens so viele gleichzeitig (über alle
+ *  Kräne und Arbeiten), unbegrenzt = so viele wie nötig. Zeilen ohne Unternehmer oder ohne Personen (≥ 1) zählen nicht; mehrere
+ *  Zeilen am selben Tag: unbegrenzt gewinnt, sonst die kleinste Grenze. */
+export function unternehmerAmTag(liste: UnternehmerPersonal[] | undefined, iso: string): { grenze: Map<string, number>; unbegrenzt: Set<string> } {
+  const grenze = new Map<string, number>();
+  const unbegrenzt = new Set<string>();
+  for (const z of liste ?? []) {
+    const name = z.unternehmer.trim();
+    if (!name || (z.von && iso < z.von) || (z.bis && iso > z.bis)) continue;
+    if (z.unbegrenzt) { unbegrenzt.add(name); continue; }
+    if (!(z.personen != null && z.personen >= 1)) continue;
+    grenze.set(name, Math.min(grenze.get(name) ?? Infinity, Math.floor(z.personen)));
+  }
+  for (const u of unbegrenzt) grenze.delete(u);
+  return { grenze, unbegrenzt };
 }
 
 /** Richtwert: so viele Personen kann ein Kran etwa versorgen — nur als Hinweis in Tab Ressourcen, keine Grenze in der Rechnung
@@ -217,12 +234,19 @@ export interface EingeplantTag { kranPersonal: number; kolonnen: number; total: 
  *  - Kolonnen ohne Kran: nicht kranpflichtige Positionen und Tasks ohne Kran (bei nur einem Kran gelten alle Tasks als seine) —
  *    je Gewerk + Unternehmer eine Kolonne, je Tag einmal mit den grössten Min. Personen ihrer Positionen an diesem Tag. Arbeitet
  *    dieselbe Kolonne am Tag auch unter einem Kran, zählt sie dort.
+ *  - Personal je Unternehmer (unternehmer, unternehmerAmTag): «so viele wie nötig» zählt mit der Arbeit des Tages ÷ Std./Tag (die
+ *    Leute kommen, wenn Arbeit da ist), «höchstens n» kappt alle Leute des Unternehmers (Pools und Kolonnen) auf n.
  *  ohnePool nennt je Tag die Positionen, die nicht aus einem Kran-Pool besetzt werden, mit Grund. */
-export function eingeplantesPersonalJeTag(tasks: Task[], kraene: Kran[], stammdaten: Stammdaten, kalender: Kalender, tage: string[]): Map<string, EingeplantTag> {
+export function eingeplantesPersonalJeTag(tasks: Task[], kraene: Kran[], stammdaten: Stammdaten, kalender: Kalender, tage: string[],
+  unternehmer: UnternehmerPersonal[] = []): Map<string, EingeplantTag> {
   const kranById = new Map(kraene.map(k => [k.id, k]));
   const gewerkLabel = new Map(stammdaten.gewerke.map(g => [g.key, g.label]));
+  const std = stammdaten.arbeitszeitStdProTag || 8;
+  const unternehmerCache = new Map<string, ReturnType<typeof unternehmerAmTag>>();
+  const amTag = (iso: string) => { let u = unternehmerCache.get(iso); if (!u) { u = unternehmerAmTag(unternehmer, iso); unternehmerCache.set(iso, u); } return u; };
   // Tag → Kolonne (Gewerk + Unternehmer) → grösste Min. Personen und Kran, unter dem sie arbeitet (null = ohne Kran)
-  const kolonnenJeTag = new Map<string, Map<string, { gewerkKey: string; personen: number; kranId: string | null }>>();
+  type Kol = { gewerkKey: string; unternehmer: string; personen: number; kranId: string | null };
+  const kolonnenJeTag = new Map<string, Map<string, Kol>>();
   const ohnePoolJeTag = new Map<string, Map<string, OhnePool>>();
   const unterKranGewerkeJeTag = new Map<string, Set<string>>(); // Tag → Gewerke, die unter einem Kran arbeiten
   for (const t of tasks) {
@@ -231,6 +255,15 @@ export function eingeplantesPersonalJeTag(tasks: Task[], kraene: Kran[], stammda
       for (const a of liste) {
         if (!(a.personenstunden > 1e-9)) continue;
         const kraeneHeute = a.phase.kranpflichtig ? kranIds.filter(id => istKranVerfuegbarAn(kranById.get(id)!, iso)) : [];
+        if (a.phase.unternehmer && amTag(iso).unbegrenzt.has(a.phase.unternehmer)) {
+          // so viele wie nötig: so viele Leute, wie die Arbeit des Tages braucht
+          const jeKolonne = kolonnenJeTag.get(iso) ?? new Map<string, Kol>();
+          const key = `unbegrenzt|${a.phase.gewerkKey}|${a.phase.unternehmer}`;
+          const bisher = jeKolonne.get(key);
+          jeKolonne.set(key, { gewerkKey: a.phase.gewerkKey, unternehmer: a.phase.unternehmer, personen: (bisher?.personen ?? 0) + a.personenstunden / std, kranId: null });
+          kolonnenJeTag.set(iso, jeKolonne);
+          continue;
+        }
         const unterKranMerken = () => { const g = unterKranGewerkeJeTag.get(iso) ?? new Set<string>(); g.add(a.phase.gewerkKey); unterKranGewerkeJeTag.set(iso, g); };
         if (a.phase.unternehmer && kraeneHeute.some(id => (kranPersonalAmTag(kranById.get(id)!, iso).get(a.phase.unternehmer) ?? 0) > 0)) { unterKranMerken(); continue; } // aus dem Pool
         const grund = !a.phase.kranpflichtig ? "nicht kranpflichtig"
@@ -244,29 +277,44 @@ export function eingeplantesPersonalJeTag(tasks: Task[], kraene: Kran[], stammda
           kolonne: a.phase.kolonne, grund, unterKran: kraeneHeute.length > 0 });
         ohnePoolJeTag.set(iso, ohne);
         if (kraeneHeute.length > 0) unterKranMerken();
-        const jeKolonne = kolonnenJeTag.get(iso) ?? new Map<string, { gewerkKey: string; personen: number; kranId: string | null }>();
+        const jeKolonne = kolonnenJeTag.get(iso) ?? new Map<string, Kol>();
         const key = kolonnenSchluessel(a.phase.gewerkKey, a.phase.unternehmer);
         const bisher = jeKolonne.get(key);
-        jeKolonne.set(key, { gewerkKey: a.phase.gewerkKey, personen: Math.max(bisher?.personen ?? 0, a.phase.kolonne), kranId: bisher?.kranId ?? kraeneHeute[0] ?? null });
+        jeKolonne.set(key, { gewerkKey: a.phase.gewerkKey, unternehmer: a.phase.unternehmer, personen: Math.max(bisher?.personen ?? 0, a.phase.kolonne), kranId: bisher?.kranId ?? kraeneHeute[0] ?? null });
         kolonnenJeTag.set(iso, jeKolonne);
       }
     }
   }
   const ergebnis = new Map<string, EingeplantTag>();
   for (const iso of tage) {
-    const jeKolonne = [...(kolonnenJeTag.get(iso)?.values() ?? [])];
+    const jeKolonne = [...(kolonnenJeTag.get(iso)?.values() ?? [])].map(c => ({ ...c })); // Kopie: die Grenze kappt unten
+    const { grenze, unbegrenzt } = amTag(iso);
     let kranPersonal = 0;
+    const unterKranJeU = new Map<string, number>(); // Leute je Unternehmer, die im Kranpersonal zählen (für die Grenze)
+    const plus = (u: string, n: number) => unterKranJeU.set(u, (unterKranJeU.get(u) ?? 0) + n);
     if (istArbeitstag(iso, kalender)) for (const k of kraene) {
       if (!istKranVerfuegbarAn(k, iso)) continue;
-      // Personal unter dem Kran ist die Grenze; Kolonnen ohne Pool an seinen Tasks zählen darin (ohne Personal: keine Grenze)
-      const pool = kranPersonalTotalAmTag(k, iso);
-      kranPersonal += pool > 0 ? pool : jeKolonne.filter(c => c.kranId === k.id).reduce((s, c) => s + c.personen, 0);
+      // Personal unter dem Kran ist die Grenze; Kolonnen ohne Pool an seinen Tasks zählen darin (ohne Personal: keine Grenze).
+      // «So viele wie nötig» hat keinen Pool (zählt bei den Kolonnen)
+      const jeU = [...kranPersonalAmTag(k, iso)].filter(([u]) => !unbegrenzt.has(u));
+      const pool = jeU.reduce((s, [, n]) => s + n, 0);
+      if (pool > 0) { kranPersonal += pool; for (const [u, n] of jeU) plus(u, n); }
+      else for (const c of jeKolonne.filter(c => c.kranId === k.id)) { kranPersonal += c.personen; plus(c.unternehmer, c.personen); }
     }
     const ausserhalb = jeKolonne.filter(c => c.kranId === null);
+    // Grenze je Unternehmer: zuerst das Kranpersonal kappen, den Rest bei seinen Kolonnen ohne Kran
+    for (const [u, g] of grenze) {
+      let zuViel = (unterKranJeU.get(u) ?? 0) + ausserhalb.filter(c => c.unternehmer === u).reduce((s, c) => s + c.personen, 0) - g;
+      if (zuViel <= 0) continue;
+      const vomKran = Math.min(zuViel, unterKranJeU.get(u) ?? 0);
+      kranPersonal -= vomKran; zuViel -= vomKran;
+      for (const c of ausserhalb) if (zuViel > 0 && c.unternehmer === u) { const weg = Math.min(zuViel, c.personen); c.personen -= weg; zuViel -= weg; }
+    }
     const kolonnen = ausserhalb.reduce((s, c) => s + c.personen, 0);
     const jeGewerk: EingeplantTag["jeGewerk"] = {};
     for (const g of unterKranGewerkeJeTag.get(iso) ?? []) jeGewerk[g] = { unterKran: true, ohneKran: 0 };
     for (const c of ausserhalb) {
+      if (c.personen <= 1e-9) continue;
       const g = c.gewerkKey;
       jeGewerk[g] = { unterKran: jeGewerk[g]?.unterKran ?? false, ohneKran: (jeGewerk[g]?.ohneKran ?? 0) + c.personen };
     }
@@ -360,9 +408,9 @@ export function hatKranPersonal(kraene: Kran[]): boolean {
 
 /** Ø Auslastung des eingeplanten Personals über das ganze Bauprogramm (Vorschau "Auslastung optimieren"): Arbeit aller Tage
  *  (Personenstunden) ÷ (eingeplantes Personal × Std./Tag), nur Arbeitstage mit eingeplantem Personal. null ohne Personal. */
-export function durchschnittlicheAuslastung(tasks: Task[], kraene: Kran[], stammdaten: Stammdaten, kalender: Kalender): number | null {
+export function durchschnittlicheAuslastung(tasks: Task[], kraene: Kran[], stammdaten: Stammdaten, kalender: Kalender, unternehmer: UnternehmerPersonal[] = []): number | null {
   const personal = personalauslastung(tasks, stammdaten, kalender);
-  const eingeplant = eingeplantesPersonalJeTag(tasks, kraene, stammdaten, kalender, personal.map(p => p.tag));
+  const eingeplant = eingeplantesPersonalJeTag(tasks, kraene, stammdaten, kalender, personal.map(p => p.tag), unternehmer);
   let arbeit = 0, kapazitaet = 0;
   for (const tw of personal) {
     const e = eingeplant.get(tw.tag)?.total ?? 0;

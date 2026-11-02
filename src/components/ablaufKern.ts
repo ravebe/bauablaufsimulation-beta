@@ -10,9 +10,13 @@
 //    Arbeit zu Arbeit (z.B. Bewehrung Wand → Bewehrung Stütze, sobald diese geschalt ist).
 //  - Kranzeit: eine kranpflichtige Arbeit belegt ihren Kran mit Leute ÷ Min. Personen × Kranzeit % (bei mehreren verfügbaren
 //    Kränen des Tasks aufgeteilt); je Zeitschritt hat jeder Kran höchstens einen Zeitschritt Kranzeit.
-import type { Kran } from "../types";
+//  - Personal je Unternehmer (SimProjekt.unternehmerPersonal, unternehmerAmTag): «höchstens n» ist eine harte Grenze für alle
+//    Leute des Unternehmers zusammen (Pools, Kolonnen, Verstärkung, Überzug); ist sie kleiner als die Min. Personen einer Arbeit,
+//    arbeitet sie mit der ganzen Grenze. «So viele wie nötig»: jede Arbeit bekommt ihre eigene Kolonne (ohne Pool, ohne Personal-
+//    grenze des Krans, auch mehrere gleichzeitig) — nur die Kranzeit gilt.
+import type { Kran, UnternehmerPersonal } from "../types";
 import { MIN_PRO_ARBEITSTAG } from "./zeitHelpers";
-import { kranPersonalAmTag, kranPersonalTotalAmTag, istKranVerfuegbarAn, kolonnenSchluessel } from "./kranHelpers";
+import { kranPersonalAmTag, kranPersonalTotalAmTag, istKranVerfuegbarAn, kolonnenSchluessel, unternehmerAmTag } from "./kranHelpers";
 export { kolonnenSchluessel };
 
 /** Eine Arbeit bekommt höchstens so viele Leute: Min. Personen × MAX_VERSTAERKUNG (mehr Leute an einem Bauteil behindern sich). */
@@ -28,9 +32,12 @@ const EPS = 1e-6;
 export function slotsProTag(): number { return Math.max(1, Math.round(MIN_PRO_ARBEITSTAG / 30)); }
 
 
-/** Kräne & Personal als Text — ein gespeicherter Ablauf (Task.tagesArbeit) gilt nur, solange er gleich bleibt */
-export function kranSchluessel(kraene: Kran[]): string {
-  const text = JSON.stringify(kraene.map(k => [k.id, k.verfuegbarVon ?? "", k.verfuegbarBis ?? "", k.personal ?? []]));
+/** Kräne & Personal (inkl. Personal je Unternehmer) als Text — ein gespeicherter Ablauf (Task.tagesArbeit) gilt nur, solange er
+ *  gleich bleibt. Ohne Personal je Unternehmer derselbe Text wie früher (gespeicherte Abläufe bleiben gültig). */
+export function kranSchluessel(kraene: Kran[], unternehmer: UnternehmerPersonal[] = []): string {
+  const liste: unknown[] = kraene.map(k => [k.id, k.verfuegbarVon ?? "", k.verfuegbarBis ?? "", k.personal ?? []]);
+  if (unternehmer.length > 0) liste.push(unternehmer.map(u => [u.unternehmer.trim(), !!u.unbegrenzt, u.personen ?? null, u.von ?? "", u.bis ?? ""]));
+  const text = JSON.stringify(liste);
   let h = 5381;
   for (let i = 0; i < text.length; i++) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0;
   return h.toString(36);
@@ -57,6 +64,10 @@ export class Zeitschritt<T> {
   private ueberzug = new Map<string, number>();
   private kranZeit = new Map<string, number>();
   private kolonneBelegt = new Set<string>();
+  /** Personal je Unternehmer (unternehmerAmTag): grenze = höchstens gleichzeitig, grenzeFrei = davon in diesem Zeitschritt noch frei */
+  private grenze: Map<string, number>;
+  private grenzeFrei: Map<string, number>;
+  private unbegrenzt: Set<string>;
   private kranById: Map<string, Kran>;
   readonly vergabe: KernVergabe<T>[] = [];
   private besetzt = new Set<KernPhase>();
@@ -67,8 +78,12 @@ export class Zeitschritt<T> {
   private slotStd: number;
   private kranWarten: boolean;
 
-  constructor(iso: string, kraene: Kran[], slotStd: number, kranWarten: boolean) {
+  constructor(iso: string, kraene: Kran[], slotStd: number, kranWarten: boolean, unternehmer: UnternehmerPersonal[] = []) {
     this.iso = iso;
+    const u = unternehmerAmTag(unternehmer, iso);
+    this.grenze = u.grenze;
+    this.grenzeFrei = new Map(u.grenze);
+    this.unbegrenzt = u.unbegrenzt;
     this.slotStd = slotStd;
     this.kranWarten = kranWarten;
     this.kranById = new Map(kraene.map(k => [k.id, k]));
@@ -86,7 +101,7 @@ export class Zeitschritt<T> {
   kraeneHeute(p: KernPhase, kranIds: string[]): string[] { return p.kranpflichtig ? kranIds.filter(id => this.kranFrei.has(id)) : []; }
   /** Pool, aus dem die Arbeit besetzt wird (null = Kolonne ohne Pool) */
   poolDer(p: KernPhase, kranIds: string[]): { key: string; kid: string } | null {
-    if (!p.unternehmer) return null;
+    if (!p.unternehmer || this.unbegrenzt.has(p.unternehmer)) return null;
     for (const kid of this.kraeneHeute(p, kranIds)) {
       const key = `${kid}|${p.unternehmer}`;
       if (this.poolGroesse.has(key)) return { key, kid };
@@ -96,6 +111,12 @@ export class Zeitschritt<T> {
 
   /** Personal eines Pools an diesem Tag (0 = kein Pool) */
   poolGroesseVon(key: string): number { return this.poolGroesse.get(key) ?? 0; }
+  /** Unternehmer mit «so viele wie nötig» an diesem Tag */
+  istUnbegrenzt(unternehmer: string): boolean { return this.unbegrenzt.has(unternehmer); }
+  /** Grenze des Unternehmers an diesem Tag (Infinity = keine) */
+  grenzeVon(unternehmer: string): number { return this.grenze.get(unternehmer) ?? Infinity; }
+  private grenzeFreiVon(u: string) { return this.grenzeFrei.get(u) ?? Infinity; }
+  private grenzeAbziehen(u: string, n: number) { if (this.grenzeFrei.has(u)) this.grenzeFrei.set(u, this.grenzeFrei.get(u)! - n); }
 
   private reicht(frei: number, noetig: number, kid: string, mitUeberzug: boolean) {
     return frei >= noetig || (mitUeberzug && frei > 0 && noetig - frei <= MAX_UEBERZUG - (this.ueberzug.get(kid) ?? 0));
@@ -125,31 +146,44 @@ export class Zeitschritt<T> {
     // 1) Pool desselben Unternehmers unter einem Kran des Tasks
     const pool = this.poolDer(p, a.kranIds);
     if (pool) {
-      const mindest = Math.min(p.kolonne, braucht, this.poolGroesse.get(pool.key)!);
+      const mindest = Math.min(p.kolonne, braucht, this.poolGroesse.get(pool.key)!, this.grenzeVon(p.unternehmer));
       const frei = Math.min(this.pool.get(pool.key) ?? 0, this.kranFrei.get(pool.kid) ?? 0);
       if (!this.reicht(frei, mindest, pool.kid, mitUeberzug)) return;
+      if (this.grenzeFreiVon(p.unternehmer) < mindest) return; // Grenze des Unternehmers ist hart (auch kein Überzug)
       if (!this.kranZeitReicht(heute, p, mindest)) { this.kranWartend.add(p); return; }
       this.pool.set(pool.key, this.pool.get(pool.key)! - mindest);
       this.abziehen(pool.kid, mindest);
+      this.grenzeAbziehen(p.unternehmer, mindest);
       this.kranZeitAbziehen(heute, p, mindest);
       this.vergabe.push({ ref: a.ref, p, leute: mindest, ressource: pool.key, ausPool: true, kranId: pool.kid, kranIds: heute, kranBegrenzt: false });
       this.besetzt.add(p);
       return; // Unternehmer hat Personal unter diesem Kran → nur aus dem Pool
     }
     if (nurPool) return;
+    // 1b) «So viele wie nötig»: eigene Kolonne je Arbeit, ohne Personalgrenze — nur die Kranzeit gilt
+    if (p.unternehmer && this.unbegrenzt.has(p.unternehmer)) {
+      if (heute.length > 0 && !this.kranZeitReicht(heute, p, p.kolonne)) { this.kranWartend.add(p); return; }
+      this.kranZeitAbziehen(heute, p, p.kolonne);
+      this.vergabe.push({ ref: a.ref, p, leute: p.kolonne, ressource: `unbegrenzt|${p.position}|${this.vergabe.length}`, ausPool: false, kranId: heute[0] ?? null, kranIds: heute, kranBegrenzt: false });
+      this.besetzt.add(p);
+      return;
+    }
     // 2) Kolonne ohne Pool (Gewerk + Unternehmer, eine Arbeit gleichzeitig); kranpflichtige zählen zum Personal eines Krans des Tasks
     const kolonne = kolonnenSchluessel(p.gewerkKey, p.unternehmer);
     if (this.kolonneBelegt.has(kolonne)) return;
+    const leute = Math.min(p.kolonne, this.grenzeVon(p.unternehmer));
+    if (this.grenzeFreiVon(p.unternehmer) < leute) return;
     let kranId: string | null = null;
     if (heute.length > 0) {
-      if (!this.kranZeitReicht(heute, p, p.kolonne)) { this.kranWartend.add(p); return; }
-      kranId = heute.find(kid => this.reicht(this.kranFrei.get(kid) ?? 0, Math.min(p.kolonne, this.kranTotal.get(kid)!), kid, mitUeberzug)) ?? null;
+      if (!this.kranZeitReicht(heute, p, leute)) { this.kranWartend.add(p); return; }
+      kranId = heute.find(kid => this.reicht(this.kranFrei.get(kid) ?? 0, Math.min(leute, this.kranTotal.get(kid)!), kid, mitUeberzug)) ?? null;
       if (!kranId) return;
-      this.abziehen(kranId, Math.min(p.kolonne, this.kranTotal.get(kranId)!));
-      this.kranZeitAbziehen(heute, p, p.kolonne);
+      this.abziehen(kranId, Math.min(leute, this.kranTotal.get(kranId)!));
+      this.kranZeitAbziehen(heute, p, leute);
     }
     this.kolonneBelegt.add(kolonne);
-    this.vergabe.push({ ref: a.ref, p, leute: p.kolonne, ressource: kolonne, ausPool: false, kranId, kranIds: heute, kranBegrenzt: false });
+    this.grenzeAbziehen(p.unternehmer, leute);
+    this.vergabe.push({ ref: a.ref, p, leute, ressource: kolonne, ausPool: false, kranId, kranIds: heute, kranBegrenzt: false });
     this.besetzt.add(p);
   }
 
@@ -157,7 +191,8 @@ export class Zeitschritt<T> {
   verstaerken() {
     for (const v of [...this.vergabe].filter(v => v.ausPool).sort((a, b) => b.p.rest - a.p.rest)) {
       const sinnvoll = Math.max(1, Math.ceil(v.p.rest / this.slotStd - EPS));
-      const wunsch = Math.min(this.pool.get(v.ressource) ?? 0, this.kranFrei.get(v.kranId!) ?? 0, MAX_VERSTAERKUNG * v.p.kolonne - v.leute, sinnvoll - v.leute);
+      const wunsch = Math.min(this.pool.get(v.ressource) ?? 0, this.kranFrei.get(v.kranId!) ?? 0, MAX_VERSTAERKUNG * v.p.kolonne - v.leute, sinnvoll - v.leute,
+        this.grenzeFreiVon(v.p.unternehmer));
       if (wunsch <= 0) continue;
       const extra = Math.min(wunsch, this.kranZeitPlatz(v.kranIds, v.p));
       if (extra < wunsch) v.kranBegrenzt = true;
@@ -166,6 +201,7 @@ export class Zeitschritt<T> {
       this.kranZeitAbziehen(v.kranIds, v.p, extra);
       this.pool.set(v.ressource, this.pool.get(v.ressource)! - extra);
       this.kranFrei.set(v.kranId!, this.kranFrei.get(v.kranId!)! - extra);
+      this.grenzeAbziehen(v.p.unternehmer, extra);
     }
   }
 
@@ -173,10 +209,11 @@ export class Zeitschritt<T> {
   vorbelegen(p: KernPhase, kranIds: string[], leute: number, anteil = 1) {
     const heute = this.kraeneHeute(p, kranIds);
     const pool = this.poolDer(p, kranIds);
+    this.grenzeAbziehen(p.unternehmer, leute);
     if (pool) {
       this.pool.set(pool.key, (this.pool.get(pool.key) ?? 0) - leute);
       this.abziehen(pool.kid, leute);
-    } else {
+    } else if (!this.unbegrenzt.has(p.unternehmer)) {
       this.kolonneBelegt.add(kolonnenSchluessel(p.gewerkKey, p.unternehmer));
       if (heute.length > 0) this.abziehen(heute[0], Math.min(leute, this.kranTotal.get(heute[0])!));
     }

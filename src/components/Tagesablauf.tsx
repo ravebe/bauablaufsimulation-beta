@@ -5,7 +5,7 @@
 // "Erklärung & Optimierung": überzieht der Tag, warum (Kranzeit, Arbeit des Gantts gleichmässig auf die Tage des Tasks verteilt,
 // später Start); ist das eingeplante Personal nicht ausgelastet, was die übrigen Arbeiten zurückhält (Kranzeit, Vorgänger mit
 // Wartetagen, Startdatum) — je mit dem, was sich von Hand ändern liesse. Beide Kästen lassen sich zuklappen.
-import type { Task, Kran } from "../types";
+import type { Task, Kran, UnternehmerPersonal } from "../types";
 import { vorgaengerListe, istGruppe } from "../types";
 import type { Stammdaten } from "./stammdatenHelpers";
 import { hatKalkulationsWerte } from "./stammdatenHelpers";
@@ -29,6 +29,8 @@ const AUSLASTUNG_HINWEIS = 0.9;
 interface Props {
   iso: string; tasks: Task[]; stammdaten: Stammdaten; kalender: Kalender;
   farbeJeGewerk: Map<string, string>; eingeplant?: EingeplantTag; mitKranPersonal: boolean; kraene: Kran[];
+  /** Personal je Unternehmer (Grenze bzw. so viele wie nötig) — für «Bereit, aber heute nicht dran» */
+  unternehmer?: UnternehmerPersonal[];
   /** Ablauf des Tages (tagesplan) — derselbe wie in der Spalte Dauer */
   plan: Tagesplan;
   /** Zugeklappt: Tagesablauf / Erklärung & Optimierung (in Tab AVOR je Projekt gemerkt) */
@@ -93,7 +95,7 @@ function wartegruende(iso: string, tasks: Task[], stammdaten: Stammdaten, kalend
   return { kranVoll, wartend };
 }
 
-export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeGewerk, eingeplant, mitKranPersonal, kraene, plan, zu, tabelle, onToggle }: Props) {
+export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeGewerk, eingeplant, mitKranPersonal, kraene, unternehmer, plan, zu, tabelle, onToggle }: Props) {
   const std = stammdaten.arbeitszeitStdProTag;
   const gewerkLabel = new Map(stammdaten.gewerke.map(g => [g.key, g.label]));
   const zeilen = plan.tasks;
@@ -131,7 +133,7 @@ export default function Tagesablauf({ iso, tasks, stammdaten, kalender, farbeJeG
   const zuWenigArbeit = auslastung != null && auslastung < AUSLASTUNG_HINWEIS;
   const gruende = ueberzogen || zuWenigArbeit ? wartegruende(iso, tasks, stammdaten, kalender, kraene) : null;
   // bereit (Vorgänger fertig), arbeitet heute aber nicht — mit Grund (Kran, Personal, Kolonne, Reihenfolge)
-  const bereit = zu.ablauf ? [] : bereitAberNichtDran(iso, tasks, plan, stammdaten, kalender, kraene);
+  const bereit = zu.ablauf ? [] : bereitAberNichtDran(iso, tasks, plan, stammdaten, kalender, kraene, unternehmer);
 
   return (<>
     <div style={{ margin: "6px 0 6px", padding: "8px 10px", background: "#fafbfc", border: `1px solid ${FARBEN.gridline}`, fontSize: 11 }}>
@@ -268,7 +270,7 @@ function BereitBox({ bereit, kraene }: { bereit: BereitWartend[]; kraene: Kran[]
       {bereit.map(b => (
         <div key={b.t.id}>• <strong>{b.t.name}</strong> — Vorgänger fertig seit {datumText(b.bereitSeit)}, beginnt am {datumText(b.t.start)}: {
           b.grund === "kran" ? <>{kranNamen(b.kranIds)} hat keine freie Kranzeit — die kranpflichtigen Arbeiten des Tages belegen ihn ganz.{autoText(b)}</>
-          : b.grund === "personal" ? <>kein Personal frei — das Personal unter dem Kran ist den ganzen Tag belegt.{autoText(b)}</>
+          : b.grund === "personal" ? <>kein Personal frei — das Personal unter dem Kran bzw. die Grenze des Unternehmers (Personal je Unternehmer) ist den ganzen Tag ausgeschöpft.{autoText(b)}</>
           : b.grund === "kolonne" ? <>seine Kolonne arbeitet den ganzen Tag an anderer Arbeit.{autoText(b)}</>
           : b.grund === "wechselnd" ? <>Kranzeit und Personal sind abwechselnd ganz belegt.{autoText(b)}</>
           : b.autoVorgaenger.length > 0

@@ -321,7 +321,7 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
     const bericht = { gelockert: [] as string[] }; // nur für die aktuelle Zeiteinheit gemeldet (die feineren gleich)
     setAuslastungVorschau({ modus, reihenfolge, luecken, abBeginn, gruppen, ergebnisse: einheiten.map((einheit, i) => ({ einheit,
       tasks: optimiereAuslastung(aktiveSim.tasks, aktiveSim.stammdaten ?? LEERE_STAMMDATEN, aktiveSim.kalender ?? LEERER_KALENDER, einheit, aktiveSim.kraene ?? [],
-        reihenfolge, luecken, { gruppen, abBeginn, baubeginn: aktiveSim.baubeginn, ...(i === 0 ? { bericht } : {}) }) })), gelockert: bericht.gelockert });
+        reihenfolge, luecken, { gruppen, abBeginn, baubeginn: aktiveSim.baubeginn, unternehmer: aktiveSim.unternehmerPersonal, ...(i === 0 ? { bericht } : {}) }) })), gelockert: bericht.gelockert });
   }
   function auslastungUebernehmen(einheit: Zeiteinheit, tasks: Task[], optimiert = true) {
     if (!aktiveSim || !auslastungVorschau) return;
@@ -591,7 +591,8 @@ export default function TabBauteile({ onTaskSort, api, projectId = null, aktiveS
         const endeVorher = ende(vorher), endeNachher = ende(nachher);
         const tageDiff = endeVorher && endeNachher ? Math.round((new Date(endeNachher).getTime() - new Date(endeVorher).getTime()) / 86400000) : 0;
         const sd = aktiveSim.stammdaten ?? LEERE_STAMMDATEN, kal = aktiveSim.kalender ?? LEERER_KALENDER, kr = aktiveSim.kraene ?? [];
-        const auslastungVorher = durchschnittlicheAuslastung(vorher, kr, sd, kal), auslastungNachher = durchschnittlicheAuslastung(nachher, kr, sd, kal);
+        const up = aktiveSim.unternehmerPersonal;
+        const auslastungVorher = durchschnittlicheAuslastung(vorher, kr, sd, kal, up), auslastungNachher = durchschnittlicheAuslastung(nachher, kr, sd, kal, up);
         const prozent = (v: number | null) => v == null ? "–" : `${fmtZahl(v * 100)} %`;
         const abschnitt: React.CSSProperties = { fontSize: 10, fontWeight: 700, letterSpacing: ".5px", color: "var(--tc-text-3)", margin: "14px 0 6px" };
         const wahl = (aktiv: boolean): React.CSSProperties => ({ fontSize: 12, fontWeight: 600, padding: "6px 8px", cursor: "pointer", minWidth: 0,
