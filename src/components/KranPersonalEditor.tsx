@@ -5,7 +5,7 @@
 import { useState } from "react";
 import type { SimProjekt, Kran, KranPersonal, UnternehmerPersonal } from "../types";
 import { istGruppe } from "../types";
-import { neuerKran, kranAusTasksEntfernen, kraeneDesTasks, kranPersonalAmTag, RICHTWERT_PERSONEN_PRO_KRAN, kranLuecken, tageAlsZeitraeume, kranVerlaengernVorschlag, kranVerlaengern } from "./kranHelpers";
+import { personalJeUnternehmerAusKraenen, neuerKran, kranAusTasksEntfernen, kraeneDesTasks, kranPersonalAmTag, RICHTWERT_PERSONEN_PRO_KRAN, kranLuecken, tageAlsZeitraeume, kranVerlaengernVorschlag, kranVerlaengern } from "./kranHelpers";
 import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
 import { LEERER_KALENDER } from "./kalenderHelpers";
 
@@ -13,9 +13,7 @@ interface Props { sim: SimProjekt; updateSim: (s: SimProjekt) => void; readOnly?
   /** zur Auswahl: alle Unternehmer (Leistungspositionen und Kräne) */
   alleUnternehmer: string[];
   /** Knopf «Zur Kranoptik» im Hinweis «Kran fehlt» → Tab AVOR */
-  onZuKranoptik?: () => void;
-  /** «Aktualisieren» unter Personal je Unternehmer: wie im Bauablauf übernehmen und neu optimieren; meldung = Ergebnis davon */
-  onAktualisieren?: () => void; meldung?: string | null }
+  onZuKranoptik?: () => void }
 
 const feld: React.CSSProperties = { fontSize: 11, padding: "3px 5px", border: "1px solid #d4dce4", fontFamily: "inherit" };
 
@@ -101,7 +99,7 @@ function UnternehmerFeld({ wert, alle, disabled, unbekannt, onChange }: { wert: 
   );
 }
 
-export default function KranPersonalEditor({ sim, updateSim, readOnly, bekannteUnternehmer, alleUnternehmer, onZuKranoptik, onAktualisieren, meldung }: Props) {
+export default function KranPersonalEditor({ sim, updateSim, readOnly, bekannteUnternehmer, alleUnternehmer, onZuKranoptik }: Props) {
   const kraene = sim.kraene ?? [];
   const speichern = (neu: Kran[]) => updateSim({ ...sim, kraene: neu });
   const kranAendern = (id: string, patch: Partial<Kran>) => speichern(kraene.map(k => k.id === id ? { ...k, ...patch } : k));
@@ -227,8 +225,7 @@ export default function KranPersonalEditor({ sim, updateSim, readOnly, bekannteU
       {!readOnly && (
         <button className="tc-btn-secondary" style={{ fontSize: 11, padding: "5px 10px" }} onClick={() => speichern([...kraene, neuerKran(kraene)])}>+ Kran hinzufügen</button>
       )}
-      <UnternehmerPersonalEditor sim={sim} updateSim={updateSim} readOnly={readOnly} bekannteUnternehmer={bekannteUnternehmer} alleUnternehmer={alleUnternehmer}
-        onAktualisieren={onAktualisieren} meldung={meldung} />
+      <UnternehmerPersonalEditor sim={sim} updateSim={updateSim} readOnly={readOnly} bekannteUnternehmer={bekannteUnternehmer} alleUnternehmer={alleUnternehmer} />
     </div>
   );
 }
@@ -241,13 +238,22 @@ const isoTagDanach = (iso: string) => {
 
 /** Personal je Unternehmer über alle Kräne (SimProjekt.unternehmerPersonal): je Zeile Unternehmer, «höchstens n Personen» (harte
  *  Grenze für alle seine Leute — Pools, Kolonnen ohne Kran, Überzug) oder «wie Leistungsposition» (z.B. Akkordant: jede Arbeit mit
- *  den Min. Personen ihrer Leistungsposition aus Tab Ressourcen, eigene Kolonne, auch parallel — nur die Kranzeit gilt), von/bis. «Aktualisieren» übernimmt und optimiert neu (wie im Bauablauf). */
-function UnternehmerPersonalEditor({ sim, updateSim, readOnly, bekannteUnternehmer, alleUnternehmer, onAktualisieren, meldung }: {
+ *  den Min. Personen ihrer Leistungsposition aus Tab Ressourcen, eigene Kolonne, auch parallel — nur die Kranzeit gilt), von/bis. «↓ von Kränen übernehmen» füllt die Zeilen aus dem Personal unter den Kränen (personalJeUnternehmerAusKraenen). */
+function UnternehmerPersonalEditor({ sim, updateSim, readOnly, bekannteUnternehmer, alleUnternehmer }: {
   sim: SimProjekt; updateSim: (s: SimProjekt) => void; readOnly?: boolean; bekannteUnternehmer: string[]; alleUnternehmer: string[];
-  onAktualisieren?: () => void; meldung?: string | null;
 }) {
   const liste = sim.unternehmerPersonal ?? [];
-  const [geklickt, setGeklickt] = useState(false);
+  // «↓ von Kränen übernehmen»: je Unternehmer unter den Kränen dessen Summe je Zeitraum als «höchstens» — ersetzt seine bisherigen
+  // «höchstens»-Zeilen; «wie Leistungsposition» und Unternehmer ohne Personal unter einem Kran bleiben
+  const ausKraenen = personalJeUnternehmerAusKraenen(sim.kraene ?? []);
+  function vonKraenenUebernehmen() {
+    const betroffen = new Set(ausKraenen.map(z => z.unternehmer));
+    const ersetzt = liste.filter(z => !z.unbegrenzt && betroffen.has(z.unternehmer.trim()));
+    if (ersetzt.length > 0 && !confirm(`${ersetzt.length} bestehende «höchstens»-Zeile${ersetzt.length === 1 ? "" : "n"} von ${[...new Set(ersetzt.map(z => z.unternehmer.trim()))].join(", ")} werden durch die Werte der Kräne ersetzt. Fortfahren?`)) return;
+    const bleiben = liste.filter(z => !ersetzt.includes(z));
+    // «wie Leistungsposition» desselben Unternehmers geht weiterhin vor (unternehmerAmTag) — übernommene Zeilen nach seinen Zeilen
+    speichern([...bleiben, ...ausKraenen.map(z => ({ id: crypto.randomUUID(), ...z }))]);
+  }
   const speichern = (neu: UnternehmerPersonal[]) => updateSim({ ...sim, unternehmerPersonal: neu.length ? neu : undefined });
   const aendern = (id: string, patch: Partial<UnternehmerPersonal>) => speichern(liste.map(z => z.id === id ? { ...z, ...patch } : z));
   // Unternehmer mit «wie Leistungsposition», die auch Personal unter einem Kran haben — dieses Personal wird dann nicht verwendet
@@ -262,15 +268,17 @@ function UnternehmerPersonalEditor({ sim, updateSim, readOnly, bekannteUnternehm
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
         <span style={{ fontSize: 12, fontWeight: 700, color: "var(--tc-text)" }}>Personal je Unternehmer (über alle Kräne)</span>
         <span style={{ fontSize: 10, color: "var(--tc-text-3)" }}
-          title={"«höchstens»: so viele Leute des Unternehmers arbeiten gleichzeitig höchstens — über alle Kräne und Arbeiten zusammen (auch nicht kranpflichtige wie Beton, ohne Überzug). Mehrere Zeilen mit von/bis = Personal im Zeitverlauf, z.B. 7, ab drei Wochen später 10.\n«wie Leistungsposition»: z.B. Akkordant — jede Arbeit bekommt die Min. Personen ihrer Leistungsposition (Tab Ressourcen, Kategorien oben) als eigene Kolonne, auch mehrere gleichzeitig; sein Personal unter dem Kran wird nicht verwendet. Die Kranzeit gilt weiterhin (Kranzeit % in den Kategorien oben).\nOhne Zeile gilt wie bisher das Personal unter den Kränen. Wirkt beim nächsten Optimieren — «Aktualisieren» übernimmt sofort."}>
+          title={"«höchstens»: so viele Leute des Unternehmers arbeiten gleichzeitig höchstens — über alle Kräne und Arbeiten zusammen (auch nicht kranpflichtige wie Beton, ohne Überzug). Mehrere Zeilen mit von/bis = Personal im Zeitverlauf, z.B. 7, ab drei Wochen später 10.\n«wie Leistungsposition»: z.B. Akkordant — jede Arbeit bekommt die Min. Personen ihrer Leistungsposition (Tab Ressourcen, Kategorien oben) als eigene Kolonne, auch mehrere gleichzeitig; sein Personal unter dem Kran wird nicht verwendet. Die Kranzeit gilt weiterhin (Kranzeit % in den Kategorien oben).\nOhne Zeile gilt wie bisher das Personal unter den Kränen. «↓ von Kränen übernehmen» füllt die Zeilen aus dem Personal unter den Kränen. Wirkt beim nächsten Optimieren (bzw. sofort mit «Automatisch nachführen»)."}>
           ⓘ Grenze bzw. wie Leistungsposition, je Zeitraum</span>
-        {!readOnly && onAktualisieren && (
-          <button type="button" className="tc-btn-primary" style={{ fontSize: 11, padding: "3px 10px", marginLeft: "auto" }}
-            title="Personal je Unternehmer übernehmen: Ablaufregeln anwenden und mit den Einstellungen des Dialogs Auslastung optimieren neu optimieren (wie «Aktualisieren» im Bauablauf). Rückgängig oben in der Kopfzeile."
-            onClick={() => { setGeklickt(true); onAktualisieren(); }}>Aktualisieren</button>
+        {!readOnly && (
+          <button type="button" className="tc-btn-secondary" style={{ fontSize: 11, padding: "3px 10px", marginLeft: "auto" }} disabled={ausKraenen.length === 0}
+            title={ausKraenen.length === 0 ? "Unter den Kränen ist noch kein Personal erfasst"
+              : "Personal unter den Kränen übernehmen: je Unternehmer die Summe über alle Kräne und Zeiträume als «höchstens», z.B.\n"
+                + ausKraenen.slice(0, 6).map(z => `${z.unternehmer}: ${z.personen}${z.von ? " ab " + z.von.split("-").reverse().join(".") : ""}${z.bis ? " bis " + z.bis.split("-").reverse().join(".") : ""}`).join("\n")
+                + "\nBisherige «höchstens»-Zeilen dieser Unternehmer werden ersetzt (mit Rückfrage). Rückgängig oben in der Kopfzeile."}
+            onClick={vonKraenenUebernehmen}>↓ von Kränen übernehmen</button>
         )}
       </div>
-      {geklickt && meldung && <div style={{ fontSize: 11, color: "var(--tc-text-2)", marginBottom: 6 }}>{meldung}</div>}
       {liste.length > 0 && (
         <div style={{ display: "grid", gridTemplateColumns: spalten, columnGap: 6, fontSize: 9, fontWeight: 600, color: "var(--tc-text-3)", marginBottom: 2 }}>
           <span>Unternehmer</span><span>Personal</span><span>Personen</span><span>von</span><span>bis</span><span />

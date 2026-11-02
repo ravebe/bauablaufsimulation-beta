@@ -129,6 +129,47 @@ export function kranPersonalAmTag(kran: Kran, iso: string): Map<string, number> 
   return jeUnternehmer;
 }
 
+/** Kalendertag + n (YYYY-MM-DD) */
+function isoPlus(iso: string, n: number): string {
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() + n);
+  return toIso(d);
+}
+
+/** «↓ von Kränen übernehmen» (Personal je Unternehmer): je Unternehmer und Zeitraum die Summe seines Personals unter allen Kränen
+ *  als «höchstens». Zeiträume ergeben sich aus von/bis der Kräne und ihrer Personal-Zeilen; aufeinanderfolgende mit derselben Zahl
+ *  werden zusammengefasst, Zeiträume ohne Personal unter einem Kran weggelassen (dort keine Grenze). von/bis leer = offen. */
+export function personalJeUnternehmerAusKraenen(kraene: Kran[]): Omit<UnternehmerPersonal, "id">[] {
+  const punkte = new Set<string>();
+  for (const k of kraene) {
+    if (k.verfuegbarVon) punkte.add(k.verfuegbarVon);
+    if (k.verfuegbarBis) punkte.add(isoPlus(k.verfuegbarBis, 1));
+    for (const p of k.personal ?? []) {
+      if (p.von) punkte.add(p.von);
+      if (p.bis) punkte.add(isoPlus(p.bis, 1));
+    }
+  }
+  const starts = [...punkte].sort();
+  // Abschnitte: vor dem ersten Punkt (offen), dann je Punkt bis zum Tag vor dem nächsten (der letzte offen)
+  const abschnitte: { von?: string; bis?: string; tag: string }[] = [
+    { bis: starts.length ? isoPlus(starts[0], -1) : undefined, tag: starts.length ? isoPlus(starts[0], -1) : "2000-01-01" },
+    ...starts.map((s, i) => ({ von: s, bis: i + 1 < starts.length ? isoPlus(starts[i + 1], -1) : undefined, tag: s })),
+  ];
+  const unternehmer = [...new Set(kraene.flatMap(k => (k.personal ?? []).map(p => p.unternehmer.trim()).filter(Boolean)))];
+  const ergebnis: Omit<UnternehmerPersonal, "id">[] = [];
+  for (const u of unternehmer) {
+    let offen: { von?: string; bis?: string; personen: number } | null = null;
+    for (const a of abschnitte) {
+      const n = kraene.reduce((s, k) => s + (kranPersonalAmTag(k, a.tag).get(u) ?? 0), 0);
+      if (offen && n === offen.personen) { offen.bis = a.bis; continue; }
+      if (offen) ergebnis.push({ unternehmer: u, ...offen });
+      offen = n > 0 ? { von: a.von, bis: a.bis, personen: n } : null;
+    }
+    if (offen) ergebnis.push({ unternehmer: u, ...offen });
+  }
+  return ergebnis.map(z => ({ unternehmer: z.unternehmer, personen: z.personen, ...(z.von ? { von: z.von } : {}), ...(z.bis ? { bis: z.bis } : {}) }));
+}
+
 /** Personal unter dem Kran an diesem Tag = Summe seiner Unternehmer (0, wenn nicht verfügbar) — zugleich die Höchstzahl der
  *  Leute an kranpflichtigen Arbeiten dieses Krans. */
 export function kranPersonalTotalAmTag(kran: Kran, iso: string): number {

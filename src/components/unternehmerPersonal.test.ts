@@ -4,7 +4,7 @@ import type { Stammdaten } from "./stammdatenHelpers";
 import { LEERE_STAMMDATEN } from "./stammdatenHelpers";
 import { optimiereAuslastung } from "./auslastungOptimieren";
 import { tagesplan } from "./tagesplan";
-import { eingeplantesPersonalJeTag, unternehmerAmTag } from "./kranHelpers";
+import { eingeplantesPersonalJeTag, unternehmerAmTag, personalJeUnternehmerAusKraenen } from "./kranHelpers";
 
 const KAL = { feiertage: [], ferien: [] };
 const rate = (lw: number, p: number, u: string, kran: boolean, kz?: number) =>
@@ -59,6 +59,20 @@ describe("Personal je Unternehmer", () => {
     const up: UnternehmerPersonal[] = [{ id: "1", unternehmer: "Akkordant", unbegrenzt: true }];
     const parallel = optimiereAuslastung(ts, sd, KAL, "stunden", kraene, "kritischerPfad", false, { unternehmer: up });
     expect(parallel.map(t => `${t.start}–${t.end}`)).toEqual(["2026-11-09–2026-11-09", "2026-11-09–2026-11-09"]);
+  });
+
+  it("von Kränen übernehmen: Kran 1 ab Februar 10, Kran 2 ab März 10 → Baumeister 10 im Februar, ab März 20", () => {
+    const zwei: Kran[] = [
+      { id: "k1", name: "Kran 1", verfuegbarVon: "2027-02-01", personal: [{ id: "1", unternehmer: "Baumeister", personen: 10 }] },
+      { id: "k2", name: "Kran 2", verfuegbarVon: "2027-03-01", personal: [{ id: "2", unternehmer: "Baumeister", personen: 10 }, { id: "3", unternehmer: "Akkordant", personen: 4, bis: "2027-04-30" }] },
+    ];
+    expect(personalJeUnternehmerAusKraenen(zwei)).toEqual([
+      { unternehmer: "Baumeister", personen: 10, von: "2027-02-01", bis: "2027-02-28" },
+      { unternehmer: "Baumeister", personen: 20, von: "2027-03-01" },
+      { unternehmer: "Akkordant", personen: 4, von: "2027-03-01", bis: "2027-04-30" },
+    ]);
+    // ohne Zeiträume: eine offene Zeile je Unternehmer
+    expect(personalJeUnternehmerAusKraenen(kraene)).toEqual([{ unternehmer: "Baumeister", personen: 10 }]);
   });
 
   it("Eingeplant: Kran-Pool 10 wird auf die Grenze 7 gekappt", () => {
